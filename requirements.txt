@@ -1,0 +1,21 @@
+# Core dependencies
+flask>=2.0.0
+flask-cors>=3.0.0
+redis>=4.0.0
+requests>=2.26.0
+aiohttp>=3.8.0
+
+# Logging and utilities
+python-json-logger>=2.0.0
+python-dateutil>=2.8.2
+
+# Security and encryption
+cryptography>=3.4.0
+pyjwt>=2.0.0
+
+# Async support
+asyncio>=3.4.3
+# uvloop>=0.16.0; sys_platform != 'win32'  # uvloop not supported on Windows
+
+# MCP
+mcp[cli]

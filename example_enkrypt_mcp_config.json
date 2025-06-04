@@ -1,0 +1,64 @@
+{
+  "common_mcp_gateway_config": {
+    "enkrypt_log_level": "INFO",
+    "enkrypt_guardrails_enabled": false,
+    "enkrypt_base_url": "https://api.enkryptai.com",
+    "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
+    "enkrypt_use_remote_mcp_config": false,
+    "enkrypt_remote_mcp_gateway_name": "enkrypt-secure-mcp-gateway-1",
+    "enkrypt_remote_mcp_gateway_version": "v1",
+    "enkrypt_mcp_use_external_cache": false,
+    "enkrypt_cache_host": "localhost",
+    "enkrypt_cache_port": 6379,
+    "enkrypt_cache_db": 0,
+    "enkrypt_cache_password": null,
+    "enkrypt_tool_cache_expiration": 4,
+    "enkrypt_gateway_cache_expiration": 24,
+    "enkrypt_async_input_guardrails_enabled": false,
+    "enkrypt_async_output_guardrails_enabled": false
+  },
+  "gateways": {
+    "UNIQUE_GATEWAY_KEY": {
+      "id": "UNIQUE_UUID",
+      "mcp_config": [
+        {
+          "server_name": "echo_server",
+          "description": "Dummy Echo Server",
+          "config": {
+            "command": "python",
+            "args": [
+              "DUMMY_ECHO_MCP_FILE_PATH"
+            ]
+          },
+          "tools": {},
+          "input_guardrails_policy": {
+            "enabled": false,
+            "policy_name": "Sample Airline Guardrail",
+            "additional_config": {
+              "pii_redaction": false
+            },
+            "block": [
+              "nsfw",
+              "toxicity",
+              "injection_attack"
+            ]
+          },
+          "output_guardrails_policy": {
+            "enabled": false,
+            "policy_name": "Sample Airline Guardrail",
+            "additional_config": {
+              "relevancy": false,
+              "hallucination": false,
+              "adherence": false
+            },
+            "block": [
+              "nsfw",
+              "toxicity",
+              "injection_attack"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
