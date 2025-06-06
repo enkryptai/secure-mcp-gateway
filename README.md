@@ -1135,8 +1135,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 ## Setup Other MCP Clients
 
-<br>
-
 <details>
 
 <summary><strong>Cursor ⬡ </strong> 🔽</summary>
