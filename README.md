@@ -18,24 +18,23 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 - [Prerequisites 🧩](#prerequisites)
 - [Gateway Setup 👨‍💻](#gateway-setup)
   - [Local Installation 📥](#local-installation)
-    - [1. Clone the repo, setup virtual environment and install dependencies 📥](#1-clone-the-repo-setup-virtual-environment-and-install-dependencies)
+    <!-- - [1. Clone the repo, setup virtual environment and install dependencies 📥](#1-clone-the-repo-setup-virtual-environment-and-install-dependencies)
     - [2. Run the setup script 📥](#2-run-the-setup-script)
     - [3. Example MCP config file generated 📄](#3-example-mcp-config-file-generated)
     - [4. Restart Claude Desktop to run the Gateway 🔄](#4-restart-claude-desktop-to-run-the-gateway)
     - [5. Example prompts 💬](#5-example-prompts)
     - [6. Example config file generated ⚙️](#6-example-config-file-generated)
-    - [7. Edit the Gateway config as needed ✏️](#7-edit-the-gateway-config-as-needed)
+    - [7. Edit the Gateway config as needed ✏️](#7-edit-the-gateway-config-as-needed) -->
   - [Remote Installation 📥](#remote-installation)
 - [(Optional) Add GitHub MCP Server to the Gateway 🤖](#optional-add-github-mcp-server-to-the-gateway)
 - [(Optional) Protect GitHub MCP Server and Test Echo Server with Enkrypt Guardrails for FREE 🔒](#optional-protect-github-mcp-server-and-test-echo-server-with-enkrypt-guardrails-for-free)
-  - [NOTE: Fine Tune Guardrails 🔧](#note-fine-tune-guardrails)
+  <!-- - [NOTE: Fine Tune Guardrails 🔧](#note-fine-tune-guardrails) -->
 - [Recommendations for using Guardrails 💡](#recommendations-for-using-guardrails)
 - [Setup Other MCP Clients 🤖](#setup-other-mcp-clients)
 - [Other Tools Available 🔧](#other-tools-available)
 - [Deployment Patterns 🪂](#deployment-patterns)
 - [Known Issues being worked on 🏗️](#known-issues-being-worked-on)
 - [Known Limitations ⚠️](#known-limitations)
-- [License 📝](#license)
 
 ## Features
 
@@ -1276,7 +1275,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 - The Gateway does not support a scenario where the Gateway is deployed remotely but the MCP server is deployed locally (without being exposed to the internet). This is because the Gateway needs to know the MCP server's address to forward requests to it.
 
-## Contribution
+## Contribute
 
 - Look at the `TODO`
 
