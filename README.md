@@ -892,21 +892,136 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 <br>
 
+- You can use a prompt to generate rules or generate a PDF file while you can then paste or upload while creating a policy in the App
+
+<br>
+
+<details>
+
+<summary><strong>Rules to copy ❗ </strong> 🔽</summary>
+
+<br>
+
+```text
+1. MCP-Specific Security Policies
+Scan all tool descriptions for hidden instructions/malicious patterns.
+
+Authenticate MCP servers with cryptographic verification.
+
+Lock and pin tool versions to prevent rug-pull attacks.
+
+Enforce isolation between MCP servers to avoid interference.
+
+Restrict GitHub MCP access to specific repositories and users.
+
+2. Code Filtering and Prohibited Patterns
+Block known malicious code patterns (e.g., buffer overflows, SQL injection).
+
+Detect malware signatures (e.g., keylogger, trojan).
+
+Prevent crypto mining code.
+
+Identify network attack patterns (e.g., DDoS, botnet).
+
+Block privilege escalation code (e.g., root exploits).
+
+3. Repository Access Control
+Enforce role-based read access for private repositories.
+
+Enable strict content filtering for all access types.
+
+Mandate audit logging for private repositories.
+
+Quarantine access to sensitive repositories.
+
+4. AI-Specific Guardrails
+Detect tool poisoning via hidden tags and file access commands.
+
+Monitor behavior for file access and network activity.
+
+Require explicit UI approval for suspicious tools.
+
+Protect against prompt injection in GitHub issues.
+
+Block PRs that expose private repo data.
+
+Quarantine suspicious GitHub issues.
+
+5. RADE (Retrieval-Agent Deception) Mitigation
+Scan retrieved content for embedded commands.
+
+Validate document integrity and modification timestamps.
+
+Sandbox retrieved content to prevent auto-execution.
+
+6. Input Validation
+Limit prompt length (max 4096 tokens).
+
+Block forbidden keywords (e.g., "ignore previous instructions").
+
+Detect encoded/injection patterns (base64, hex, unicode).
+
+7. Model Behavior Constraints
+Limit code generation by complexity and size.
+
+Restrict certain languages (e.g., shell scripts, assembly).
+
+Monitor API/system calls and network activity.
+
+Enforce strict context boundaries across repositories.
+```
+
+</details>
+
+<br>
+
+<details>
+
+<summary><strong>Prompt used to generate the rules 💡 </strong> 🔽</summary>
+
+<br>
+
+- `Give numbered list of security rules in plain text for configuring AI guardrails for a GitHub server on the rules and policies it needs to follow to prevent malicious use of the GitHub services`
+
+- Then say `Research latest GitHub MCP hacks and abuses people are trying and update the rules to prevent those. Keep research to the most severe topics`
+
+- Then say `Only keep essential security rules to reduce size. Remove unwanted sections like post incident, compliance, audit, etc which cannot be used while prevention`
+
+- Then you can copy paste the rules while creating the policy
+
+</details>
+
+<br>
+
 - Go to [Enkrypt App](https://app.enkryptai.com) and login with either OTP or Google or Microsoft account
 
-- Create on `Guardrails` as highlighted in the screenshot below
+- Click on `Policies`
 
-  ![enkrypt-app-homepage](./docs/images/enkrypt-app-homepage.png)
+  ![enkrypt-github-guardrail-1](./docs/images/enkrypt-github-guardrail-1.png)
+
+- Click on `Add new policy`
+
+  ![enkrypt-github-guardrail-2](./docs/images/enkrypt-github-guardrail-2.png)
+
+- Name it `GitHub Safe Policy` and paste the policy rules and click `Save`
+
+  ![enkrypt-github-guardrail-3](./docs/images/enkrypt-github-guardrail-3.png)
+
+- This is how a saved policy looks like with the rules applied for `Policy violation` Guardrails
+
+  ![enkrypt-github-guardrail-4](./docs/images/enkrypt-github-guardrail-4.png)
+
+- Now navigate back to home or hover over left sidebar and click `Guardrails`
 
 - Click on `Add New Guardrail` button on the top right
 
   ![enkrypt-app-add-guardrail-button](./docs/images/enkrypt-app-add-guardrail-button.png)
 
-- Name it `GitHub Guardrail`, leave `Injection Attack` toggled ON
+- Name it `GitHub Guardrail`, toggle `Injection Attack` OFF
 
   ![enkrypt-app-add-guardrail-add-1](./docs/images/enkrypt-app-add-guardrail-add-1.png)
 
-- Scroll down on `Configure Guardrails` side panel and toggle `Toxicity Detector` and `NSFW Detector` to ON as well
+- Scroll down on `Configure Guardrails` side panel and toggle `Policy Violation` ON, select the newly created policy and tick `Need Explanation` if needed
 
   ![enkrypt-app-add-guardrail-add-2](./docs/images/enkrypt-app-add-guardrail-add-2.png)
 
@@ -950,7 +1065,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 - Add the API Key to the `common_mcp_gateway_config` section by replacing `YOUR_ENKRYPT_API_KEY` with the API Key you copied from the App
 
-- Inside the **`GitHub`** server block we added in the previous section and also in the pre-existing **`echo`** server blocks,
+- Inside the **`GitHub`** server block we added in the previous section,
 
   - Add the newly created Guardrail `GitHub Guardrail` to the `input_guardrails_policy` and `output_guardrails_policy` sections
 
@@ -986,8 +1101,8 @@ Installation complete. Check the claude_desktop_config.json file as per the read
             },
             "tools": {},
             "input_guardrails_policy": {
-              "enabled": true,
-              "policy_name": "GitHub Guardrail",
+              "enabled": false,
+              "policy_name": "Sample Airline Guardrail",
               "additional_config": {
                 "pii_redaction": false
               },
@@ -997,7 +1112,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
             },
             "output_guardrails_policy": {
               "enabled": false,
-              "policy_name": "GitHub Guardrail",
+              "policy_name": "Sample Airline Guardrail",
               "additional_config": {
                 "relevancy": false,
                 "hallucination": false,
@@ -1077,7 +1192,11 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
   ![claude-mcp-chat-github-guardrails-1](./docs/images/claude-mcp-chat-github-guardrails-1.png)
 
-- We can also test guardrails with the echo server by running `echo "hello; ls -la; whoami"`. This prompt which worked before is now blocked.
+- We can configure the test `echo` server with Guardrails of our choice and see the detections by running `echo "hello; ls -la; whoami"`.
+
+  - The below prompt which worked before but is blocked with Guardrails
+
+  - Experiment and try the `echo` server with various guardrails to see how it behaves. [You can also try our Playground for better testing](https://app.enkryptai.com/playground/guardrails).
 
   ![claude-mcp-chat-echo-guardrails-2](./docs/images/claude-mcp-chat-echo-guardrails-2.png)
 
