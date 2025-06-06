@@ -1194,8 +1194,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-<br>
-
 <details>
 
 <summary><strong>Clear Cache 🧹 </strong> 🔽</summary>
