@@ -69,6 +69,14 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 
 ![Local Gateway with Remote Guardrails Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20Local.drawio.png)
 
+<br>
+
+<details>
+
+<summary><strong>Steps 🪜 </strong> 🔽</summary>
+
+<br>
+
 1. Your MCP client connects to the Secure MCP Gateway server with API Key (handled by `src/gateway.py`).
 
 2. Gateway server fetches gateway config from local `enkrypt_mcp_config.json` file or remote Enkrypt Auth server *(Coming soon)*.
@@ -91,6 +99,10 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
     - Response is blocked if it violates any of the configured guardrails and the specific detector is configured to block.
 
 9. The Gateway server forwards the response back to the MCP client if everything is fine.
+
+</details>
+
+<br>
 
 ## Prerequisites
 
@@ -368,7 +380,7 @@ Getting Enkrypt Common Configuration
 config_path: C:\Users\PC\Documents\GitHub\enkryptai\enkrypt-secure-mcp-gateway\enkrypt_mcp_config.json
 example_config_path: C:\Users\PC\Documents\GitHub\enkryptai\enkrypt-secure-mcp-gateway\example_enkrypt_mcp_config.json
 Loading enkrypt_mcp_config.json file...
-config: {'common_mcp_gateway_config': {'enkrypt_log_level': 'INFO', 'enkrypt_guardrails_enabled': False, 'enkrypt_base_url': 'https://api.enkryptai.com', 'enkrypt_api_key': 'YOUR_ENKRYPT_API_KEY', 'enkrypt_use_remote_mcp_config': False, 'enkrypt_remote_mcp_gateway_name': 'enkrypt-secure-mcp-gateway-1', 'enkrypt_remote_mcp_gateway_version': 'v1', 'enkrypt_mcp_use_external_cache': False, 'enkrypt_cache_host': 'localhost', 'enkrypt_cache_port': 6379, 'enkrypt_cache_db': 0, 'enkrypt_cache_password': None, 'enkrypt_tool_cache_expiration': 4, 'enkrypt_gateway_cache_expiration': 24, 'enkrypt_async_input_guardrails_enabled': False, 'enkrypt_async_output_guardrails_enabled': False}, 'gateways': {'3_V8WZxKJp24alEui542WX6wVcgexH5EIBqZl1EssxDcFS9K4TVwZCmB9i_8KEQ5': {'id': 'b8ac738a-7a2c-4030-8966-20fa1d91af3c', 'mcp_config': [{'server_name': 'echo_server', 'description': 'Dummy Echo Server', 'config': {'command': 'python', 'args': ['C:\\Users\\PC\\Documents\\GitHub\\enkryptai\\enkrypt-secure-mcp-gateway\\test_mcps\\echo_mcp.py']}, 'tools': {'echo': 'Echo a message'}, 'input_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'pii_redaction': False}, 'block': ['nsfw', 'toxicity', 'injection_attack']}, 'output_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'relevancy': False, 'hallucination': False, 'adherence': False}, 'block': ['nsfw', 'toxicity', 'injection_attack']}}]}}}
+config: {'common_mcp_gateway_config': {'enkrypt_log_level': 'INFO', 'enkrypt_guardrails_enabled': False, 'enkrypt_base_url': 'https://api.enkryptai.com', 'enkrypt_api_key': 'YOUR_ENKRYPT_API_KEY', 'enkrypt_use_remote_mcp_config': False, 'enkrypt_remote_mcp_gateway_name': 'enkrypt-secure-mcp-gateway-1', 'enkrypt_remote_mcp_gateway_version': 'v1', 'enkrypt_mcp_use_external_cache': False, 'enkrypt_cache_host': 'localhost', 'enkrypt_cache_port': 6379, 'enkrypt_cache_db': 0, 'enkrypt_cache_password': None, 'enkrypt_tool_cache_expiration': 4, 'enkrypt_gateway_cache_expiration': 24, 'enkrypt_async_input_guardrails_enabled': False, 'enkrypt_async_output_guardrails_enabled': False}, 'gateways': {'3_V8WZxKJp24alEui542WX6wVcgexH5EIBqZl1EssxDcFS9K4TVwZCmB9i_8KEQ5': {'id': 'b8ac738a-7a2c-4030-8966-20fa1d91af3c', 'mcp_config': [{'server_name': 'echo_server', 'description': 'Dummy Echo Server', 'config': {'command': 'python', 'args': ['C:\\Users\\PC\\Documents\\GitHub\\enkryptai\\enkrypt-secure-mcp-gateway\\test_mcps\\echo_mcp.py']}, 'tools': {'echo': 'Echo a message'}, 'input_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'pii_redaction': False}, 'block': ['policy_violation']}, 'output_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'relevancy': False, 'hallucination': False, 'adherence': False}, 'block': ['policy_violation']}}]}}}
 CONFIG:
 ENKRYPT_GATEWAY_KEY: ****KEQ5
 enkrypt_log_level: info
@@ -568,9 +580,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
                 "pii_redaction": false
               },
               "block": [
-                "nsfw",
-                "toxicity",
-                "injection_attack"
+                "policy_violation"
               ]
             },
             "output_guardrails_policy": {
@@ -582,9 +592,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
                 "adherence": false
               },
               "block": [
-                "nsfw",
-                "toxicity",
-                "injection_attack"
+                "policy_violation"
               ]
             }
           }
@@ -850,9 +858,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
               "pii_redaction": false
             },
             "block": [
-              "nsfw",
-              "toxicity",
-              "injection_attack"
+              "policy_violation"
             ]
           },
           "output_guardrails_policy": {
@@ -864,9 +870,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
               "adherence": false
             },
             "block": [
-              "nsfw",
-              "toxicity",
-              "injection_attack"
+              "policy_violation"
             ]
           }
         }
@@ -979,7 +983,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
     - We will leave `output_guardrails_policy` as `false` for now
 
-  - We already should have `injection_attack, nsfw, toxicity` in the `block` array for both policies
+  - We already should have `policy_violation` in the `block` array for both policies
 
   - So the final config should look something like this:
 
@@ -1011,9 +1015,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
                 "pii_redaction": false
               },
               "block": [
-                "nsfw",
-                "toxicity",
-                "injection_attack"
+                "policy_violation"
               ]
             },
             "output_guardrails_policy": {
@@ -1025,9 +1027,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
                 "adherence": false
               },
               "block": [
-                "nsfw",
-                "toxicity",
-                "injection_attack"
+                "policy_violation"
               ]
             }
           },
@@ -1056,9 +1056,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
                 "pii_redaction": false
               },
               "block": [
-                "nsfw",
-                "toxicity",
-                "injection_attack"
+                "policy_violation"
               ]
             },
             "output_guardrails_policy": {
@@ -1070,9 +1068,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
                 "adherence": false
               },
               "block": [
-                "nsfw",
-                "toxicity",
-                "injection_attack"
+                "policy_violation"
               ]
             }
           }

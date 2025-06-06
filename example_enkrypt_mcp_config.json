@@ -38,9 +38,7 @@
               "pii_redaction": false
             },
             "block": [
-              "nsfw",
-              "toxicity",
-              "injection_attack"
+              "policy_violation"
             ]
           },
           "output_guardrails_policy": {
@@ -52,9 +50,7 @@
               "adherence": false
             },
             "block": [
-              "nsfw",
-              "toxicity",
-              "injection_attack"
+              "policy_violation"
             ]
           }
         }
