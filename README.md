@@ -1205,20 +1205,6 @@ Enforce strict context boundaries across repositories.
 
   ![enkrypt-app-homepage-policies](./docs/images/enkrypt-app-homepage-policies.png)
 
-  - Once created, add this newly created policy to the `GitHub Guardrail` by [Navigating to it](https://app.enkryptai.com/guardrails/GitHub%20Guardrail/dashboard) in the App and click on `Edit Guardrails` button
-
-    - You can also select the `GitHub Guardrail` from the [list of guardrails to navigate to it](https://app.enkryptai.com/guardrails)
-
-  - Toggle `Policy Violation` detector to ON and select the policy you created. Tick `Need Explanation` if you want the guardrail to provide an explanation for the block
-
-  - Once done, click on `Save` button at the top right
-
-  - Edit the `enkrypt_mcp_config.json` file if needed to add the new `Guardrail` or additional servers. Also toggle `output_guardrails_policy` to `true` if you want to block unwanted responses from the MCP servers
-
-  - Restart Claude Desktop if the config file is changed i.e., if we edited the servers or their guardrails policies.
-
-  - Once restarted, it should now start blocking the malicious requests with the policy you created.
-
 </details>
 
 ## Setup Other MCP Clients
