@@ -28,7 +28,7 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
   - [Remote Installation 📥](#remote-installation)
 - [(Optional) Add GitHub MCP Server to the Gateway 🤖](#optional-add-github-mcp-server-to-the-gateway)
 - [(Optional) Protect GitHub MCP Server and Test Echo Server with Enkrypt Guardrails for FREE 🔒](#optional-protect-github-mcp-server-and-test-echo-server-with-enkrypt-guardrails-for-free)
-  <!-- - [NOTE: Fine Tune Guardrails 🔧](#note-fine-tune-guardrails) -->
+  <!-- - [Fine Tune Guardrails 🔧](#fine-tune-guardrails) -->
 - [Recommendations for using Guardrails 💡](#recommendations-for-using-guardrails)
 - [Setup Other MCP Clients 🤖](#setup-other-mcp-clients)
 - [Other Tools Available 🔧](#other-tools-available)
@@ -1083,7 +1083,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-### NOTE: Fine Tune Guardrails
+### Fine Tune Guardrails
 
 - *The safe prompt `List all files from https://github.com/enkryptai/enkryptai-mcp-server` may also be blocked if you use Injection Attack on Output side. So, there is some fine tuning required for the guardrails to find the best combination of enabled detectors and blocks for your servers. See the next section for recommendations.*
 
@@ -1104,8 +1104,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 - Hence, have separate guardrails for each server and experiment with the best combination of detectors and blocks for each server that blocks malicious requests but allows legitimate requests to pass through.
 
 - Try our `Policy Violation` detector with your own custom policy which details what is allowed and what is not. This may be the best way for your use case.
-
-<br>
 
 <details>
 
