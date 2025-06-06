@@ -1092,36 +1092,7 @@ Enforce strict context boundaries across repositories.
         "mcp_config": [
           {
             "server_name": "echo_server",
-            "description": "Dummy Echo Server",
-            "config": {
-              "command": "python",
-              "args": [
-                "C:\\Users\\PC\\Documents\\GitHub\\enkryptai\\enkrypt-secure-mcp-gateway\\test_mcps\\echo_mcp.py"
-              ]
-            },
-            "tools": {},
-            "input_guardrails_policy": {
-              "enabled": false,
-              "policy_name": "Sample Airline Guardrail",
-              "additional_config": {
-                "pii_redaction": false
-              },
-              "block": [
-                "policy_violation"
-              ]
-            },
-            "output_guardrails_policy": {
-              "enabled": false,
-              "policy_name": "Sample Airline Guardrail",
-              "additional_config": {
-                "relevancy": false,
-                "hallucination": false,
-                "adherence": false
-              },
-              "block": [
-                "policy_violation"
-              ]
-            }
+            "...": "..."
           },
           {
             "server_name": "github_server",
