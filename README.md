@@ -1203,6 +1203,8 @@ Enforce strict context boundaries across repositories.
 
   - This accepts text as well as PDF file as input so create a file with all the rules you want to apply to your MCP server and upload it
 
+  - Once created, you can use it while configuring the Guardrail like we say with `GitHub Guardrail` in the previous section
+
   ![enkrypt-app-homepage-policies](./docs/images/enkrypt-app-homepage-policies.png)
 
 </details>
