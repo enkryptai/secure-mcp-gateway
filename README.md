@@ -1161,8 +1161,6 @@ Enforce strict context boundaries across repositories.
 
   - We can see that the prompt is blocked as Input Guardrails blocked the request
 
-  ![claude-mcp-chat-github-guardrails-1](./docs/images/claude-mcp-chat-github-guardrails-1.png)
-
 - We can configure the test `echo` server with Guardrails of our choice and see the detections by running `echo "hello; ls -la; whoami"`.
 
   - The below prompt which worked before but is blocked with Guardrails
