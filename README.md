@@ -74,8 +74,6 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 
 <summary><strong>Steps 🪜 </strong> 🔽</summary>
 
-<br>
-
 1. Your MCP client connects to the Secure MCP Gateway server with API Key (handled by `src/gateway.py`).
 
 2. Gateway server fetches gateway config from local `enkrypt_mcp_config.json` file or remote Enkrypt Auth server *(Coming soon)*.
@@ -109,8 +107,6 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 
 <summary><strong>Dependencies 🔗 </strong> 🔽</summary>
 
-<br>
-
 - `Git 2.43` or higher
 
 - `Python 3.11` or higher installed on your system and is accessible from the command line using either `python` or `python3` command
@@ -124,8 +120,6 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 <details>
 
 <summary><strong>Check versions 🔍 </strong> 🔽</summary>
-
-<br>
 
 - Check if Python, pip and uv are installed
 
@@ -199,8 +193,6 @@ python -m pip install uv
 
 <summary><strong>Optional Protection with Enkrypt Guardrails 🔒 </strong> 🔽</summary>
 
-<br>
-
 If you want to protect your MCPs with Enkrypt Guardrails, you need to do the following:
 
 - Create a new account if you don't have one. It's free! 🆓 No credit card required 💳🚫
@@ -240,8 +232,6 @@ cd secure-mcp-gateway
 <details>
 
 <summary><strong>Activate a virtual environment ⚡ </strong> 🔽</summary>
-
-<br>
 
 ```bash
 # ------------------
@@ -341,8 +331,6 @@ setup.bat
 
 <summary><strong>Example output ℹ️ </strong> 🔽</summary>
 
-<br>
-
 ```bash
 -------------------------------
 Setting up Enkrypt Secure MCP Gateway enkrypt_mcp_config.json config file
@@ -416,8 +404,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 <summary><strong>Example file in Windows 🪟  ℹ️ </strong> 🔽</summary>
 
-<br>
-
 - `C:\Users\PC\AppData\Roaming\Claude\claude_desktop_config.json`
 
   ```json
@@ -481,8 +467,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 <summary><strong>Check tools and logs 🧾  ℹ️ </strong> 🔽</summary>
 
-<br>
-
 - You can also click on the settings icon below the search bar to see the Gateway in available
 
   ![Claude Desktop Gateway in Search](./docs/images/claude-desktop-gateway-in-search.png)
@@ -499,8 +483,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-<br>
-
 #### 5. Example prompts
 
 - `list all servers, get all tools available and echo test`
@@ -513,8 +495,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 <details>
 
 <summary><strong>Other examples ℹ️ </strong> 🔽</summary>
-
-<br>
 
 - We can also combine multiple prompts into one that trigger multiple tool calls at once
 
@@ -529,8 +509,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 ![claude-mcp-chat-echo-not-blocked](./docs/images/claude-mcp-chat-echo-not-blocked.png)
 
 </details>
-
-<br>
 
 #### 6. Example config file generated
 
@@ -656,8 +634,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 <summary><strong>Gateway Config Schema ℹ️ </strong> 🔽</summary>
 
-<br>
-
 - If you want a different set of MCP servers for a separate client/user, you can generate a new unqiue `key` and unique `UUID` by looking at the `setup` scripts and add it to the `gateways` section of the config file
 
   - Example: `{ gateways: { UNIQUE_GATEWAY_KEY_1: {...}, UNIQUE_GATEWAY_KEY_2: {...}, ... }, ... }`
@@ -697,8 +673,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 <details>
 
 <summary><strong>Optional Guardrails Schema 🔒 ℹ️ </strong> 🔽</summary>
-
-<br>
 
 - Set `enkrypt_guardrails_enabled` to `true` in your `common_mcp_gateway_config`
 
@@ -784,8 +758,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-<br>
-
 - **Important:**
 
   - **We need to restart Claude Desktop after editing the config file. To make all new tools accessible, please use prompt "`list all servers, get all tools available`" for the MCP Client to discover all new tools. After this the MCP Client should be able to use all tools of the servers configured in the Gateway config file**
@@ -805,8 +777,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 <details>
 
 <summary><strong>Configure GitHub 👨🏻‍💻 </strong> 🔽</summary>
-
-<br>
 
 - [Create a personal access token from GitHub](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
 
@@ -896,8 +866,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-<br>
-
 ## (Optional) Protect GitHub MCP Server and Test Echo Server with Enkrypt Guardrails for FREE
 
 <br>
@@ -905,8 +873,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 <details>
 
 <summary><strong>Create a Guardrail in Enkrypt App 🌐 </strong> 🔽</summary>
-
-<br>
 
 - Go to [Enkrypt App](https://app.enkryptai.com) and login with either OTP or Google or Microsoft account
 
@@ -942,8 +908,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 <summary><strong>Get Enkrypt API Key 🔑 </strong> 🔽</summary>
 
-<br>
-
 - Now, we need get out FREE API Key from Enkrypt App. Hover over the left sidebar for it to expand and click on `Settings`
 
   - You can also directly navigate to [https://app.enkryptai.com/settings](https://app.enkryptai.com/settings)
@@ -961,8 +925,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 <details>
 
 <summary><strong>Add API Key and the Guardrail to Config File 🔑 </strong> 🔽</summary>
-
-<br>
 
 - Now we have everything we need from the App. Let's add the API Key to the `enkrypt_mcp_config.json` file
 
@@ -1083,8 +1045,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 <summary><strong>Test Guardrails 🧪 </strong> 🔽</summary>
 
-<br>
-
 - **Save** the file and restart Claude Desktop for it to detect the changes
 
 - `GitHub MCP Server` needs `docker` to be installed. So, please install and have `docker` running on your machine before proceeding with the steps below
@@ -1104,8 +1064,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
   ![claude-mcp-chat-echo-guardrails-2](./docs/images/claude-mcp-chat-echo-guardrails-2.png)
 
 </details>
-
-<br>
 
 ### NOTE: Fine Tune Guardrails
 
@@ -1157,8 +1115,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 <summary><strong>Cursor ⬡ </strong> 🔽</summary>
 
-<br>
-
 - You can navigate to cursor's **Global MCP** file at `C:\Users\PC\.cursor\mcp.json` on Windows or at `~/.cursor/mcp.json` on Linux/macOS
 
   - If you would like to use at a **Project level** place it inside your project. For details see [Cursor's docs](https://docs.cursor.com/context/model-context-protocol#configuration-locations)
@@ -1196,17 +1152,11 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-<br>
-
 ## Other Tools Available
-
-<br>
 
 <details>
 
 <summary><strong>Get Cache Status 📊 </strong> 🔽</summary>
-
-<br>
 
 - The Gateway can give the summary of it's cache status by looking at the local/external cache server
 
@@ -1221,8 +1171,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 <details>
 
 <summary><strong>Clear Cache 🧹 </strong> 🔽</summary>
-
-<br>
 
 - The Gateway can clear it's cache from local/external cache server
 
@@ -1239,8 +1187,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
   ![claude-mcp-chat-clear-cache](./docs/images/claude-mcp-chat-clear-cache.png)
 
 </details>
-
-<br>
 
 ## Deployment patterns
 
