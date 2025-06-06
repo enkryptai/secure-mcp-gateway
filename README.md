@@ -398,8 +398,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-<br>
-
 - To verify, navigate to `claude_desktop_config.json` file by [following these instructions](https://modelcontextprotocol.io/quickstart/user#2-add-the-filesystem-mcp-server)
 
   - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
@@ -460,8 +458,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
   ```
 
 </details>
-
-<br>
 
 #### 4. Restart Claude Desktop to run the Gateway
 
@@ -685,8 +681,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
     - Tools need to be given a name and a description like `"tools": { "dummy_echo": "Echo a message" }`
 
 </details>
-
-<br>
 
 <details>
 
@@ -926,8 +920,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-<br>
-
 <details>
 
 <summary><strong>Get Enkrypt API Key 🔑 </strong> 🔽</summary>
@@ -945,8 +937,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
   ![enkrypt-app-settings-2](./docs/images/enkrypt-app-settings-2.png)
 
 </details>
-
-<br>
 
 <details>
 
@@ -1067,8 +1057,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-<br>
-
 <details>
 
 <summary><strong>Test Guardrails 🧪 </strong> 🔽</summary>
@@ -1097,7 +1085,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 ### NOTE: Fine Tune Guardrails
 
-- *The safe prompt `List all files from https://github.com/enkryptai/enkryptai-mcp-server` may also be blocked. So, there is some fine tuning required for the guardrails to find the best combination of enabled detectors and blocks for your servers. See the next section for recommendations.*
+- *The safe prompt `List all files from https://github.com/enkryptai/enkryptai-mcp-server` may also be blocked if you use Injection Attack on Output side. So, there is some fine tuning required for the guardrails to find the best combination of enabled detectors and blocks for your servers. See the next section for recommendations.*
 
 ## Recommendations for using Guardrails
 
@@ -1116,6 +1104,14 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 - Hence, have separate guardrails for each server and experiment with the best combination of detectors and blocks for each server that blocks malicious requests but allows legitimate requests to pass through.
 
 - Try our `Policy Violation` detector with your own custom policy which details what is allowed and what is not. This may be the best way for your use case.
+
+<br>
+
+<details>
+
+<summary><strong>Try Policy Violation 🚨 </strong> 🔽</summary>
+
+<br>
 
 - You can navigate to the [Enkrypt App Homepage](https://app.enkryptai.com), login and Click on `Policies` to create your own custom policy.
 
@@ -1136,6 +1132,8 @@ Installation complete. Check the claude_desktop_config.json file as per the read
   - Restart Claude Desktop if the config file is changed i.e., if we edited the servers or their guardrails policies.
 
   - Once restarted, it should now start blocking the malicious requests with the policy you created.
+
+</details>
 
 ## Setup Other MCP Clients
 
