@@ -175,8 +175,6 @@ python -m pip install uv
 
 </details>
 
-<br>
-
 <!-- - Set `PYTHONPATH` in your system environment variables
 
   - For reference, see [How to Add Python to PATH on Windows, Linux, and Mac](https://phoenixnap.com/kb/add-python-to-path)
