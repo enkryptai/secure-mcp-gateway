@@ -101,8 +101,6 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 
 </details>
 
-<br>
-
 ## Prerequisites
 
 <details>
