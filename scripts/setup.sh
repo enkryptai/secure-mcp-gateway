@@ -120,6 +120,23 @@ echo -------------------------------
 echo "✅ Setup complete. Please check the enkrypt_mcp_config.json file in the root directory and update with your MCP server configs as needed."
 echo -------------------------------
 
-# Run the install script
-cd $SCRIPT_DIR
-./install.sh
+# Parse --install argument (default to true)
+INSTALL=false
+for arg in "$@"; do
+  case $arg in
+    --install)
+      INSTALL="$2"
+      shift 2
+      ;;
+    --install=*)
+      INSTALL="${arg#*=}"
+      shift
+      ;;
+  esac
+done
+
+# Run the install script. Temporary disabled as we are using docker to install dependencies
+if [ "$INSTALL" = "true" ]; then
+  cd $SCRIPT_DIR
+  ./install.sh
+fi

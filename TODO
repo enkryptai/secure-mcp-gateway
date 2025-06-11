@@ -1,4 +1,5 @@
 - Test async input guardrails
 - Test linux installation and setup
+- Docker
 - deploy remotely and update readme with claude and cursor demo
 - Refactor enkrypt_secure_call_tools to decouple tool call logic and move to client.py

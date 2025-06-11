@@ -50,29 +50,28 @@ Example Usage:
     ```python
     # Initialize cache
     cache_client = initialize_cache()
-    
+
     # Cache tools for a server
     cache_tools(cache_client, "id123", "server1", tools_data)
-    
+
     # Get cached tools
     tools = get_cached_tools(cache_client, "id123", "server1")
-    
+
     # Forward tool call
     result = await forward_tool_call("server1", "tool1", args, gateway_config)
-    
+
     # Get cache statistics
     stats = get_cache_statistics(cache_client)
     ```
 """
 
-import os
 import sys
 import time
 import json
-import redis as external_cache_server
 import hashlib
 import threading
 from datetime import datetime
+import redis as external_cache_server
 # https://github.com/modelcontextprotocol/python-sdk/blob/main/src/mcp/client/stdio/__init__.py
 from mcp.client.stdio import stdio_client
 from mcp import ClientSession, StdioServerParameters
@@ -113,14 +112,14 @@ local_gateway_config_registry = set()
 def initialize_cache():
     """
     Initializes and tests the connection to the Redis cache server.
-    
+
     This function creates a Redis client instance with the configured connection parameters
     and verifies the connection is working. If external cache is disabled, it returns None.
-    
+
     Returns:
         Redis: A configured Redis client instance if external cache is enabled
         None: If external cache is disabled or connection fails
-        
+
     Raises:
         ConnectionError: If unable to connect to the Redis server when external cache is enabled
     """
@@ -141,7 +140,7 @@ def initialize_cache():
         sys_print(f"[external_cache] Failed to connect to External Cache: {e}")
         sys_print("[external_cache] Exiting as External Cache is required for this gateway")
         sys.exit(1)  # Exit if External Cache is unavailable
-        
+
     return cache_client
 
 
@@ -149,72 +148,75 @@ def initialize_cache():
 def hash_key(key):
     """
     Creates an MD5 hash of the given key for secure cache storage.
-    
+
     Args:
         key (str): The key to be hashed
-        
+
     Returns:
         str: MD5 hash of the input key
     """
     return hashlib.md5(key.encode()).hexdigest()
 
+
 def get_server_hashed_key(id, server_name):
     """
     Generates a hashed cache key for server tools.
-    
+
     Args:
         id (str): The ID of the Gateway or User
         server_name (str): Name of the server
-        
+
     Returns:
         str: Hashed cache key for the server tools
     """
     raw_key = f"{id}-{server_name}-tools"
     return hash_key(raw_key)
 
+
 def get_gateway_config_hashed_key(id):
     """
     Generates a hashed cache key for gateway configuration.
-    
+
     Args:
         id (str): The ID of the Gateway or User
-        
+
     Returns:
         str: Hashed cache key for the gateway configuration
     """
     raw_key = f"{id}-mcp-config"
     return hash_key(raw_key)
 
+
 def get_hashed_key(key):
     """
     Generates a hashed cache key for key to gateway/user ID mapping.
-    
+
     Args:
         key (str): The Gateway/API key
-        
+
     Returns:
         str: Hashed cache key for the API key mapping
     """
     raw_key = f"gateway_key-{key}"
     return hash_key(raw_key)
 
+
 # --- Registry cache keys for gateway/user-server and gateway/user tracking ---
 def get_gateway_servers_registry_hashed_key(id):
     """
     Generates a hashed cache key for the servers registry.
-    
+
     Args:
         id (str): The ID of the Gateway or User
-        
     Returns:
         str: Hashed cache key for the gateway/user's servers registry
     """
     return hash_key(f"registry:{id}:servers")
 
+
 def get_gateway_registry_hashed_key():
     """
     Generates a hashed cache key for the global gateway/user registry.
-    
     Returns:
         str: Hashed cache key for the gateway/user registry
     """
@@ -226,26 +228,26 @@ def get_gateway_registry_hashed_key():
 async def forward_tool_call(server_name, tool_name, args=None, gateway_config=None):
     """
     Forwards tool calls to the appropriate MCP server.
-    
+
     This function handles both tool discovery (when tool_name is None) and tool invocation.
     It uses the gateway/user's configuration to determine the correct server and connection details.
-    
+
     Args:
         server_name (str): Name of the server to call
         tool_name (str): Name of the tool to call (None for discovery)
         args (dict, optional): Arguments to pass to the tool
         gateway_config (dict): Gateway/user's configuration containing server details
-        
+
     Returns:
         dict/ListToolsResult: Tool discovery results or tool call response
-        
+
     Raises:
         ValueError: If gateway_config is missing or server not found
     """
     if not gateway_config:
         sys_print("[forward_tool_call] Error: No gateway_config provided")
         raise ValueError("No gateway configuration provided")
-        
+
     mcp_config = gateway_config.get("mcp_config", [])
     server_entry = next((s for s in mcp_config if s.get("server_name") == server_name), None)
     if not server_entry:
@@ -267,7 +269,7 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
         async with ClientSession(read, write) as session:
             await session.initialize()
             sys_print(f"[forward_tool_call] Connected successfully to {server_name}")
-            
+
             # If tool_name is None, this is a discovery request
             if tool_name is None:
                 sys_print("[forward_tool_call] Starting tool discovery as tool_name is None")
@@ -275,7 +277,7 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
                 tools_result = await session.list_tools()
                 sys_print(f"[forward_tool_call] Discovered tools for {server_name}: {tools_result}")
                 return tools_result
-            
+
             # Normal tool call
             sys_print(f"[forward_tool_call] Calling specific tool: {tool_name}")
             return await session.call_tool(tool_name, arguments=args)
@@ -286,7 +288,7 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
 def set_local_cache(key, value, expires_in_seconds):
     """
     Stores a value in the local in-memory cache with expiration.
-    
+
     Args:
         key (str): The cache key
         value: The value to cache
@@ -296,13 +298,14 @@ def set_local_cache(key, value, expires_in_seconds):
     with local_cache_lock:
         local_cache[key] = (value, expires_at)
 
+
 def get_local_cache(key):
     """
     Retrieves a value from the local in-memory cache.
-    
+
     Args:
         key (str): The cache key
-        
+
     Returns:
         tuple: (value, expiration_time) if found and not expired, None otherwise
     """
@@ -320,22 +323,22 @@ def get_local_cache(key):
 def get_cached_tools(cache_client, id, server_name):
     """
     Retrieves cached tools for a specific gateway/user and server.
-    
+
     Args:
         cache_client: The cache client instance
         id (str): ID of the Gateway or User
         server_name (str): Name of the server
-        
+
     Returns:
         tuple: (tools_data, expiration_time) if found and not expired, None otherwise
     """
     key = get_server_hashed_key(id, server_name)
     if not ENKRYPT_MCP_USE_EXTERNAL_CACHE:
         return get_local_cache(key)
-    
+
     if cache_client is None:
         return None
-    
+
     cached_data = cache_client.get(key)
     if not cached_data:
         return None
@@ -352,7 +355,7 @@ def get_cached_tools(cache_client, id, server_name):
 def cache_tools(cache_client, id, server_name, tools):
     """
     Caches tools for a specific gateway/user and server.
-    
+
     Args:
         cache_client: The cache client instance
         id (str): ID of the Gateway or User
@@ -368,12 +371,12 @@ def cache_tools(cache_client, id, server_name, tools):
             local_server_registry[id] = set()
         local_server_registry[id].add(server_name)
         return
-    
+
     if cache_client is None:
         return
-    
+
     raw_key = f"{id}-{server_name}-tools"  # For logging only
-    
+
     # Convert ListToolsResult to a serializable format if needed
     if hasattr(tools, "__class__") and tools.__class__.__name__ == "ListToolsResult":
         # Extract data from ListToolsResult into a serializable dictionary
@@ -394,8 +397,8 @@ def cache_tools(cache_client, id, server_name, tools):
             serialized_data = json.dumps(tools)
         except TypeError as e:
             sys_print(f"[external_cache] Warning: Cannot serialize tools - {e}")
-            sys_print(f"[external_cache] Using simplified tool representation")
-            
+            sys_print("[external_cache] Using simplified tool representation")
+
             # Fall back to a simplified format if serialization fails
             # This handles cases where tools has complex objects inside
             if isinstance(tools, dict) and "tools" in tools and isinstance(tools["tools"], list):
@@ -423,21 +426,21 @@ def cache_tools(cache_client, id, server_name, tools):
             else:
                 # Fall back to an empty dict if we can't make sense of the structure
                 simplified = {"tools": []}
-            
+
             serialized_data = json.dumps(simplified)
-    
+
     # Store in External Cache with expiration
     cache_client.setex(key, expires_in_seconds, serialized_data)
-    
+
     if IS_DEBUG_LOG_LEVEL:
         expiration_time = datetime.fromtimestamp(time.time() + expires_in_seconds).strftime('%Y-%m-%d %H:%M:%S')
         sys_print(f"[external_cache] Cached tools for gateway/user '{id}', server '{server_name}' with key '{raw_key}' (hash: {key}) until {expiration_time}")
-    
+
     # Maintain a registry of servers for this gateway/user
     registry_key = get_gateway_servers_registry_hashed_key(id)
     cache_client.sadd(registry_key, server_name)
     cache_client.expire(registry_key, expires_in_seconds)
-    
+
     # Register the gateway/user in the gateway/user registry if not already there
     gateway_registry = get_gateway_registry_hashed_key()
     cache_client.sadd(gateway_registry, id)
@@ -446,21 +449,21 @@ def cache_tools(cache_client, id, server_name, tools):
 def get_cached_gateway_config(cache_client, id):
     """
     Retrieves cached gateway configuration.
-    
+
     Args:
         cache_client: The cache client instance
         id (str): ID of the Gateway or User
-        
+
     Returns:
         tuple: (config_data, expiration_time) if found and not expired, None otherwise
     """
     config_key = get_gateway_config_hashed_key(id)
     if not ENKRYPT_MCP_USE_EXTERNAL_CACHE:
         return get_local_cache(config_key)
-    
+
     if cache_client is None:
         return None
-    
+
     cached_data = cache_client.get(config_key)
     if not cached_data:
         return None
@@ -477,7 +480,7 @@ def get_cached_gateway_config(cache_client, id):
 def cache_gateway_config(cache_client, id, config):
     """
     Caches gateway configuration.
-    
+
     Args:
         cache_client: The cache client instance
         id (str): ID of the Gateway or User
@@ -489,9 +492,8 @@ def cache_gateway_config(cache_client, id, config):
         set_local_cache(config_key, config, expires_in_seconds)
         local_gateway_config_registry.add(id)
         return
-    
-    if cache_client is None:
 
+    if cache_client is None:
         return
     serialized_data = json.dumps(config)
     cache_client.setex(config_key, expires_in_seconds, serialized_data)
@@ -505,7 +507,7 @@ def cache_gateway_config(cache_client, id, config):
 def cache_key_to_id(cache_client, gateway_key, id):
     """
     Caches the mapping between a key and gateway/user ID.
-    
+
     Args:
         cache_client: The cache client instance
         gateway_key (str): The key for gateway/user
@@ -516,10 +518,10 @@ def cache_key_to_id(cache_client, gateway_key, id):
     if not ENKRYPT_MCP_USE_EXTERNAL_CACHE:
         local_key_map[key] = id
         return
-    
+
     if cache_client is None:
         return
-    
+
     cache_client.setex(key, expires_in_seconds, id)
     if IS_DEBUG_LOG_LEVEL:
         sys_print(f"[external_cache] Cached key mapping with key 'gateway_key-****{gateway_key[-4:]}' (hash: {key})")
@@ -528,21 +530,21 @@ def cache_key_to_id(cache_client, gateway_key, id):
 def get_id_from_key(cache_client, gateway_key):
     """
     Retrieves the gateway/user ID associated with a key.
-    
+
     Args:
         cache_client: The cache client instance
         gateway_key (str): The key for gateway/user
-        
+
     Returns:
         str: The associated gateway/user ID if found, None otherwise
     """
     key = get_hashed_key(gateway_key)
     if not ENKRYPT_MCP_USE_EXTERNAL_CACHE:
         return local_key_map.get(key)
-    
+
     if cache_client is None:
         return None
-    
+
     id = cache_client.get(key)
     if id:
         if IS_DEBUG_LOG_LEVEL:
@@ -553,12 +555,12 @@ def get_id_from_key(cache_client, gateway_key):
 def clear_cache_for_servers(cache_client, id, server_name=None):
     """
     Clears tool cache for specific or all servers for a gateway/user.
-    
+
     Args:
         cache_client: The cache client instance
         id (str): ID of the Gateway or User
         server_name (str, optional): Name of the server to clear cache for
-        
+
     Returns:
         int: Number of cache entries cleared
     """
@@ -578,7 +580,7 @@ def clear_cache_for_servers(cache_client, id, server_name=None):
                 local_server_registry[id].discard(server_name)
     else:
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"[clear_cache_for_servers] Clearing cache for all servers for gateway/user")
+            sys_print("[clear_cache_for_servers] Clearing cache for all servers for gateway/user")
         # Clear all servers for a gateway/user
         if id in local_server_registry:
             if IS_DEBUG_LOG_LEVEL:
@@ -599,9 +601,9 @@ def clear_cache_for_servers(cache_client, id, server_name=None):
 
     if cache_client is None:
         return count
-    
+
     # External cache clear
-    count = 0 # Resetting as it is external cache
+    count = 0  # Resetting as it is external cache
     if server_name:
         key = get_server_hashed_key(id, server_name)
         if cache_client.exists(key):
@@ -625,17 +627,17 @@ def clear_cache_for_servers(cache_client, id, server_name=None):
 def clear_gateway_config_cache(cache_client, id, gateway_key):
     """
     Clears all cache entries for a gateway/user, including config, tools, and key mapping.
-    
+
     Args:
         cache_client: The cache client instance
         id (str): ID of the Gateway or User
         gateway_key (str): The gateway/user's key
-        
+
     Returns:
         bool: True if any cache entries were cleared
     """
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"[clear_gateway_config_cache] Clearing all cache entries for gateway/user")
+        sys_print("[clear_gateway_config_cache] Clearing all cache entries for gateway/user")
     # 1. Clear all tool caches for the gateway/user
     registry_key = get_gateway_servers_registry_hashed_key(id)
     if IS_DEBUG_LOG_LEVEL:
@@ -680,10 +682,10 @@ def clear_gateway_config_cache(cache_client, id, gateway_key):
 def get_cache_statistics(cache_client):
     """
     Retrieves statistics about the current cache state.
-    
+
     Args:
         cache_client: The cache client instance
-        
+
     Returns:
         dict: Cache statistics including:
             - total_gateways: Number of gateway/users in cache
@@ -701,7 +703,7 @@ def get_cache_statistics(cache_client):
             "total_config_caches": total_config_caches,
             "cache_type": "local"
         }
-    
+
     if cache_client is None:
         return {
             "total_gateways": 0,
@@ -709,7 +711,7 @@ def get_cache_statistics(cache_client):
             "total_config_caches": 0,
             "cache_type": "none"
         }
-    
+
     gateway_registry = get_gateway_registry_hashed_key()
     total_gateways = cache_client.scard(gateway_registry)
     total_tool_caches = 0

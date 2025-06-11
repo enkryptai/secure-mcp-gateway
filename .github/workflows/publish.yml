@@ -1,0 +1,49 @@
+name: Build, Validate, and Publish Python Package to PyPI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'  # Triggers on version tags like v1.0.0
+
+jobs:
+  build-validate-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Upgrade pip and install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools wheel build twine pyroma check-wheel-contents
+
+      - name: Build the package
+        run: |
+          python -m build
+
+      - name: Validate Metadata (Pyroma)
+        run: python -m pyroma .
+
+      - name: Validate with Twine
+        run: python -m twine check dist/*
+
+      # TODO: No module named check-wheel-contents
+      # - name: Validate Wheel Contents
+      #   run: |
+      #     python -m pip show check-wheel-contents
+      #     python -m check-wheel-contents dist/*.whl
+
+      - name: Publish package to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          python -m twine upload --skip-existing dist/* 

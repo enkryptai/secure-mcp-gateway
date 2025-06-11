@@ -141,5 +141,22 @@ echo -------------------------------
 
 endlocal
 
-:: Run the install script
-call "%SCRIPT_DIR%install.bat"
+REM Parse --install argument (default true)
+set INSTALL=true
+:parse_args
+if "%~1"=="" goto after_args
+if "%~1"=="--install" (
+    set INSTALL=%~2
+    shift
+    shift
+    goto parse_args
+)
+for /f "tokens=1,2 delims==" %%A in ("%~1") do (
+    if "%%A"=="--install" set INSTALL=%%B
+)
+shift
+goto parse_args
+:after_args
+
+REM Run the install script if INSTALL is true
+if /i "%INSTALL%"=="true" call "%SCRIPT_DIR%install.bat"

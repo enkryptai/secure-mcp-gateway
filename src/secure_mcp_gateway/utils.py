@@ -6,7 +6,6 @@ This module provides common utilities for the Enkrypt Secure MCP Gateway
 
 import os
 import sys
-import time
 import json
 
 print("Initializing Enkrypt Secure MCP Gateway Common Utilities Module", file=sys.stderr)
@@ -18,6 +17,7 @@ def sys_print(message, file=sys.stderr):
     """
     print(message, file=file)
 
+
 def get_absolute_path_from_parent_dir(file_name):
     """
     Get the absolute path of a file from the parent directory of the current script
@@ -25,6 +25,7 @@ def get_absolute_path_from_parent_dir(file_name):
     current_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(current_dir)
     return os.path.join(parent_dir, file_name)
+
 
 def get_absolute_path(file_name):
     """
@@ -61,7 +62,16 @@ def get_common_config(print_debug=False):
     config = {}
     if does_file_exist(config_path, True):
         if print_debug:
-          print(f"Loading {file_name} file...", file=sys.stderr)
+            print(f"Loading {file_name} file...", file=sys.stderr)
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+        if print_debug:
+            print(f"config: {config}", file=sys.stderr)
+    config_path = "/app/enkrypt_mcp_config.json"
+    example_config_path = "/app/example_enkrypt_mcp_config.json"
+    if does_file_exist(config_path, True):
+        if print_debug:
+            print(f"Loading {file_name} file...", file=sys.stderr)
         with open(config_path, 'r') as f:
             config = json.load(f)
         if print_debug:
@@ -95,4 +105,3 @@ def get_common_config(print_debug=False):
         "enkrypt_async_input_guardrails_enabled": False,
         "enkrypt_async_output_guardrails_enabled": False
     })
-
