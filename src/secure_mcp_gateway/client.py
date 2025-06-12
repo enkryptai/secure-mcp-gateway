@@ -76,7 +76,7 @@ import redis as external_cache_server
 from mcp.client.stdio import stdio_client
 from mcp import ClientSession, StdioServerParameters
 
-from utils import (
+from .utils import (
     get_common_config,
     sys_print
 )

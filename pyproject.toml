@@ -1,7 +1,6 @@
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
-
 [project]
 name = "secure-mcp-gateway"
 # NOTE: Also change version in __init__.py, pyproject.toml, and setup.py
@@ -15,7 +14,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
 
-# NOTE: Please change in setup.py, pyproject.toml, gateway.py if we change the dependencies
+# NOTE: Also change dependencies in __init__.py, pyproject.toml, and setup.py
 dependencies = [
     "flask>=2.0.0",
     "flask-cors>=3.0.0",
@@ -61,4 +60,9 @@ classifiers = [
 Homepage = "https://github.com/enkryptai/secure-mcp-gateway"
 
 [project.scripts]
-secure-mcp-gateway = "secure_mcp_gateway.cli:main" 
+secure-mcp-gateway = "secure_mcp_gateway.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["secure_mcp_gateway"]
+

@@ -18,13 +18,13 @@ def sys_print(message, file=sys.stderr):
     print(message, file=file)
 
 
-def get_absolute_path_from_parent_dir(file_name):
+def get_file_from_root(file_name):
     """
-    Get the absolute path of a file from the parent directory of the current script
+    Get the absolute path of a file from the root directory (two levels up from current script)
     """
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(current_dir)
-    return os.path.join(parent_dir, file_name)
+    root_dir = os.path.abspath(os.path.join(current_dir, "..", ".."))
+    return os.path.join(root_dir, file_name)
 
 
 def get_absolute_path(file_name):
@@ -53,8 +53,8 @@ def get_common_config(print_debug=False):
         print("Getting Enkrypt Common Configuration", file=sys.stderr)
     file_name = 'enkrypt_mcp_config.json'
     example_file_name = f'example_{file_name}'
-    config_path = get_absolute_path_from_parent_dir(file_name)
-    example_config_path = get_absolute_path_from_parent_dir(example_file_name)
+    config_path = get_file_from_root(file_name)
+    example_config_path = get_file_from_root(example_file_name)
     if print_debug:
         print(f"config_path: {config_path}", file=sys.stderr)
         print(f"example_config_path: {example_config_path}", file=sys.stderr)

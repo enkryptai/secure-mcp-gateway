@@ -51,7 +51,7 @@ Example Usage:
 import aiohttp
 import requests
 
-from utils import (
+from .utils import (
     get_common_config,
     sys_print
 )

@@ -151,9 +151,9 @@ def main():
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             gateway_py = os.path.join(base_dir, "gateway.py")
 
-            print("config_path:", config_path)
-            print("gateway_py path:", gateway_py)
-            print("client name from args:", client)
+            print("config_path: ", config_path)
+            print("gateway_py path: ", gateway_py)
+            print("client name from args: ", client)
 
             if not os.path.exists(config_path):
                 print(f"Config file not found at path: {config_path}. Please generate a new config file using 'generate-config' subcommand and try again.")
@@ -164,7 +164,11 @@ def main():
                 "mcp", "install", gateway_py,
                 "--env-var", f"ENKRYPT_GATEWAY_KEY={gateway_key}"
             ]
-            result = subprocess.run(cmd)
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"Error installing gateway: {result.stderr}")
+            else:
+                print(f"Successfully installed gateway for {client}")
             sys.exit(result.returncode)
 
         elif args.client.lower() == "cursor":
@@ -175,7 +179,7 @@ def main():
                 sys.exit(1)
 
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            gateway_py = os.path.join(base_dir, "src", "gateway.py")
+            gateway_py = os.path.join(base_dir, "gateway.py")
             gateway_key = get_gateway_key(config_path)
             env = {
                 "ENKRYPT_GATEWAY_KEY": gateway_key
@@ -189,15 +193,21 @@ def main():
                 gateway_py
             ]
             uv_path = "uv"
-            cursor_config_path = os.path.expanduser(r"~\.cursor\mcp.json")
-            add_or_update_cursor_server(
-                config_path=cursor_config_path,
-                server_name="Enkrypt Secure MCP Gateway",
-                command=uv_path,
-                args=args_list,
-                env=env
-            )
-            sys.exit(0)
+            cursor_config_path = os.path.join(os.path.expanduser("~"), ".cursor", "mcp.json")
+            print("cursor_config_path: ", cursor_config_path)
+            try:
+                add_or_update_cursor_server(
+                    config_path=cursor_config_path,
+                    server_name="Enkrypt Secure MCP Gateway",
+                    command=uv_path,
+                    args=args_list,
+                    env=env
+                )
+                print(f"Successfully configured Cursor")
+                sys.exit(0)
+            except Exception as e:
+                print(f"Error configuring Cursor: {str(e)}")
+                sys.exit(1)
         else:
             print(f"Invalid client name: {args.client}. Please use 'claude-desktop' or 'cursor'.")
             sys.exit(1)

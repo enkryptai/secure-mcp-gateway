@@ -121,21 +121,32 @@ echo "✅ Setup complete. Please check the enkrypt_mcp_config.json file in the r
 echo -------------------------------
 
 # Parse --install argument (default to true)
-INSTALL=false
-for arg in "$@"; do
+INSTALL=true
+i=1
+while [ $i -le $# ]; do
+  arg="${!i}"
   case $arg in
     --install)
-      INSTALL="$2"
-      shift 2
+      if [ $((i + 1)) -le $# ]; then
+        INSTALL="${!((i + 1))}"
+        i=$((i + 2))
+      else
+        echo "Error: --install requires a value"
+        exit 1
+      fi
       ;;
     --install=*)
       INSTALL="${arg#*=}"
-      shift
+      i=$((i + 1))
+      ;;
+    *)
+      echo "Warning: Unrecognized argument: $arg"
+      i=$((i + 1))
       ;;
   esac
 done
 
-# Run the install script. Temporary disabled as we are using docker to install dependencies
+# Run the install script
 if [ "$INSTALL" = "true" ]; then
   cd $SCRIPT_DIR
   ./install.sh

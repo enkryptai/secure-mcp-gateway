@@ -51,11 +51,12 @@ Example Usage:
 import os
 import sys
 import subprocess
-from utils import (
+from .utils import (
     sys_print,
     get_common_config,
-    get_absolute_path_from_parent_dir
+    get_file_from_root
 )
+from .__init__ import __dependencies__
 
 # Printing system info before importing other modules
 # As MCP Clients like Claude Desktop use their own Python interpreter, it may not have the modules installed
@@ -70,24 +71,9 @@ sys_print(f"Current working directory: {os.getcwd()}")
 sys_print(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}")
 sys_print("--------------------------------")
 
-# NOTE: Please change in setup.py, pyproject.toml, gateway.py if we change the dependencies
-dependencies = [
-    "flask>=2.0.0",
-    "flask-cors>=3.0.0",
-    "redis>=4.0.0",
-    "requests>=2.26.0",
-    "aiohttp>=3.8.0",
-    "python-json-logger>=2.0.0",
-    "python-dateutil>=2.8.2",
-    "cryptography>=3.4.0",
-    "pyjwt>=2.0.0",
-    "asyncio>=3.4.3",
-    "mcp[cli]"
-]
-
 try:
     subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", *dependencies],
+        [sys.executable, "-m", "pip", "install", *__dependencies__],
         stdout=subprocess.DEVNULL,  # Suppress output
         stderr=subprocess.DEVNULL
     )
@@ -104,7 +90,7 @@ from mcp.client.stdio import stdio_client
 from mcp.server.fastmcp import FastMCP, Context
 from mcp import ClientSession, StdioServerParameters
 
-from client import (
+from .client import (
     initialize_cache,
     forward_tool_call,
     get_cached_tools,
@@ -118,7 +104,7 @@ from client import (
     get_cache_statistics
 )
 
-from guardrail import (
+from .guardrail import (
     anonymize_pii,
     deanonymize_pii,
     call_guardrail,
@@ -285,7 +271,7 @@ def get_local_mcp_config(gateway_key):
     """
     if IS_DEBUG_LOG_LEVEL:
         sys_print(f"[get_local_mcp_config] Getting local MCP config for {gateway_key}")
-    config_path = get_absolute_path_from_parent_dir('enkrypt_mcp_config.json')
+    config_path = get_file_from_root('enkrypt_mcp_config.json')
     if os.path.exists(config_path):
         if IS_DEBUG_LOG_LEVEL:
             sys_print(f"[get_local_mcp_config] MCP config file found at {config_path}")
@@ -429,8 +415,8 @@ def enkrypt_authenticate(ctx: Context):
 
 # NOTE: inputSchema is not supported by MCP protocol used by Claude Desktop for some reason
 # But it is defined in the SDK - https://modelcontextprotocol.io/docs/concepts/tools#python
-# So we it is commented out for now in the tools annotations
-
+# So it is commented out for now
+# But works with annotations - https://gofastmcp.com/servers/tools#annotations-2
 
 # NOTE: If we use the name "enkrypt_list_available_servers", for some reason claude-desktop throws internal server error.
 # So we use a different name as it doesn't even print any logs for us to troubleshoot the issue.

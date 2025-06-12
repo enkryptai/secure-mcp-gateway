@@ -1,4 +1,6 @@
 from setuptools import setup, find_packages
+# from src.secure_mcp_gateway import __version__, __dependencies__
+
 print("PACKAGES FOUND:", find_packages(where="src"))
 
 try:
@@ -11,6 +13,7 @@ setup(
     name="secure-mcp-gateway",
     # NOTE: Also change version in __init__.py, pyproject.toml, and setup.py
     version="1.0.0",
+    # version=__version__,
     description="Enkrypt Secure MCP Gateway",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -21,7 +24,7 @@ setup(
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     include_package_data=True,
-    # NOTE: Please change in setup.py, pyproject.toml, gateway.py if we change the dependencies
+    # NOTE: Also change dependencies in __init__.py, pyproject.toml, and setup.py
     install_requires=[
         "flask>=2.0.0",
         "flask-cors>=3.0.0",
@@ -35,6 +38,7 @@ setup(
         "asyncio>=3.4.3",
         "mcp[cli]"
     ],
+    # install_requires=__dependencies__,
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
