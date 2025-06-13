@@ -1,3 +1,4 @@
+- Update Readme with uninstall steps
 - Test async input guardrails
 - Test linux installation and setup
 - Add Docker support for remote deployment
