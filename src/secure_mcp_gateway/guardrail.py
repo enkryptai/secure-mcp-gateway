@@ -36,19 +36,18 @@ Example Usage:
     ```python
     # Anonymize PII in text
     anonymized_text, key = anonymize_pii("John's email is john@example.com")
-    
+
     # Check response relevancy
     relevancy_result = check_relevancy("What is Python?", "Python is a programming language")
-    
+
     # Check for hallucinations
-    hallucination_result = check_hallucination("Tell me about Mars", 
-                                             "Mars is a red planet", 
+    hallucination_result = check_hallucination("Tell me about Mars",
+                                             "Mars is a red planet",
                                              context="Solar system information")
     ```
 """
 
-import os
-import sys
+
 import aiohttp
 import requests
 
@@ -305,10 +304,14 @@ async def call_guardrail(text, blocks, policy_name):
     except Exception as e:
         sys_print(f"Guardrail API error: {e}")
         return {"error": str(e)}
-    
+
     if IS_DEBUG_LOG_LEVEL:
         sys_print("Guardrail API response received")
         sys_print(f'resp_json: {resp_json}')
+    
+    if resp_json.get("error"):
+        sys_print(f"Guardrail API error: {resp_json.get('error')}")
+        return False, [], resp_json
 
     violations_detected = False
     violation_types = []

@@ -36,13 +36,13 @@ Example Usage:
     ```python
     # Authenticate gateway/user
     auth_result = enkrypt_authenticate(ctx)
-    
+
     # Discover server tools
     tools = await enkrypt_discover_server_tools(ctx, "server1")
-    
+
     # Call a tool securely
     result = await enkrypt_secure_call_tool(ctx, "server1", "tool1", args)
-    
+
     # Get server information
     info = await enkrypt_get_server_info(ctx, "server1")
     ```
@@ -50,15 +50,17 @@ Example Usage:
 
 import os
 import sys
+import subprocess
 
 from utils import (
     sys_print,
     get_common_config,
-    get_absolute_path_from_parent_dir
+    CONFIG_PATH
 )
+from dependencies import __dependencies__
 
 # Printing system info before importing other modules
-# As MCP Clients like Claude use their own Python interpreter, it may not have the modules installed
+# As MCP Clients like Claude Desktop use their own Python interpreter, it may not have the modules installed
 # So, we can use this debug system info to identify that python interpreter to install the missing modules using that specific interpreter
 # So, debugging this in gateway module as this info can be used for fixing such issues in other modules
 sys_print("Initializing Enkrypt Secure MCP Gateway Module")
@@ -69,6 +71,17 @@ sys_print(f"Python version: {sys.version}")
 sys_print(f"Current working directory: {os.getcwd()}")
 sys_print(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}")
 sys_print("--------------------------------")
+
+try:
+    sys_print("Installing dependencies...")
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", *__dependencies__],
+        stdout=subprocess.DEVNULL,  # Suppress output
+        stderr=subprocess.DEVNULL
+    )
+    sys_print("All dependencies installed successfully.")
+except Exception as e:
+    sys_print(f"Error installing dependencies: {e}")
 
 import json
 import time
@@ -101,6 +114,7 @@ from guardrail import (
     check_adherence,
     check_hallucination
 )
+
 
 ENKRYPT_GATEWAY_KEY = os.environ.get("ENKRYPT_GATEWAY_KEY", "NULL")
 if ENKRYPT_GATEWAY_KEY == "NULL":
@@ -162,10 +176,10 @@ SESSIONS = {
 
 # Initialize External Cache connection
 if ENKRYPT_MCP_USE_EXTERNAL_CACHE:
-    sys_print(f"Initializing External Cache connection")
+    sys_print("Initializing External Cache connection")
     cache_client = initialize_cache()
 else:
-    sys_print(f"External Cache is not enabled. Using local cache only.")
+    sys_print("External Cache is not enabled. Using local cache only.")
     cache_client = None
 
 
@@ -174,11 +188,11 @@ else:
 def get_server_info_by_name(gateway_config, server_name):
     """
     Retrieves server configuration by server name from gateway config.
-    
+
     Args:
         gateway_config (dict): Gateway/user's configuration containing server details
         server_name (str): Name of the server to look up
-        
+
     Returns:
         dict: Server configuration if found, None otherwise
     """
@@ -193,27 +207,27 @@ def get_server_info_by_name(gateway_config, server_name):
 def mcp_config_to_dict(mcp_config):
     """
     Converts MCP configuration list to a dictionary keyed by server name.
-    
+
     Args:
         mcp_config (list): List of server configurations
-        
+
     Returns:
         dict: Dictionary of server configurations keyed by server name
     """
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"[mcp_config_to_dict] Converting MCP config to dict")
+        sys_print("[mcp_config_to_dict] Converting MCP config to dict")
     return {s["server_name"]: s for s in mcp_config}
 
 
 def get_latest_server_info(server_info, id, cache_client):
     """
     Returns a fresh copy of server info with the latest tools.
-    
+
     Args:
         server_info (dict): Original server configuration
         id (str): ID of the Gateway or User
         cache_client: Cache client instance
-        
+
     Returns:
         dict: Updated server info with latest tools from config or cache
     """
@@ -247,42 +261,41 @@ def get_latest_server_info(server_info, id, cache_client):
     return server_info_copy
 
 
-# Read from local MCP config file "enkrypt_mcp_config.json"
+# Read from local MCP config file
 def get_local_mcp_config(gateway_key):
     """
     Reads MCP configuration from local config file.
-    
+
     Args:
         gateway_key (str): Key to look up in config
-        
+
     Returns:
         dict: MCP configuration for the given key, None if not found
     """
     if IS_DEBUG_LOG_LEVEL:
         sys_print(f"[get_local_mcp_config] Getting local MCP config for {gateway_key}")
-    config_path = get_absolute_path_from_parent_dir('enkrypt_mcp_config.json')
-    if os.path.exists(config_path):
+    if os.path.exists(CONFIG_PATH):
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"[get_local_mcp_config] MCP config file found at {config_path}")
-        with open(config_path, 'r') as f:
+            sys_print(f"[get_local_mcp_config] MCP config file found at {CONFIG_PATH}")
+        with open(CONFIG_PATH, 'r') as f:
             jsonConfig = json.load(f)
             return jsonConfig["gateways"].get(gateway_key)  # Only return the config for the given gateway_key
     else:
-        sys_print(f"[get_local_mcp_config] MCP config file not found at {config_path}")
+        sys_print(f"[get_local_mcp_config] MCP config file not found at {CONFIG_PATH}")
         return None
 
 
 def enkrypt_authenticate(ctx: Context):
     """
     Authenticates a gateway/user with the Enkrypt Secure MCP Gateway.
-    
+
     This function handles gateway/user authentication, retrieves gateway configuration,
     and manages caching of gateway/user data. It supports both remote and local
     configuration sources.
-    
+
     Args:
         ctx (Context): The MCP context
-        
+
     Returns:
         dict: Authentication result containing:
             - status: Success/error status
@@ -300,11 +313,11 @@ def enkrypt_authenticate(ctx: Context):
 
     if IS_DEBUG_LOG_LEVEL:
         sys_print(f"[authenticate] Attempting auth for gateway key: ****{ENKRYPT_GATEWAY_KEY[-4:]}")
-    
+
     # Check if we're already authenticated with this API key
     if ENKRYPT_GATEWAY_KEY in SESSIONS and SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"[authenticate] Already authenticated in session")
+            sys_print("[authenticate] Already authenticated in session")
         mcp_config = SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"].get("mcp_config", [])
         if IS_DEBUG_LOG_LEVEL:
             sys_print(f'mcp_config: {mcp_config}')
@@ -316,11 +329,11 @@ def enkrypt_authenticate(ctx: Context):
             "available_servers": mcp_config_to_dict(mcp_config)
         }
     else:
-        sys_print(f"[authenticate] Not authenticated yet in session")
+        sys_print("[authenticate] Not authenticated yet in session")
 
     # Check if we have cached mapping from Gateway key to gateway/user ID
     cached_id = get_id_from_key(cache_client, ENKRYPT_GATEWAY_KEY)
-    
+
     if cached_id:
         if IS_DEBUG_LOG_LEVEL:
             sys_print(f"[authenticate] Found cached gateway/user ID: {cached_id}")
@@ -347,7 +360,7 @@ def enkrypt_authenticate(ctx: Context):
         else:
             sys_print(f"[authenticate] No cached config found for gateway/user: {cached_id}")
     else:
-        sys_print(f"[authenticate] No cached gateway/user ID found")
+        sys_print("[authenticate] No cached gateway/user ID found")
 
     try:
         if ENKRYPT_USE_REMOTE_MCP_CONFIG:
@@ -359,22 +372,22 @@ def enkrypt_authenticate(ctx: Context):
                 "X-Enkrypt-MCP-Gateway-Version": ENKRYPT_REMOTE_MCP_GATEWAY_VERSION
             })
             if response.status_code != 200:
-                sys_print(f"[authenticate] Invalid API key")
+                sys_print("[authenticate] Invalid API key")
                 return {"status": "error", "error": "Invalid API key"}
             gateway_config = response.json()
         else:
             if IS_DEBUG_LOG_LEVEL:
-                sys_print(f"[authenticate] Using local MCP config")
+                sys_print("[authenticate] Using local MCP config")
             gateway_config = get_local_mcp_config(ENKRYPT_GATEWAY_KEY)
 
         id = gateway_config.get("id")
-        
+
         # Cache the API key to gateway/user ID mapping
         cache_key_to_id(cache_client, ENKRYPT_GATEWAY_KEY, id)
-        
+
         # Cache the gateway config
         cache_gateway_config(cache_client, id, gateway_config)
-        
+
         # Update session
         if ENKRYPT_GATEWAY_KEY not in SESSIONS:
             SESSIONS[ENKRYPT_GATEWAY_KEY] = {}
@@ -404,10 +417,10 @@ def enkrypt_authenticate(ctx: Context):
 
 # NOTE: inputSchema is not supported by MCP protocol used by Claude Desktop for some reason
 # But it is defined in the SDK - https://modelcontextprotocol.io/docs/concepts/tools#python
-# So we it is commented out for now in the tools annotations
+# So it is commented out for now
+# But works with annotations - https://gofastmcp.com/servers/tools#annotations-2
 
-
-# NOTE: If we use the name "enkrypt_list_available_servers", for some reason claude throws internal server error.
+# NOTE: If we use the name "enkrypt_list_available_servers", for some reason claude-desktop throws internal server error.
 # So we use a different name as it doesn't even print any logs for us to troubleshoot the issue.
 @mcp.tool(
     name="enkrypt_list_all_servers",
@@ -420,22 +433,22 @@ def enkrypt_authenticate(ctx: Context):
         "idempotentHint": True,
         "openWorldHint": False
     }
-#     inputSchema={
-#         "type": "object",
-#         "properties": {},
-#         "required": []
-#     }
+    # inputSchema={
+    #     "type": "object",
+    #     "properties": {},
+    #     "required": []
+    # }
 )
 async def enkrypt_list_all_servers(ctx: Context):
     """
     Lists available servers with their tool information.
-    
+
     This function provides a comprehensive list of available servers,
     including their tools and configuration status.
-    
+
     Args:
         ctx (Context): The MCP context
-        
+
     Returns:
         dict: Server listing containing:
             - status: Success/error status
@@ -475,11 +488,11 @@ async def enkrypt_list_all_servers(ctx: Context):
         if IS_DEBUG_LOG_LEVEL:
             sys_print(f"[list_available_servers] Returning {len(servers_with_tools)} servers with tools")
         return {
-            "status": "success", 
+            "status": "success",
             "available_servers": servers_with_tools,
             "servers_needing_discovery": servers_needing_discovery
         }
-    
+
     except Exception as e:
         sys_print(f"[list_available_servers] Exception: {e}")
         traceback.print_exc(file=sys.stderr)
@@ -510,11 +523,11 @@ async def enkrypt_list_all_servers(ctx: Context):
 async def enkrypt_get_server_info(ctx: Context, server_name: str):
     """
     Gets detailed information about a server, including its tools.
-    
+
     Args:
         ctx (Context): The MCP context
         server_name (str): Name of the server
-        
+
     Returns:
         dict: Server information containing:
             - status: Success/error status
@@ -566,14 +579,14 @@ async def enkrypt_get_server_info(ctx: Context, server_name: str):
 async def enkrypt_discover_server_tools(ctx: Context, server_name: str):
     """
     Discovers and caches available tools for a specific server.
-    
+
     This function handles tool discovery for a server, with support for
     caching discovered tools and fallback to configured tools.
-    
+
     Args:
         ctx (Context): The MCP context
         server_name (str): Name of the server to discover tools for
-        
+
     Returns:
         dict: Discovery result containing:
             - status: Success/error status
@@ -606,7 +619,7 @@ async def enkrypt_discover_server_tools(ctx: Context, server_name: str):
     if config_tools:
         sys_print(f"[discover_server_tools] Tools already defined in config for {server_name}")
         return {
-            "status": "success", 
+            "status": "success",
             "message": f"Tools already defined in config for {server_name}",
             "tools": config_tools,
             "source": "config"
@@ -618,7 +631,7 @@ async def enkrypt_discover_server_tools(ctx: Context, server_name: str):
         if cached_tools:
             sys_print(f"[discover_server_tools] Tools already cached for {server_name}")
             return {
-                "status": "success", 
+                "status": "success",
                 "message": f"Tools retrieved from cache for {server_name}",
                 "tools": cached_tools,
                 "source": "cache"
@@ -637,7 +650,7 @@ async def enkrypt_discover_server_tools(ctx: Context, server_name: str):
             sys_print(f"[discover_server_tools] No tools discovered for {server_name}")
 
         return {
-            "status": "success", 
+            "status": "success",
             "message": f"Tools discovered for {server_name}",
             "tools": tools,
             "source": "discovery"
@@ -697,12 +710,12 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
     First check the number of tools needed for the prompt and then pass all of them in a single list. Because if tools are multiple and we pass one by one, it will create a new session for each tool call and that may fail.
 
     This has the ability to execute multiple tool calls in sequence within the same session, with guardrails and PII handling.
-    
+
     This function provides secure batch execution with comprehensive guardrail checks for each tool call:
-    - Input guardrails (PII, policy violations) 
+    - Input guardrails (PII, policy violations)
     - Output guardrails (relevancy, adherence, hallucination)
     - PII handling (anonymization/de-anonymization)
-    
+
     Args:
         ctx (Context): The MCP context
         server_name (str): Name of the server containing the tools
@@ -720,7 +733,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
             {"name": "navigate", "args": {"url": "https://enkryptai.com"}},
             {"name": "screenshot", "args": {"filename": "enkryptai-homepage.png"}}
         ]
-    
+
     Returns:
         dict: Batch execution results with guardrails responses
             - status: Success/error status
@@ -732,19 +745,19 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
     sys_print(f"[secure_call_tools] Starting secure batch execution for {num_tool_calls} tools for server: {server_name}")
     if num_tool_calls == 0:
         sys_print("[secure_call_tools] No tools provided. Treating this as a discovery call")
-    
+
     if ENKRYPT_GATEWAY_KEY not in SESSIONS or not SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
         result = enkrypt_authenticate(ctx)
         if result.get("status") != "success":
             sys_print("[get_server_info] Not authenticated")
             return {"status": "error", "error": "Not authenticated."}
-    
+
     server_info = get_server_info_by_name(SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"], server_name)
     if not server_info:
         sys_print(f"[secure_call_tools] Server '{server_name}' not available")
         return {"status": "error", "error": f"Server '{server_name}' not available."}
-    
-    try:       
+
+    try:
         # Get guardrails policies from server info
         input_guardrails_policy = server_info['input_guardrails_policy']
         output_guardrails_policy = server_info['output_guardrails_policy']
@@ -766,11 +779,11 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
         server_command = server_config["command"]
         server_args = server_config["args"]
         server_env = server_config.get("env", None)
-        
+
         sys_print(f"[secure_call_tools] Starting secure batch call for {num_tool_calls} tools for server: {server_name}")
         if IS_DEBUG_LOG_LEVEL:
             sys_print(f"[secure_call_tools] Using command: {server_command} with args: {server_args}")
-        
+
         results = []
         id = SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"]["id"]
 
@@ -789,7 +802,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
 
                     if discovery_result.get("status") != "success":
                         return {"status": "error", "error": "Failed to discover tools for this server."}
-                    
+
                     server_config_tools = discovery_result.get("tools", {})
                     if IS_DEBUG_LOG_LEVEL:
                         sys_print(f"[enkrypt_secure_call_tools] Discovered tools: {server_config_tools}")
@@ -800,13 +813,13 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
 
         if not server_config_tools:
             return {"status": "error", "error": f"No tools found for {server_name} even after discovery"}
-        
+
         # Single session for all calls
         async with stdio_client(StdioServerParameters(command=server_command, args=server_args, env=server_env)) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 sys_print(f"[secure_call_tools] Session initialized successfully for {server_name}")
-                
+
                 for i, tool_call in enumerate(tool_calls):
                     try:
                         tool_name = tool_call.get("name") or tool_call.get("tool_name") or tool_call.get("tool") or tool_call.get("function") or tool_call.get("function_name") or tool_call.get("function_id")
@@ -826,7 +839,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                 }
                             })
                             break
-                        
+
                         sys_print(f"[secure_call_tools] Processing call {i}: {tool_name} with args: {args}")
 
                         tool_found = False
@@ -841,7 +854,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                             # like dictionary-style tools, ListToolsResult format, etc.
                             if hasattr(server_config_tools, 'tools'):
                                 if IS_DEBUG_LOG_LEVEL:
-                                    sys_print(f"[secure_call_tools] server_config_tools is a class with tools")
+                                    sys_print("[secure_call_tools] server_config_tools is a class with tools")
                                 if isinstance(server_config_tools.tools, list):
                                     # ListToolsResult format
                                     if IS_DEBUG_LOG_LEVEL:
@@ -852,16 +865,16 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                             break
                                 elif isinstance(server_config_tools.tools, dict):
                                     if IS_DEBUG_LOG_LEVEL:
-                                        sys_print(f"[secure_call_tools] server_config_tools.tools is in Dictionary format")
+                                        sys_print("[secure_call_tools] server_config_tools.tools is in Dictionary format")
                                     # Dictionary format like {"echo": "Echo a message"}
                                     if tool_name in server_config_tools.tools:
                                         tool_found = True
                             elif isinstance(server_config_tools, dict):
                                 if IS_DEBUG_LOG_LEVEL:
-                                    sys_print(f"[secure_call_tools] server_config_tools is in Dictionary format")
+                                    sys_print("[secure_call_tools] server_config_tools is in Dictionary format")
                                 if "tools" in server_config_tools:
                                     if IS_DEBUG_LOG_LEVEL:
-                                        sys_print(f"[secure_call_tools] server_config_tools is a dict and also has tools in Dictionary format")
+                                        sys_print("[secure_call_tools] server_config_tools is a dict and also has tools in Dictionary format")
                                     if isinstance(server_config_tools.get("tools", {}), list):
                                         for tool in server_config_tools.get("tools", []):
                                             if isinstance(tool, dict):
@@ -883,11 +896,11 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                         sys_print(f"[secure_call_tools] Tool '{tool_name}' not found in server_config_tools")
                             else:
                                 sys_print(f"[secure_call_tools] Unknown tool format: {type(server_config_tools)}")
-                                
+
                         if not tool_found:
                             sys_print(f"[enkrypt_secure_call_tools] Tool '{tool_name}' not found for this server.")
                             return {"status": "error", "error": f"Tool '{tool_name}' not found for this server."}
-                        
+
                         # Initialize guardrail responses for this call
                         redaction_key = None
                         input_guardrail_response = {}
@@ -895,14 +908,14 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                         output_relevancy_response = {}
                         output_adherence_response = {}
                         output_hallucination_response = {}
-                        
+
                         # Prepare input for guardrails
                         input_json_string = json.dumps(args)
-                        
+
                         # INPUT GUARDRAILS PROCESSING
                         if input_policy_enabled:
                             sys_print(f"[secure_call_tools] Call {i} : Input guardrails enabled for {tool_name} of server {server_name}")
-                            
+
                             # PII Redaction
                             if pii_redaction:
                                 sys_print(f"[secure_call_tools] Call {i}: PII redaction enabled for {tool_name} of server {server_name}")
@@ -915,16 +928,16 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                             else:
                                 if IS_DEBUG_LOG_LEVEL:
                                     sys_print(f"[secure_call_tools] Call {i}: PII redaction not enabled for {tool_name} of server {server_name}")
-                            
+
                             # Input guardrail check
                             if ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED:
                                 guardrail_task = asyncio.create_task(call_guardrail(input_json_string, input_blocks, input_policy_name))
                                 tool_call_task = asyncio.create_task(session.call_tool(tool_name, arguments=args))
-                                
+
                                 input_violations_detected, input_violation_types, input_guardrail_response = await guardrail_task
                             else:
                                 input_violations_detected, input_violation_types, input_guardrail_response = await call_guardrail(input_json_string, input_blocks, input_policy_name)
-                            
+
                             sys_print(f"input_violations: {input_violations_detected}, {input_violation_types}")
 
                             # Check for input violations
@@ -952,7 +965,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                 })
                                 # Break to not proceed with next call if detected
                                 break
-                            
+
                             # Get tool result if async was used
                             if ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED:
                                 if IS_DEBUG_LOG_LEVEL:
@@ -964,15 +977,15 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                             sys_print(f"[secure_call_tools] Call {i}: Input guardrails not enabled for {tool_name} of server {server_name}")
                             # No input guardrails, execute tool directly
                             result = await session.call_tool(tool_name, arguments=args)
-                        
+
                         if IS_DEBUG_LOG_LEVEL:
                             sys_print(f"[secure_call_tools] Call {i}: Success: {server_name}.{tool_name}")
                             sys_print(f"[secure_call_tools] Call {i}: type of result: {type(result)}")
                             sys_print(f"[secure_call_tools] Call {i}: Tool call result: {result}")
-                        
+
                         # result is a CallToolResult object. Example:
                         # Tool call result: <class 'mcp.types.CallToolResult'> meta=None content=[TextContent(type='text', text='{\n  "status": "success",\n  "message": "test"\n}', annotations=None)] isError=False
-                        
+
                         # Process tool result
                         text_result = ""
                         if result and hasattr(result, 'content') and result.content and len(result.content) > 0:
@@ -987,7 +1000,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                             result_type = result.content[0].type
                             if result_type == "text":
                                 text_result = result.content[0].text
-                                sys_print(f"[secure_call_tools] Call {i}: Tool executed and is text, checking output guardrails")                        
+                                sys_print(f"[secure_call_tools] Call {i}: Tool executed and is text, checking output guardrails")
                             else:
                                 sys_print(f"[secure_call_tools] Call {i}: Tool result is not text, skipping output guardrails")
 
@@ -1022,7 +1035,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                     break
                                 else:
                                     sys_print(f"[secure_call_tools] Call {i}: No output violations detected for {tool_name} of server {server_name}")
-                            
+
                             # RELEVANCY CHECK
                             if relevancy:
                                 sys_print(f"[secure_call_tools] Call {i}: Checking relevancy for {tool_name} of server {server_name}")
@@ -1032,7 +1045,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                 if "relevancy" in output_blocks and output_relevancy_response.get("summary", {}).get("relevancy_score") > RELEVANCY_THRESHOLD:
                                     results.append({
                                         "status": "blocked_output_relevancy",
-                                        "message": f"Request blocked due to output relevancy violation",
+                                        "message": "Request blocked due to output relevancy violation",
                                         "response": text_result,
                                         "enkrypt_mcp_data": {
                                             "call_index": i,
@@ -1053,7 +1066,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                     break
                                 else:
                                     sys_print(f"[secure_call_tools] Call {i}: No relevancy violations detected or relevancy is not in output_blocks for {tool_name} of server {server_name}")
-                            
+
                             # ADHERENCE CHECK
                             if adherence:
                                 sys_print(f"[secure_call_tools] Call {i}: Checking adherence for {tool_name} of server {server_name}")
@@ -1063,7 +1076,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                 if "adherence" in output_blocks and output_adherence_response.get("summary", {}).get("adherence_score") > ADHERENCE_THRESHOLD:
                                     results.append({
                                         "status": "blocked_output_adherence",
-                                        "message": f"Request blocked due to output adherence violation",
+                                        "message": "Request blocked due to output adherence violation",
                                         "response": text_result,
                                         "enkrypt_mcp_data": {
                                             "call_index": i,
@@ -1084,7 +1097,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                     break
                                 else:
                                     sys_print(f"[secure_call_tools] Call {i}: No adherence violations detected or adherence is not in output_blocks for {tool_name} of server {server_name}")
-                            
+
                             # HALLUCINATION CHECK
                             if hallucination:
                                 sys_print(f"[secure_call_tools] Call {i}: Checking hallucination for {tool_name} of server {server_name}")
@@ -1094,7 +1107,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                 if "hallucination" in output_blocks and output_hallucination_response.get("summary", {}).get("is_hallucination") > 0:
                                     results.append({
                                         "status": "blocked_output_hallucination",
-                                        "message": f"Request blocked due to output hallucination violation",
+                                        "message": "Request blocked due to output hallucination violation",
                                         "response": text_result,
                                         "enkrypt_mcp_data": {
                                             "call_index": i,
@@ -1115,7 +1128,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                     break
                                 else:
                                     sys_print(f"[secure_call_tools] Call {i}: No hallucination violations detected or hallucination is not in output_blocks for {tool_name} of server {server_name}")
-                            
+
                             # PII DE-ANONYMIZATION
                             if pii_redaction and redaction_key:
                                 sys_print(f"[secure_call_tools] Call {i}: De-anonymizing PII for {tool_name} of server {server_name} with redaction key: {redaction_key}")
@@ -1125,9 +1138,9 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                 text_result = deanonymized_text
                             else:
                                 sys_print(f"[secure_call_tools] Call {i}: PII redaction not enabled or redaction key {redaction_key} not found for {tool_name} of server {server_name}")
-                        
+
                         sys_print(f"[secure_call_tools] Call {i}: Completed successfully for {tool_name} of server {server_name}")
-                        
+
                         # Successful result
                         results.append({
                             "status": "success",
@@ -1149,11 +1162,11 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                 "output_hallucination_response": output_hallucination_response
                             }
                         })
-                        
+
                     except Exception as tool_error:
                         sys_print(f"[secure_call_tools] Error in call {i} ({tool_name}): {tool_error}")
                         traceback.print_exc(file=sys.stderr)
-                        
+
                         results.append({
                             "status": "error",
                             "error": str(tool_error),
@@ -1166,14 +1179,14 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                             }
                         })
                         break
-        
+
         # Calculate summary statistics
         successful_calls = len([r for r in results if r["status"] == "success"])
         blocked_calls = len([r for r in results if r["status"].startswith("blocked")])
         failed_calls = len([r for r in results if r["status"] == "error"])
-        
+
         sys_print(f"[secure_call_tools] Batch execution completed: {successful_calls} successful, {blocked_calls} blocked, {failed_calls} failed")
-        
+
         return {
             "server_name": server_name,
             "status": "success",
@@ -1193,7 +1206,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
             },
             "results": results
         }
-        
+
     except Exception as e:
         sys_print(f"[secure_call_tools] Critical error during batch execution: {e}")
         traceback.print_exc(file=sys.stderr)
@@ -1221,13 +1234,13 @@ async def enkrypt_get_cache_status(ctx: Context):
     Gets the current status of the tool cache for the servers whose tools are empty {} for which tools were discovered.
     This does not have the servers whose tools are explicitly defined in the MCP config in which case discovery is not needed.
     Use this only if you need to debug cache issues or asked specifically for cache status.
-    
+
     This function provides detailed information about the cache state,
     including gateway/user-specific and global cache statistics.
-    
+
     Args:
         ctx (Context): The MCP context
-        
+
     Returns:
         dict: Cache status containing:
             - status: Success/error status
@@ -1242,9 +1255,9 @@ async def enkrypt_get_cache_status(ctx: Context):
             return {"status": "error", "error": "Not authenticated."}
 
     id = SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"]["id"]
-    
+
     # Get cache statistics (handles both External and local cache)
-    sys_print(f"[get_cache_status] Getting cache statistics")
+    sys_print("[get_cache_status] Getting cache statistics")
     stats = get_cache_statistics(cache_client)
 
     cache_status = {
@@ -1287,7 +1300,7 @@ async def enkrypt_get_cache_status(ctx: Context):
         }
 
     # Servers cache status
-    sys_print(f"[get_cache_status] Getting server cache status")
+    sys_print("[get_cache_status] Getting server cache status")
     mcp_config = SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"].get("mcp_config", [])
     if IS_DEBUG_LOG_LEVEL:
         sys_print(f'mcp_configs: {mcp_config}')
@@ -1397,19 +1410,19 @@ async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = N
     """
     Clears various types of caches in the MCP Gateway.
     Use this only if you need to debug cache issues or asked specifically to clear cache.
-    
+
     This function can clear:
     - Tool cache for a specific server
     - Tool cache for all servers
     - Gateway config cache
     - All caches
-    
+
     Args:
         ctx (Context): The MCP context
         id (str, optional): ID of the Gateway or User whose cache to clear
         server_name (str, optional): Name of the server whose cache to clear
         cache_type (str, optional): Type of cache to clear ('all', 'gateway_config', 'server_config')
-        
+
     Returns:
         dict: Cache clearing result containing:
             - status: Success/error status
@@ -1426,7 +1439,7 @@ async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = N
     # Default id from session if not provided
     if not id:
         id = SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"]["id"]
-    
+
     sys_print(f"[clear_cache] Gateway/User ID: {id}, Server Name: {server_name}, Cache Type: {cache_type}")
 
     if not cache_type:
@@ -1474,7 +1487,7 @@ async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = N
             return {"status": "success", "message": f"Gateway config cache cleared for {id}"}
         else:
             return {"status": "info", "message": f"No config cache found for {id}"}
-        
+
     # Clear server config cache
     sys_print("[clear_cache] Clearing server config cache")
 

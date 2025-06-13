@@ -1,0 +1,3 @@
+[flake8]
+# Ignoring line length, imports not at top because of claude-desktop using different python interpreter
+ignore = E501,E402

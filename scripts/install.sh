@@ -20,6 +20,9 @@ cd $SCRIPT_DIR/..
 
 config_file="enkrypt_mcp_config.json"
 
+# Change to ~\.enkrypt directory
+cd $HOME/.enkrypt
+
 # Check if enkrypt_mcp_config.json exists
 if [ ! -f "$config_file" ]; then
     echo "$config_file file does not exist. Please run the setup script first."
@@ -31,7 +34,7 @@ ENKRYPT_GATEWAY_KEY=$(cat $config_file | jq -r '.gateways | keys[0]')
 echo "ENKRYPT_GATEWAY_KEY: $ENKRYPT_GATEWAY_KEY"
 
 # Get array of dependencies from requirements.txt, preserving package names
-DEPENDENCIES=$(cat requirements.txt | grep -v '^#' | grep -v '^$' | sed 's/;.*$//' | sed 's/>.*$//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+DEPENDENCIES=$(cat $SCRIPT_DIR/../requirements.txt | grep -v '^#' | grep -v '^$' | sed 's/;.*$//' | sed 's/>.*$//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '\n' ' ' | sed 's/[[:space:]]*$//')
 
 echo "Dependencies list: $DEPENDENCIES"
 
@@ -41,7 +44,7 @@ DEPENDENCIES_STRING=$(echo "$DEPENDENCIES" | sed 's/[[:space:]]\+/ --with /g' | 
 
 echo "Dependencies string for the cli install command: $DEPENDENCIES_STRING"
 
-cd src
+cd $SCRIPT_DIR/../src/secure_mcp_gateway
 
 CLI_CMD="mcp install gateway.py --env-var ENKRYPT_GATEWAY_KEY=$ENKRYPT_GATEWAY_KEY $DEPENDENCIES_STRING"
 

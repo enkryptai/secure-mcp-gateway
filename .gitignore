@@ -19,5 +19,14 @@ logs
 
 tmp.py
 main.py
-pyproject.toml
-enkrypt_mcp_config.json
+
+enkrypt_mcp_config*.json*
+
+# flake8 backups
+scripts/flake8/backups
+
+# These get created when we run `python setup.py`
+src/enkrypt_mcp_gateway.egg-info
+src/secure_mcp_gateway.egg-info
+build/
+dist/

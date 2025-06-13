@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "secure-mcp-gateway"
+# NOTE: Also change version in __init__.py, pyproject.toml, and setup.py
+version = "1.0.0"
+
+description = "Enkrypt Secure MCP Gateway"
+authors = [
+    { name = "Enkrypt AI Team", email = "support@enkryptai.com" }
+]
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+
+# NOTE: Also change these in dependencies.py, pyproject.toml, and setup.py
+dependencies = [
+    "flask>=2.0.0",
+    "flask-cors>=3.0.0",
+    "redis>=4.0.0",
+    "requests>=2.26.0",
+    "aiohttp>=3.8.0",
+    "python-json-logger>=2.0.0",
+    "python-dateutil>=2.8.2",
+    "cryptography>=3.4.0",
+    "pyjwt>=2.0.0",
+    "asyncio>=3.4.3",
+    "mcp[cli]"
+]
+
+keywords = [
+  "MCP",
+  "gateway",
+  "secure",
+  "middleware",
+  "async",
+  "python",
+  "model context protocol",
+  "guardrails",
+  "Enkrypt",
+  "Enkrypt AI",
+  "EnkryptAI",
+  "AI",
+]
+
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Operating System :: OS Independent"
+]
+
+[project.urls]
+Homepage = "https://github.com/enkryptai/secure-mcp-gateway"
+
+[project.scripts]
+secure-mcp-gateway = "secure_mcp_gateway.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["secure_mcp_gateway", "secure_mcp_gateway.test_mcps"]
+package-data = { "secure_mcp_gateway" = ["example_*.json"] }

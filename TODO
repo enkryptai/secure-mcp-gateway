@@ -1,4 +1,8 @@
+- Update Readme old clone steps with new examples and verify scripts after pip changes
+- Update Readme with uninstall steps
 - Test async input guardrails
 - Test linux installation and setup
+- Add Docker support for remote deployment
 - deploy remotely and update readme with claude and cursor demo
 - Refactor enkrypt_secure_call_tools to decouple tool call logic and move to client.py
+- Retest setup, install scripts

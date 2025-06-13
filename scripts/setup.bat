@@ -95,6 +95,9 @@ set "enkrypt_mcp_config_file=enkrypt_mcp_config.json"
 :: Change to parent directory
 cd /d "%SCRIPT_DIR%\.."
 
+@REM Change to ~\.enkrypt directory
+cd /d "%USERPROFILE%\.enkrypt"
+
 if exist "%enkrypt_mcp_config_file%" (
     echo enkrypt_mcp_config.json file already exists. You may have configured it already. If not, please remove it and run the setup script again.
     echo Exiting...
@@ -102,7 +105,7 @@ if exist "%enkrypt_mcp_config_file%" (
 )
 
 :: Copy example config
-copy "%example_enkrypt_mcp_config_file%" "%enkrypt_mcp_config_file%"
+copy "%SCRIPT_DIR%\..\src\secure_mcp_gateway\%example_enkrypt_mcp_config_file%" "%enkrypt_mcp_config_file%"
 
 :: Generate unique gateway key (using PowerShell for secure random generation)
 for /f "delims=" %%a in ('powershell -Command "$rng = New-Object System.Security.Cryptography.RNGCryptoServiceProvider; $bytes = New-Object byte[] 48; $rng.GetBytes($bytes); $key = [Convert]::ToBase64String($bytes); $key.Replace('+','_').Replace('/','_').Replace('=','')"') do set "unique_gateway_key=%%a"
@@ -120,8 +123,8 @@ echo Generated unique uuid: %unique_uuid%
 REM Replace UNIQUE_UUID in enkrypt_mcp_config.json
 powershell -Command "(Get-Content '%enkrypt_mcp_config_file%') -replace 'UNIQUE_UUID', '%unique_uuid%' | Set-Content '%enkrypt_mcp_config_file%'"
 
-:: Get dummy MCP path
-pushd test_mcps
+:: Get dummy MCP path inside src/secure_mcp_gateway
+pushd "%SCRIPT_DIR%\..\src\secure_mcp_gateway\test_mcps"
 set "DUMMY_MCP_DIR=%CD%"
 set "DUMMY_MCP_FILE_PATH=%DUMMY_MCP_DIR%\echo_mcp.py"
 popd
@@ -136,10 +139,27 @@ echo DUMMY_MCP_FILE_PATH: %DUMMY_MCP_FILE_PATH%
 powershell -Command "(Get-Content '%enkrypt_mcp_config_file%') -replace 'DUMMY_ECHO_MCP_FILE_PATH', '%DUMMY_MCP_FILE_PATH_ESCAPED%' | Set-Content '%enkrypt_mcp_config_file%'"
 
 echo -------------------------------
-echo Setup complete. Please check the enkrypt_mcp_config.json file in the root directory and update with your MCP server configs as needed.
+echo Setup complete. Please check the enkrypt_mcp_config.json file in the ~\.enkrypt directory and update with your MCP server configs as needed.
 echo -------------------------------
 
 endlocal
 
-:: Run the install script
-call "%SCRIPT_DIR%install.bat"
+REM Parse --install argument (default true)
+set INSTALL=true
+:parse_args
+if "%~1"=="" goto after_args
+if "%~1"=="--install" (
+    set INSTALL=%~2
+    shift
+    shift
+    goto parse_args
+)
+for /f "tokens=1,2 delims==" %%A in ("%~1") do (
+    if "%%A"=="--install" set INSTALL=%%B
+)
+shift
+goto parse_args
+:after_args
+
+REM Run the install script if INSTALL is true
+if /i "%INSTALL%"=="true" call "%SCRIPT_DIR%install.bat"
