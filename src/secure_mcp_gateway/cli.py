@@ -5,6 +5,7 @@ import json
 import base64
 import argparse
 import subprocess
+import secure_mcp_gateway
 
 
 def generate_default_config():
@@ -100,9 +101,18 @@ def add_or_update_cursor_server(config_path, server_name, command, args, env):
         "env": env
     }
 
-    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    # Create directory with restricted permissions (0o700 = rwx-----)
+    dir_path = os.path.dirname(config_path)
+    os.makedirs(dir_path, exist_ok=True)
+    if os.name == 'posix':  # Unix-like systems
+        os.chmod(dir_path, 0o700)
+
+    # Write config file with restricted permissions (0o600 = rw-------)
     with open(config_path, "w") as f:
         json.dump(config, f, indent=2)
+    if os.name == 'posix':  # Unix-like systems
+        os.chmod(config_path, 0o600)
+    
     print(f"{'Updated' if server_already_exists else 'Added'} '{server_name}' in {config_path}")
 
 
@@ -148,7 +158,7 @@ def main():
         if args.client.lower() == "claude" or args.client.lower() == "claude-desktop":
             config_path = args.config_path
             client = args.client
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            base_dir = os.path.dirname(secure_mcp_gateway.__file__)
             gateway_py = os.path.join(base_dir, "gateway.py")
 
             print("config_path: ", config_path)
@@ -162,6 +172,7 @@ def main():
             gateway_key = get_gateway_key(config_path)
             cmd = [
                 "mcp", "install", gateway_py,
+                "--name", "Enkrypt Secure MCP Gateway",
                 "--env-var", f"ENKRYPT_GATEWAY_KEY={gateway_key}"
             ]
             result = subprocess.run(cmd, capture_output=True, text=True)
@@ -178,7 +189,7 @@ def main():
                 print(f"Config file not found at path: {config_path}. Please generate a new config file using 'generate-config' subcommand and try again.")
                 sys.exit(1)
 
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            base_dir = os.path.dirname(secure_mcp_gateway.__file__)
             gateway_py = os.path.join(base_dir, "gateway.py")
             gateway_key = get_gateway_key(config_path)
             env = {
@@ -214,6 +225,7 @@ def main():
 
     else:
         print(f"Invalid command: {args.command}. Please use 'generate-config' or 'install'.")
+        parser.print_help()
         sys.exit(1)
 
 

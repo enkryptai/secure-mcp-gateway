@@ -35,11 +35,10 @@ jobs:
       - name: Validate with Twine
         run: python -m twine check dist/*
 
-      # TODO: No module named check-wheel-contents
-      # - name: Validate Wheel Contents
-      #   run: |
-      #     python -m pip show check-wheel-contents
-      #     python -m check-wheel-contents dist/*.whl
+      - name: Validate Wheel Contents
+        run: |
+          python -m pip show check-wheel-contents
+          check-wheel-contents dist/*.whl
 
       - name: Publish package to PyPI
         env:

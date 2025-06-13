@@ -20,7 +20,7 @@ logs
 tmp.py
 main.py
 
-enkrypt_mcp_config.json
+enkrypt_mcp_config*.json*
 
 # flake8 backups
 scripts/flake8/backups
