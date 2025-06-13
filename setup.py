@@ -24,7 +24,7 @@ setup(
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     include_package_data=True,
-    # NOTE: Also change dependencies in __init__.py, pyproject.toml, and setup.py
+    # NOTE: Also change these in dependencies.py, pyproject.toml, and setup.py
     install_requires=[
         "flask>=2.0.0",
         "flask-cors>=3.0.0",

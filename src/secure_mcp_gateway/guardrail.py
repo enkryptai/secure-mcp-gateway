@@ -51,7 +51,7 @@ Example Usage:
 import aiohttp
 import requests
 
-from secure_mcp_gateway.utils import (
+from utils import (
     get_common_config,
     sys_print
 )
@@ -308,6 +308,10 @@ async def call_guardrail(text, blocks, policy_name):
     if IS_DEBUG_LOG_LEVEL:
         sys_print("Guardrail API response received")
         sys_print(f'resp_json: {resp_json}')
+    
+    if resp_json.get("error"):
+        sys_print(f"Guardrail API error: {resp_json.get('error')}")
+        return False, [], resp_json
 
     violations_detected = False
     violation_types = []

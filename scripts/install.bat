@@ -20,6 +20,9 @@ cd /d "%SCRIPT_DIR%\.."
 
 set "config_file=enkrypt_mcp_config.json"
 
+@REM Change to ~\.enkrypt directory
+cd /d "%USERPROFILE%\.enkrypt"
+
 :: Check if config file exists
 if not exist "%config_file%" (
     echo %config_file% file does not exist. Please run the setup script first.
@@ -35,7 +38,7 @@ echo ENKRYPT_GATEWAY_KEY: %ENKRYPT_GATEWAY_KEY%
 
 :: Process requirements.txt and create dependencies string
 :: First, create a temporary file without comments and empty lines
-type requirements.txt | findstr /v "^#" | findstr /v "^$" > temp_req.txt
+type %SCRIPT_DIR%\..\%requirements_file% | findstr /v "^#" | findstr /v "^$" > temp_req.txt
 
 :: Initialize empty strings
 set "DEPENDENCIES="
@@ -78,7 +81,7 @@ for %%a in (%DEPENDENCIES%) do (
 
 echo Dependencies string for the cli install command: %DEPENDENCIES_STRING%
 
-cd src
+cd %SCRIPT_DIR%\..\src\secure_mcp_gateway
 
 set "CLI_CMD=mcp install gateway.py --env-var ENKRYPT_GATEWAY_KEY=%ENKRYPT_GATEWAY_KEY% %DEPENDENCIES_STRING%"
 

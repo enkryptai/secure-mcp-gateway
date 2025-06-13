@@ -10,6 +10,30 @@ import json
 
 print("Initializing Enkrypt Secure MCP Gateway Common Utilities Module", file=sys.stderr)
 
+CONFIG_NAME = "enkrypt_mcp_config.json"
+CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".enkrypt", CONFIG_NAME)
+EXAMPLE_CONFIG_NAME = f"example_{CONFIG_NAME}"
+EXAMPLE_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), EXAMPLE_CONFIG_NAME)
+
+DEFAULT_COMMON_CONFIG = {
+    "enkrypt_log_level": "INFO",
+    "enkrypt_guardrails_enabled": False,
+    "enkrypt_base_url": "https://api.enkryptai.com",
+    "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
+    "enkrypt_use_remote_mcp_config": False,
+    "enkrypt_remote_mcp_gateway_name": "enkrypt-secure-mcp-gateway-1",
+    "enkrypt_remote_mcp_gateway_version": "v1",
+    "enkrypt_mcp_use_external_cache": False,
+    "enkrypt_cache_host": "localhost",
+    "enkrypt_cache_port": 6379,
+    "enkrypt_cache_db": 0,
+    "enkrypt_cache_password": None,
+    "enkrypt_tool_cache_expiration": 4,
+    "enkrypt_gateway_cache_expiration": 24,
+    "enkrypt_async_input_guardrails_enabled": False,
+    "enkrypt_async_output_guardrails_enabled": False
+}
+
 
 def sys_print(message, file=sys.stderr):
     """
@@ -49,59 +73,52 @@ def get_common_config(print_debug=False):
     """
     Get the common configuration for the Enkrypt Secure MCP Gateway
     """
+    config = {}
+
     if print_debug:
         print("Getting Enkrypt Common Configuration", file=sys.stderr)
-    file_name = 'enkrypt_mcp_config.json'
-    example_file_name = f'example_{file_name}'
-    config_path = get_file_from_root(file_name)
-    example_config_path = get_file_from_root(example_file_name)
     if print_debug:
-        print(f"config_path: {config_path}", file=sys.stderr)
-        print(f"example_config_path: {example_config_path}", file=sys.stderr)
+        print(f"config_path: {CONFIG_PATH}", file=sys.stderr)
+        print(f"example_config_path: {EXAMPLE_CONFIG_PATH}", file=sys.stderr)
 
-    config = {}
-    if does_file_exist(config_path, True):
+    if does_file_exist(CONFIG_PATH, True):
         if print_debug:
-            print(f"Loading {file_name} file...", file=sys.stderr)
-        with open(config_path, 'r') as f:
+            print(f"Loading {CONFIG_NAME} file...", file=sys.stderr)
+        with open(CONFIG_PATH, 'r') as f:
+            config = json.load(f)
+    elif does_file_exist(EXAMPLE_CONFIG_PATH, True):
+        if print_debug:
+            print(f"No {CONFIG_NAME} file found. Defaulting to {EXAMPLE_CONFIG_NAME}", file=sys.stderr)
+        with open(EXAMPLE_CONFIG_PATH, 'r') as f:
+            config = json.load(f)
+    else:
+        sys_print("Both config file or example config file not found.")
+
+    if print_debug:
+        print(f"config: {config}", file=sys.stderr)
+    if config:
+        return config.get("common_mcp_gateway_config")
+
+    sys_print("Config not found in ~/.enkrypt directory. Checking /app/ if this is docker container")
+    docker_config_path = f"/app/{CONFIG_NAME}"
+    docker_example_config_path = f"/app/example_{CONFIG_NAME}"
+
+    if does_file_exist(docker_config_path, True):
+        if print_debug:
+            print(f"Loading {CONFIG_NAME} file from docker container...", file=sys.stderr)
+        with open(docker_config_path, 'r') as f:
             config = json.load(f)
         if print_debug:
             print(f"config: {config}", file=sys.stderr)
-    config_path = "/app/enkrypt_mcp_config.json"
-    example_config_path = "/app/example_enkrypt_mcp_config.json"
-    if does_file_exist(config_path, True):
+    elif does_file_exist(docker_example_config_path, True):
         if print_debug:
-            print(f"Loading {file_name} file...", file=sys.stderr)
-        with open(config_path, 'r') as f:
+            print(f"No {CONFIG_NAME} file found. Defaulting to {EXAMPLE_CONFIG_NAME} from docker container", file=sys.stderr)
+        with open(docker_example_config_path, 'r') as f:
             config = json.load(f)
         if print_debug:
-            print(f"config: {config}", file=sys.stderr)
-    elif does_file_exist(example_config_path, True):
-        if print_debug:
-            print(f"No {file_name} file found. Defaulting to {example_file_name}", file=sys.stderr)
-        with open(example_config_path, 'r') as f:
-            config = json.load(f)
-        if print_debug:
-            print(f"{example_file_name}: {config}", file=sys.stderr)
+            print(f"{EXAMPLE_CONFIG_NAME}: {config}", file=sys.stderr)
     else:
         if print_debug:
-            print("Both config file or example config file not found. Defaulting to hard coded config", file=sys.stderr)
+            print("Both config file or example config file not found in ~/.enkrypt directory or docker container path. Defaulting to hard coded config", file=sys.stderr)
 
-    return config.get("common_mcp_gateway_config", {
-        "enkrypt_log_level": "INFO",
-        "enkrypt_guardrails_enabled": False,
-        "enkrypt_base_url": "https://api.enkryptai.com",
-        "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
-        "enkrypt_use_remote_mcp_config": False,
-        "enkrypt_remote_mcp_gateway_name": "enkrypt-secure-mcp-gateway-1",
-        "enkrypt_remote_mcp_gateway_version": "v1",
-        "enkrypt_mcp_use_external_cache": False,
-        "enkrypt_cache_host": "localhost",
-        "enkrypt_cache_port": 6379,
-        "enkrypt_cache_db": 0,
-        "enkrypt_cache_password": None,
-        "enkrypt_tool_cache_expiration": 4,
-        "enkrypt_gateway_cache_expiration": 24,
-        "enkrypt_async_input_guardrails_enabled": False,
-        "enkrypt_async_output_guardrails_enabled": False
-    })
+    return config.get("common_mcp_gateway_config", DEFAULT_COMMON_CONFIG)

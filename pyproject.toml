@@ -12,9 +12,9 @@ authors = [
 ]
 readme = "README.md"
 requires-python = ">=3.8"
-license = { text = "MIT" }
+license = "MIT"
 
-# NOTE: Also change dependencies in __init__.py, pyproject.toml, and setup.py
+# NOTE: Also change these in dependencies.py, pyproject.toml, and setup.py
 dependencies = [
     "flask>=2.0.0",
     "flask-cors>=3.0.0",
@@ -47,7 +47,6 @@ keywords = [
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
@@ -64,5 +63,5 @@ secure-mcp-gateway = "secure_mcp_gateway.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["secure_mcp_gateway"]
-
+packages = ["secure_mcp_gateway", "secure_mcp_gateway.test_mcps"]
+package-data = { "secure_mcp_gateway" = ["example_*.json"] }

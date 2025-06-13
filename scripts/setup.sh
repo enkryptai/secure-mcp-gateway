@@ -81,13 +81,16 @@ enkrypt_mcp_config_file="enkrypt_mcp_config.json"
 
 cd $SCRIPT_DIR/..
 
+# Change to ~\.enkrypt directory
+cd $HOME/.enkrypt
+
 if [ -f "$enkrypt_mcp_config_file" ]; then
   echo "enkrypt_mcp_config.json file already exists. You may have configured it already. If not, please remove it and run the setup script again."
   echo "❌ Exiting..."
   exit 1
 fi
 
-cp $example_enkrypt_mcp_config_file $enkrypt_mcp_config_file
+cp $SCRIPT_DIR/../src/secure_mcp_gateway/$example_enkrypt_mcp_config_file $enkrypt_mcp_config_file
 
 # Generate unique gateway key
 unique_gateway_key=$(openssl rand -base64 64 | tr -d '\n' | tr '+/-' '_' | tr -d '=')
@@ -105,7 +108,7 @@ echo "✅ Generated unique uuid: $unique_uuid"
 # Replace UNIQUE_UUID in enkrypt_mcp_config.json with the unique uuid
 perl -pi -e "s/UNIQUE_UUID/$unique_uuid/g" $enkrypt_mcp_config_file
 
-cd test_mcps
+cd $SCRIPT_DIR/../src/secure_mcp_gateway/test_mcps
 export DUMMY_MCP_DIR=$(pwd)
 export DUMMY_MCP_FILE_PATH="$DUMMY_MCP_DIR/echo_mcp.py"
 
@@ -117,7 +120,7 @@ DUMMY_MCP_FILE_PATH_ESCAPED=$(echo "$DUMMY_MCP_FILE_PATH" | sed 's/\//\\\//g')
 perl -pi -e "s/DUMMY_ECHO_MCP_FILE_PATH/$DUMMY_MCP_FILE_PATH_ESCAPED/g" $enkrypt_mcp_config_file
 
 echo -------------------------------
-echo "✅ Setup complete. Please check the enkrypt_mcp_config.json file in the root directory and update with your MCP server configs as needed."
+echo "✅ Setup complete. Please check the enkrypt_mcp_config.json file in the ~/.enkrypt directory and update with your MCP server configs as needed."
 echo -------------------------------
 
 # Parse --install argument (default to true)

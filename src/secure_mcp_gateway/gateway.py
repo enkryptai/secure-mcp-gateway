@@ -51,12 +51,13 @@ Example Usage:
 import os
 import sys
 import subprocess
-from secure_mcp_gateway.utils import (
+
+from utils import (
     sys_print,
     get_common_config,
-    get_file_from_root
+    CONFIG_PATH
 )
-from secure_mcp_gateway import __dependencies__
+from dependencies import __dependencies__
 
 # Printing system info before importing other modules
 # As MCP Clients like Claude Desktop use their own Python interpreter, it may not have the modules installed
@@ -72,6 +73,7 @@ sys_print(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}")
 sys_print("--------------------------------")
 
 try:
+    sys_print("Installing dependencies...")
     subprocess.check_call(
         [sys.executable, "-m", "pip", "install", *__dependencies__],
         stdout=subprocess.DEVNULL,  # Suppress output
@@ -90,7 +92,7 @@ from mcp.client.stdio import stdio_client
 from mcp.server.fastmcp import FastMCP, Context
 from mcp import ClientSession, StdioServerParameters
 
-from secure_mcp_gateway.client import (
+from client import (
     initialize_cache,
     forward_tool_call,
     get_cached_tools,
@@ -104,7 +106,7 @@ from secure_mcp_gateway.client import (
     get_cache_statistics
 )
 
-from secure_mcp_gateway.guardrail import (
+from guardrail import (
     anonymize_pii,
     deanonymize_pii,
     call_guardrail,
@@ -112,6 +114,7 @@ from secure_mcp_gateway.guardrail import (
     check_adherence,
     check_hallucination
 )
+
 
 ENKRYPT_GATEWAY_KEY = os.environ.get("ENKRYPT_GATEWAY_KEY", "NULL")
 if ENKRYPT_GATEWAY_KEY == "NULL":
@@ -258,7 +261,7 @@ def get_latest_server_info(server_info, id, cache_client):
     return server_info_copy
 
 
-# Read from local MCP config file "enkrypt_mcp_config.json"
+# Read from local MCP config file
 def get_local_mcp_config(gateway_key):
     """
     Reads MCP configuration from local config file.
@@ -271,15 +274,14 @@ def get_local_mcp_config(gateway_key):
     """
     if IS_DEBUG_LOG_LEVEL:
         sys_print(f"[get_local_mcp_config] Getting local MCP config for {gateway_key}")
-    config_path = get_file_from_root('enkrypt_mcp_config.json')
-    if os.path.exists(config_path):
+    if os.path.exists(CONFIG_PATH):
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"[get_local_mcp_config] MCP config file found at {config_path}")
-        with open(config_path, 'r') as f:
+            sys_print(f"[get_local_mcp_config] MCP config file found at {CONFIG_PATH}")
+        with open(CONFIG_PATH, 'r') as f:
             jsonConfig = json.load(f)
             return jsonConfig["gateways"].get(gateway_key)  # Only return the config for the given gateway_key
     else:
-        sys_print(f"[get_local_mcp_config] MCP config file not found at {config_path}")
+        sys_print(f"[get_local_mcp_config] MCP config file not found at {CONFIG_PATH}")
         return None
 
 
