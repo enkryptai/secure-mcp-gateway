@@ -13,7 +13,7 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 ## Table of Contents
 
 - [1. Features 🚀](#1-features)
-  - [1.1 Guardrails 🔒 🚧](#11-guardrails)
+  <!-- - [1.1 Guardrails 🔒 🚧](#11-guardrails) -->
 - [2. High level steps of how the MCP Gateway works 🪜](#2-high-level-steps-of-how-the-mcp-gateway-works)
 - [3. Prerequisites 🧩](#3-prerequisites)
 - [4. Gateway Setup 👨‍💻](#4-gateway-setup)
