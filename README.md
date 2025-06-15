@@ -231,7 +231,7 @@ If you want to protect your MCPs with Enkrypt Guardrails, you need to do the fol
   deactivate
   ```
 
-- Install the package
+- Install the package. For more info see [https://pypi.org/project/secure-mcp-gateway/](https://pypi.org/project/secure-mcp-gateway/)
 
   ```bash
   pip install secure-mcp-gateway
