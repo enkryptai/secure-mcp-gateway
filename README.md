@@ -76,6 +76,7 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 <br>
 <details>
 <summary><strong>🪜 Steps </strong> 🔽</summary>
+<br>
 
 1. Your MCP client connects to the Secure MCP Gateway server with API Key (handled by `src/secure_mcp_gateway/gateway.py`).
 
@@ -187,6 +188,7 @@ python -m pip install uv
 <br>
 <details>
 <summary><strong>🔒 Optional Protection with Enkrypt Guardrails </strong> 🔽</summary>
+<br>
 
 If you want to protect your MCPs with Enkrypt Guardrails, you need to do the following:
 
@@ -515,6 +517,7 @@ cd secure-mcp-gateway
 <br>
 <details>
 <summary><strong>⚡ Activate a virtual environment </strong> 🔽</summary>
+<br>
 
 ```bash
 # ------------------
@@ -611,6 +614,7 @@ setup.bat
 <br>
 <details>
 <summary><strong>🖨️ Example output ℹ️ </strong> 🔽</summary>
+<br>
 
 ```bash
 -------------------------------
@@ -705,6 +709,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 <details>
 <summary><strong>⬡ Cursor </strong> 🔽</summary>
+<br>
 
 - You can navigate to cursor's **Global MCP** file at `C:\Users\PC\.cursor\mcp.json` on Windows or at `~/.cursor/mcp.json` on Linux/macOS
 
@@ -792,6 +797,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 <br>
 <details>
 <summary><strong>🧰 Check tools and logs  ℹ️ </strong> 🔽</summary>
+<br>
 
 - You can also click on the settings icon below the search bar to see the Gateway in available
 
@@ -819,6 +825,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 <br>
 <details>
 <summary><strong>💡 Other examples ℹ️ </strong> 🔽</summary>
+<br>
 
 - We can also combine multiple prompts into one that trigger multiple tool calls at once
 
@@ -1288,6 +1295,7 @@ Enforce strict context boundaries across repositories.
 <br>
 <details>
 <summary><strong>8.1.2 💡 Prompt used to generate the rules </strong> 🔽</summary>
+<br>
 
 - `Give numbered list of security rules in plain text for configuring AI guardrails for a GitHub server on the rules and policies it needs to follow to prevent malicious use of the GitHub services`
 
