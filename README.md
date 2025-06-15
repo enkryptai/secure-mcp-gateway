@@ -796,7 +796,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 <br>
 <details>
 <summary><strong>🧰 Check tools and logs  ℹ️ </strong> 🔽</summary>
-<br>
 
 - You can also click on the settings icon below the search bar to see the Gateway in available
 
