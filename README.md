@@ -107,7 +107,6 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 
 <details>
 <summary><strong>🔗 Dependencies </strong> 🔽</summary>
-<br>
 
 - `Git 2.43` or higher
 
@@ -120,7 +119,6 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 <br>
 <details>
 <summary><strong>🔍 Check versions </strong> 🔽</summary>
-<br>
 
 - Check if Python, pip and uv are installed
 
