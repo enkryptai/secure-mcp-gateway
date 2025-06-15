@@ -52,12 +52,15 @@ import os
 import sys
 import subprocess
 
-from utils import (
+import importlib
+importlib.import_module("secure_mcp_gateway")
+
+from secure_mcp_gateway.utils import (
     sys_print,
     get_common_config,
     CONFIG_PATH
 )
-from dependencies import __dependencies__
+from secure_mcp_gateway.dependencies import __dependencies__
 
 # Printing system info before importing other modules
 # As MCP Clients like Claude Desktop use their own Python interpreter, it may not have the modules installed
@@ -92,7 +95,7 @@ from mcp.client.stdio import stdio_client
 from mcp.server.fastmcp import FastMCP, Context
 from mcp import ClientSession, StdioServerParameters
 
-from client import (
+from secure_mcp_gateway.client import (
     initialize_cache,
     forward_tool_call,
     get_cached_tools,
@@ -106,7 +109,7 @@ from client import (
     get_cache_statistics
 )
 
-from guardrail import (
+from secure_mcp_gateway.guardrail import (
     anonymize_pii,
     deanonymize_pii,
     call_guardrail,

@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 print("PACKAGES FOUND:", find_packages(where="src"))
 
 try:
-    with open("README.md", encoding="utf-8") as f:
+    with open("README_PYPI.md", encoding="utf-8") as f:
         long_description = f.read()
 except FileNotFoundError:
     long_description = "See https://github.com/enkryptai/secure-mcp-gateway"
@@ -36,7 +36,7 @@ setup(
         "cryptography>=3.4.0",
         "pyjwt>=2.0.0",
         "asyncio>=3.4.3",
-        "mcp[cli]"
+        "mcp[cli]",
     ],
     # install_requires=__dependencies__,
     classifiers=[

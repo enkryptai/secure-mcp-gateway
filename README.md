@@ -12,34 +12,33 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 
 ## Table of Contents
 
-- [Features 🚀](#features)
-  - [Guardrails 🔒 🚧](#guardrails)
-- [High level steps of how the MCP Gateway works 🪜](#high-level-steps-of-how-the-mcp-gateway-works)
-- [Prerequisites 🧩](#prerequisites)
-- [Gateway Setup 👨‍💻](#gateway-setup)
-  - [Local Installation with pip 📥](#local-installation-with-pip)
-  - [Local Installation with git clone 📥](#local-installation-with-git-clone)
-    <!-- - [1. Clone the repo, setup virtual environment and install dependencies 📥](#1-clone-the-repo-setup-virtual-environment-and-install-dependencies)
-    - [2. Run the setup script 📥](#2-run-the-setup-script)
-    - [3. Example MCP config file generated 📄](#3-example-mcp-config-file-generated)
-    - [4. Restart Claude Desktop to run the Gateway 🔄](#4-restart-claude-desktop-to-run-the-gateway)
-    - [5. Example prompts 💬](#5-example-prompts)
-    - [6. Example config file generated ⚙️](#6-example-config-file-generated)
-    - [7. Edit the Gateway config as needed ✏️](#7-edit-the-gateway-config-as-needed) -->
-  - [Remote Installation 📥](#remote-installation)
-- [Edit the Gateway config as needed ✏️](#edit-the-gateway-config-as-needed)
-- [(Optional) Add GitHub MCP Server to the Gateway 🤖](#optional-add-github-mcp-server-to-the-gateway)
-- [(Optional) Protect GitHub MCP Server and Test Echo Server with Enkrypt Guardrails for FREE 🔒](#optional-protect-github-mcp-server-and-test-echo-server-with-enkrypt-guardrails-for-free)
-  <!-- - [Fine Tune Guardrails 🔧](#fine-tune-guardrails) -->
-- [Recommendations for using Guardrails 💡](#recommendations-for-using-guardrails)
-- [Setup Other MCP Clients 🤖](#setup-other-mcp-clients)
-- [Other Tools Available 🔧](#other-tools-available)
-- [Deployment Patterns 🪂](#deployment-patterns)
-- [Uninstall the Gateway 🗑️](#uninstall-the-gateway)
-- [Known Issues being worked on 🏗️](#known-issues-being-worked-on)
-- [Known Limitations ⚠️](#known-limitations)
+- [1. Features 🚀](#1-features)
+  - [1.1 Guardrails 🔒 🚧](#11-guardrails)
+- [2. High level steps of how the MCP Gateway works 🪜](#2-high-level-steps-of-how-the-mcp-gateway-works)
+- [3. Prerequisites 🧩](#3-prerequisites)
+- [4. Gateway Setup 👨‍💻](#4-gateway-setup)
+  - [4.1 Local Installation with pip 📥](#41-local-installation-with-pip)
+  - [4.2 Local Installation with git clone 📥](#42-local-installation-with-git-clone)
+    <!-- - [4.2.1 Clone the repo, setup virtual environment and install dependencies 📥](#421-clone-the-repo-setup-virtual-environment-and-install-dependencies)
+    - [4.2.2 Run the setup script 📥](#422-run-the-setup-script)
+    - [4.2.3 Example MCP config file generated 📄](#423-example-mcp-config-file-generated)
+    - [4.2.4 Restart Claude Desktop to run the Gateway 🔄](#424-restart-claude-desktop-to-run-the-gateway)
+    - [4.2.5 Example prompts 💬](#425-example-prompts)
+    - [4.2.6 Example config file generated ⚙️](#426-example-config-file-generated)
+    - [4.2.7 Setup Other MCP Clients 🤖](#427-setup-other-mcp-clients) -->
+  - [4.3 Remote Installation 📥](#43-remote-installation)
+- [5. Edit the Gateway config as needed ✏️](#5-edit-the-gateway-config-as-needed)
+- [6. (Optional) Add GitHub MCP Server to the Gateway 🤖](#6-optional-add-github-mcp-server-to-the-gateway)
+- [7. (Optional) Protect GitHub MCP Server and Test Echo Server with Enkrypt Guardrails for FREE 🔒](#7-optional-protect-github-mcp-server-and-test-echo-server-with-enkrypt-guardrails-for-free)
+  <!-- - [7.1 Fine Tune Guardrails 🔧](#71-fine-tune-guardrails) -->
+- [8. Recommendations for using Guardrails 💡](#8-recommendations-for-using-guardrails)
+- [9. Other tools available 🔧](#9-other-tools-available)
+- [10. Deployment Patterns 🪂](#10-deployment-patterns)
+- [11. Uninstall the Gateway 🗑️](#11-uninstall-the-gateway)
+- [12. Known Issues being worked on 🏗️](#12-known-issues-being-worked-on)
+- [13. Known Limitations ⚠️](#13-known-limitations)
 
-## Features
+## 1. Features
 
 ![enkrypt-secure-mcp-gateway-features](./docs/images/enkrypt-secure-mcp-gateway-features.png)
 
@@ -59,7 +58,7 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 
 7. **Logging**: We log every request and response from the Gateway locally in your MCP logs and also forward them to Enkrypt *(Coming soon)* for monitoring. This enables you to see all the calls made in your account, servers used, tools invoked, requests blocked, etc.
 
-### Guardrails
+### 1.1 Guardrails
 
 ![enkrypt-secure-mcp-gateway-guardrails](./docs/images/enkrypt-secure-mcp-gateway-guardrails.png)
 
@@ -67,16 +66,13 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 
 **Output Protection:** All input protections plus adherence checking and relevancy validation (More coming soon like hallucination detection, etc.) We also auto unredact the response if it was redacted on input.
 
-## High level steps of how the MCP Gateway works
+## 2. High level steps of how the MCP Gateway works
 
 ![Local Gateway with Remote Guardrails Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20Local.drawio.png)
 
 <br>
-
 <details>
-
 <summary><strong>Steps 🪜 </strong> 🔽</summary>
-
 <br>
 
 1. Your MCP client connects to the Secure MCP Gateway server with API Key (handled by `src/gateway.py`).
@@ -104,12 +100,10 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 
 </details>
 
-## Prerequisites
+## 3. Prerequisites
 
 <details>
-
 <summary><strong>Dependencies 🔗 </strong> 🔽</summary>
-
 <br>
 
 - `Git 2.43` or higher
@@ -121,11 +115,8 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 - `uv 0.7.9` or higher is installed on your system and is accessible from the command line using either `uv` or `python -m uv` command
 
 <br>
-
 <details>
-
 <summary><strong>Check versions 🔍 </strong> 🔽</summary>
-
 <br>
 
 - Check if Python, pip and uv are installed
@@ -173,9 +164,7 @@ python -m pip install uv
 ```
 
 </details>
-
 </details>
-
 <br>
 
 <!-- - Set `PYTHONPATH` in your system environment variables
@@ -197,11 +186,8 @@ python -m pip install uv
 - (Optional) A cache server like KeyDB installed and running (If you want to cache externally and not locally)
 
 <br>
-
 <details>
-
 <summary><strong>Optional Protection with Enkrypt Guardrails 🔒 </strong> 🔽</summary>
-
 <br>
 
 If you want to protect your MCPs with Enkrypt Guardrails, you need to do the following:
@@ -224,15 +210,14 @@ If you want to protect your MCPs with Enkrypt Guardrails, you need to do the fol
 
 </details>
 
-## Gateway Setup
+## 4. Gateway Setup
 
-### Local Installation with pip
+### 4.1 Local Installation with pip
 
 <details>
-
 <summary><strong>Pip Installation steps 🪜 </strong> 🔽</summary>
 
-#### 1. Download and Install the Package
+#### 4.1.1 Download and Install the Package
 
 - Activate a virtual environment
 
@@ -252,7 +237,7 @@ If you want to protect your MCPs with Enkrypt Guardrails, you need to do the fol
   pip install secure-mcp-gateway
   ```
 
-#### 2. Run the Generate Command
+#### 4.1.2 Run the Generate Command
 
 - This generates the config file at `~/.enkrypt/enkrypt_mcp_config.json` on macOS and `C:\Users\<User>\.enkrypt\enkrypt_mcp_config.json` on Windows
 
@@ -261,9 +246,7 @@ If you want to protect your MCPs with Enkrypt Guardrails, you need to do the fol
   ```
 
 <details>
-
 <summary><strong>Example output ℹ️ </strong> 🔽</summary>
-
 <br>
 
 ```bash
@@ -272,9 +255,9 @@ Initializing Enkrypt Secure MCP Gateway Common Utilities Module
 Initializing Enkrypt Secure MCP Gateway Module
 --------------------------------
 SYSTEM INFO:
-Using Python interpreter: C:\Users\PC\Documents\GitHub\enkryptai\secure-mcp-gateway\.secure-mcp-gateway-venv\Scripts\python.exe
+Using Python interpreter: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Scripts\python.exe
 Python version: 3.13.3 (tags/v3.13.3:6280bb5, Apr  8 2025, 14:47:33) [MSC v.1943 64 bit (AMD64)]
-Current working directory: C:\Users\PC\Documents\GitHub\enkryptai\secure-mcp-gateway
+Current working directory: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway
 PYTHONPATH: Not set
 --------------------------------
 Installing dependencies...
@@ -284,7 +267,7 @@ Initializing Enkrypt Secure MCP Gateway Guardrail Module
 Error: Gateway key is required. Please update your mcp client config and try again.
 Getting Enkrypt Common Configuration
 config_path: C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
-example_config_path: C:\Users\PC\Documents\GitHub\enkryptai\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\example_enkrypt_mcp_config.json
+example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\example_enkrypt_mcp_config.json
 No enkrypt_mcp_config.json file found. Defaulting to example_enkrypt_mcp_config.json
 config: {'common_mcp_gateway_config': {'enkrypt_log_level': 'INFO', 'enkrypt_guardrails_enabled': False, 'enkrypt_base_url': 'https://api.enkryptai.com', 'enkrypt_api_key': 'YOUR_ENKRYPT_API_KEY', 'enkrypt_use_remote_mcp_config': False, 'enkrypt_remote_mcp_gateway_name': 'enkrypt-secure-mcp-gateway-1', 'enkrypt_remote_mcp_gateway_version': 'v1', 'enkrypt_mcp_use_external_cache': False, 'enkrypt_cache_host': 'localhost', 'enkrypt_cache_port': 6379, 'enkrypt_cache_db': 0, 'enkrypt_cache_password': None, 'enkrypt_tool_cache_expiration': 4, 'enkrypt_gateway_cache_expiration': 24, 'enkrypt_async_input_guardrails_enabled': False, 'enkrypt_async_output_guardrails_enabled': False}, 'gateways': {'UNIQUE_GATEWAY_KEY': {'id': 'UNIQUE_UUID', 'mcp_config': [{'server_name': 'echo_server', 'description': 'Dummy Echo Server', 'config': {'command': 'python', 'args': ['DUMMY_ECHO_MCP_FILE_PATH']}, 'tools': {}, 'input_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'pii_redaction': False}, 'block': ['policy_violation']}, 'output_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'relevancy': False, 'hallucination': False, 'adherence': False}, 'block': ['policy_violation']}}]}}}
 CONFIG:
@@ -306,12 +289,10 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
 
 </details>
 
-#### 3. Example of the generated config file
+#### 4.1.3 Example of the generated config file
 
 <details>
-
 <summary><strong>Example file in Windows 🪟  ℹ️ </strong> 🔽</summary>
-
 <br>
 
 This is an example of the default configuration file generated by the CLI on Windows:
@@ -337,8 +318,8 @@ This is an example of the default configuration file generated by the CLI on Win
     "enkrypt_async_output_guardrails_enabled": false
   },
   "gateways": {
-    "jmt0aOViE8R0gpgDRIPgaWDN2TT6cOVRf2-jt4c0UXP_pvYZ": {
-      "id": "baecf63f-2f79-47a6-84c8-37a7c58c22d9",
+    "q6ppy8f79oWi4wouSfYVWp0jc7-DIJIaibqtFjCekyPPjpjg": {
+      "id": "d35c88c5-10c7-4594-92e1-7029e9c4be3e",
       "mcp_config": [
         {
           "server_name": "echo_server",
@@ -346,7 +327,7 @@ This is an example of the default configuration file generated by the CLI on Win
           "config": {
             "command": "python",
             "args": [
-              "test_mcps/echo_mcp.py"
+              "C:\\Users\\PC\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\test_mcps\\echo_mcp.py"
             ]
           },
           "tools": {},
@@ -381,7 +362,7 @@ This is an example of the default configuration file generated by the CLI on Win
 
 </details>
 
-#### 4. Install the Gateway for Claude Desktop
+#### 4.1.4 Install the Gateway for Claude Desktop
 
 - Run the following command to install the gateway for Claude:
 
@@ -394,9 +375,7 @@ This is an example of the default configuration file generated by the CLI on Win
 - **NOTE: Please restart Claude Desktop after installation**
 
 <details>
-
 <summary><strong>Example output ℹ️ </strong> 🔽</summary>
-
 <br>
 
 ```bash
@@ -405,9 +384,9 @@ Initializing Enkrypt Secure MCP Gateway Common Utilities Module
 Initializing Enkrypt Secure MCP Gateway Module
 --------------------------------
 SYSTEM INFO:
-Using Python interpreter: C:\Users\PC\Documents\GitHub\enkryptai\secure-mcp-gateway\.secure-mcp-gateway-venv\Scripts\python.exe
+Using Python interpreter: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Scripts\python.exe
 Python version: 3.13.3 (tags/v3.13.3:6280bb5, Apr  8 2025, 14:47:33) [MSC v.1943 64 bit (AMD64)]
-Current working directory: C:\Users\PC\Documents\GitHub\enkryptai\secure-mcp-gateway
+Current working directory: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway
 PYTHONPATH: Not set
 --------------------------------
 Installing dependencies...
@@ -417,9 +396,9 @@ Initializing Enkrypt Secure MCP Gateway Guardrail Module
 Error: Gateway key is required. Please update your mcp client config and try again.
 Getting Enkrypt Common Configuration
 config_path: C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
-example_config_path: C:\Users\PC\Documents\GitHub\enkryptai\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\example_enkrypt_mcp_config.json
+example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\example_enkrypt_mcp_config.json
 Loading enkrypt_mcp_config.json file...
-config: {'common_mcp_gateway_config': {'enkrypt_log_level': 'INFO', 'enkrypt_guardrails_enabled': False, 'enkrypt_base_url': 'https://api.enkryptai.com', 'enkrypt_api_key': 'YOUR_ENKRYPT_API_KEY', 'enkrypt_use_remote_mcp_config': False, 'enkrypt_remote_mcp_gateway_name': 'enkrypt-secure-mcp-gateway-1', 'enkrypt_remote_mcp_gateway_version': 'v1', 'enkrypt_mcp_use_external_cache': False, 'enkrypt_cache_host': 'localhost', 'enkrypt_cache_port': 6379, 'enkrypt_cache_db': 0, 'enkrypt_cache_password': None, 'enkrypt_tool_cache_expiration': 4, 'enkrypt_gateway_cache_expiration': 24, 'enkrypt_async_input_guardrails_enabled': False, 'enkrypt_async_output_guardrails_enabled': False}, 'gateways': {'jmt0aOViE8R0gpgDRIPgaWDN2TT6cOVRf2-jt4c0UXP_pvYZ': {'id': 'baecf63f-2f79-47a6-84c8-37a7c58c22d9', 'mcp_config': [{'server_name': 'echo_server', 'description': 'Dummy Echo Server', 'config': {'command': 'python', 'args': ['C:\\Users\\PC\\Documents\\GitHub\\enkryptai\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\test_mcps\\echo_mcp.py']}, 'tools': {}, 'input_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'pii_redaction': False}, 'block': ['policy_violation']}, 'output_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'relevancy': False, 'hallucination': False, 'adherence': False}, 'block': ['policy_violation']}}]}}}
+config: {'common_mcp_gateway_config': {'enkrypt_log_level': 'INFO', 'enkrypt_guardrails_enabled': False, 'enkrypt_base_url': 'https://api.enkryptai.com', 'enkrypt_api_key': 'YOUR_ENKRYPT_API_KEY', 'enkrypt_use_remote_mcp_config': False, 'enkrypt_remote_mcp_gateway_name': 'enkrypt-secure-mcp-gateway-1', 'enkrypt_remote_mcp_gateway_version': 'v1', 'enkrypt_mcp_use_external_cache': False, 'enkrypt_cache_host': 'localhost', 'enkrypt_cache_port': 6379, 'enkrypt_cache_db': 0, 'enkrypt_cache_password': None, 'enkrypt_tool_cache_expiration': 4, 'enkrypt_gateway_cache_expiration': 24, 'enkrypt_async_input_guardrails_enabled': False, 'enkrypt_async_output_guardrails_enabled': False}, 'gateways': {'q6ppy8f79oWi4wouSfYVWp0jc7-DIJIaibqtFjCekyPPjpjg': {'id': 'd35c88c5-10c7-4594-92e1-7029e9c4be3e', 'mcp_config': [{'server_name': 'echo_server', 'description': 'Dummy Echo Server', 'config': {'command': 'python', 'args': ['C:\\Users\\PC\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\test_mcps\\echo_mcp.py']}, 'tools': {}, 'input_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'pii_redaction': False}, 'block': ['policy_violation']}, 'output_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'relevancy': False, 'hallucination': False, 'adherence': False}, 'block': ['policy_violation']}}]}}}
 CONFIG:
 ENKRYPT_GATEWAY_KEY: ****NULL
 enkrypt_log_level: info
@@ -434,20 +413,21 @@ enkrypt_async_input_guardrails_enabled: False
 --------------------------------
 External Cache is not enabled. Using local cache only.
 Initializing Enkrypt Secure MCP Gateway CLI Module
-config_path:  C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
-gateway_py path:  C:\Users\PC\Documents\GitHub\enkryptai\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\gateway.py
+CONFIG_PATH:  C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
+GATEWAY_PY_PATH:  C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\gateway.py
 client name from args:  claude-desktop
 Successfully installed gateway for claude-desktop
+Path to gateway is incorrect. Modifying the path to gateway in claude_desktop_config.json file...
+Path to gateway modified in claude_desktop_config.json file
+Please restart Claude Desktop to use the gateway.
 ```
 
 </details>
 
-#### 5. Example of the Claude Desktop Config after installation
+#### 4.1.5 Example of the Claude Desktop Config after installation
 
 <details>
-
 <summary><strong>Example file in Windows 🪟  ℹ️ </strong> 🔽</summary>
-
 <br>
 
 - `C:\Users\PC\AppData\Roaming\Claude\claude_desktop_config.json`
@@ -463,10 +443,10 @@ Successfully installed gateway for claude-desktop
           "mcp[cli]",
           "mcp",
           "run",
-          "C:\\Users\\PC\\Documents\\GitHub\\enkryptai\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\gateway.py"
+          "C:\\Users\\PC\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\gateway.py"
         ],
         "env": {
-          "ENKRYPT_GATEWAY_KEY": "jmt0aOViE8R0gpgDRIPgaWDN2TT6cOVRf2-jt4c0UXP_pvYZ"
+          "ENKRYPT_GATEWAY_KEY": "q6ppy8f79oWi4wouSfYVWp0jc7-DIJIaibqtFjCekyPPjpjg"
         }
       }
     }
@@ -475,7 +455,7 @@ Successfully installed gateway for claude-desktop
 
 </details>
 
-#### 6. Install the Gateway for Cursor
+#### 4.1.6 Install the Gateway for Cursor
 
 - Run the CLI Install Command for Cursor
 
@@ -486,9 +466,7 @@ Successfully installed gateway for claude-desktop
 - This automatically updates your ~/.cursor/mcp.json (on Windows: C:\Users\<User>\.cursor\mcp.json) with the correct entry.
 
 <details>
-
 <summary><strong>Example file in Windows 🪟  ℹ️ </strong> 🔽</summary>
-
 <br>
 
 - `C:\Users\<User>\.cursor\mcp.json`
@@ -504,10 +482,10 @@ Successfully installed gateway for claude-desktop
           "mcp[cli]",
           "mcp",
           "run",
-          "C:\\Users\\PC\\Documents\\GitHub\\enkryptai\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\gateway.py"
+          "C:\\Users\\PC\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\gateway.py"
         ],
         "env": {
-          "ENKRYPT_GATEWAY_KEY": "jmt0aOViE8R0gpgDRIPgaWDN2TT6cOVRf2-jt4c0UXP_pvYZ"
+          "ENKRYPT_GATEWAY_KEY": "q6ppy8f79oWi4wouSfYVWp0jc7-DIJIaibqtFjCekyPPjpjg"
         }
       }
     }
@@ -518,7 +496,7 @@ Successfully installed gateway for claude-desktop
 
 </details>
 
-### Local Installation with git clone
+### 4.2 Local Installation with git clone
 
 - *NOTE: Needs to be revalidated and steps, examples needs to be updated after pip changes*
 
@@ -526,7 +504,7 @@ Successfully installed gateway for claude-desktop
 
 <summary><strong>Git Clone Installation steps 🪜 </strong> 🔽</summary>
 
-#### 1. Clone the repo, setup virtual environment and install dependencies
+#### 4.2.1 Clone the repo, setup virtual environment and install dependencies
 
 - Clone the repository:
 
@@ -537,11 +515,8 @@ cd secure-mcp-gateway
 ```
 
 <br>
-
 <details>
-
 <summary><strong>Activate a virtual environment ⚡ </strong> 🔽</summary>
-
 <br>
 
 ```bash
@@ -577,7 +552,7 @@ source ./.venv/Scripts/activate
 
 # After activating, you should see (enkrypt-secure-mcp-gateway) before the file path in the terminal
 # Example:
-# (enkrypt-secure-mcp-gateway) C:\Users\PC\Documents\GitHub\enkryptai\secure-mcp-gateway>
+# (enkrypt-secure-mcp-gateway) C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway>
 
 # ------------------
 # Install pip in the virtual environment
@@ -609,13 +584,13 @@ MCP version 1.9.2
 
 </details>
 
-#### 2. Run the setup script
+#### 4.2.2 Run the setup script
 
 <!-- - The `setup` script checks versions of Python, pip, uv and makes sure they are installed and accessible -->
 
 <!-- - It then installs the dependencies -->
 
-- This script creates the `enkrypt_mcp_config.json` file in the root directory based on the `example_enkrypt_mcp_config.json` file
+- This script creates the config file at `~/.enkrypt/enkrypt_mcp_config.json` on macOS and `C:\Users\<User>\.enkrypt\enkrypt_mcp_config.json` on Windows based on `src/secure_mcp_gateway/example_enkrypt_mcp_config.json` file
 
 - It replaces `UNIQUE_GATEWAY_KEY` and `UNIQUE_UUID` with auto generated values and also replaces `DUMMY_MCP_FILE_PATH` with the actual path to the test MCP file `test_mcps/echo_mcp.py`
 
@@ -637,11 +612,8 @@ setup.bat
 ```
 
 <br>
-
 <details>
-
 <summary><strong>Example output ℹ️ </strong> 🔽</summary>
-
 <br>
 
 ```bash
@@ -649,38 +621,42 @@ setup.bat
 Setting up Enkrypt Secure MCP Gateway enkrypt_mcp_config.json config file
 -------------------------------
         1 file(s) copied.
-Generated unique gateway key: 3_V8WZxKJp24alEui542WX6wVcgexH5EIBqZl1EssxDcFS9K4TVwZCmB9i_8KEQ5
-Generated unique uuid: b8ac738a-7a2c-4030-8966-20fa1d91af3c
-DUMMY_MCP_FILE_PATH: C:\Users\PC\Documents\GitHub\enkryptai\enkrypt-secure-mcp-gateway\test_mcps\echo_mcp.py
+Generated unique gateway key: WTZOpoU1mXJz8b_ZJQ42DuSXlQCSCtWOn3FX0jG8sO_FKYNJetjYEgSluvhtBN8_
+Generated unique uuid: 7920749a-228e-47fe-a6a9-cd2d64a2283b
+DUMMY_MCP_FILE_PATH: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\src\secure_mcp_gateway\test_mcps\echo_mcp.py
 -------------------------------
-Setup complete. Please check the enkrypt_mcp_config.json file in the root directory and update with your MCP server configs as needed.
+Setup complete. Please check the enkrypt_mcp_config.json file in the ~\.enkrypt directory and update with your MCP server configs as needed.
 -------------------------------
 -------------------------------
 Installing Enkrypt Secure MCP Gateway with gateway key and dependencies
 -------------------------------
 mcp is installed. Proceeding with installation...
-ENKRYPT_GATEWAY_KEY: 3_V8WZxKJp24alEui542WX6wVcgexH5EIBqZl1EssxDcFS9K4TVwZCmB9i_8KEQ5
-Package names only: flask flask-cors redis requests aiohttp python-json-logger python-dateutil cryptography pyjwt asyncio mcp[cli]
-Dependencies string for the cli install command: --with flask --with flask-cors --with redis --with requests --with aiohttp --with python-json-logger --with python-dateutil --with cryptography --with pyjwt --with asyncio --with mcp[cli]
-Running the cli install command: mcp install gateway.py --env-var ENKRYPT_GATEWAY_KEY=3_V8WZxKJp24alEui542WX6wVcgexH5EIBqZl1EssxDcFS9K4TVwZCmB9i_8KEQ5 --with flask --with flask-cors --with redis --with requests --with aiohttp --with python-json-logger --with python-dateutil --with cryptography --with pyjwt --with asyncio --with mcp[cli]
+ENKRYPT_GATEWAY_KEY: WTZOpoU1mXJz8b_ZJQ42DuSXlQCSCtWOn3FX0jG8sO_FKYNJetjYEgSluvhtBN8_
+The system cannot find the path specified.
+Package names only:
+Dependencies string for the cli install command:
+Running the cli install command: mcp install gateway.py --env-var ENKRYPT_GATEWAY_KEY=WTZOpoU1mXJz8b_ZJQ42DuSXlQCSCtWOn3FX0jG8sO_FKYNJetjYEgSluvhtBN8_
+Initializing Enkrypt Secure MCP Gateway
 Initializing Enkrypt Secure MCP Gateway Common Utilities Module
 Initializing Enkrypt Secure MCP Gateway Module
 --------------------------------
 SYSTEM INFO:
-Using Python interpreter: C:\Users\PC\Documents\GitHub\enkryptai\enkrypt-secure-mcp-gateway\.venv\Scripts\python.exe
+Using Python interpreter: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Scripts\python.exe
 Python version: 3.13.3 (tags/v3.13.3:6280bb5, Apr  8 2025, 14:47:33) [MSC v.1943 64 bit (AMD64)]
-Current working directory: C:\Users\PC\Documents\GitHub\enkryptai\enkrypt-secure-mcp-gateway\src
+Current working directory: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\src\secure_mcp_gateway
 PYTHONPATH: Not set
 --------------------------------
+Installing dependencies...
+All dependencies installed successfully.
 Initializing Enkrypt Secure MCP Gateway Client Module
 Initializing Enkrypt Secure MCP Gateway Guardrail Module
 Getting Enkrypt Common Configuration
-config_path: C:\Users\PC\Documents\GitHub\enkryptai\enkrypt-secure-mcp-gateway\enkrypt_mcp_config.json
-example_config_path: C:\Users\PC\Documents\GitHub\enkryptai\enkrypt-secure-mcp-gateway\example_enkrypt_mcp_config.json
+config_path: C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
+example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\example_enkrypt_mcp_config.json
 Loading enkrypt_mcp_config.json file...
-config: {'common_mcp_gateway_config': {'enkrypt_log_level': 'INFO', 'enkrypt_guardrails_enabled': False, 'enkrypt_base_url': 'https://api.enkryptai.com', 'enkrypt_api_key': 'YOUR_ENKRYPT_API_KEY', 'enkrypt_use_remote_mcp_config': False, 'enkrypt_remote_mcp_gateway_name': 'enkrypt-secure-mcp-gateway-1', 'enkrypt_remote_mcp_gateway_version': 'v1', 'enkrypt_mcp_use_external_cache': False, 'enkrypt_cache_host': 'localhost', 'enkrypt_cache_port': 6379, 'enkrypt_cache_db': 0, 'enkrypt_cache_password': None, 'enkrypt_tool_cache_expiration': 4, 'enkrypt_gateway_cache_expiration': 24, 'enkrypt_async_input_guardrails_enabled': False, 'enkrypt_async_output_guardrails_enabled': False}, 'gateways': {'3_V8WZxKJp24alEui542WX6wVcgexH5EIBqZl1EssxDcFS9K4TVwZCmB9i_8KEQ5': {'id': 'b8ac738a-7a2c-4030-8966-20fa1d91af3c', 'mcp_config': [{'server_name': 'echo_server', 'description': 'Dummy Echo Server', 'config': {'command': 'python', 'args': ['C:\\Users\\PC\\Documents\\GitHub\\enkryptai\\enkrypt-secure-mcp-gateway\\test_mcps\\echo_mcp.py']}, 'tools': {'echo': 'Echo a message'}, 'input_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'pii_redaction': False}, 'block': ['policy_violation']}, 'output_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'relevancy': False, 'hallucination': False, 'adherence': False}, 'block': ['policy_violation']}}]}}}
+config: {'common_mcp_gateway_config': {'enkrypt_log_level': 'INFO', 'enkrypt_guardrails_enabled': False, 'enkrypt_base_url': 'https://api.enkryptai.com', 'enkrypt_api_key': 'YOUR_ENKRYPT_API_KEY', 'enkrypt_use_remote_mcp_config': False, 'enkrypt_remote_mcp_gateway_name': 'enkrypt-secure-mcp-gateway-1', 'enkrypt_remote_mcp_gateway_version': 'v1', 'enkrypt_mcp_use_external_cache': False, 'enkrypt_cache_host': 'localhost', 'enkrypt_cache_port': 6379, 'enkrypt_cache_db': 0, 'enkrypt_cache_password': None, 'enkrypt_tool_cache_expiration': 4, 'enkrypt_gateway_cache_expiration': 24, 'enkrypt_async_input_guardrails_enabled': False, 'enkrypt_async_output_guardrails_enabled': False}, 'gateways': {'WTZOpoU1mXJz8b_ZJQ42DuSXlQCSCtWOn3FX0jG8sO_FKYNJetjYEgSluvhtBN8_': {'id': '7920749a-228e-47fe-a6a9-cd2d64a2283b', 'mcp_config': [{'server_name': 'echo_server', 'description': 'Dummy Echo Server', 'config': {'command': 'python', 'args': ['C:\\Users\\PC\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\secure_mcp_gateway\\test_mcps\\echo_mcp.py']}, 'tools': {}, 'input_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'pii_redaction': False}, 'block': ['policy_violation']}, 'output_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'relevancy': False, 'hallucination': False, 'adherence': False}, 'block': ['policy_violation']}}]}}}
 CONFIG:
-ENKRYPT_GATEWAY_KEY: ****KEQ5
+ENKRYPT_GATEWAY_KEY: ****BN8_
 enkrypt_log_level: info
 is_debug_log_level: False
 enkrypt_base_url: https://api.enkryptai.com
@@ -692,8 +668,36 @@ enkrypt_mcp_use_external_cache: False
 enkrypt_async_input_guardrails_enabled: False
 --------------------------------
 External Cache is not enabled. Using local cache only.
-[06/03/25 20:13:40] INFO     Added server 'Enkrypt Secure MCP Gateway' to Claude config                                                                                                                                                                                    claude.py:143
-                    INFO     Successfully installed Enkrypt Secure MCP Gateway in Claude app                                                                                                                                                                                  cli.py:504
+Initializing Enkrypt Secure MCP Gateway Module
+--------------------------------
+SYSTEM INFO:
+Using Python interpreter: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Scripts\python.exe
+Python version: 3.13.3 (tags/v3.13.3:6280bb5, Apr  8 2025, 14:47:33) [MSC v.1943 64 bit (AMD64)]
+Current working directory: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\src\secure_mcp_gateway
+PYTHONPATH: Not set
+--------------------------------
+Installing dependencies...
+All dependencies installed successfully.
+Getting Enkrypt Common Configuration
+config_path: C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
+example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\example_enkrypt_mcp_config.json
+Loading enkrypt_mcp_config.json file...
+config: {'common_mcp_gateway_config': {'enkrypt_log_level': 'INFO', 'enkrypt_guardrails_enabled': False, 'enkrypt_base_url': 'https://api.enkryptai.com', 'enkrypt_api_key': 'YOUR_ENKRYPT_API_KEY', 'enkrypt_use_remote_mcp_config': False, 'enkrypt_remote_mcp_gateway_name': 'enkrypt-secure-mcp-gateway-1', 'enkrypt_remote_mcp_gateway_version': 'v1', 'enkrypt_mcp_use_external_cache': False, 'enkrypt_cache_host': 'localhost', 'enkrypt_cache_port': 6379, 'enkrypt_cache_db': 0, 'enkrypt_cache_password': None, 'enkrypt_tool_cache_expiration': 4, 'enkrypt_gateway_cache_expiration': 24, 'enkrypt_async_input_guardrails_enabled': False, 'enkrypt_async_output_guardrails_enabled': False}, 'gateways': {'WTZOpoU1mXJz8b_ZJQ42DuSXlQCSCtWOn3FX0jG8sO_FKYNJetjYEgSluvhtBN8_': {'id': '7920749a-228e-47fe-a6a9-cd2d64a2283b', 'mcp_config': [{'server_name': 'echo_server', 'description': 'Dummy Echo Server', 'config': {'command': 'python', 'args': ['C:\\Users\\PC\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\secure_mcp_gateway\\test_mcps\\echo_mcp.py']}, 'tools': {}, 'input_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'pii_redaction': False}, 'block': ['policy_violation']}, 'output_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'relevancy': False, 'hallucination': False, 'adherence': False}, 'block': ['policy_violation']}}]}}}
+CONFIG:
+ENKRYPT_GATEWAY_KEY: ****BN8_
+enkrypt_log_level: info
+is_debug_log_level: False
+enkrypt_base_url: https://api.enkryptai.com
+enkrypt_use_remote_mcp_config: False
+enkrypt_api_key: ****_KEY
+enkrypt_tool_cache_expiration: 4
+enkrypt_gateway_cache_expiration: 24
+enkrypt_mcp_use_external_cache: False
+enkrypt_async_input_guardrails_enabled: False
+--------------------------------
+External Cache is not enabled. Using local cache only.
+[06/15/25 13:14:10] INFO     Added server 'Enkrypt Secure MCP Gateway' to Claude config                                                                                                             claude.py:137
+                    INFO     Successfully installed Enkrypt Secure MCP Gateway in Claude app                                                                                                           cli.py:486
 -------------------------------
 Installation complete. Check the claude_desktop_config.json file as per the readme instructions and restart Claude Desktop.
 -------------------------------
@@ -707,14 +711,11 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
   - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
-#### 3. Example MCP config file generated
+#### 4.2.3 Example MCP config file generated
 
 <br>
-
 <details>
-
 <summary><strong>Example file in Windows 🪟  ℹ️ </strong> 🔽</summary>
-
 <br>
 
 - `C:\Users\PC\AppData\Roaming\Claude\claude_desktop_config.json`
@@ -723,37 +724,17 @@ Installation complete. Check the claude_desktop_config.json file as per the read
   {
     "mcpServers": {
       "Enkrypt Secure MCP Gateway": {
-        "command": "C:\\Users\\PC\\Documents\\GitHub\\enkryptai\\enkrypt-secure-mcp-gateway\\.venv\\Scripts\\uv.EXE",
+        "command": "C:\\Users\\PC\\.local\\bin\\uv.EXE",
         "args": [
           "run",
           "--with",
-          "aiohttp",
-          "--with",
-          "asyncio",
-          "--with",
-          "cryptography",
-          "--with",
-          "flask",
-          "--with",
-          "flask-cors",
-          "--with",
           "mcp[cli]",
-          "--with",
-          "pyjwt",
-          "--with",
-          "python-dateutil",
-          "--with",
-          "python-json-logger",
-          "--with",
-          "redis",
-          "--with",
-          "requests",
           "mcp",
           "run",
-          "C:\\Users\\PC\\Documents\\GitHub\\enkryptai\\enkrypt-secure-mcp-gateway\\src\\gateway.py"
+          "C:\\Users\\PC\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\secure_mcp_gateway\\gateway.py"
         ],
         "env": {
-          "ENKRYPT_GATEWAY_KEY": "3_V8WZxKJp24alEui542WX6wVcgexH5EIBqZl1EssxDcFS9K4TVwZCmB9i_8KEQ5"
+          "ENKRYPT_GATEWAY_KEY": "WTZOpoU1mXJz8b_ZJQ42DuSXlQCSCtWOn3FX0jG8sO_FKYNJetjYEgSluvhtBN8_"
         }
       }
     }
@@ -762,7 +743,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-#### 4. Restart Claude Desktop to run the Gateway
+#### 4.2.4 Restart Claude Desktop to run the Gateway
 
 - After restarting, navigate to Claude Desktop `Settings`
 
@@ -773,11 +754,8 @@ Installation complete. Check the claude_desktop_config.json file as per the read
   ![Claude Desktop MCP Gateway Running](./docs/images/claude-desktop-mcp-running.png)
 
 <br>
-
 <details>
-
 <summary><strong>Check tools and logs 🧾  ℹ️ </strong> 🔽</summary>
-
 <br>
 
 - You can also click on the settings icon below the search bar to see the Gateway in available
@@ -796,7 +774,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-#### 5. Example prompts
+#### 4.2.5 Example prompts
 
 - `list all servers, get all tools available and echo test`
   - This uses a test MCP server `echo_server` which is in `test_mcps/echo_mcp.py`
@@ -804,11 +782,8 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 ![claude-mcp-chat-1](./docs/images/claude-mcp-chat-1.png)
 
 <br>
-
 <details>
-
 <summary><strong>Other examples ℹ️ </strong> 🔽</summary>
-
 <br>
 
 - We can also combine multiple prompts into one that trigger multiple tool calls at once
@@ -825,9 +800,9 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-#### 6. Example config file generated
+#### 4.2.6 Example config file generated
 
-- Example `enkrypt_mcp_config.json` generated by the `setup` script in the root directory:
+- Example `enkrypt_mcp_config.json` generated by the `setup` script in `~/.enkrypt/enkrypt_mcp_config.json` on macOS and `C:\Users\<User>\.enkrypt\enkrypt_mcp_config.json` on Windows:
 
   ```json
   {
@@ -850,8 +825,8 @@ Installation complete. Check the claude_desktop_config.json file as per the read
       "enkrypt_async_output_guardrails_enabled": false
     },
     "gateways": {
-      "tLIYf0YEFTIPLXDO337zPRQhmnoXnLqLUKB3XuDX1inent9vGRFvwLDJGoeaktWu": {
-        "id": "2536722c-e5d7-4719-97ab-2cdd4ce942c0",
+      "WTZOpoU1mXJz8b_ZJQ42DuSXlQCSCtWOn3FX0jG8sO_FKYNJetjYEgSluvhtBN8_": {
+        "id": "7920749a-228e-47fe-a6a9-cd2d64a2283b",
         "mcp_config": [
           {
             "server_name": "echo_server",
@@ -859,7 +834,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
             "config": {
               "command": "python",
               "args": [
-                "C:\\Users\\PC\\Documents\\GitHub\\enkryptai\\enkrypt-secure-mcp-gateway\\test_mcps\\echo_mcp.py"
+                "C:\\Users\\PC\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\secure_mcp_gateway\\test_mcps\\echo_mcp.py"
               ]
             },
             "tools": {},
@@ -892,13 +867,55 @@ Installation complete. Check the claude_desktop_config.json file as per the read
   }
   ```
 
+#### 4.2.7 Setup Other MCP Clients
+
+<details>
+<summary><strong>Cursor ⬡ </strong> 🔽</summary>
+<br>
+
+- You can navigate to cursor's **Global MCP** file at `C:\Users\PC\.cursor\mcp.json` on Windows or at `~/.cursor/mcp.json` on Linux/macOS
+
+  - If you would like to use at a **Project level** place it inside your project. For details see [Cursor's docs](https://docs.cursor.com/context/model-context-protocol#configuration-locations)
+
+- You can also navigate to the file Via cursor's UI by clicking on `settings` gear icon on the top right  
+
+  ![cursor-settings-icon](./docs/images/cursor-settings-icon.png)
+
+- Click on `MCP` and then click on `Add new global MCP server` which takes you to the `mcp.json` file
+
+  ![cursor-settings-mcp](./docs/images/cursor-settings-mcp.png)
+
+- Example `mcp.json` file opened in the editor
+
+  ![cursor-mcp-file](./docs/images/cursor-mcp-file.png)
+
+- Once the file is opened at Global or Project level, you can copy paste the same config we used in `Claude Desktop`. For reference, you can refer to [Installation - 4.2.3 Example MCP config file generated 📄](#423-example-mcp-config-file-generated)
+
+  - *Be sure to use your own file that was generated by the `setup` script in [Installation - 4.2.2 Run the setup script 📥](#422-run-the-setup-script). Please do not copy paste the example config file in this repo.*
+
+- Once your mcp config is pasted and the file is saved, you can see the MCP server in the list of MCP servers in cursor
+
+  ![cursor-mcp-running](./docs/images/cursor-mcp-running.png)
+
+- Now you can chat with the MCP server.
+
+  - **Example prompts:**
+
+    - *(Click `Run Tool` when Cursor asks you to)*
+
+    - `list all servers, get all tools available and echo test`
+      - This uses a test MCP server `echo_server` which is in `test_mcps/echo_mcp.py`
+
+    ![cursor-mcp-chat](./docs/images/cursor-mcp-chat.png)
+
+</details>
 </details>
 
-### Remote Installation
+### 4.3 Remote Installation
 
 - *(Coming soon)*
 
-## Edit the Gateway config as needed
+## 5. Edit the Gateway config as needed
 
 - **Important:**
 
@@ -951,11 +968,8 @@ Installation complete. Check the claude_desktop_config.json file as per the read
       ```
 
 <br>
-
 <details>
-
 <summary><strong>Gateway Config Schema ℹ️ </strong> 🔽</summary>
-
 <br>
 
 - If you want a different set of MCP servers for a separate client/user, you can generate a new unqiue `key` and unique `UUID` by looking at the `setup` scripts and add it to the `gateways` section of the config file
@@ -991,11 +1005,8 @@ Installation complete. Check the claude_desktop_config.json file as per the read
     - Tools need to be given a name and a description like `"tools": { "dummy_echo": "Echo a message" }`
 
 </details>
-
 <details>
-
 <summary><strong>Optional Guardrails Schema 🔒 ℹ️ </strong> 🔽</summary>
-
 <br>
 
 - Set `enkrypt_guardrails_enabled` to `true` in your `common_mcp_gateway_config`
@@ -1082,18 +1093,15 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-## (Optional) Add GitHub MCP Server to the Gateway
+## 6. (Optional) Add GitHub MCP Server to the Gateway
 
 - `GitHub MCP Server` needs `docker` to be installed. So, please install and have `docker` running on your machine before proceeding with the steps below
 
   - You can [download docker desktop from here](https://www.docker.com/products/docker-desktop/). Install and run it if you don't have it already
 
 <br>
-
 <details>
-
 <summary><strong>Configure GitHub 👨🏻‍💻 </strong> 🔽</summary>
-
 <br>
 
 - [Create a personal access token from GitHub](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
@@ -1184,24 +1192,18 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-## (Optional) Protect GitHub MCP Server and Test Echo Server with Enkrypt Guardrails for FREE
+## 7. (Optional) Protect GitHub MCP Server and Test Echo Server with Enkrypt Guardrails for FREE
 
 <br>
-
 <details>
-
 <summary><strong>Create a Guardrail in Enkrypt App 🌐 </strong> 🔽</summary>
-
 <br>
 
 - You can use a prompt to generate rules or generate a PDF file while you can then paste or upload while creating a policy in the App
 
 <br>
-
 <details>
-
 <summary><strong>Rules to copy ❗ </strong> 🔽</summary>
-
 <br>
 
 ```text
@@ -1274,13 +1276,9 @@ Enforce strict context boundaries across repositories.
 ```
 
 </details>
-
 <br>
-
 <details>
-
 <summary><strong>Prompt used to generate the rules 💡 </strong> 🔽</summary>
-
 <br>
 
 - `Give numbered list of security rules in plain text for configuring AI guardrails for a GitHub server on the rules and policies it needs to follow to prevent malicious use of the GitHub services`
@@ -1292,7 +1290,6 @@ Enforce strict context boundaries across repositories.
 - Then you can copy paste the rules while creating the policy
 
 </details>
-
 <br>
 
 - Go to [Enkrypt App](https://app.enkryptai.com) and login with either OTP or Google or Microsoft account
@@ -1336,11 +1333,8 @@ Enforce strict context boundaries across repositories.
   ![enkrypt-app-add-guardrail-add-4](./docs/images/enkrypt-app-add-guardrail-add-4.png)
 
 </details>
-
 <details>
-
 <summary><strong>Get Enkrypt API Key 🔑 </strong> 🔽</summary>
-
 <br>
 
 - Now, we need get out FREE API Key from Enkrypt App. Hover over the left sidebar for it to expand and click on `Settings`
@@ -1354,16 +1348,13 @@ Enforce strict context boundaries across repositories.
   ![enkrypt-app-settings-2](./docs/images/enkrypt-app-settings-2.png)
 
 </details>
-
 <details>
-
 <summary><strong>Add API Key and the Guardrail to Config File 🔑 </strong> 🔽</summary>
-
 <br>
 
 - Now we have everything we need from the App. Let's add the API Key to the `enkrypt_mcp_config.json` file
 
-- Open the `enkrypt_mcp_config.json` file from the root directory of this repo
+- Open the `enkrypt_mcp_config.json` file from `~/.enkrypt/enkrypt_mcp_config.json` on macOS or `C:\Users\<User>\.enkrypt\enkrypt_mcp_config.json` on Windows
 
 - Add the API Key to the `common_mcp_gateway_config` section by replacing `YOUR_ENKRYPT_API_KEY` with the API Key you copied from the App
 
@@ -1444,11 +1435,8 @@ Enforce strict context boundaries across repositories.
   ```
 
 </details>
-
 <details>
-
 <summary><strong>Test Guardrails 🧪 </strong> 🔽</summary>
-
 <br>
 
 - **Save** the file and restart Claude Desktop for it to detect the changes
@@ -1475,17 +1463,17 @@ Enforce strict context boundaries across repositories.
 
 </details>
 
-### Fine Tune Guardrails
+### 7.1 Fine Tune Guardrails
 
-- *The safe prompt `List all files from https://github.com/enkryptai/enkryptai-mcp-server` may also be blocked if you use Injection Attack on Output side. So, there is some fine tuning required for the guardrails to find the best combination of enabled detectors and blocks for your servers. See the next section for recommendations.*
+- *The safe prompt `List all files from https://github.com/enkryptai/enkryptai-mcp-server` may also be blocked if you use Injection Attack Detector or Policy Violation on Output side. So, there is some fine tuning required for the guardrails to find the best combination of enabled detectors and blocks for your servers. See the next section for recommendations.*
 
-## Recommendations for using Guardrails
+## 8. Recommendations for using Guardrails
 
 - We have found that the best way to use Enkrypt Guardrails in MCP Gateway is to have a separate guardrail for each server. This way we can have a fine tuned guardrail for each server.
 
 - Because each MCP Server is very different from the other, it is not possible to have a single guardrail that works for all servers.
 
-- Some may need `Toxicity Detector`, some `NSFW Detector`, some `Injection Attack`, some `Keyword Detector`, some `Policy Violation`, some may need `Relevancy` detector, some may need `Adherence` detector, etc.
+- Some may need `Toxicity Detector`, some `NSFW Detector`, some `Injection Attack Detector`, some `Keyword Detector`, some `Policy Violation`, some may need `Relevancy` detector, some may need `Adherence` detector, etc.
 
 - Some may need a combination of these detectors to work together to block malicious requests.
 
@@ -1498,9 +1486,7 @@ Enforce strict context boundaries across repositories.
 - Try our `Policy Violation` detector with your own custom policy which details what is allowed and what is not. This may be the best way for your use case.
 
 <details>
-
 <summary><strong>Try Policy Violation 🚨 </strong> 🔽</summary>
-
 <br>
 
 - You can navigate to the [Enkrypt App Homepage](https://app.enkryptai.com), login and Click on `Policies` to create your own custom policy.
@@ -1513,57 +1499,10 @@ Enforce strict context boundaries across repositories.
 
 </details>
 
-## Setup Other MCP Clients
+## 9. Other Tools Available
 
 <details>
-
-<summary><strong>Cursor ⬡ </strong> 🔽</summary>
-
-<br>
-
-- You can navigate to cursor's **Global MCP** file at `C:\Users\PC\.cursor\mcp.json` on Windows or at `~/.cursor/mcp.json` on Linux/macOS
-
-  - If you would like to use at a **Project level** place it inside your project. For details see [Cursor's docs](https://docs.cursor.com/context/model-context-protocol#configuration-locations)
-
-- You can also navigate to the file Via cursor's UI by clicking on `settings` gear icon on the top right  
-
-  ![cursor-settings-icon](./docs/images/cursor-settings-icon.png)
-
-- Click on `MCP` and then click on `Add new global MCP server` which takes you to the `mcp.json` file
-
-  ![cursor-settings-mcp](./docs/images/cursor-settings-mcp.png)
-
-- Example `mcp.json` file opened in the editor
-
-  ![cursor-mcp-file](./docs/images/cursor-mcp-file.png)
-
-- Once the file is opened at Global or Project level, you can copy paste the same config we used in `Claude Desktop`. For reference, you can refer to [Installation - 3. Example MCP config file generated 📄](#3-example-mcp-config-file-generated)
-
-  - *Be sure to use your own file that was generated by the `setup` script in [Installation - 2. Run the setup script 📥](#2-run-the-setup-script). Please do not copy paste the example config file in this repo.*
-
-- Once your mcp config is pasted and the file is saved, you can see the MCP server in the list of MCP servers in cursor
-
-  ![cursor-mcp-running](./docs/images/cursor-mcp-running.png)
-
-- Now you can chat with the MCP server.
-
-  - **Example prompts:**
-
-    - *(Click `Run Tool` when Cursor asks you to)*
-
-    - `list all servers, get all tools available and echo test`
-      - This uses a test MCP server `echo_server` which is in `test_mcps/echo_mcp.py`
-
-    ![cursor-mcp-chat](./docs/images/cursor-mcp-chat.png)
-
-</details>
-
-## Other Tools Available
-
-<details>
-
 <summary><strong>Get Cache Status 📊 </strong> 🔽</summary>
-
 <br>
 
 - The Gateway can give the summary of it's cache status by looking at the local/external cache server
@@ -1573,11 +1512,8 @@ Enforce strict context boundaries across repositories.
   ![claude-mcp-chat-get-cache-status](./docs/images/claude-mcp-chat-get-cache-status.png)
 
 </details>
-
 <details>
-
 <summary><strong>Clear Cache 🧹 </strong> 🔽</summary>
-
 <br>
 
 - The Gateway can clear it's cache from local/external cache server
@@ -1596,7 +1532,7 @@ Enforce strict context boundaries across repositories.
 
 </details>
 
-## Deployment patterns
+## 10. Deployment patterns
 
 1. [Local Gateway, Local Guardrails and Local MCP Server](#1-local-gateway-local-guardrails-and-local-mcp-server)
 2. [Local Gateway, Local MCP Server with Remote Guardrails](#2-local-gateway-local-mcp-server-with-remote-guardrails)
@@ -1619,27 +1555,35 @@ Enforce strict context boundaries across repositories.
 
 ![Remote Gateway with Remote Guardrails and Remote MCP Server Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20Full%20Remote.drawio.png)
 
-## Uninstall the Gateway
+## 11. Uninstall the Gateway
 
-TODO
+- To remove the Gateway from any MCP client, just remove the MCP server block `"Enkrypt Secure MCP Gateway": {...}` from the client's config file.
 
-## Known Issues being worked on
+  - Restart the MCP client to apply the changes for some clients like Claude Desktop. Cursor does not require a restart.
+
+- To uninstall the pip package, run the following command:
+
+  ```bash
+  pip uninstall secure-mcp-gateway
+  ```
+
+## 12. Known Issues being worked on
 
 - Output guardrails are not being applied to non-text tool results. Support for other media types like images, audio, etc. is coming soon.
 
-## Known Limitations
+## 13. Known Limitations
 
 - The Gateway does not support a scenario where the Gateway is deployed remotely but the MCP server is deployed locally (without being exposed to the internet). This is because the Gateway needs to know the MCP server's address to forward requests to it.
 
-## Contribute
+## 14. Contribute
 
 - Look at the `TODO`
 
 - Report or fix any bugs you encounter 😊
 
-## License
+## 15. License
 
-### Enkrypt AI MCP Gateway Core
+### 15.1 Enkrypt AI MCP Gateway Core
 
 This project's core functionality is licensed under the MIT License.
 
@@ -1651,7 +1595,7 @@ This project's core functionality is licensed under the MIT License.
 
 For the full license text, see the `LICENSE.txt` file in this repository.
 
-### Enkrypt AI Guardrails, Logo, and Branding
+### 15.2 Enkrypt AI Guardrails, Logo, and Branding
 
 © 2025 Enkrypt AI. All rights reserved.
 

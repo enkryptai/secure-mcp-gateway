@@ -14,5 +14,5 @@ __dependencies__ = [
     "cryptography>=3.4.0",
     "pyjwt>=2.0.0",
     "asyncio>=3.4.3",
-    "mcp[cli]"
+    "mcp[cli]",
 ] 

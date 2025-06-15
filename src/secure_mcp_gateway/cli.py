@@ -5,12 +5,20 @@ import json
 import base64
 import argparse
 import subprocess
-from utils import sys_print
+import secure_mcp_gateway
+
+from secure_mcp_gateway.utils import sys_print
 
 sys_print("Initializing Enkrypt Secure MCP Gateway CLI Module")
 
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".enkrypt", "enkrypt_mcp_config.json")
 ECHO_SERVER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_mcps", "echo_mcp.py")
+
+base_dir = os.path.dirname(secure_mcp_gateway.__file__)
+GATEWAY_PY_PATH = os.path.join(base_dir, "gateway.py")
+print("CONFIG_PATH: ", CONFIG_PATH)
+print("GATEWAY_PY_PATH: ", GATEWAY_PY_PATH)
+
 
 def generate_default_config():
     """Generate a default config with a unique gateway key and uuid."""
@@ -157,11 +165,6 @@ def main():
     elif args.command == "install":
         if args.client.lower() == "claude" or args.client.lower() == "claude-desktop":
             client = args.client
-            base_dir = os.path.dirname(secure_mcp_gateway.__file__)
-            gateway_py = os.path.join(base_dir, "gateway.py")
-
-            print("config_path: ", CONFIG_PATH)
-            print("gateway_py path: ", gateway_py)
             print("client name from args: ", client)
 
             if not os.path.exists(CONFIG_PATH):
@@ -170,7 +173,7 @@ def main():
 
             gateway_key = get_gateway_key(CONFIG_PATH)
             cmd = [
-                "mcp", "install", gateway_py,
+                "mcp", "install", GATEWAY_PY_PATH,
                 "--name", "Enkrypt Secure MCP Gateway",
                 "--env-var", f"ENKRYPT_GATEWAY_KEY={gateway_key}"
             ]
@@ -179,6 +182,42 @@ def main():
                 print(f"Error installing gateway: {result.stderr}")
             else:
                 print(f"Successfully installed gateway for {client}")
+                # Now, look at the claude_desktop_config.json file to see if the path to gateway is correct or not
+                # As we get double path when installed locally in windows like
+                # C:\\Users\\PC\\Documents\\GitHub\\enkryptai\\secure-mcp-gateway\\C:\\Users\\PC\\Documents\\GitHub\\enkryptai\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\gateway.py
+                if sys.platform == "darwin":
+                    claude_desktop_config_path = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "Claude", "claude_desktop_config.json")
+                elif sys.platform == "win32":
+                    appdata = os.environ.get("APPDATA")
+                    if appdata:
+                        claude_desktop_config_path = os.path.join(appdata, "Claude", "claude_desktop_config.json")
+                    else:
+                        claude_desktop_config_path = None
+                else:
+                    # Fallback for Linux or unknown OS
+                    claude_desktop_config_path = os.path.join(os.path.expanduser("~"), ".claude", "claude_desktop_config.json")
+                
+                if not claude_desktop_config_path:
+                    print("Could not determine path for claude_desktop_config.json file. Please check if Claude Desktop is installed and try again.")
+                    sys.exit(1)
+
+                if not os.path.exists(claude_desktop_config_path):
+                    print(f"{claude_desktop_config_path} not found. Please check if Claude Desktop is installed and try again.")
+                    sys.exit(1)
+                
+                with open(claude_desktop_config_path, "r") as f:
+                    claude_desktop_config = json.load(f)
+                args_list = claude_desktop_config["mcpServers"]["Enkrypt Secure MCP Gateway"]["args"]
+                if args_list and args_list[-1] == GATEWAY_PY_PATH:
+                    print("Path to gateway is correct. No need to modify the claude_desktop_config.json file.")
+                else:
+                    print("Path to gateway is incorrect. Modifying the path to gateway in claude_desktop_config.json file...")
+                    args_list[-1] = GATEWAY_PY_PATH
+                    with open(claude_desktop_config_path, "w") as f:
+                        json.dump(claude_desktop_config, f, indent=2)
+                    print("Path to gateway modified in claude_desktop_config.json file")
+
+            print("Please restart Claude Desktop to use the gateway.")
             sys.exit(result.returncode)
 
         elif args.client.lower() == "cursor":
@@ -186,8 +225,6 @@ def main():
                 print(f"Config file not found at path: {CONFIG_PATH}. Please generate a new config file using 'generate-config' subcommand and try again.")
                 sys.exit(1)
 
-            base_dir = os.path.dirname(secure_mcp_gateway.__file__)
-            gateway_py = os.path.join(base_dir, "gateway.py")
             gateway_key = get_gateway_key(CONFIG_PATH)
             env = {
                 "ENKRYPT_GATEWAY_KEY": gateway_key
@@ -198,14 +235,14 @@ def main():
                 "mcp[cli]",
                 "mcp",
                 "run",
-                gateway_py
+                GATEWAY_PY_PATH
             ]
             uv_path = "uv"
-            cursor_config_path = os.path.join(os.path.expanduser("~"), ".cursor", "mcp.json")
-            print("cursor_config_path: ", cursor_config_path)
+            CURSOR_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".cursor", "mcp.json")
+            print("CURSOR_CONFIG_PATH: ", CURSOR_CONFIG_PATH)
             try:
                 add_or_update_cursor_server(
-                    config_path=cursor_config_path,
+                    config_path=CURSOR_CONFIG_PATH,
                     server_name="Enkrypt Secure MCP Gateway",
                     command=uv_path,
                     args=args_list,

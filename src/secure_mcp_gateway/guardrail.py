@@ -51,7 +51,10 @@ Example Usage:
 import aiohttp
 import requests
 
-from utils import (
+import importlib
+importlib.import_module("secure_mcp_gateway")
+
+from secure_mcp_gateway.utils import (
     get_common_config,
     sys_print
 )
