@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "secure-mcp-gateway"
 # NOTE: Also change version in __init__.py, pyproject.toml, and setup.py
-version = "1.0.0"
+version = "1.0.1"
 
 description = "Enkrypt Secure MCP Gateway"
 authors = [

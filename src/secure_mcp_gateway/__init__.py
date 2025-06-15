@@ -12,4 +12,4 @@ from .dependencies import __dependencies__
 # Tried using hatchling, importlib.metadata to be only in one place but it was not working
 # So, keeping it in all three places for now
 # -----------------------------------------------------------------------
-__version__ = "1.0.0"
+__version__ = "1.0.1"

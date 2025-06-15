@@ -37,6 +37,7 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 - [11. Uninstall the Gateway 🗑️](#11-uninstall-the-gateway)
 - [12. Known Issues being worked on 🏗️](#12-known-issues-being-worked-on)
 - [13. Known Limitations ⚠️](#13-known-limitations)
+- [14. Contribute 🤝](#14-contribute)
 
 ## 1. Features
 
@@ -1577,7 +1578,11 @@ Enforce strict context boundaries across repositories.
 
 ## 14. Contribute
 
-- Look at the `TODO`
+- Look at the `TODO` file for the current work in progress and yet to be implemented features
+
+- Install the gateway locally to test your changes
+  - by following the [Git clone steps](#42-local-installation-with-git-clone)
+  - or build it using `python -m build`, activate the venv and install using `pip install .`
 
 - Report or fix any bugs you encounter 😊
 

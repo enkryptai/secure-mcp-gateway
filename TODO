@@ -3,3 +3,4 @@
 - Add Docker support for remote deployment
 - deploy remotely and update readme with claude and cursor demo
 - Refactor enkrypt_secure_call_tools to decouple tool call logic and move to client.py
+- Tackle coming soon features mentioned in the readme
