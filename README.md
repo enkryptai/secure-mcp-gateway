@@ -23,7 +23,7 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
     - [4.2.2 Run the setup script 📥](#422-run-the-setup-script)
     - [4.2.3 Setup Other MCP Clients 🤖](#423-setup-other-mcp-clients)
   - [4.3 Remote Installation 🌐](#43-remote-installation) -->
-- [5. Verify Installation and check the files generated 🔍](#5-verify-installation-and-check-the-files-generated)
+- [5. Verify Installation and check the files generated ✅](#5-verify-installation-and-check-the-files-generated)
   <!-- - [5.1 Verify Claude Desktop 🔍](#51-verify-claude-desktop)
   - [5.2 Example MCP config file generated 📄](#52-example-mcp-config-file-generated)
   - [5.3 Restart Claude Desktop to run the Gateway 🔄](#53-restart-claude-desktop-to-run-the-gateway)
