@@ -467,6 +467,8 @@ Please restart Claude Desktop to use the gateway.
 
 - This automatically updates your ~/.cursor/mcp.json (on Windows: C:\Users\<User>\.cursor\mcp.json) with the correct entry.
 
+- *Although it is not usually required to restart, if you see it in loading state for a long time, please restart Cursor*
+
 <details>
 <summary><strong>Example file in Windows 🪟  ℹ️ </strong> 🔽</summary>
 <br>
@@ -910,7 +912,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 - You can see the MCP server in the list of MCP servers in Cursor by navigating to `~/.cursor/mcp.json` and also by clicking on the settings icon on the top right and then clicking on `Tools & Integrations` or on the `MCP` tab
 
-- *Generally restarting is not needed but if it is loading for a long time, you can try restarting Cursor*
+- *Generally restarting is not needed but if it is in loading state for a long time, please restart Cursor*
 
   ![cursor-mcp-running](./docs/images/cursor-mcp-running.png)
 
