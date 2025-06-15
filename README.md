@@ -989,7 +989,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 <br>
 <details>
 <summary><strong>⛩️ Gateway Config Schema ℹ️ </strong> 🔽</summary>
-<br>
 
 - If you want a different set of MCP servers for a separate client/user, you can generate a new unqiue `key` and unique `UUID` by looking at the `setup` scripts and add it to the `gateways` section of the config file
 
@@ -1026,7 +1025,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 </details>
 <details>
 <summary><strong>🔒 Optional Guardrails Schema ℹ️ </strong> 🔽</summary>
-<br>
 
 - Set `enkrypt_guardrails_enabled` to `true` in your `common_mcp_gateway_config`
 
