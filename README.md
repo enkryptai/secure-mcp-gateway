@@ -1113,10 +1113,8 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 ## 7. (Optional) Add GitHub MCP Server to the Gateway
 
-<br>
 <details>
 <summary><strong>👨🏻‍💻 Configure GitHub </strong> 🔽</summary>
-<br>
 
 - `GitHub MCP Server` needs `docker` to be installed. So, please install and have `docker` running on your machine before proceeding with the steps below
 
@@ -1212,18 +1210,18 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 ## 8. (Optional) Protect GitHub MCP Server and Test Echo Server
 
-<br>
 <details>
 <summary><strong>🎁 Protect with Enkrypt Guardrails for FREE </strong> 🔽</summary>
+<br>
 <details>
-<summary><strong>🌐 Create a Guardrail in Enkrypt App </strong> 🔽</summary>
+<summary><strong>8.1 🌐 Create a Guardrail in Enkrypt App </strong> 🔽</summary>
 <br>
 
 - You can use a prompt to generate rules or generate a PDF file while you can then paste or upload while creating a policy in the App
 
 <br>
 <details>
-<summary><strong>🔍 Rules to copy </strong> 🔽</summary>
+<summary><strong>8.1.1 🔍 Rules to copy </strong> 🔽</summary>
 <br>
 
 ```text
@@ -1298,7 +1296,7 @@ Enforce strict context boundaries across repositories.
 </details>
 <br>
 <details>
-<summary><strong>💡 Prompt used to generate the rules </strong> 🔽</summary>
+<summary><strong>8.1.2 💡 Prompt used to generate the rules </strong> 🔽</summary>
 <br>
 
 - `Give numbered list of security rules in plain text for configuring AI guardrails for a GitHub server on the rules and policies it needs to follow to prevent malicious use of the GitHub services`
@@ -1354,7 +1352,7 @@ Enforce strict context boundaries across repositories.
 
 </details>
 <details>
-<summary><strong>🔑 Get Enkrypt API Key </strong> 🔽</summary>
+<summary><strong>8.2 🔑 Get Enkrypt API Key </strong> 🔽</summary>
 <br>
 
 - Now, we need get out FREE API Key from Enkrypt App. Hover over the left sidebar for it to expand and click on `Settings`
@@ -1369,7 +1367,7 @@ Enforce strict context boundaries across repositories.
 
 </details>
 <details>
-<summary><strong>🔑 Add API Key and the Guardrail to Config File </strong> 🔽</summary>
+<summary><strong>8.3 🔑 Add API Key and the Guardrail to Config File </strong> 🔽</summary>
 <br>
 
 - Now we have everything we need from the App. Let's add the API Key to the `enkrypt_mcp_config.json` file
@@ -1456,7 +1454,7 @@ Enforce strict context boundaries across repositories.
 
 </details>
 <details>
-<summary><strong>🧪 Test Guardrails </strong> 🔽</summary>
+<summary><strong>8.4 🧪 Test Guardrails </strong> 🔽</summary>
 <br>
 
 - **Save** the file and restart Claude Desktop for it to detect the changes
@@ -1483,7 +1481,7 @@ Enforce strict context boundaries across repositories.
 
 </details>
 <details>
-<summary><strong>🔧 Fine tune Guardrails </strong> 🔽</summary>
+<summary><strong>8.5 🔧 Fine tune Guardrails </strong> 🔽</summary>
 <br>
 
 - *The safe prompt `List all files from https://github.com/enkryptai/enkryptai-mcp-server` may also be blocked if you use Injection Attack Detector or Policy Violation on Output side. So, there is some fine tuning required for the guardrails to find the best combination of enabled detectors and blocks for your servers. See the next section for recommendations.*
@@ -1533,7 +1531,8 @@ Enforce strict context boundaries across repositories.
 <details>
 <summary><strong>💾 Cache Management </strong> 🔽</summary>
 <details>
-<summary><strong>📊 Get Cache Status </strong> 🔽</summary>
+<br>
+<summary><strong>10.1 📊 Get Cache Status </strong> 🔽</summary>
 <br>
 
 - The Gateway can give the summary of it's cache status by looking at the local/external cache server
@@ -1544,7 +1543,7 @@ Enforce strict context boundaries across repositories.
 
 </details>
 <details>
-<summary><strong>🧹 Clear Cache </strong> 🔽</summary>
+<summary><strong>10.2 🧹 Clear Cache </strong> 🔽</summary>
 <br>
 
 - The Gateway can clear it's cache from local/external cache server
