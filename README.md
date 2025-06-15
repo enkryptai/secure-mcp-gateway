@@ -709,7 +709,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 <details>
 <summary><strong>⬡ Cursor </strong> 🔽</summary>
-<br>
 
 - You can navigate to cursor's **Global MCP** file at `C:\Users\PC\.cursor\mcp.json` on Windows or at `~/.cursor/mcp.json` on Linux/macOS
 
