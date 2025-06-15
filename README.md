@@ -1532,7 +1532,6 @@ Enforce strict context boundaries across repositories.
 <details>
 <br>
 <summary><strong>10.1 📊 Get Cache Status </strong></summary>
-<br>
 
 - The Gateway can give the summary of it's cache status by looking at the local/external cache server
 
@@ -1543,7 +1542,6 @@ Enforce strict context boundaries across repositories.
 </details>
 <details>
 <summary><strong>10.2 🧹 Clear Cache </strong></summary>
-<br>
 
 - The Gateway can clear it's cache from local/external cache server
 
