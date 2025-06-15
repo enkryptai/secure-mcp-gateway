@@ -47,16 +47,17 @@ Example Usage:
     ```
 """
 
-
+# import sys
 import aiohttp
 import requests
 
-from utils import (
+from secure_mcp_gateway.utils import (
     get_common_config,
     sys_print
 )
+from secure_mcp_gateway.version import __version__
 
-sys_print("Initializing Enkrypt Secure MCP Gateway Guardrail Module")
+sys_print(f"Initializing Enkrypt Secure MCP Gateway Guardrail Module v{__version__}")
 
 common_config = get_common_config()
 

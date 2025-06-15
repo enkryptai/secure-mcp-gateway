@@ -1,8 +1,7 @@
 """
-Dependencies for the Enkrypt Secure MCP Gateway package.
+Dependencies for the Enkrypt Secure MCP Gateway package
 """
 
-# NOTE: Also change these in dependencies.py, pyproject.toml, and setup.py
 __dependencies__ = [
     "flask>=2.0.0",
     "flask-cors>=3.0.0",
@@ -14,5 +13,5 @@ __dependencies__ = [
     "cryptography>=3.4.0",
     "pyjwt>=2.0.0",
     "asyncio>=3.4.3",
-    "mcp[cli]"
-] 
+    "mcp[cli]",
+]
