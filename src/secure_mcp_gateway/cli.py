@@ -5,17 +5,23 @@ import json
 import base64
 import argparse
 import subprocess
+# import importlib.resources
 import secure_mcp_gateway
+from importlib.resources import files
 
 from secure_mcp_gateway.utils import sys_print
 
 sys_print("Initializing Enkrypt Secure MCP Gateway CLI Module")
 
-CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".enkrypt", "enkrypt_mcp_config.json")
-ECHO_SERVER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_mcps", "echo_mcp.py")
+# base_dir = os.path.dirname(secure_mcp_gateway.__file__)
+BASE_DIR = str(files('secure_mcp_gateway'))
 
-base_dir = os.path.dirname(secure_mcp_gateway.__file__)
-GATEWAY_PY_PATH = os.path.join(base_dir, "gateway.py")
+CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".enkrypt", "enkrypt_mcp_config.json")
+
+# ECHO_SERVER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_mcps", "echo_mcp.py")
+ECHO_SERVER_PATH = os.path.join(BASE_DIR, "test_mcps", "echo_mcp.py")
+
+GATEWAY_PY_PATH = os.path.join(BASE_DIR, "gateway.py")
 print("CONFIG_PATH: ", CONFIG_PATH)
 print("GATEWAY_PY_PATH: ", GATEWAY_PY_PATH)
 
@@ -97,11 +103,14 @@ def get_gateway_key(config_path):
 
 
 def add_or_update_cursor_server(config_path, server_name, command, args, env):
+    config = {}
     if os.path.exists(config_path):
-        with open(config_path, "r") as f:
-            config = json.load(f)
-    else:
-        config = {}
+        try:
+            with open(config_path, "r") as f:
+                config = json.load(f)
+        except json.JSONDecodeError:
+            print(f"Error parsing {config_path}. The file may be corrupted.")
+            sys.exit(1)
 
     if "mcpServers" not in config:
         config["mcpServers"] = {}
@@ -204,18 +213,37 @@ def main():
                 if not os.path.exists(claude_desktop_config_path):
                     print(f"{claude_desktop_config_path} not found. Please check if Claude Desktop is installed and try again.")
                     sys.exit(1)
+
+                try:
+                    with open(claude_desktop_config_path, "r") as f:
+                        claude_desktop_config = json.load(f)
+                except json.JSONDecodeError:
+                    print(f"Error parsing {claude_desktop_config_path}. The file may be corrupted.")
+                    sys.exit(1)
                 
-                with open(claude_desktop_config_path, "r") as f:
-                    claude_desktop_config = json.load(f)
-                args_list = claude_desktop_config["mcpServers"]["Enkrypt Secure MCP Gateway"]["args"]
+                if "mcpServers" not in claude_desktop_config or "Enkrypt Secure MCP Gateway" not in claude_desktop_config.get("mcpServers", {}):
+                    print("Enkrypt Secure MCP Gateway not found in Claude Desktop configuration. Something went wrong. Please reinstall the gateway.")
+                    sys.exit(1)
+
+                args_list = claude_desktop_config["mcpServers"]["Enkrypt Secure MCP Gateway"].get("args", [])
+
+                if not args_list:
+                    print("No args found for Enkrypt Secure MCP Gateway in Claude Desktop configuration. Something went wrong. Please reinstall the gateway.")
+                    sys.exit(1)
+
                 if args_list and args_list[-1] == GATEWAY_PY_PATH:
                     print("Path to gateway is correct. No need to modify the claude_desktop_config.json file.")
                 else:
                     print("Path to gateway is incorrect. Modifying the path to gateway in claude_desktop_config.json file...")
                     args_list[-1] = GATEWAY_PY_PATH
-                    with open(claude_desktop_config_path, "w") as f:
-                        json.dump(claude_desktop_config, f, indent=2)
-                    print("Path to gateway modified in claude_desktop_config.json file")
+                    try:
+                        with open(claude_desktop_config_path, "w") as f:
+                            json.dump(claude_desktop_config, f, indent=2)
+                        print("Path to gateway modified in claude_desktop_config.json file")
+                    except IOError as e:
+                        print(f"Error writing to {claude_desktop_config_path}: {e}")
+                        print("Please retry or manually edit the file to set the correct gateway path.")
+                        sys.exit(1)
 
             print("Please restart Claude Desktop to use the gateway.")
             sys.exit(result.returncode)
@@ -238,11 +266,11 @@ def main():
                 GATEWAY_PY_PATH
             ]
             uv_path = "uv"
-            CURSOR_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".cursor", "mcp.json")
-            print("CURSOR_CONFIG_PATH: ", CURSOR_CONFIG_PATH)
+            cursor_config_path = os.path.join(os.path.expanduser("~"), ".cursor", "mcp.json")
+            print("cursor_config_path: ", cursor_config_path)
             try:
                 add_or_update_cursor_server(
-                    config_path=CURSOR_CONFIG_PATH,
+                    config_path=cursor_config_path,
                     server_name="Enkrypt Secure MCP Gateway",
                     command=uv_path,
                     args=args_list,

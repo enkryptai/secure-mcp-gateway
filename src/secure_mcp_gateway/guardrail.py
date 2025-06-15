@@ -47,12 +47,17 @@ Example Usage:
     ```
 """
 
-
+import sys
 import aiohttp
 import requests
 
 import importlib
-importlib.import_module("secure_mcp_gateway")
+# Force module initialization to resolve pip installation issues
+try:
+    importlib.import_module("secure_mcp_gateway")
+except ImportError as e:
+    sys.stderr.write(f"Error importing secure_mcp_gateway: {e}\n")
+    sys.exit(1)
 
 from secure_mcp_gateway.utils import (
     get_common_config,

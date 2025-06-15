@@ -7,13 +7,17 @@ This module provides common utilities for the Enkrypt Secure MCP Gateway
 import os
 import sys
 import json
+from importlib.resources import files
 
 print("Initializing Enkrypt Secure MCP Gateway Common Utilities Module", file=sys.stderr)
 
+BASE_DIR = str(files('secure_mcp_gateway'))
 CONFIG_NAME = "enkrypt_mcp_config.json"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".enkrypt", CONFIG_NAME)
+
 EXAMPLE_CONFIG_NAME = f"example_{CONFIG_NAME}"
-EXAMPLE_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), EXAMPLE_CONFIG_NAME)
+# EXAMPLE_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), EXAMPLE_CONFIG_NAME)
+EXAMPLE_CONFIG_PATH = os.path.join(BASE_DIR, EXAMPLE_CONFIG_NAME)
 
 DEFAULT_COMMON_CONFIG = {
     "enkrypt_log_level": "INFO",
