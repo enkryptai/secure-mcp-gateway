@@ -5,7 +5,7 @@ on:
     branches:
       - main
     tags:
-      - 'v*.*.*'  # Triggers on version tags like v0.0.0. Change it in src/secure_mcp_gateway/__init__.py
+      - 'v*.*.*'  # Triggers on version tags like v0.0.0. Change it in src/secure_mcp_gateway/version.py
 
 jobs:
   build-validate-and-publish:

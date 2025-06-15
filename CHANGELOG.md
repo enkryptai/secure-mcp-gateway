@@ -2,13 +2,14 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
-## [1.0.1] - 2025-06-15
+## [1.0.1, 1.0.2] - 2025-06-15
 
-### New Features in v1.0.1
+### New Features in v1.0.1, v1.0.2
 
 - `pip` support for installation
 - `cli` commands to `generate-config` and `install` the gateway for `claude-desktop` and `cursor`
 - Automatic installation of dependencies
+- Simplified Readme
 
 ## [1.0.0] - 2025-06-04
 
