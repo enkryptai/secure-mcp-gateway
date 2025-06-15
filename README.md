@@ -17,12 +17,12 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 - [2. High level steps of how the MCP Gateway works 🪜](#2-high-level-steps-of-how-the-mcp-gateway-works)
 - [3. Prerequisites 🧩](#3-prerequisites)
 - [4. Gateway Setup 👨‍💻](#4-gateway-setup)
-  - [4.1 Local Installation with pip 📦](#41-local-installation-with-pip)
+  <!-- - [4.1 Local Installation with pip 📦](#41-local-installation-with-pip)
   - [4.2 Local Installation with git clone 🗂️](#42-local-installation-with-git-clone)
-    <!-- - [4.2.1 Clone the repo, setup virtual environment and install dependencies 📥](#421-clone-the-repo-setup-virtual-environment-and-install-dependencies)
+    - [4.2.1 Clone the repo, setup virtual environment and install dependencies 📥](#421-clone-the-repo-setup-virtual-environment-and-install-dependencies)
     - [4.2.2 Run the setup script 📥](#422-run-the-setup-script)
-    - [4.2.3 Setup Other MCP Clients 🤖](#423-setup-other-mcp-clients) -->
-  - [4.3 Remote Installation 🌐](#43-remote-installation)
+    - [4.2.3 Setup Other MCP Clients 🤖](#423-setup-other-mcp-clients)
+  - [4.3 Remote Installation 🌐](#43-remote-installation) -->
 - [5. Verify Installation and check the files generated 🔍](#5-verify-installation-and-check-the-files-generated)
   <!-- - [5.1 Verify Claude Desktop 🔍](#51-verify-claude-desktop)
   - [5.2 Example MCP config file generated 📄](#52-example-mcp-config-file-generated)
