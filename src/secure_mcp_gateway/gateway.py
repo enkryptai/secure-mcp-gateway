@@ -52,33 +52,62 @@ import os
 import sys
 import subprocess
 
-import importlib
-# Force module initialization to resolve pip installation issues
+# Printing system info before importing other modules
+# As MCP Clients like Claude Desktop use their own Python interpreter, it may not have the modules installed
+# So, we can use this debug system info to identify that python interpreter to install the missing modules using that specific interpreter
+# So, debugging this in gateway module as this info can be used for fixing such issues in other modules
+print("Initializing Enkrypt Secure MCP Gateway Module", file=sys.stderr)
+print("--------------------------------", file=sys.stderr)
+print("SYSTEM INFO: ", file=sys.stderr)
+print(f"Using Python interpreter: {sys.executable}", file=sys.stderr)
+print(f"Python version: {sys.version}", file=sys.stderr)
+print(f"Current working directory: {os.getcwd()}", file=sys.stderr)
+print(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}", file=sys.stderr)
+print("--------------------------------", file=sys.stderr)
+
+# Error: Can't find secure_mcp_gateway
+# import importlib
+# # Force module initialization to resolve pip installation issues
+# try:
+#     importlib.import_module("secure_mcp_gateway")
+# except ImportError as e:
+#     sys.stderr.write(f"Error importing secure_mcp_gateway: {e}\n")
+#     sys.exit(1)
+
+# Error: Can't find secure_mcp_gateway
+# Add src directory to Python path
+# from importlib.resources import files
+# BASE_DIR = str(files('secure_mcp_gateway'))
+# if BASE_DIR not in sys.path:
+#     sys.path.insert(0, BASE_DIR)
+
+# Add src directory to Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.abspath(os.path.join(current_dir, '..'))
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+
+# Try to install the package if not found to cater for clients like Claude Desktop who use a separate python interpreter
 try:
-    importlib.import_module("secure_mcp_gateway")
-except ImportError as e:
-    sys.stderr.write(f"Error importing secure_mcp_gateway: {e}\n")
-    sys.exit(1)
+    import secure_mcp_gateway
+except ImportError:
+    print("Installing secure_mcp_gateway package...", file=sys.stderr)
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", src_dir],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+    import secure_mcp_gateway
 
 from secure_mcp_gateway.utils import (
     sys_print,
     get_common_config,
     CONFIG_PATH
 )
+from secure_mcp_gateway.version import __version__
 from secure_mcp_gateway.dependencies import __dependencies__
 
-# Printing system info before importing other modules
-# As MCP Clients like Claude Desktop use their own Python interpreter, it may not have the modules installed
-# So, we can use this debug system info to identify that python interpreter to install the missing modules using that specific interpreter
-# So, debugging this in gateway module as this info can be used for fixing such issues in other modules
-sys_print("Initializing Enkrypt Secure MCP Gateway Module")
-sys_print("--------------------------------")
-sys_print("SYSTEM INFO: ")
-sys_print(f"Using Python interpreter: {sys.executable}")
-sys_print(f"Python version: {sys.version}")
-sys_print(f"Current working directory: {os.getcwd()}")
-sys_print(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}")
-sys_print("--------------------------------")
+sys_print(f"Successfully imported secure_mcp_gateway v{__version__} in gateway module")
 
 try:
     sys_print("Installing dependencies...")
@@ -423,10 +452,11 @@ def enkrypt_authenticate(ctx: Context):
 # --- MCP Tools ---
 
 
-# NOTE: inputSchema is not supported by MCP protocol used by Claude Desktop for some reason
+# NOTE: inputSchema is not supported here if we explicitly define it.
 # But it is defined in the SDK - https://modelcontextprotocol.io/docs/concepts/tools#python
-# So it is commented out for now
-# But works with annotations - https://gofastmcp.com/servers/tools#annotations-2
+# As FastMCP automatically generates an input schema based on the function’s parameters and type annotations.
+# See: https://gofastmcp.com/servers/tools#the-%40tool-decorator
+# Annotations can be explicitly defined - https://gofastmcp.com/servers/tools#annotations-2
 
 # NOTE: If we use the name "enkrypt_list_available_servers", for some reason claude-desktop throws internal server error.
 # So we use a different name as it doesn't even print any logs for us to troubleshoot the issue.

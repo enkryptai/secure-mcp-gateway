@@ -5,16 +5,17 @@ import json
 import base64
 import argparse
 import subprocess
-# import importlib.resources
-import secure_mcp_gateway
 from importlib.resources import files
 
+# BASE_DIR = os.path.dirname(secure_mcp_gateway.__file__)
+BASE_DIR = str(files('secure_mcp_gateway'))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+from secure_mcp_gateway.version import __version__
 from secure_mcp_gateway.utils import sys_print
 
-sys_print("Initializing Enkrypt Secure MCP Gateway CLI Module")
-
-# base_dir = os.path.dirname(secure_mcp_gateway.__file__)
-BASE_DIR = str(files('secure_mcp_gateway'))
+sys_print(f"Initializing Enkrypt Secure MCP Gateway CLI Module v{__version__}")
 
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".enkrypt", "enkrypt_mcp_config.json")
 

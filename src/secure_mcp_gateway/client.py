@@ -76,20 +76,13 @@ import redis as external_cache_server
 from mcp.client.stdio import stdio_client
 from mcp import ClientSession, StdioServerParameters
 
-import importlib
-# Force module initialization to resolve pip installation issues
-try:
-    importlib.import_module("secure_mcp_gateway")
-except ImportError as e:
-    sys.stderr.write(f"Error importing secure_mcp_gateway: {e}\n")
-    sys.exit(1)
-
 from secure_mcp_gateway.utils import (
     get_common_config,
     sys_print
 )
+from secure_mcp_gateway.version import __version__
 
-sys_print("Initializing Enkrypt Secure MCP Gateway Client Module")
+sys_print(f"Initializing Enkrypt Secure MCP Gateway Client Module v{__version__}")
 
 common_config = get_common_config()
 

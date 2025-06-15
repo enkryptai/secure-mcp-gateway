@@ -8,8 +8,9 @@ import os
 import sys
 import json
 from importlib.resources import files
+from secure_mcp_gateway.version import __version__
 
-print("Initializing Enkrypt Secure MCP Gateway Common Utilities Module", file=sys.stderr)
+print(f"Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}", file=sys.stderr)
 
 BASE_DIR = str(files('secure_mcp_gateway'))
 CONFIG_NAME = "enkrypt_mcp_config.json"
