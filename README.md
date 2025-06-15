@@ -32,7 +32,7 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
   - [5.6 Verify Cursor 🔍](#56-verify-cursor) -->
 - [6. Edit the Gateway config as needed ✏️](#6-edit-the-gateway-config-as-needed)
 - [7. (Optional) Add GitHub MCP Server to the Gateway 🤖](#7-optional-add-github-mcp-server-to-the-gateway)
-- [8. (Optional) Protect GitHub MCP Server and Test Echo Server with Enkrypt Guardrails for FREE 🔒](#8-optional-protect-github-mcp-server-and-test-echo-server-with-enkrypt-guardrails-for-free)
+- [8. (Optional) Protect GitHub MCP Server and Test Echo Server 🔒](#8-optional-protect-github-mcp-server-and-test-echo-server)
 - [9. Recommendations for using Guardrails 💡](#9-recommendations-for-using-guardrails)
 - [10. Other tools available 🔧](#10-other-tools-available)
 - [11. Deployment Patterns 🪂](#11-deployment-patterns)
@@ -1213,9 +1213,11 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 </details>
 
-## 8. (Optional) Protect GitHub MCP Server and Test Echo Server with Enkrypt Guardrails for FREE
+## 8. (Optional) Protect GitHub MCP Server and Test Echo Server
 
 <br>
+<details>
+<summary><strong>🎁 Protect with Enkrypt Guardrails for FREE </strong> 🔽</summary>
 <details>
 <summary><strong>🌐 Create a Guardrail in Enkrypt App </strong> 🔽</summary>
 <br>
@@ -1490,6 +1492,7 @@ Enforce strict context boundaries across repositories.
 - *The safe prompt `List all files from https://github.com/enkryptai/enkryptai-mcp-server` may also be blocked if you use Injection Attack Detector or Policy Violation on Output side. So, there is some fine tuning required for the guardrails to find the best combination of enabled detectors and blocks for your servers. See the next section for recommendations.*
 
 </details>
+</details>
 
 ## 9. Recommendations for using Guardrails
 
@@ -1513,7 +1516,6 @@ Enforce strict context boundaries across repositories.
 
 - Try our `Policy Violation` detector with your own custom policy which details what is allowed and what is not. This may be the best way for your use case.
 
-</details>
 <details>
 <summary><strong>🚨 Try Policy Violation </strong> 🔽</summary>
 <br>
@@ -1527,9 +1529,12 @@ Enforce strict context boundaries across repositories.
   ![enkrypt-app-homepage-policies](./docs/images/enkrypt-app-homepage-policies.png)
 
 </details>
+</details>
 
 ## 10. Other Tools Available
 
+<details>
+<summary><strong>💾 Cache Management </strong> 🔽</summary>
 <details>
 <summary><strong>📊 Get Cache Status </strong> 🔽</summary>
 <br>
@@ -1559,6 +1564,7 @@ Enforce strict context boundaries across repositories.
 
   ![claude-mcp-chat-clear-cache](./docs/images/claude-mcp-chat-clear-cache.png)
 
+</details>
 </details>
 
 ## 11. Deployment patterns
