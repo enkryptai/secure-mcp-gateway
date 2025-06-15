@@ -168,7 +168,6 @@ python -m pip install uv
 
 </details>
 </details>
-<br>
 
 <!-- - Set `PYTHONPATH` in your system environment variables
 
