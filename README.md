@@ -1739,6 +1739,9 @@ Enforce strict context boundaries across repositories.
 
 ## 12. Uninstall the Gateway
 
+<details>
+<summary><strong>🗑️ Uninstall the Gateway </strong></summary>
+
 - To remove the Gateway from any MCP client, just remove the MCP server block `"Enkrypt Secure MCP Gateway": {...}` from the client's config file.
 
   - Restart the MCP client to apply the changes for some clients like Claude Desktop. Cursor does not require a restart.
@@ -1749,11 +1752,12 @@ Enforce strict context boundaries across repositories.
   pip uninstall secure-mcp-gateway
   ```
 
+</details>
+
 ## 13. Troubleshooting
 
 <details>
 <summary><strong>🕵 Troubleshooting </strong></summary>
-<br>
 
 - If any calls fail in the client, please look at the mcp logs of the respective client
 
