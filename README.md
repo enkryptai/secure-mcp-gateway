@@ -361,7 +361,6 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
 ```
 
 </details>
-<br>
 <details>
 <summary><strong>🍎 Example file in macOS</strong></summary>
 <br>
@@ -525,7 +524,6 @@ Please restart Claude Desktop to use the gateway.
   ```
 
 </details>
-<br>
 <details>
 <summary><strong>🍎 Example file in macOS</strong></summary>
 <br>
@@ -595,7 +593,6 @@ Please restart Claude Desktop to use the gateway.
   ```
 
 </details>
-<br>
 <details>
 <summary><strong>🍎 Example file in macOS</strong></summary>
 <br>
@@ -911,7 +908,6 @@ Installation complete. Check the claude_desktop_config.json file as per the read
   ```
 
 </details>
-<br>
 <details>
 <summary><strong>🍎 Example file in macOS</strong></summary>
 <br>
