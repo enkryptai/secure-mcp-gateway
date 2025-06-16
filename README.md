@@ -37,9 +37,10 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 - [10. Other tools available 🔧](#10-other-tools-available)
 - [11. Deployment Patterns 🪂](#11-deployment-patterns)
 - [12. Uninstall the Gateway 🗑️](#12-uninstall-the-gateway)
-- [13. Known Issues being worked on 🏗️](#13-known-issues-being-worked-on)
-- [14. Known Limitations ⚠️](#14-known-limitations)
-- [15. Contribute 🤝](#15-contribute)
+- [13. Troubleshooting 🔧](#13-troubleshooting)
+- [14. Known Issues being worked on 🏗️](#14-known-issues-being-worked-on)
+- [15. Known Limitations ⚠️](#15-known-limitations)
+- [16. Contribute 🤝](#16-contribute)
 
 ## 1. Features
 
@@ -1748,15 +1749,32 @@ Enforce strict context boundaries across repositories.
   pip uninstall secure-mcp-gateway
   ```
 
-## 13. Known Issues being worked on
+## 13. Troubleshooting
+
+- If any calls fail in the client, please look at the mcp logs of the respective client
+
+  - [See this for Claude logs location](https://modelcontextprotocol.io/docs/tools/debugging#viewing-logs)
+
+    - Example 🍎 Linux/macOS log path: `~/Library/Logs/Claude/mcp-server-Enkrypt Secure MCP Gateway.log`
+    - Example 🪟 Windows log path: `C:\Users\PC\AppData\Roaming\Claude\logs\mcp-server-Enkrypt Secure MCP Gateway.log`
+
+  - [See this discussion for Cursor logs](https://forum.cursor.com/t/where-can-we-find-mcp-error-log/74719)
+
+- If you see errors like `Exception: unhandled errors in a TaskGroup (1 sub-exception)` then maybe the MCP server the gateway is trying to use is not running.
+  - So, please make sure the file it is trying to access is available
+  - Any pre-requisites for the MCP server to run are met like `docker` running, etc.
+
+- If we need more detailed logs, please set the `enkrypt_log_level` to `debug` in the `enkrypt_mcp_config.json` file and restart the MCP client.
+
+## 14. Known Issues being worked on
 
 - Output guardrails are not being applied to non-text tool results. Support for other media types like images, audio, etc. is coming soon.
 
-## 14. Known Limitations
+## 15. Known Limitations
 
 - The Gateway does not support a scenario where the Gateway is deployed remotely but the MCP server is deployed locally (without being exposed to the internet). This is because the Gateway needs to know the MCP server's address to forward requests to it.
 
-## 15. Contribute
+## 16. Contribute
 
 - Look at the `TODO` file for the current work in progress and yet to be implemented features
 
@@ -1766,9 +1784,9 @@ Enforce strict context boundaries across repositories.
 
 - Report or fix any bugs you encounter 😊
 
-## 16. License
+## 17. License
 
-### 16.1 Enkrypt AI MCP Gateway Core
+### 17.1 Enkrypt AI MCP Gateway Core
 
 This project's core functionality is licensed under the MIT License.
 
@@ -1780,7 +1798,7 @@ This project's core functionality is licensed under the MIT License.
 
 For the full license text, see the `LICENSE.txt` file in this repository.
 
-### 16.2 Enkrypt AI Guardrails, Logo, and Branding
+### 17.2 Enkrypt AI Guardrails, Logo, and Branding
 
 © 2025 Enkrypt AI. All rights reserved.
 
