@@ -37,7 +37,7 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 - [10. Other tools available 🔧](#10-other-tools-available)
 - [11. Deployment Patterns 🪂](#11-deployment-patterns)
 - [12. Uninstall the Gateway 🗑️](#12-uninstall-the-gateway)
-- [13. Troubleshooting 🔧](#13-troubleshooting)
+- [13. Troubleshooting 🕵](#13-troubleshooting)
 - [14. Known Issues being worked on 🏗️](#14-known-issues-being-worked-on)
 - [15. Known Limitations ⚠️](#15-known-limitations)
 - [16. Contribute 🤝](#16-contribute)
@@ -1751,6 +1751,10 @@ Enforce strict context boundaries across repositories.
 
 ## 13. Troubleshooting
 
+<details>
+<summary><strong>🕵 Troubleshooting </strong></summary>
+<br>
+
 - If any calls fail in the client, please look at the mcp logs of the respective client
 
   - [See this for Claude logs location](https://modelcontextprotocol.io/docs/tools/debugging#viewing-logs)
@@ -1765,6 +1769,8 @@ Enforce strict context boundaries across repositories.
   - Any pre-requisites for the MCP server to run are met like `docker` running, etc.
 
 - If we need more detailed logs, please set the `enkrypt_log_level` to `debug` in the `enkrypt_mcp_config.json` file and restart the MCP client.
+
+</details>
 
 ## 14. Known Issues being worked on
 
