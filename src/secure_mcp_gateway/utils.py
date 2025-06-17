@@ -12,12 +12,12 @@ from secure_mcp_gateway.version import __version__
 
 print(f"Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}", file=sys.stderr)
 
-BASE_DIR = str(files('secure_mcp_gateway'))
 CONFIG_NAME = "enkrypt_mcp_config.json"
+DOCKER_CONFIG_PATH = f"/root/.enkrypt/docker/{CONFIG_NAME}"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".enkrypt", CONFIG_NAME)
 
+BASE_DIR = str(files('secure_mcp_gateway'))
 EXAMPLE_CONFIG_NAME = f"example_{CONFIG_NAME}"
-# EXAMPLE_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), EXAMPLE_CONFIG_NAME)
 EXAMPLE_CONFIG_PATH = os.path.join(BASE_DIR, EXAMPLE_CONFIG_NAME)
 
 DEFAULT_COMMON_CONFIG = {
@@ -40,11 +40,11 @@ DEFAULT_COMMON_CONFIG = {
 }
 
 
-def sys_print(message, file=sys.stderr):
+def sys_print(*args, **kwargs):
     """
     Print a message to the console
     """
-    print(message, file=file)
+    print(*args, file=sys.stderr, **kwargs)
 
 
 def get_file_from_root(file_name):
@@ -64,7 +64,7 @@ def get_absolute_path(file_name):
     return os.path.join(current_dir, file_name)
 
 
-def does_file_exist(file_name_or_path, is_absolute_path=False):
+def does_file_exist(file_name_or_path, is_absolute_path=True):
     """
     Check if a file exists in the current directory
     """
@@ -74,6 +74,27 @@ def does_file_exist(file_name_or_path, is_absolute_path=False):
         return os.path.exists(get_absolute_path(file_name_or_path))
 
 
+def is_docker():
+    """
+    Check if the code is running inside a Docker container.
+    """
+    # Check for /.dockerenv file
+    if os.path.exists('/.dockerenv'):
+        return True
+
+    # Check cgroup for Docker-specific entries
+    try:
+        with open('/proc/1/cgroup', 'rt') as f:
+            for line in f:
+                if 'docker' in line:
+                    return True
+    except FileNotFoundError:
+        # /proc/1/cgroup doesn't exist, which is common outside of Linux
+        pass
+
+    return False
+
+
 def get_common_config(print_debug=False):
     """
     Get the common configuration for the Enkrypt Secure MCP Gateway
@@ -81,49 +102,29 @@ def get_common_config(print_debug=False):
     config = {}
 
     if print_debug:
-        print("Getting Enkrypt Common Configuration", file=sys.stderr)
-    if print_debug:
-        print(f"config_path: {CONFIG_PATH}", file=sys.stderr)
-        print(f"example_config_path: {EXAMPLE_CONFIG_PATH}", file=sys.stderr)
+        sys_print("Getting Enkrypt Common Configuration")
+        sys_print(f"config_path: {CONFIG_PATH}")
+        sys_print(f"docker_config_path: {DOCKER_CONFIG_PATH}")
+        sys_print(f"example_config_path: {EXAMPLE_CONFIG_PATH}")
 
-    if does_file_exist(CONFIG_PATH, True):
-        if print_debug:
-            print(f"Loading {CONFIG_NAME} file...", file=sys.stderr)
-        with open(CONFIG_PATH, 'r') as f:
-            config = json.load(f)
-    elif does_file_exist(EXAMPLE_CONFIG_PATH, True):
-        if print_debug:
-            print(f"No {CONFIG_NAME} file found. Defaulting to {EXAMPLE_CONFIG_NAME}", file=sys.stderr)
-        with open(EXAMPLE_CONFIG_PATH, 'r') as f:
+    is_running_in_docker = is_docker()
+    sys_print(f"is_running_in_docker: {is_running_in_docker}")
+    picked_config_path = DOCKER_CONFIG_PATH if is_running_in_docker else CONFIG_PATH
+    if does_file_exist(picked_config_path):
+        sys_print(f"Loading {picked_config_path} file...")
+        with open(picked_config_path, 'r') as f:
             config = json.load(f)
     else:
-        sys_print("Both config file or example config file not found.")
+        sys_print("No config file found. Loading example config.")
+        if does_file_exist(EXAMPLE_CONFIG_PATH):
+            if print_debug:
+                sys_print(f"Loading {EXAMPLE_CONFIG_NAME} file...")
+            with open(EXAMPLE_CONFIG_PATH, 'r') as f:
+                config = json.load(f)
+        else:
+            sys_print("Example config file not found. Using default common config.")
 
-    if print_debug:
-        print(f"config: {config}", file=sys.stderr)
-    if config:
-        return config.get("common_mcp_gateway_config")
-
-    sys_print("Config not found in ~/.enkrypt directory. Checking /app/ if this is docker container")
-    docker_config_path = f"/app/{CONFIG_NAME}"
-    docker_example_config_path = f"/app/example_{CONFIG_NAME}"
-
-    if does_file_exist(docker_config_path, True):
-        if print_debug:
-            print(f"Loading {CONFIG_NAME} file from docker container...", file=sys.stderr)
-        with open(docker_config_path, 'r') as f:
-            config = json.load(f)
-        if print_debug:
-            print(f"config: {config}", file=sys.stderr)
-    elif does_file_exist(docker_example_config_path, True):
-        if print_debug:
-            print(f"No {CONFIG_NAME} file found. Defaulting to {EXAMPLE_CONFIG_NAME} from docker container", file=sys.stderr)
-        with open(docker_example_config_path, 'r') as f:
-            config = json.load(f)
-        if print_debug:
-            print(f"{EXAMPLE_CONFIG_NAME}: {config}", file=sys.stderr)
-    else:
-        if print_debug:
-            print("Both config file or example config file not found in ~/.enkrypt directory or docker container path. Defaulting to hard coded config", file=sys.stderr)
+    if print_debug and config:
+        sys_print(f"config: {config}")
 
     return config.get("common_mcp_gateway_config", DEFAULT_COMMON_CONFIG)
