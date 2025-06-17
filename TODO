@@ -1,6 +1,24 @@
-- Test async input guardrails
-- Test linux installation and setup
-- Add Docker support for remote deployment
-- deploy remotely and update readme with claude and cursor demo
-- Refactor enkrypt_secure_call_tools to decouple tool call logic and move to client.py
-- Tackle coming soon features mentioned in the readme
+# TODO
+
+- Coming soon features:
+  - Remote installation and configuration of the gateway
+  - Add support for logging to Enkrypt
+  - Add support for remote mcp config management with CRUD APIs
+  - Integrate with Enkrypt Auth server to map user API Key to MCP Gateway Key
+  - Enkrypt App MCP UI and Dashboards
+
+
+- Testing pending:
+  - Test async input guardrails
+  - Test linux installation and setup
+  - Test with external cache server config
+
+
+- Development pending:
+  - Add --dry-run option to install command to print the mcp config. This is useful for custom mcp clients
+
+
+- Nice to have:
+  - Refactor enkrypt_secure_call_tools to decouple tool call logic and move to client.py
+  - Async output guardrails support
+

@@ -2,6 +2,12 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [1.0.3] - 2025-06-17
+
+### New Features in v1.0.3
+
+- Local `Docker` installation support
+
 ## [1.0.1, 1.0.2] - 2025-06-15
 
 ### New Features in v1.0.1, v1.0.2

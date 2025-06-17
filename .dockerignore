@@ -1,0 +1,43 @@
+# Git
+.git
+.github
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Python virtual environment
+.venv
+venv
+env
+*.venv
+.secure-mcp-gateway-venv
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+/site
+.python-version
+
+# IDE/Editor specific
+.idea/
+.vscode/
+*.swp
+
+# Documentation
+docs/
+
+# Scripts
+scripts/
+
+# Other files
+TODO
+.flake8

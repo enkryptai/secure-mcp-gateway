@@ -101,8 +101,10 @@ except ImportError:
 
 from secure_mcp_gateway.utils import (
     sys_print,
+    is_docker,
+    CONFIG_PATH,
+    DOCKER_CONFIG_PATH,
     get_common_config,
-    CONFIG_PATH
 )
 from secure_mcp_gateway.version import __version__
 from secure_mcp_gateway.dependencies import __dependencies__
@@ -175,7 +177,7 @@ ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED = common_config.get("enkrypt_async_outpu
 
 ENKRYPT_API_KEY = common_config.get("enkrypt_api_key", "null")
 
-sys_print("CONFIG: ")
+sys_print("--------------------------------")
 sys_print(f'ENKRYPT_GATEWAY_KEY: {"****" + ENKRYPT_GATEWAY_KEY[-4:]}')
 sys_print(f'enkrypt_log_level: {ENKRYPT_LOG_LEVEL}')
 sys_print(f'is_debug_log_level: {IS_DEBUG_LOG_LEVEL}')
@@ -309,16 +311,19 @@ def get_local_mcp_config(gateway_key):
     Returns:
         dict: MCP configuration for the given key, None if not found
     """
+    running_in_docker = is_docker()
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"[get_local_mcp_config] Getting local MCP config for {gateway_key}")
-    if os.path.exists(CONFIG_PATH):
+        sys_print(f"[get_local_mcp_config] Getting local MCP config for {gateway_key} with running_in_docker: {running_in_docker}")
+
+    config_path = DOCKER_CONFIG_PATH if running_in_docker else CONFIG_PATH
+    if os.path.exists(config_path):
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"[get_local_mcp_config] MCP config file found at {CONFIG_PATH}")
-        with open(CONFIG_PATH, 'r') as f:
+            sys_print(f"[get_local_mcp_config] MCP config file found at {config_path}")
+        with open(config_path, 'r', encoding='utf-8') as f:
             jsonConfig = json.load(f)
             return jsonConfig["gateways"].get(gateway_key)  # Only return the config for the given gateway_key
     else:
-        sys_print(f"[get_local_mcp_config] MCP config file not found at {CONFIG_PATH}")
+        sys_print(f"[get_local_mcp_config] MCP config file not found at {config_path}")
         return None
 
 
@@ -454,7 +459,7 @@ def enkrypt_authenticate(ctx: Context):
 
 # NOTE: inputSchema is not supported here if we explicitly define it.
 # But it is defined in the SDK - https://modelcontextprotocol.io/docs/concepts/tools#python
-# As FastMCP automatically generates an input schema based on the function’s parameters and type annotations.
+# As FastMCP automatically generates an input schema based on the function's parameters and type annotations.
 # See: https://gofastmcp.com/servers/tools#the-%40tool-decorator
 # Annotations can be explicitly defined - https://gofastmcp.com/servers/tools#annotations-2
 
@@ -1557,5 +1562,11 @@ async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = N
 # --- Run ---
 if __name__ == "__main__":
     sys_print("Starting Enkrypt Secure MCP Gateway")
-    mcp.run()
-    sys_print("Enkrypt Secure MCP Gateway is running")
+    try:
+        mcp.run()
+        sys_print("Enkrypt Secure MCP Gateway is running")
+    except Exception as e:
+        sys_print(f"Exception in mcp.run(): {e}")
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+

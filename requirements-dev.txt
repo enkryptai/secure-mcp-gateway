@@ -1,0 +1,3 @@
+# Build dependencies
+uv
+build
