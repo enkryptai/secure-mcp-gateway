@@ -311,18 +311,15 @@ def get_local_mcp_config(gateway_key):
     Returns:
         dict: MCP configuration for the given key, None if not found
     """
-    is_docker_config = is_docker()
+    running_in_docker = is_docker()
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"[get_local_mcp_config] Getting local MCP config for {gateway_key} with is_docker_config: {is_docker_config}")
-    if is_docker_config:
-        config_path = DOCKER_CONFIG_PATH
-    else:
-        config_path = CONFIG_PATH
+        sys_print(f"[get_local_mcp_config] Getting local MCP config for {gateway_key} with running_in_docker: {running_in_docker}")
 
+    config_path = DOCKER_CONFIG_PATH if running_in_docker else CONFIG_PATH
     if os.path.exists(config_path):
         if IS_DEBUG_LOG_LEVEL:
             sys_print(f"[get_local_mcp_config] MCP config file found at {config_path}")
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             jsonConfig = json.load(f)
             return jsonConfig["gateways"].get(gateway_key)  # Only return the config for the given gateway_key
     else:
@@ -1571,3 +1568,5 @@ if __name__ == "__main__":
     except Exception as e:
         sys_print(f"Exception in mcp.run(): {e}")
         traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+

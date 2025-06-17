@@ -921,10 +921,10 @@ docker build -t secure-mcp-gateway .
 
 ```bash
 # On 🍎 Linux/macOS run the below
-docker run --rm -v ~/.enkrypt:/root/.enkrypt --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
+docker run --rm -v ~/.enkrypt:/app/.enkrypt --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
 
 # On 🪟 Windows run the below
-docker run --rm -v %USERPROFILE%\.enkrypt:/root/.enkrypt --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
+docker run --rm -v %USERPROFILE%\.enkrypt:/app/.enkrypt --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
 ```
 
 <details>
@@ -1004,10 +1004,10 @@ docker run --rm -v %USERPROFILE%\.enkrypt:/root/.enkrypt --entrypoint python sec
 
 ```bash
 # On 🍎 Linux/macOS run the below
-docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkrypt:/root/.enkrypt -v ~/Library/Application\ Support/Claude:/root/.claude --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
+docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkrypt:/app/.enkrypt -v ~/Library/Application\ Support/Claude:/app/.claude --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
 
 # On 🪟 Windows run the below
-docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt:/root/.enkrypt -v %APPDATA%\Claude:/root/.claude --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
+docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt:/app/.enkrypt -v %APPDATA%\Claude:/app/.claude --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
 ```
 
 #### 4.3.4 Example Claude Desktop config file
@@ -1026,7 +1026,7 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkryp
         "--rm",
         "-i",
         "-v",
-        "C:\\Users\\<user>\\.enkrypt:/root/.enkrypt",
+        "C:\\Users\\<user>\\.enkrypt:/app/.enkrypt",
         "secure-mcp-gateway"
       ],
       "env": {
@@ -1047,10 +1047,10 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkryp
 
 ```bash
 # On 🍎 Linux/macOS run the below
-docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkrypt:/root/.enkrypt -v ~/Library/Application\ Support/Cursor:/root/.cursor --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
+docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkrypt:/app/.enkrypt -v ~/Library/Application\ Support/Cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
 
 # On 🪟 Windows run the below
-docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt:/root/.enkrypt -v %USERPROFILE%\.cursor:/root/.cursor --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
+docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt:/app/.enkrypt -v %USERPROFILE%\.cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
 ```
 
 </details>

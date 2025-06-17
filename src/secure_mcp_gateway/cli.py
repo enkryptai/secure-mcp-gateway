@@ -25,7 +25,7 @@ else:
     HOST_OS = os.environ.get("HOST_OS", None)
     HOST_ENKRYPT_HOME = os.environ.get("HOST_ENKRYPT_HOME", None)
     if not HOST_OS or not HOST_ENKRYPT_HOME:
-        sys_print("HOST_OS and HOST_ENKRYPT_HOME environment variables are not set. Please set them to the host operating system and Enkrypt home directory and run the docker command again.")
+        sys_print("HOST_OS and HOST_ENKRYPT_HOME environment variables are not set. Please set them when running the Docker container:\n  docker run -e HOST_OS=<your_os> -e HOST_ENKRYPT_HOME=<path_to_enkrypt_home> ...")
         sys.exit(1)
     sys_print("HOST_OS: ", HOST_OS)
     sys_print("HOST_ENKRYPT_HOME: ", HOST_ENKRYPT_HOME)
@@ -40,7 +40,7 @@ sys_print("GATEWAY_PY_PATH: ", GATEWAY_PY_PATH)
 DOCKER_COMMAND = "docker"
 DOCKER_ARGS = [
     "run", "--rm", "-i",
-    "-v", f"{HOST_ENKRYPT_HOME}:/root/.enkrypt",
+    "-v", f"{HOST_ENKRYPT_HOME}:/app/.enkrypt",
     "-e", "ENKRYPT_GATEWAY_KEY",
     "secure-mcp-gateway"
 ]
@@ -182,7 +182,7 @@ def main():
     
     if args.command == "generate-config":
         if os.path.exists(CONFIG_PATH):
-            sys_print(f"Config file already exists at {CONFIG_PATH}. Not overwriting. Please run install to install on Claude Desktop or Cursor. If you want to start fresh, delete the config file and run again.")
+            sys_print(f"Config file already exists at {CONFIG_PATH}.\nNot overwriting. Please run install to install on Claude Desktop or Cursor.\nIf you want to start fresh, delete the config file and run again.")
             sys.exit(1)
         # Create .enkrypt directory if it doesn't exist
         os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
@@ -195,11 +195,11 @@ def main():
         sys.exit(0)
 
     elif args.command == "install":
-        if not os.path.exists(CONFIG_PATH):
-            sys_print(f"Config file not found at path: {CONFIG_PATH}. Please generate a new config file using 'generate-config' subcommand and try again.")
+        gateway_key = get_gateway_key(CONFIG_PATH)
+        if not gateway_key:
+            sys_print(f"Gateway key not found in {CONFIG_PATH}. Please generate a new config file using 'generate-config' subcommand and try again.")
             sys.exit(1)
 
-        gateway_key = get_gateway_key(CONFIG_PATH)
         env = {
             "ENKRYPT_GATEWAY_KEY": gateway_key
         }

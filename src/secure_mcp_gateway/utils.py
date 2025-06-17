@@ -13,7 +13,7 @@ from secure_mcp_gateway.version import __version__
 print(f"Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}", file=sys.stderr)
 
 CONFIG_NAME = "enkrypt_mcp_config.json"
-DOCKER_CONFIG_PATH = f"/root/.enkrypt/docker/{CONFIG_NAME}"
+DOCKER_CONFIG_PATH = f"/app/.enkrypt/docker/{CONFIG_NAME}"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".enkrypt", CONFIG_NAME)
 
 BASE_DIR = str(files('secure_mcp_gateway'))
@@ -44,7 +44,8 @@ def sys_print(*args, **kwargs):
     """
     Print a message to the console
     """
-    print(*args, file=sys.stderr, **kwargs)
+    kwargs.setdefault('file', sys.stderr)
+    print(*args, **kwargs)
 
 
 def get_file_from_root(file_name):
@@ -64,10 +65,14 @@ def get_absolute_path(file_name):
     return os.path.join(current_dir, file_name)
 
 
-def does_file_exist(file_name_or_path, is_absolute_path=True):
+def does_file_exist(file_name_or_path, is_absolute_path=None):
     """
     Check if a file exists in the current directory
     """
+    if is_absolute_path is None:
+        # Try to determine if it's an absolute path
+        is_absolute_path = os.path.isabs(file_name_or_path)
+    
     if is_absolute_path:
         return os.path.exists(file_name_or_path)
     else:
@@ -78,13 +83,15 @@ def is_docker():
     """
     Check if the code is running inside a Docker container.
     """
-    # Check for /.dockerenv file
-    if os.path.exists('/.dockerenv'):
-        return True
+    # Check for Docker environment markers
+    docker_env_indicators = ['/.dockerenv', '/run/.containerenv']
+    for indicator in docker_env_indicators:
+        if os.path.exists(indicator):
+            return True
 
     # Check cgroup for Docker-specific entries
     try:
-        with open('/proc/1/cgroup', 'rt') as f:
+        with open('/proc/1/cgroup', 'rt', encoding='utf-8') as f:
             for line in f:
                 if 'docker' in line:
                     return True
@@ -112,14 +119,14 @@ def get_common_config(print_debug=False):
     picked_config_path = DOCKER_CONFIG_PATH if is_running_in_docker else CONFIG_PATH
     if does_file_exist(picked_config_path):
         sys_print(f"Loading {picked_config_path} file...")
-        with open(picked_config_path, 'r') as f:
+        with open(picked_config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
     else:
         sys_print("No config file found. Loading example config.")
         if does_file_exist(EXAMPLE_CONFIG_PATH):
             if print_debug:
                 sys_print(f"Loading {EXAMPLE_CONFIG_NAME} file...")
-            with open(EXAMPLE_CONFIG_PATH, 'r') as f:
+            with open(EXAMPLE_CONFIG_PATH, 'r', encoding='utf-8') as f:
                 config = json.load(f)
         else:
             sys_print("Example config file not found. Using default common config.")
@@ -127,4 +134,6 @@ def get_common_config(print_debug=False):
     if print_debug and config:
         sys_print(f"config: {config}")
 
-    return config.get("common_mcp_gateway_config", DEFAULT_COMMON_CONFIG)
+    common_config = config.get("common_mcp_gateway_config", {})
+    # Merge with defaults to ensure all required fields exist
+    return {**DEFAULT_COMMON_CONFIG, **common_config}
