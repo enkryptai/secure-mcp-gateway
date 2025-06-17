@@ -13,15 +13,17 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from secure_mcp_gateway.version import __version__
-from secure_mcp_gateway.utils import sys_print, is_docker
+from secure_mcp_gateway.utils import sys_print, is_docker, CONFIG_PATH, DOCKER_CONFIG_PATH
 
 sys_print(f"Initializing Enkrypt Secure MCP Gateway CLI Module v{__version__}")
 
 HOME_DIR = os.path.expanduser("~")
-if not is_docker():
-    CONFIG_PATH = os.path.join(HOME_DIR, ".enkrypt", "enkrypt_mcp_config.json")
-else:
-    CONFIG_PATH = os.path.join(HOME_DIR, ".enkrypt", "docker", "enkrypt_mcp_config.json")
+sys_print("HOME_DIR: ", HOME_DIR)
+
+is_docker_running = is_docker()
+sys_print("is_docker_running: ", is_docker_running)
+
+if is_docker_running:
     HOST_OS = os.environ.get("HOST_OS", None)
     HOST_ENKRYPT_HOME = os.environ.get("HOST_ENKRYPT_HOME", None)
     if not HOST_OS or not HOST_ENKRYPT_HOME:
@@ -30,12 +32,13 @@ else:
     sys_print("HOST_OS: ", HOST_OS)
     sys_print("HOST_ENKRYPT_HOME: ", HOST_ENKRYPT_HOME)
 
+GATEWAY_PY_PATH = os.path.join(BASE_DIR, "gateway.py")
 # ECHO_SERVER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_mcps", "echo_mcp.py")
 ECHO_SERVER_PATH = os.path.join(BASE_DIR, "test_mcps", "echo_mcp.py")
-
-GATEWAY_PY_PATH = os.path.join(BASE_DIR, "gateway.py")
-sys_print("CONFIG_PATH: ", CONFIG_PATH)
+PICKED_CONFIG_PATH = DOCKER_CONFIG_PATH if is_docker_running else CONFIG_PATH
 sys_print("GATEWAY_PY_PATH: ", GATEWAY_PY_PATH)
+sys_print("ECHO_SERVER_PATH: ", ECHO_SERVER_PATH)
+sys_print("PICKED_CONFIG_PATH: ", PICKED_CONFIG_PATH)
 
 DOCKER_COMMAND = "docker"
 DOCKER_ARGS = [
@@ -181,23 +184,23 @@ def main():
     args = parser.parse_args()
     
     if args.command == "generate-config":
-        if os.path.exists(CONFIG_PATH):
-            sys_print(f"Config file already exists at {CONFIG_PATH}.\nNot overwriting. Please run install to install on Claude Desktop or Cursor.\nIf you want to start fresh, delete the config file and run again.")
+        if os.path.exists(PICKED_CONFIG_PATH):
+            sys_print(f"Config file already exists at {PICKED_CONFIG_PATH}.\nNot overwriting. Please run install to install on Claude Desktop or Cursor.\nIf you want to start fresh, delete the config file and run again.")
             sys.exit(1)
         # Create .enkrypt directory if it doesn't exist
-        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+        os.makedirs(os.path.dirname(PICKED_CONFIG_PATH), exist_ok=True)
         if os.name == 'posix':  # Unix-like systems
-            os.chmod(os.path.dirname(CONFIG_PATH), 0o700)
+            os.chmod(os.path.dirname(PICKED_CONFIG_PATH), 0o700)
         config = generate_default_config()
-        with open(CONFIG_PATH, "w") as f:
+        with open(PICKED_CONFIG_PATH, "w") as f:
             json.dump(config, f, indent=2)
-        sys_print(f"Generated default config at {CONFIG_PATH}")
+        sys_print(f"Generated default config at {PICKED_CONFIG_PATH}")
         sys.exit(0)
 
     elif args.command == "install":
-        gateway_key = get_gateway_key(CONFIG_PATH)
+        gateway_key = get_gateway_key(PICKED_CONFIG_PATH)
         if not gateway_key:
-            sys_print(f"Gateway key not found in {CONFIG_PATH}. Please generate a new config file using 'generate-config' subcommand and try again.")
+            sys_print(f"Gateway key not found in {PICKED_CONFIG_PATH}. Please generate a new config file using 'generate-config' subcommand and try again.")
             sys.exit(1)
 
         env = {
@@ -208,8 +211,8 @@ def main():
             client = args.client
             sys_print("client name from args: ", client)
 
-            if is_docker():
-                claude_desktop_config_path = os.path.join("/root", ".claude", "claude_desktop_config.json")
+            if is_docker_running:
+                claude_desktop_config_path = os.path.join("/app", ".claude", "claude_desktop_config.json")
                 if os.path.exists(claude_desktop_config_path):
                     sys_print(f"Loading claude_desktop_config.json file from {claude_desktop_config_path}")
                     with open(claude_desktop_config_path, "r") as f:
@@ -298,7 +301,7 @@ def main():
                 sys.exit(0)
 
         elif args.client.lower() == "cursor":           
-            if is_docker():
+            if is_docker_running:
                 args_list = DOCKER_ARGS
                 command = DOCKER_COMMAND
             else:
