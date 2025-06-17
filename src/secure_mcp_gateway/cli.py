@@ -31,6 +31,9 @@ if is_docker_running:
         sys.exit(1)
     sys_print("HOST_OS: ", HOST_OS)
     sys_print("HOST_ENKRYPT_HOME: ", HOST_ENKRYPT_HOME)
+else:
+    HOST_OS = None
+    HOST_ENKRYPT_HOME = None
 
 GATEWAY_PY_PATH = os.path.join(BASE_DIR, "gateway.py")
 # ECHO_SERVER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_mcps", "echo_mcp.py")
