@@ -70,6 +70,8 @@ import time
 import json
 import hashlib
 import threading
+import asyncio
+import aiohttp
 from datetime import datetime
 import redis as external_cache_server
 # https://github.com/modelcontextprotocol/python-sdk/blob/main/src/mcp/client/stdio/__init__.py
@@ -100,6 +102,14 @@ ENKRYPT_CACHE_PASSWORD = common_config.get("enkrypt_cache_password", None)
 ENKRYPT_TOOL_CACHE_EXPIRATION = int(common_config.get("enkrypt_tool_cache_expiration", 4))  # 4 hours
 ENKRYPT_GATEWAY_CACHE_EXPIRATION = int(common_config.get("enkrypt_gateway_cache_expiration", 24))  # 24 hours (1 day)
 
+# HTTP client configuration
+HTTP_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10)
+MAX_RETRIES = 3
+RETRY_DELAY = 1.0
+
+# Global HTTP session for authentication requests
+_auth_http_session = None
+
 local_cache = {}
 local_cache_lock = threading.Lock()
 
@@ -107,6 +117,75 @@ local_cache_lock = threading.Lock()
 local_key_map = {}
 local_server_registry = {}
 local_gateway_config_registry = set()
+
+
+async def get_auth_http_session() -> aiohttp.ClientSession:
+    """Get or create a global HTTP session for authentication requests."""
+    global _auth_http_session
+    if _auth_http_session is None or _auth_http_session.closed:
+        connector = aiohttp.TCPConnector(
+            limit=50,  # Total connection pool size
+            limit_per_host=20,  # Per-host connection limit
+            ttl_dns_cache=300,  # DNS cache TTL
+            use_dns_cache=True,
+        )
+        _auth_http_session = aiohttp.ClientSession(
+            connector=connector,
+            timeout=HTTP_TIMEOUT,
+            headers={"User-Agent": f"enkrypt-mcp-gateway/{__version__}"}
+        )
+    return _auth_http_session
+
+
+async def close_auth_http_session():
+    """Close the global authentication HTTP session."""
+    global _auth_http_session
+    if _auth_http_session and not _auth_http_session.closed:
+        await _auth_http_session.close()
+        _auth_http_session = None
+
+
+async def make_auth_request(url: str, headers: dict) -> dict:
+    """
+    Make an async HTTP request for authentication with retry logic.
+    
+    Args:
+        url: The URL to make the request to
+        headers: HTTP headers to include
+        
+    Returns:
+        Dict containing the response data or error information
+    """
+    session = await get_auth_http_session()
+    
+    for attempt in range(MAX_RETRIES):
+        try:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    return await response.json()
+                elif response.status == 429:  # Rate limited
+                    if attempt < MAX_RETRIES - 1:
+                        wait_time = RETRY_DELAY * (2 ** attempt)
+                        sys_print(f"Auth request rate limited, waiting {wait_time}s before retry {attempt + 1}")
+                        await asyncio.sleep(wait_time)
+                        continue
+                else:
+                    response.raise_for_status()
+                    
+        except aiohttp.ClientError as e:
+            if attempt < MAX_RETRIES - 1:
+                wait_time = RETRY_DELAY * (2 ** attempt)
+                sys_print(f"Auth request failed (attempt {attempt + 1}): {e}, retrying in {wait_time}s")
+                await asyncio.sleep(wait_time)
+                continue
+            else:
+                sys_print(f"Auth request failed after {MAX_RETRIES} attempts: {e}")
+                return {"error": str(e)}
+        except Exception as e:
+            sys_print(f"Unexpected error in auth request: {e}")
+            return {"error": str(e)}
+    
+    return {"error": "Maximum retries exceeded"}
 
 
 # --- Cache connection ---
@@ -130,7 +209,11 @@ def initialize_cache():
         port=ENKRYPT_CACHE_PORT,
         db=ENKRYPT_CACHE_DB,
         password=ENKRYPT_CACHE_PASSWORD,
-        decode_responses=True  # Automatically decode responses to strings
+        decode_responses=True,  # Automatically decode responses to strings
+        socket_connect_timeout=5,  # Connection timeout
+        socket_timeout=5,  # Socket timeout
+        retry_on_timeout=True,  # Retry on timeout
+        health_check_interval=30  # Health check interval
     )
 
     # Test Cache connection
@@ -198,253 +281,265 @@ def get_hashed_key(key):
     Returns:
         str: Hashed cache key for the API key mapping
     """
-    raw_key = f"gateway_key-{key}"
+    raw_key = f"gatewaykey-{key}"
     return hash_key(raw_key)
 
 
-# --- Registry cache keys for gateway/user-server and gateway/user tracking ---
 def get_gateway_servers_registry_hashed_key(id):
     """
-    Generates a hashed cache key for the servers registry.
+    Generates a hashed cache key for gateway servers registry.
 
     Args:
         id (str): The ID of the Gateway or User
+
     Returns:
-        str: Hashed cache key for the gateway/user's servers registry
+        str: Hashed cache key for the gateway servers registry
     """
-    return hash_key(f"registry:{id}:servers")
+    raw_key = f"{id}-servers-registry"
+    return hash_key(raw_key)
 
 
 def get_gateway_registry_hashed_key():
     """
-    Generates a hashed cache key for the global gateway/user registry.
+    Generates a hashed cache key for global gateway registry.
+
     Returns:
-        str: Hashed cache key for the gateway/user registry
+        str: Hashed cache key for the global gateway registry
     """
-    return hash_key("registry:gateway/user")
+    raw_key = "gateways-registry"
+    return hash_key(raw_key)
 
 
-# --- Tool forwarding function ---
-# This discovers tools and also invokes a specific tool if tool_name is provided
+# --- Async cache operations ---
+async def set_cache_async(cache_client, key: str, value: str, expires_in_seconds: int):
+    """Set cache value asynchronously with proper error handling."""
+    try:
+        if ENKRYPT_MCP_USE_EXTERNAL_CACHE and cache_client:
+            # Use Redis pipeline for better performance
+            pipe = cache_client.pipeline()
+            pipe.set(key, value, ex=expires_in_seconds)
+            await asyncio.get_event_loop().run_in_executor(None, pipe.execute)
+        else:
+            set_local_cache(key, value, expires_in_seconds)
+    except Exception as e:
+        sys_print(f"Error setting cache key {key}: {e}")
+
+
+async def get_cache_async(cache_client, key: str):
+    """Get cache value asynchronously with proper error handling."""
+    try:
+        if ENKRYPT_MCP_USE_EXTERNAL_CACHE and cache_client:
+            return await asyncio.get_event_loop().run_in_executor(None, cache_client.get, key)
+        else:
+            return get_local_cache(key)
+    except Exception as e:
+        sys_print(f"Error getting cache key {key}: {e}")
+        return None
+
+
+async def delete_cache_async(cache_client, key: str):
+    """Delete cache value asynchronously with proper error handling."""
+    try:
+        if ENKRYPT_MCP_USE_EXTERNAL_CACHE and cache_client:
+            await asyncio.get_event_loop().run_in_executor(None, cache_client.delete, key)
+        else:
+            with local_cache_lock:
+                local_cache.pop(key, None)
+    except Exception as e:
+        sys_print(f"Error deleting cache key {key}: {e}")
+
+
+# --- Tool forwarding ---
 async def forward_tool_call(server_name, tool_name, args=None, gateway_config=None):
     """
-    Forwards tool calls to the appropriate MCP server.
+    Forwards a tool call to the appropriate MCP server (async optimized).
 
-    This function handles both tool discovery (when tool_name is None) and tool invocation.
-    It uses the gateway/user's configuration to determine the correct server and connection details.
+    This function establishes a connection to the specified MCP server and forwards
+    the tool call with the provided arguments. It handles server configuration,
+    connection management, and error handling.
 
     Args:
-        server_name (str): Name of the server to call
-        tool_name (str): Name of the tool to call (None for discovery)
-        args (dict, optional): Arguments to pass to the tool
-        gateway_config (dict): Gateway/user's configuration containing server details
+        server_name (str): Name of the server to forward the call to
+        tool_name (str): Name of the tool to call on the server
+        args (dict, optional): Arguments to pass to the tool. Defaults to None.
+        gateway_config (dict, optional): Gateway configuration containing server details.
+                                       If None, will attempt to retrieve from cache.
 
     Returns:
-        dict/ListToolsResult: Tool discovery results or tool call response
+        dict: Result from the tool call, or error information if the call fails
 
     Raises:
-        ValueError: If gateway_config is missing or server not found
+        Exception: If server configuration is invalid or connection fails
+
+    Example:
+        ```python
+        result = await forward_tool_call(
+            "github_server",
+            "create_issue",
+            {"title": "Bug report", "body": "Description"},
+            gateway_config
+        )
+        ```
     """
+    if args is None:
+        args = {}
+
     if not gateway_config:
-        sys_print("[forward_tool_call] Error: No gateway_config provided")
-        raise ValueError("No gateway configuration provided")
+        sys_print("[forward_tool_call] No gateway config provided")
+        return {"error": "No gateway config provided"}
 
+    # Find server configuration
+    server_config = None
     mcp_config = gateway_config.get("mcp_config", [])
-    server_entry = next((s for s in mcp_config if s.get("server_name") == server_name), None)
-    if not server_entry:
-        raise ValueError(f"No config found for server: {server_name}")
+    
+    for server_info in mcp_config:
+        if server_info["server_name"] == server_name:
+            server_config = server_info["config"]
+            break
 
-    config = server_entry["config"]
-    command = config["command"]
-    command_args = config["args"]
-    env = config.get("env", None)
+    if not server_config:
+        sys_print(f"[forward_tool_call] Server '{server_name}' not found in gateway config")
+        return {"error": f"Server '{server_name}' not found"}
 
-    sys_print(f"[forward_tool_call] Starting tool call for server: {server_name} and tool: {tool_name}")
+    # Extract server parameters
+    command = server_config["command"]
+    server_args = server_config["args"]
+    env = server_config.get("env", None)
 
+    sys_print(f"[forward_tool_call] Forwarding {tool_name} to {server_name}")
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"[forward_tool_call] Command: {command}")
-        sys_print(f"[forward_tool_call] Command args: {command_args}")
-        sys_print(f"[forward_tool_call] Env: {env}")
+        sys_print(f"[forward_tool_call] Command: {command}, Args: {server_args}, Tool Args: {args}")
 
-    async with stdio_client(StdioServerParameters(command=command, args=command_args, env=env)) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            sys_print(f"[forward_tool_call] Connected successfully to {server_name}")
+    try:
+        # Create connection to MCP server
+        async with stdio_client(StdioServerParameters(command=command, args=server_args, env=env)) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                
+                # Call the tool
+                result = await session.call_tool(tool_name, arguments=args)
+                
+                if IS_DEBUG_LOG_LEVEL:
+                    sys_print(f"[forward_tool_call] Tool result: {result}")
+                
+                return {"status": "success", "result": result}
 
-            # If tool_name is None, this is a discovery request
-            if tool_name is None:
-                sys_print("[forward_tool_call] Starting tool discovery as tool_name is None")
-                # Request tool listing from the MCP server
-                tools_result = await session.list_tools()
-                sys_print(f"[forward_tool_call] Discovered tools for {server_name}: {tools_result}")
-                return tools_result
-
-            # Normal tool call
-            sys_print(f"[forward_tool_call] Calling specific tool: {tool_name}")
-            return await session.call_tool(tool_name, arguments=args)
+    except Exception as e:
+        sys_print(f"[forward_tool_call] Error calling {tool_name} on {server_name}: {e}")
+        return {"error": str(e)}
 
 
-# --- Cache management functions ---
-
+# --- Local cache operations (optimized) ---
 def set_local_cache(key, value, expires_in_seconds):
     """
-    Stores a value in the local in-memory cache with expiration.
+    Sets a value in the local cache with expiration time (thread-safe).
 
     Args:
-        key (str): The cache key
-        value: The value to cache
-        expires_in_seconds (int): Time in seconds until the cache entry expires
+        key (str): Cache key
+        value (any): Value to cache
+        expires_in_seconds (int): Expiration time in seconds
     """
-    expires_at = time.time() + expires_in_seconds
+    expiration_time = time.time() + expires_in_seconds
     with local_cache_lock:
-        local_cache[key] = (value, expires_at)
+        local_cache[key] = {
+            'value': value,
+            'expires_at': expiration_time
+        }
 
 
 def get_local_cache(key):
     """
-    Retrieves a value from the local in-memory cache.
+    Gets a value from the local cache, checking expiration (thread-safe).
 
     Args:
-        key (str): The cache key
+        key (str): Cache key
 
     Returns:
-        tuple: (value, expiration_time) if found and not expired, None otherwise
+        any: Cached value if found and not expired, None otherwise
     """
     with local_cache_lock:
-        item = local_cache.get(key)
-        if not item:
+        cached_item = local_cache.get(key)
+        if cached_item is None:
             return None
-        value, expires_at = item
-        if time.time() > expires_at:
+        
+        if time.time() > cached_item['expires_at']:
+            # Remove expired item
             del local_cache[key]
             return None
-        return value, expires_at
+        
+        return cached_item['value']
 
 
+# --- Cache operations with improved error handling ---
 def get_cached_tools(cache_client, id, server_name):
     """
-    Retrieves cached tools for a specific gateway/user and server.
+    Retrieves cached tools for a specific server with improved error handling.
 
     Args:
-        cache_client: The cache client instance
-        id (str): ID of the Gateway or User
+        cache_client: Redis client instance or None for local cache
+        id (str): The ID of the Gateway or User
         server_name (str): Name of the server
 
     Returns:
-        tuple: (tools_data, expiration_time) if found and not expired, None otherwise
+        tuple: (tools_data, expires_at) if found, (None, None) if not found or expired
     """
-    key = get_server_hashed_key(id, server_name)
-    if not ENKRYPT_MCP_USE_EXTERNAL_CACHE:
-        return get_local_cache(key)
-
-    if cache_client is None:
-        return None
-
-    cached_data = cache_client.get(key)
-    if not cached_data:
-        return None
+    cache_key = get_server_hashed_key(id, server_name)
+    
     try:
-        tool_data = json.loads(cached_data)
-        if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"[external_cache] Using cached tools for id '{id}', server '{server_name}' with key hash: {key}")
-        return tool_data
-    except json.JSONDecodeError:
-        sys_print(f"[external_cache] Error deserializing tools cache for hash key: {key}")
-        return None
+        if ENKRYPT_MCP_USE_EXTERNAL_CACHE and cache_client:
+            # Get value and TTL in a pipeline for efficiency
+            pipe = cache_client.pipeline()
+            pipe.get(cache_key)
+            pipe.ttl(cache_key)
+            cached_value, ttl = pipe.execute()
+            
+            if cached_value:
+                expires_at = time.time() + ttl if ttl > 0 else None
+                tools_data = json.loads(cached_value)
+                if IS_DEBUG_LOG_LEVEL:
+                    sys_print(f"[get_cached_tools] Found cached tools for {server_name}")
+                return tools_data, expires_at
+        else:
+            cached_item = get_local_cache(cache_key)
+            if cached_item:
+                if IS_DEBUG_LOG_LEVEL:
+                    sys_print(f"[get_cached_tools] Found local cached tools for {server_name}")
+                return cached_item, None
+                
+    except Exception as e:
+        sys_print(f"[get_cached_tools] Error retrieving cached tools for {server_name}: {e}")
+    
+    if IS_DEBUG_LOG_LEVEL:
+        sys_print(f"[get_cached_tools] No cached tools found for {server_name}")
+    return None, None
 
 
 def cache_tools(cache_client, id, server_name, tools):
     """
-    Caches tools for a specific gateway/user and server.
+    Caches tools for a specific server with improved error handling.
 
     Args:
-        cache_client: The cache client instance
-        id (str): ID of the Gateway or User
+        cache_client: Redis client instance or None for local cache
+        id (str): The ID of the Gateway or User
         server_name (str): Name of the server
-        tools: The tools data to cache
+        tools: Tools data to cache
     """
-    expires_in_seconds = int(ENKRYPT_TOOL_CACHE_EXPIRATION * 3600)
-    key = get_server_hashed_key(id, server_name)
-    if not ENKRYPT_MCP_USE_EXTERNAL_CACHE:
-        set_local_cache(key, tools, expires_in_seconds)
-        # Also set the server name in the local_server_registry as set of server in id
-        if id not in local_server_registry:
-            local_server_registry[id] = set()
-        local_server_registry[id].add(server_name)
-        return
-
-    if cache_client is None:
-        return
-
-    raw_key = f"{id}-{server_name}-tools"  # For logging only
-
-    # Convert ListToolsResult to a serializable format if needed
-    if hasattr(tools, "__class__") and tools.__class__.__name__ == "ListToolsResult":
-        # Extract data from ListToolsResult into a serializable dictionary
-        serializable_tools = {
-            "tools": [
-                {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "inputSchema": tool.inputSchema
-                } for tool in getattr(tools, "tools", [])
-            ]
-        }
-        # Add any other attributes that might be useful
-        serialized_data = json.dumps(serializable_tools)
-    else:
-        # Try to serialize directly
-        try:
-            serialized_data = json.dumps(tools)
-        except TypeError as e:
-            sys_print(f"[external_cache] Warning: Cannot serialize tools - {e}")
-            sys_print("[external_cache] Using simplified tool representation")
-
-            # Fall back to a simplified format if serialization fails
-            # This handles cases where tools has complex objects inside
-            if isinstance(tools, dict) and "tools" in tools and isinstance(tools["tools"], list):
-                # Handle case where tools is a dict with a tools list
-                simplified = {
-                    "tools": [
-                        {
-                            "name": t.get("name") if isinstance(t, dict) else getattr(t, "name", str(t)),
-                            "description": t.get("description") if isinstance(t, dict) else getattr(t, "description", ""),
-                            "inputSchema": t.get("inputSchema") if isinstance(t, dict) else getattr(t, "inputSchema", {})
-                        } for t in tools["tools"]
-                    ]
-                }
-            elif hasattr(tools, "__iter__") and not isinstance(tools, (str, bytes)):
-                # Handle case where tools is an iterable (list, etc.)
-                simplified = {
-                    "tools": [
-                        {
-                            "name": t.get("name") if isinstance(t, dict) else getattr(t, "name", str(t)),
-                            "description": t.get("description") if isinstance(t, dict) else getattr(t, "description", ""),
-                            "inputSchema": t.get("inputSchema") if isinstance(t, dict) else getattr(t, "inputSchema", {})
-                        } for t in tools
-                    ]
-                }
-            else:
-                # Fall back to an empty dict if we can't make sense of the structure
-                simplified = {"tools": []}
-
-            serialized_data = json.dumps(simplified)
-
-    # Store in External Cache with expiration
-    cache_client.setex(key, expires_in_seconds, serialized_data)
-
-    if IS_DEBUG_LOG_LEVEL:
-        expiration_time = datetime.fromtimestamp(time.time() + expires_in_seconds).strftime('%Y-%m-%d %H:%M:%S')
-        sys_print(f"[external_cache] Cached tools for gateway/user '{id}', server '{server_name}' with key '{raw_key}' (hash: {key}) until {expiration_time}")
-
-    # Maintain a registry of servers for this gateway/user
-    registry_key = get_gateway_servers_registry_hashed_key(id)
-    cache_client.sadd(registry_key, server_name)
-    cache_client.expire(registry_key, expires_in_seconds)
-
-    # Register the gateway/user in the gateway/user registry if not already there
-    gateway_registry = get_gateway_registry_hashed_key()
-    cache_client.sadd(gateway_registry, id)
+    cache_key = get_server_hashed_key(id, server_name)
+    expires_in_seconds = ENKRYPT_TOOL_CACHE_EXPIRATION * 3600  # Convert hours to seconds
+    
+    try:
+        if ENKRYPT_MCP_USE_EXTERNAL_CACHE and cache_client:
+            tools_json = json.dumps(tools)
+            cache_client.set(cache_key, tools_json, ex=expires_in_seconds)
+            if IS_DEBUG_LOG_LEVEL:
+                sys_print(f"[cache_tools] Cached tools for {server_name} (expires in {ENKRYPT_TOOL_CACHE_EXPIRATION}h)")
+        else:
+            set_local_cache(cache_key, tools, expires_in_seconds)
+            if IS_DEBUG_LOG_LEVEL:
+                sys_print(f"[cache_tools] Locally cached tools for {server_name}")
+                
+    except Exception as e:
+        sys_print(f"[cache_tools] Error caching tools for {server_name}: {e}")
 
 
 def get_cached_gateway_config(cache_client, id):
@@ -732,3 +827,8 @@ def get_cache_statistics(cache_client):
         "total_config_caches": total_config_caches,
         "cache_type": "external_cache"
     }
+
+# Cleanup function for graceful shutdown
+async def cleanup_client_module():
+    """Clean up resources when shutting down."""
+    await close_auth_http_session()

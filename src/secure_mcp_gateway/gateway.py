@@ -35,7 +35,7 @@ Configuration Variables:
 Example Usage:
     ```python
     # Authenticate gateway/user
-    auth_result = enkrypt_authenticate(ctx)
+    auth_result = await enkrypt_authenticate(ctx)
 
     # Discover server tools
     tools = await enkrypt_discover_server_tools(ctx, "server1")
@@ -348,7 +348,7 @@ def get_local_mcp_config(gateway_key):
         return None
 
 
-def enkrypt_authenticate(ctx: Context):
+async def enkrypt_authenticate(ctx: Context):
     """
     Authenticates a gateway/user with the Enkrypt Secure MCP Gateway.
 
@@ -435,15 +435,19 @@ def enkrypt_authenticate(ctx: Context):
         if ENKRYPT_USE_REMOTE_MCP_CONFIG:
             sys_print(f"[authenticate] No valid cache, contacting auth server with ENKRYPT_API_KEY: ****{ENKRYPT_API_KEY[-4:]}")
             # No valid cache, contact auth server
-            response = requests.get(AUTH_SERVER_VALIDATE_URL, headers={
+            # Use async HTTP client for authentication
+            from secure_mcp_gateway.client import make_auth_request
+            auth_response = await make_auth_request(AUTH_SERVER_VALIDATE_URL, {
                 "apikey": ENKRYPT_API_KEY,
                 "X-Enkrypt-MCP-Gateway": ENKRYPT_REMOTE_MCP_GATEWAY_NAME,
                 "X-Enkrypt-MCP-Gateway-Version": ENKRYPT_REMOTE_MCP_GATEWAY_VERSION
             })
-            if response.status_code != 200:
-                sys_print("[authenticate] Invalid API key")
-                return {"status": "error", "error": "Invalid API key"}
-            gateway_config = response.json()
+            
+            if "error" in auth_response:
+                sys_print(f"[authenticate] Authentication request failed: {auth_response['error']}")
+                return {"status": "error", "error": "Authentication request failed"}
+            
+            gateway_config = auth_response
         else:
             if IS_DEBUG_LOG_LEVEL:
                 sys_print("[authenticate] Using local MCP config")
@@ -550,7 +554,7 @@ async def enkrypt_list_all_servers(ctx: Context):
             return {"status": "error", "error": "No gateway key provided."}
 
         if ENKRYPT_GATEWAY_KEY not in SESSIONS or not SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
-            result = enkrypt_authenticate(ctx)
+            result = await enkrypt_authenticate(ctx)
             if result.get("status") != "success":
                 if IS_DEBUG_LOG_LEVEL:
                     sys_print("[list_available_servers] Not authenticated")
@@ -624,7 +628,7 @@ async def enkrypt_get_server_info(ctx: Context, server_name: str):
     sys_print(f"[get_server_info] Requested for server: {server_name}")
 
     if ENKRYPT_GATEWAY_KEY not in SESSIONS or not SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
-        result = enkrypt_authenticate(ctx)
+        result = await enkrypt_authenticate(ctx)
         if result.get("status") != "success":
             sys_print("[get_server_info] Not authenticated")
             return {"status": "error", "error": "Not authenticated."}
@@ -684,7 +688,7 @@ async def enkrypt_discover_server_tools(ctx: Context, server_name: str):
     sys_print(f"[discover_server_tools] Requested for server: {server_name}")
 
     if ENKRYPT_GATEWAY_KEY not in SESSIONS or not SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
-        result = enkrypt_authenticate(ctx)
+        result = await enkrypt_authenticate(ctx)
         if result.get("status") != "success":
             if IS_DEBUG_LOG_LEVEL:
                 sys_print("[discover_server_tools] Not authenticated")
@@ -834,7 +838,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
         sys_print("[secure_call_tools] No tools provided. Treating this as a discovery call")
 
     if ENKRYPT_GATEWAY_KEY not in SESSIONS or not SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
-        result = enkrypt_authenticate(ctx)
+        result = await enkrypt_authenticate(ctx)
         if result.get("status") != "success":
             sys_print("[get_server_info] Not authenticated")
             return {"status": "error", "error": "Not authenticated."}
@@ -934,340 +938,319 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                         sys_print(f"[secure_call_tools] Processing call {i}: {tool_name} with args: {args}")
                         
                         # Start telemetry tracing for this tool call
-                        with trace_tool_call(server_name, tool_name, id, SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"].get("user_id")) as span:
+                        async with trace_tool_call(server_name, tool_name, id, SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"].get("user_id")) as span:
                             if span:
                                 span.set_attribute("mcp.tool.call_index", i)
                                 span.set_attribute("mcp.tool.args_count", len(args))
 
                             tool_found = False
-                        if server_config_tools:
-                            # Handle tuple return from get_cached_tools() which returns (tools, expires_at)
-                            if isinstance(server_config_tools, tuple) and len(server_config_tools) == 2:
-                                if IS_DEBUG_LOG_LEVEL:
-                                    sys_print(f"[secure_call_tools] server_config_tools is a tuple from cache: {server_config_tools}")
-                                server_config_tools = server_config_tools[0]  # Extract the tools, ignoring expires_at
+                            if server_config_tools:
+                                # Handle tuple return from get_cached_tools() which returns (tools, expires_at)
+                                if isinstance(server_config_tools, tuple) and len(server_config_tools) == 2:
+                                    if IS_DEBUG_LOG_LEVEL:
+                                        sys_print(f"[secure_call_tools] server_config_tools is a tuple from cache: {server_config_tools}")
+                                    server_config_tools = server_config_tools[0]  # Extract the tools, ignoring expires_at
 
-                            # Handles various formats of tools
-                            # like dictionary-style tools, ListToolsResult format, etc.
-                            if hasattr(server_config_tools, 'tools'):
-                                if IS_DEBUG_LOG_LEVEL:
-                                    sys_print("[secure_call_tools] server_config_tools is a class with tools")
-                                if isinstance(server_config_tools.tools, list):
-                                    # ListToolsResult format
+                                # Handles various formats of tools
+                                # like dictionary-style tools, ListToolsResult format, etc.
+                                if hasattr(server_config_tools, 'tools'):
                                     if IS_DEBUG_LOG_LEVEL:
-                                        sys_print(f"[secure_call_tools] server_config_tools is ListToolsResult format: {server_config_tools}")
-                                    for tool in server_config_tools.tools:
-                                        if hasattr(tool, 'name') and tool.name == tool_name:
-                                            tool_found = True
-                                            break
-                                elif isinstance(server_config_tools.tools, dict):
-                                    if IS_DEBUG_LOG_LEVEL:
-                                        sys_print("[secure_call_tools] server_config_tools.tools is in Dictionary format")
-                                    # Dictionary format like {"echo": "Echo a message"}
-                                    if tool_name in server_config_tools.tools:
-                                        tool_found = True
-                            elif isinstance(server_config_tools, dict):
-                                if IS_DEBUG_LOG_LEVEL:
-                                    sys_print("[secure_call_tools] server_config_tools is in Dictionary format")
-                                if "tools" in server_config_tools:
-                                    if IS_DEBUG_LOG_LEVEL:
-                                        sys_print("[secure_call_tools] server_config_tools is a dict and also has tools in Dictionary format")
-                                    if isinstance(server_config_tools.get("tools", {}), list):
-                                        for tool in server_config_tools.get("tools", []):
-                                            if isinstance(tool, dict):
-                                                # Handle the case where tools can be a list of dicts like [{"name": "echo", "description": "Echo a message"}]
-                                                if tool.get("name") == tool_name:
-                                                    tool_found = True
-                                                    break
-                                                # Handle the case where tools can be a dict like [{"echo": "Echo a message"}]
-                                                elif tool_name in tool:
-                                                    tool_found = True
-                                                    break
-                                    elif isinstance(server_config_tools.get("tools", {}), dict):
+                                        sys_print("[secure_call_tools] server_config_tools is a class with tools")
+                                    if isinstance(server_config_tools.tools, list):
+                                        # ListToolsResult format
+                                        if IS_DEBUG_LOG_LEVEL:
+                                            sys_print(f"[secure_call_tools] server_config_tools is ListToolsResult format: {server_config_tools}")
+                                        for tool in server_config_tools.tools:
+                                            if hasattr(tool, 'name') and tool.name == tool_name:
+                                                tool_found = True
+                                                break
+                                    elif isinstance(server_config_tools.tools, dict):
+                                        if IS_DEBUG_LOG_LEVEL:
+                                            sys_print("[secure_call_tools] server_config_tools.tools is in Dictionary format")
                                         # Dictionary format like {"echo": "Echo a message"}
-                                        if tool_name in server_config_tools.get("tools", {}):
+                                        if tool_name in server_config_tools.tools:
                                             tool_found = True
-                                # Dictionary format like {"echo": "Echo a message"}
-                                elif tool_name not in server_config_tools:
+                                elif isinstance(server_config_tools, dict):
                                     if IS_DEBUG_LOG_LEVEL:
-                                        sys_print(f"[secure_call_tools] Tool '{tool_name}' not found in server_config_tools")
+                                        sys_print("[secure_call_tools] server_config_tools is in Dictionary format")
+                                    if "tools" in server_config_tools:
+                                        if IS_DEBUG_LOG_LEVEL:
+                                            sys_print("[secure_call_tools] server_config_tools is a dict and also has tools in Dictionary format")
+                                        if isinstance(server_config_tools.get("tools", {}), list):
+                                            for tool in server_config_tools.get("tools", []):
+                                                if isinstance(tool, dict):
+                                                    # Handle the case where tools can be a list of dicts like [{"name": "echo", "description": "Echo a message"}]
+                                                    if tool.get("name") == tool_name:
+                                                        tool_found = True
+                                                        break
+                                                    # Handle the case where tools can be a dict like [{"echo": "Echo a message"}]
+                                                    elif tool_name in tool:
+                                                        tool_found = True
+                                                        break
+                                        elif isinstance(server_config_tools.get("tools", {}), dict):
+                                            # Dictionary format like {"echo": "Echo a message"}
+                                            if tool_name in server_config_tools.get("tools", {}):
+                                                tool_found = True
+                                    # Dictionary format like {"echo": "Echo a message"}
+                                    elif tool_name in server_config_tools:
+                                        tool_found = True
+                                    else:
+                                        if IS_DEBUG_LOG_LEVEL:
+                                            sys_print(f"[secure_call_tools] Tool '{tool_name}' not found in server_config_tools")
+                                else:
+                                    sys_print(f"[secure_call_tools] Unknown tool format: {type(server_config_tools)}")
+
+                            if not tool_found:
+                                sys_print(f"[enkrypt_secure_call_tools] Tool '{tool_name}' not found for this server.")
+                                return {"status": "error", "error": f"Tool '{tool_name}' not found for this server."}
+
+                            # Initialize guardrail responses for this call
+                            redaction_key = None
+                            input_guardrail_response = {}
+                            output_guardrail_response = {}
+                            output_relevancy_response = {}
+                            output_adherence_response = {}
+                            output_hallucination_response = {}
+
+                            # Prepare input for guardrails
+                            input_json_string = json.dumps(args)
+
+                            # INPUT GUARDRAILS PROCESSING
+                            if input_policy_enabled:
+                                sys_print(f"[secure_call_tools] Call {i} : Input guardrails enabled for {tool_name} of server {server_name}")
+
+                                # PII Redaction (async)
+                                if pii_redaction:
+                                    sys_print(f"[secure_call_tools] Call {i}: PII redaction enabled for {tool_name} of server {server_name}")
+                                    anonymized_text, redaction_key = await anonymize_pii(input_json_string)
+                                    if IS_DEBUG_LOG_LEVEL:
+                                        sys_print(f"[secure_call_tools] Call {i}: Anonymized text: {anonymized_text}")
+                                    # Using the anonymized text for input guardrails and tool call
+                                    input_json_string = anonymized_text
+                                    if anonymized_text:  # Only parse if anonymization was successful
+                                        try:
+                                            args = json.loads(anonymized_text)
+                                        except json.JSONDecodeError:
+                                            sys_print(f"[secure_call_tools] Call {i}: Failed to parse anonymized text as JSON")
+                                else:
+                                    if IS_DEBUG_LOG_LEVEL:
+                                        sys_print(f"[secure_call_tools] Call {i}: PII redaction not enabled for {tool_name} of server {server_name}")
+
+                                # Input guardrail check
+                                if ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED:
+                                    guardrail_task = asyncio.create_task(call_guardrail(input_json_string, input_blocks, input_policy_name))
+                                    tool_call_task = asyncio.create_task(session.call_tool(tool_name, arguments=args))
+
+                                    input_violations_detected, input_violation_types, input_guardrail_response = await guardrail_task
+                                else:
+                                    input_violations_detected, input_violation_types, input_guardrail_response = await call_guardrail(input_json_string, input_blocks, input_policy_name)
+
+                                sys_print(f"input_violations: {input_violations_detected}, {input_violation_types}")
+
+                                # Check for input violations
+                                if input_violations_detected:
+                                    sys_print(f"[secure_call_tools] Call {i}: Blocked due to input violations: {input_violation_types} for {tool_name} of server {server_name}")
+                                    
+                                    # Log guardrail violation (async, non-blocking)
+                                    asyncio.create_task(record_guardrail_violation(
+                                        violation_type=input_violation_types[0] if input_violation_types else "unknown",
+                                        policy_name=input_policy_name,
+                                        direction="input",
+                                        server_name=server_name,
+                                        tool_name=tool_name,
+                                        gateway_id=id,
+                                        user_id=SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"].get("user_id"),
+                                        violation_details={"violation_types": input_violation_types}
+                                    ))
+                                    
+                                    results.append({
+                                        "status": "blocked_input",
+                                        "message": f"Request blocked due to input guardrail violations: {', '.join(input_violation_types)}",
+                                        "response": "",
+                                        "enkrypt_mcp_data": {
+                                            "call_index": i,
+                                            "server_name": server_name,
+                                            "tool_name": tool_name,
+                                            "args": args
+                                        },
+                                        "enkrypt_policy_detections": {
+                                            "input_guardrail_policy": input_guardrails_policy,
+                                            "input_guardrail_response": input_guardrail_response,
+                                            "output_guardrail_policy": output_guardrails_policy,
+                                            "output_guardrail_response": output_guardrail_response,
+                                            "output_relevancy_response": output_relevancy_response,
+                                            "output_adherence_response": output_adherence_response,
+                                            "output_hallucination_response": output_hallucination_response
+                                        }
+                                    })
+                                    # Break to not proceed with next call if detected
+                                    break
+
+                                # Get tool result if async was used
+                                if ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED:
+                                    if IS_DEBUG_LOG_LEVEL:
+                                        sys_print(f"[secure_call_tools] Call {i}: Waiting for tool call to complete in async mode")
+                                    result = await tool_call_task
+                                else:
+                                    result = await session.call_tool(tool_name, arguments=args)
                             else:
-                                sys_print(f"[secure_call_tools] Unknown tool format: {type(server_config_tools)}")
-
-                        if not tool_found:
-                            sys_print(f"[enkrypt_secure_call_tools] Tool '{tool_name}' not found for this server.")
-                            return {"status": "error", "error": f"Tool '{tool_name}' not found for this server."}
-
-                        # Initialize guardrail responses for this call
-                        redaction_key = None
-                        input_guardrail_response = {}
-                        output_guardrail_response = {}
-                        output_relevancy_response = {}
-                        output_adherence_response = {}
-                        output_hallucination_response = {}
-
-                        # Prepare input for guardrails
-                        input_json_string = json.dumps(args)
-
-                        # INPUT GUARDRAILS PROCESSING
-                        if input_policy_enabled:
-                            sys_print(f"[secure_call_tools] Call {i} : Input guardrails enabled for {tool_name} of server {server_name}")
-
-                            # PII Redaction
-                            if pii_redaction:
-                                sys_print(f"[secure_call_tools] Call {i}: PII redaction enabled for {tool_name} of server {server_name}")
-                                anonymized_text, redaction_key = anonymize_pii(input_json_string)
-                                if IS_DEBUG_LOG_LEVEL:
-                                    sys_print(f"[secure_call_tools] Call {i}: Anonymized text: {anonymized_text}")
-                                # Using the anonymized text for input guardrails and tool call
-                                input_json_string = anonymized_text
-                                args = json.loads(anonymized_text)
-                            else:
-                                if IS_DEBUG_LOG_LEVEL:
-                                    sys_print(f"[secure_call_tools] Call {i}: PII redaction not enabled for {tool_name} of server {server_name}")
-
-                            # Input guardrail check
-                            if ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED:
-                                guardrail_task = asyncio.create_task(call_guardrail(input_json_string, input_blocks, input_policy_name))
-                                tool_call_task = asyncio.create_task(session.call_tool(tool_name, arguments=args))
-
-                                input_violations_detected, input_violation_types, input_guardrail_response = await guardrail_task
-                            else:
-                                input_violations_detected, input_violation_types, input_guardrail_response = await call_guardrail(input_json_string, input_blocks, input_policy_name)
-
-                            sys_print(f"input_violations: {input_violations_detected}, {input_violation_types}")
-
-                            # Check for input violations
-                            if input_violations_detected:
-                                sys_print(f"[secure_call_tools] Call {i}: Blocked due to input violations: {input_violation_types} for {tool_name} of server {server_name}")
-                                results.append({
-                                    "status": "blocked_input",
-                                    "message": f"Request blocked due to input guardrail violations: {', '.join(input_violation_types)}",
-                                    "response": "",
-                                    "enkrypt_mcp_data": {
-                                        "call_index": i,
-                                        "server_name": server_name,
-                                        "tool_name": tool_name,
-                                        "args": args
-                                    },
-                                    "enkrypt_policy_detections": {
-                                        "input_guardrail_policy": input_guardrails_policy,
-                                        "input_guardrail_response": input_guardrail_response,
-                                        "output_guardrail_policy": output_guardrails_policy,
-                                        "output_guardrail_response": output_guardrail_response,
-                                        "output_relevancy_response": output_relevancy_response,
-                                        "output_adherence_response": output_adherence_response,
-                                        "output_hallucination_response": output_hallucination_response
-                                    }
-                                })
-                                # Break to not proceed with next call if detected
-                                break
-
-                            # Get tool result if async was used
-                            if ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED:
-                                if IS_DEBUG_LOG_LEVEL:
-                                    sys_print(f"[secure_call_tools] Call {i}: Waiting for tool call to complete in async mode")
-                                result = await tool_call_task
-                            else:
+                                sys_print(f"[secure_call_tools] Call {i}: Input guardrails not enabled for {tool_name} of server {server_name}")
+                                # No input guardrails, execute tool directly
                                 result = await session.call_tool(tool_name, arguments=args)
-                        else:
-                            sys_print(f"[secure_call_tools] Call {i}: Input guardrails not enabled for {tool_name} of server {server_name}")
-                            # No input guardrails, execute tool directly
-                            result = await session.call_tool(tool_name, arguments=args)
 
+                            # Log successful tool execution (async, non-blocking)
+                            tool_execution_time = time.time() - tool_start_time
+                            asyncio.create_task(log_tool_execution_event(
+                                gateway_id=id,
+                                user_id=SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"].get("user_id", "unknown"),
+                                server_name=server_name,
+                                tool_name=tool_name,
+                                args=args,
+                                success=True,
+                                execution_time=tool_execution_time,
+                                response_size=len(str(result)) if result else 0
+                            ))
+
+                            if IS_DEBUG_LOG_LEVEL:
+                                sys_print(f"[secure_call_tools] Call {i}: Success: {server_name}.{tool_name}")
+                                sys_print(f"[secure_call_tools] Call {i}: type of result: {type(result)}")
+                                sys_print(f"[secure_call_tools] Call {i}: Tool call result: {result}")
+
+                            # result is a CallToolResult object. Example:
+                            # Tool call result: <class 'mcp.types.CallToolResult'> meta=None content=[TextContent(type='text', text='{\n  "status": "success",\n  "message": "test"\n}', annotations=None)] isError=False
+
+                            # Process tool result
+                            text_result = ""
+                            if result and hasattr(result, 'content') and result.content and len(result.content) > 0:
+                                # Check type is text or else we don't process it for output guardrails at the moment
+                                result_type = result.content[0].type
+                                if result_type == "text":
+                                    text_result = result.content[0].text
+                                    sys_print(f"[secure_call_tools] Call {i}: Tool executed and is text, checking output guardrails")
+                                else:
+                                    sys_print(f"[secure_call_tools] Call {i}: Tool result is not text, skipping output guardrails")
+
+                            if text_result:
+                                # OUTPUT GUARDRAILS PROCESSING
+                                if output_policy_enabled:
+                                    sys_print(f"[secure_call_tools] Call {i}: Output guardrails enabled for {tool_name} of server {server_name}")
+                                    output_violations_detected, output_violation_types, output_guardrail_response = await call_guardrail(text_result, output_blocks, output_policy_name)
+                                    sys_print(f"output_violation_types: {output_violation_types}")
+                                    if output_violations_detected:
+                                        sys_print(f"[secure_call_tools] Call {i}: Blocked due to output violations: {output_violation_types}")
+                                        
+                                        # Log guardrail violation (async, non-blocking)
+                                        asyncio.create_task(record_guardrail_violation(
+                                            violation_type=output_violation_types[0] if output_violation_types else "unknown",
+                                            policy_name=output_policy_name,
+                                            direction="output",
+                                            server_name=server_name,
+                                            tool_name=tool_name,
+                                            gateway_id=id,
+                                            user_id=SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"].get("user_id"),
+                                            violation_details={"violation_types": output_violation_types}
+                                        ))
+                                        
+                                        results.append({
+                                            "status": "blocked_output",
+                                            "message": f"Request blocked due to output guardrail violations: {', '.join(output_violation_types)}",
+                                            "response": text_result,
+                                            "enkrypt_mcp_data": {
+                                                "call_index": i,
+                                                "server_name": server_name,
+                                                "tool_name": tool_name,
+                                                "args": args
+                                            },
+                                            "enkrypt_policy_detections": {
+                                                "input_guardrail_policy": input_guardrails_policy,
+                                                "input_guardrail_response": input_guardrail_response,
+                                                "output_guardrail_policy": output_guardrails_policy,
+                                                "output_guardrail_response": output_guardrail_response,
+                                                "output_relevancy_response": output_relevancy_response,
+                                                "output_adherence_response": output_adherence_response,
+                                                "output_hallucination_response": output_hallucination_response
+                                            }
+                                        })
+                                        break
+                                    else:
+                                        sys_print(f"[secure_call_tools] Call {i}: No output violations detected for {tool_name} of server {server_name}")
+
+                                # RELEVANCY CHECK (async)
+                                if relevancy:
+                                    sys_print(f"[secure_call_tools] Call {i}: Checking relevancy for {tool_name} of server {server_name}")
+                                    output_relevancy_response = await check_relevancy(input_json_string, text_result)
+                                    if IS_DEBUG_LOG_LEVEL:
+                                        sys_print(f'relevancy response: {output_relevancy_response}')
+
+                                # ADHERENCE CHECK (async)
+                                if adherence:
+                                    sys_print(f"[secure_call_tools] Call {i}: Checking adherence for {tool_name} of server {server_name}")
+                                    output_adherence_response = await check_adherence(input_json_string, text_result)
+                                    if IS_DEBUG_LOG_LEVEL:
+                                        sys_print(f'adherence response: {output_adherence_response}')
+
+                                # HALLUCINATION CHECK (async)
+                                if hallucination:
+                                    sys_print(f"[secure_call_tools] Call {i}: Checking hallucination for {tool_name} of server {server_name}")
+                                    output_hallucination_response = await check_hallucination(input_json_string, text_result)
+                                    if IS_DEBUG_LOG_LEVEL:
+                                        sys_print(f'hallucination response: {output_hallucination_response}')
+
+                                # PII De-anonymization (async)
+                                if pii_redaction and redaction_key:
+                                    sys_print(f"[secure_call_tools] Call {i}: De-anonymizing PII for {tool_name} of server {server_name}")
+                                    text_result = await deanonymize_pii(text_result, redaction_key)
+
+                            # Add span attributes for telemetry
+                            if span:
+                                span.set_attribute("mcp.tool.success", True)
+                                span.set_attribute("mcp.tool.response_size", len(text_result))
+                                span.set_attribute("mcp.tool.execution_time", tool_execution_time)
+
+                            # Successful result
+                            results.append({
+                                "status": "success",
+                                "message": f"Tool {tool_name} executed successfully",
+                                "response": text_result,
+                                "enkrypt_mcp_data": {
+                                    "call_index": i,
+                                    "server_name": server_name,
+                                    "tool_name": tool_name,
+                                    "args": args
+                                },
+                                "enkrypt_policy_detections": {
+                                    "input_guardrail_policy": input_guardrails_policy,
+                                    "input_guardrail_response": input_guardrail_response,
+                                    "output_guardrail_policy": output_guardrails_policy,
+                                    "output_guardrail_response": output_guardrail_response,
+                                    "output_relevancy_response": output_relevancy_response,
+                                    "output_adherence_response": output_adherence_response,
+                                    "output_hallucination_response": output_hallucination_response
+                                }
+                            })
+
+                    except Exception as e:
+                        tool_execution_time = time.time() - tool_start_time
+                        
+                        # Log failed tool execution (async, non-blocking)
+                        asyncio.create_task(log_tool_execution_event(
+                            gateway_id=id,
+                            user_id=SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"].get("user_id", "unknown"),
+                            server_name=server_name,
+                            tool_name=tool_name or "unknown",
+                            args=args,
+                            success=False,
+                            execution_time=tool_execution_time,
+                            error_message=str(e)
+                        ))
+                        
+                        sys_print(f"[secure_call_tools] Call {i}: Error executing tool {tool_name}: {e}")
                         if IS_DEBUG_LOG_LEVEL:
-                            sys_print(f"[secure_call_tools] Call {i}: Success: {server_name}.{tool_name}")
-                            sys_print(f"[secure_call_tools] Call {i}: type of result: {type(result)}")
-                            sys_print(f"[secure_call_tools] Call {i}: Tool call result: {result}")
-
-                        # result is a CallToolResult object. Example:
-                        # Tool call result: <class 'mcp.types.CallToolResult'> meta=None content=[TextContent(type='text', text='{\n  "status": "success",\n  "message": "test"\n}', annotations=None)] isError=False
-
-                        # Process tool result
-                        text_result = ""
-                        if result and hasattr(result, 'content') and result.content and len(result.content) > 0:
-                            # ----------------------------------
-                            # # If we want to get all text contents
-                            # texts = [c.text for c in result.content if hasattr(c, "text")]
-                            # if IS_DEBUG_LOG_LEVEL:
-                            #     sys_print(f"texts: {texts}")
-                            # text_result = "\n".join(texts)
-                            # ----------------------------------
-                            # Check type is text or else we don't process it for output guardrails at the moment
-                            result_type = result.content[0].type
-                            if result_type == "text":
-                                text_result = result.content[0].text
-                                sys_print(f"[secure_call_tools] Call {i}: Tool executed and is text, checking output guardrails")
-                            else:
-                                sys_print(f"[secure_call_tools] Call {i}: Tool result is not text, skipping output guardrails")
-
-                        if text_result:
-                            # OUTPUT GUARDRAILS PROCESSING
-                            if output_policy_enabled:
-                                sys_print(f"[secure_call_tools] Call {i}: Output guardrails enabled for {tool_name} of server {server_name}")
-                                output_violations_detected, output_violation_types, output_guardrail_response = await call_guardrail(text_result, output_blocks, output_policy_name)
-                                sys_print(f"output_violation_types: {output_violation_types}")
-                                if output_violations_detected:
-                                    sys_print(f"[secure_call_tools] Call {i}: Blocked due to output violations: {output_violation_types}")
-                                    results.append({
-                                        "status": "blocked_output",
-                                        "message": f"Request blocked due to output guardrail violations: {', '.join(output_violation_types)}",
-                                        "response": text_result,
-                                        "enkrypt_mcp_data": {
-                                            "call_index": i,
-                                            "server_name": server_name,
-                                            "tool_name": tool_name,
-                                            "args": args
-                                        },
-                                        "enkrypt_policy_detections": {
-                                            "input_guardrail_policy": input_guardrails_policy,
-                                            "input_guardrail_response": input_guardrail_response,
-                                            "output_guardrail_policy": output_guardrails_policy,
-                                            "output_guardrail_response": output_guardrail_response,
-                                            "output_relevancy_response": output_relevancy_response,
-                                            "output_adherence_response": output_adherence_response,
-                                            "output_hallucination_response": output_hallucination_response
-                                        }
-                                    })
-                                    break
-                                else:
-                                    sys_print(f"[secure_call_tools] Call {i}: No output violations detected for {tool_name} of server {server_name}")
-
-                            # RELEVANCY CHECK
-                            if relevancy:
-                                sys_print(f"[secure_call_tools] Call {i}: Checking relevancy for {tool_name} of server {server_name}")
-                                output_relevancy_response = check_relevancy(input_json_string, text_result)
-                                if IS_DEBUG_LOG_LEVEL:
-                                    sys_print(f'relevancy response: {output_relevancy_response}')
-                                if "relevancy" in output_blocks and output_relevancy_response.get("summary", {}).get("relevancy_score") > RELEVANCY_THRESHOLD:
-                                    results.append({
-                                        "status": "blocked_output_relevancy",
-                                        "message": "Request blocked due to output relevancy violation",
-                                        "response": text_result,
-                                        "enkrypt_mcp_data": {
-                                            "call_index": i,
-                                            "server_name": server_name,
-                                            "tool_name": tool_name,
-                                            "args": args
-                                        },
-                                        "enkrypt_policy_detections": {
-                                            "input_guardrail_policy": input_guardrails_policy,
-                                            "input_guardrail_response": input_guardrail_response,
-                                            "output_guardrail_policy": output_guardrails_policy,
-                                            "output_guardrail_response": output_guardrail_response,
-                                            "output_relevancy_response": output_relevancy_response,
-                                            "output_adherence_response": output_adherence_response,
-                                            "output_hallucination_response": output_hallucination_response
-                                        }
-                                    })
-                                    break
-                                else:
-                                    sys_print(f"[secure_call_tools] Call {i}: No relevancy violations detected or relevancy is not in output_blocks for {tool_name} of server {server_name}")
-
-                            # ADHERENCE CHECK
-                            if adherence:
-                                sys_print(f"[secure_call_tools] Call {i}: Checking adherence for {tool_name} of server {server_name}")
-                                output_adherence_response = check_adherence(input_json_string, text_result)
-                                if IS_DEBUG_LOG_LEVEL:
-                                    sys_print(f'adherence response: {output_adherence_response}')
-                                if "adherence" in output_blocks and output_adherence_response.get("summary", {}).get("adherence_score") > ADHERENCE_THRESHOLD:
-                                    results.append({
-                                        "status": "blocked_output_adherence",
-                                        "message": "Request blocked due to output adherence violation",
-                                        "response": text_result,
-                                        "enkrypt_mcp_data": {
-                                            "call_index": i,
-                                            "server_name": server_name,
-                                            "tool_name": tool_name,
-                                            "args": args
-                                        },
-                                        "enkrypt_policy_detections": {
-                                            "input_guardrail_policy": input_guardrails_policy,
-                                            "input_guardrail_response": input_guardrail_response,
-                                            "output_guardrail_policy": output_guardrails_policy,
-                                            "output_guardrail_response": output_guardrail_response,
-                                            "output_relevancy_response": output_relevancy_response,
-                                            "output_adherence_response": output_adherence_response,
-                                            "output_hallucination_response": output_hallucination_response
-                                        }
-                                    })
-                                    break
-                                else:
-                                    sys_print(f"[secure_call_tools] Call {i}: No adherence violations detected or adherence is not in output_blocks for {tool_name} of server {server_name}")
-
-                            # HALLUCINATION CHECK
-                            if hallucination:
-                                sys_print(f"[secure_call_tools] Call {i}: Checking hallucination for {tool_name} of server {server_name}")
-                                output_hallucination_response = check_hallucination(input_json_string, text_result)
-                                if IS_DEBUG_LOG_LEVEL:
-                                    sys_print(f'hallucination response: {output_hallucination_response}')
-                                if "hallucination" in output_blocks and output_hallucination_response.get("summary", {}).get("is_hallucination") > 0:
-                                    results.append({
-                                        "status": "blocked_output_hallucination",
-                                        "message": "Request blocked due to output hallucination violation",
-                                        "response": text_result,
-                                        "enkrypt_mcp_data": {
-                                            "call_index": i,
-                                            "server_name": server_name,
-                                            "tool_name": tool_name,
-                                            "args": args
-                                        },
-                                        "enkrypt_policy_detections": {
-                                            "input_guardrail_policy": input_guardrails_policy,
-                                            "input_guardrail_response": input_guardrail_response,
-                                            "output_guardrail_policy": output_guardrails_policy,
-                                            "output_guardrail_response": output_guardrail_response,
-                                            "output_relevancy_response": output_relevancy_response,
-                                            "output_adherence_response": output_adherence_response,
-                                            "output_hallucination_response": output_hallucination_response
-                                        }
-                                    })
-                                    break
-                                else:
-                                    sys_print(f"[secure_call_tools] Call {i}: No hallucination violations detected or hallucination is not in output_blocks for {tool_name} of server {server_name}")
-
-                            # PII DE-ANONYMIZATION
-                            if pii_redaction and redaction_key:
-                                sys_print(f"[secure_call_tools] Call {i}: De-anonymizing PII for {tool_name} of server {server_name} with redaction key: {redaction_key}")
-                                deanonymized_text = deanonymize_pii(text_result, redaction_key)
-                                if IS_DEBUG_LOG_LEVEL:
-                                    sys_print(f"[secure_call_tools] Call {i}: De-anonymized text for {tool_name} of server {server_name}: {deanonymized_text}")
-                                text_result = deanonymized_text
-                            else:
-                                sys_print(f"[secure_call_tools] Call {i}: PII redaction not enabled or redaction key {redaction_key} not found for {tool_name} of server {server_name}")
-
-                        sys_print(f"[secure_call_tools] Call {i}: Completed successfully for {tool_name} of server {server_name}")
-
-                        # Successful result
-                        results.append({
-                            "status": "success",
-                            "message": "Request processed successfully",
-                            "response": text_result,
-                            "enkrypt_mcp_data": {
-                                "call_index": i,
-                                "server_name": server_name,
-                                "tool_name": tool_name,
-                                "args": args
-                            },
-                            "enkrypt_policy_detections": {
-                                "input_guardrail_policy": input_guardrails_policy,
-                                "input_guardrail_response": input_guardrail_response,
-                                "output_guardrail_policy": output_guardrails_policy,
-                                "output_guardrail_response": output_guardrail_response,
-                                "output_relevancy_response": output_relevancy_response,
-                                "output_adherence_response": output_adherence_response,
-                                "output_hallucination_response": output_hallucination_response
-                            }
-                        })
-
-                    except Exception as tool_error:
-                        sys_print(f"[secure_call_tools] Error in call {i} ({tool_name}): {tool_error}")
-                        traceback.print_exc(file=sys.stderr)
-
+                            traceback.print_exc(file=sys.stderr)
                         results.append({
                             "status": "error",
-                            "error": str(tool_error),
-                            "message": "Error while processing tool call",
+                            "error": str(e),
+                            "message": f"Error executing tool {tool_name}: {e}",
                             "enkrypt_mcp_data": {
                                 "call_index": i,
                                 "server_name": server_name,
@@ -1275,7 +1258,6 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                 "args": args
                             }
                         })
-                        break
 
         # Calculate summary statistics
         successful_calls = len([r for r in results if r["status"] == "success"])
@@ -1346,7 +1328,7 @@ async def enkrypt_get_cache_status(ctx: Context):
     sys_print("[get_cache_status] Request received")
 
     if ENKRYPT_GATEWAY_KEY not in SESSIONS or not SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
-        result = enkrypt_authenticate(ctx)
+        result = await enkrypt_authenticate(ctx)
         if result.get("status") != "success":
             sys_print("[get_cache_status] Not authenticated")
             return {"status": "error", "error": "Not authenticated."}
@@ -1528,7 +1510,7 @@ async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = N
     sys_print(f"[clear_cache] Requested with id={id}, server_name={server_name}, cache_type={cache_type}")
 
     if ENKRYPT_GATEWAY_KEY not in SESSIONS or not SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
-        result = enkrypt_authenticate(ctx)
+        result = await enkrypt_authenticate(ctx)
         if result.get("status") != "success":
             sys_print("[clear_cache] Not authenticated")
             return {"status": "error", "error": "Not authenticated."}

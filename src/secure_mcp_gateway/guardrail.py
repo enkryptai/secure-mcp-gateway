@@ -34,22 +34,22 @@ API Endpoints:
 
 Example Usage:
     ```python
-    # Anonymize PII in text
-    anonymized_text, key = anonymize_pii("John's email is john@example.com")
+    # Anonymize PII in text (async)
+    anonymized_text, key = await anonymize_pii("John's email is john@example.com")
 
-    # Check response relevancy
-    relevancy_result = check_relevancy("What is Python?", "Python is a programming language")
+    # Check response relevancy (async)
+    relevancy_result = await check_relevancy("What is Python?", "Python is a programming language")
 
-    # Check for hallucinations
-    hallucination_result = check_hallucination("Tell me about Mars",
+    # Check for hallucinations (async)
+    hallucination_result = await check_hallucination("Tell me about Mars",
                                              "Mars is a red planet",
                                              context="Solar system information")
     ```
 """
 
-# import sys
+import asyncio
 import aiohttp
-import requests
+from typing import Tuple, Dict, Any
 
 from secure_mcp_gateway.utils import (
     get_common_config,
@@ -71,7 +71,6 @@ ENKRYPT_BASE_URL = common_config.get("enkrypt_base_url", "https://api.enkryptai.
 if IS_DEBUG_LOG_LEVEL:
     sys_print(f"ENKRYPT_BASE_URL: {ENKRYPT_BASE_URL}")
 
-
 # URLs
 PII_REDACTION_URL = f"{ENKRYPT_BASE_URL}/guardrails/pii"
 GUARDRAIL_URL = f"{ENKRYPT_BASE_URL}/guardrails/policy/detect"
@@ -83,18 +82,96 @@ DEFAULT_HEADERS = {
     "Content-Type": "application/json"
 }
 
+# HTTP client configuration
+HTTP_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10)
+MAX_RETRIES = 3
+RETRY_DELAY = 1.0
+
+# Global session for connection pooling
+_http_session = None
+
+
+async def get_http_session() -> aiohttp.ClientSession:
+    """Get or create a global HTTP session for connection pooling."""
+    global _http_session
+    if _http_session is None or _http_session.closed:
+        connector = aiohttp.TCPConnector(
+            limit=100,  # Total connection pool size
+            limit_per_host=30,  # Per-host connection limit
+            ttl_dns_cache=300,  # DNS cache TTL
+            use_dns_cache=True,
+        )
+        _http_session = aiohttp.ClientSession(
+            connector=connector,
+            timeout=HTTP_TIMEOUT,
+            headers={"User-Agent": f"enkrypt-mcp-gateway/{__version__}"}
+        )
+    return _http_session
+
+
+async def close_http_session():
+    """Close the global HTTP session."""
+    global _http_session
+    if _http_session and not _http_session.closed:
+        await _http_session.close()
+        _http_session = None
+
+
+async def make_http_request(url: str, payload: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Make an async HTTP request with retry logic and proper error handling.
+    
+    Args:
+        url: The URL to make the request to
+        payload: The JSON payload to send
+        headers: HTTP headers to include
+        
+    Returns:
+        Dict containing the response data or error information
+    """
+    session = await get_http_session()
+    
+    for attempt in range(MAX_RETRIES):
+        try:
+            async with session.post(url, json=payload, headers=headers) as response:
+                if response.status == 200:
+                    return await response.json()
+                elif response.status == 429:  # Rate limited
+                    if attempt < MAX_RETRIES - 1:
+                        wait_time = RETRY_DELAY * (2 ** attempt)
+                        sys_print(f"Rate limited, waiting {wait_time}s before retry {attempt + 1}")
+                        await asyncio.sleep(wait_time)
+                        continue
+                else:
+                    response.raise_for_status()
+                    
+        except aiohttp.ClientError as e:
+            if attempt < MAX_RETRIES - 1:
+                wait_time = RETRY_DELAY * (2 ** attempt)
+                sys_print(f"HTTP request failed (attempt {attempt + 1}): {e}, retrying in {wait_time}s")
+                await asyncio.sleep(wait_time)
+                continue
+            else:
+                sys_print(f"HTTP request failed after {MAX_RETRIES} attempts: {e}")
+                return {"error": str(e)}
+        except Exception as e:
+            sys_print(f"Unexpected error in HTTP request: {e}")
+            return {"error": str(e)}
+    
+    return {"error": "Maximum retries exceeded"}
+
 
 # --- PII Handling ---
 
-def anonymize_pii(text: str) -> tuple[str, str]:
+async def anonymize_pii(text: str) -> Tuple[str, str]:
     """
-    Anonymizes PII in the given text using EnkryptAI API.
+    Anonymizes PII in the given text using EnkryptAI API (async).
 
     Args:
         text (str): The original text containing PII.
 
     Returns:
-        tuple[str, str]: A tuple of (anonymized_text, key)
+        Tuple[str, str]: A tuple of (anonymized_text, key)
     """
     payload = {
         "text": text,
@@ -103,24 +180,25 @@ def anonymize_pii(text: str) -> tuple[str, str]:
     }
     headers = {**DEFAULT_HEADERS, "apikey": ENKRYPT_API_KEY}
 
-    sys_print("Making request to PII redaction API")
+    sys_print("Making async request to PII redaction API")
     if IS_DEBUG_LOG_LEVEL:
         sys_print(f"payload: {payload}")
         sys_print(f"headers: {headers}")
 
     try:
-        response = requests.post(PII_REDACTION_URL, json=payload, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        return data["text"], data["key"]
+        data = await make_http_request(PII_REDACTION_URL, payload, headers)
+        if "error" in data:
+            sys_print(f"Anonymization error: {data['error']}")
+            return "", ""
+        return data.get("text", ""), data.get("key", "")
     except Exception as e:
         sys_print(f"Anonymization error: {e}")
         return "", ""
 
 
-def deanonymize_pii(text: str, key: str) -> str:
+async def deanonymize_pii(text: str, key: str) -> str:
     """
-    De-anonymizes previously redacted text using the key.
+    De-anonymizes previously redacted text using the key (async).
 
     Args:
         text (str): The anonymized text (e.g., with <PERSON_0> etc.)
@@ -136,31 +214,32 @@ def deanonymize_pii(text: str, key: str) -> str:
     }
     headers = {**DEFAULT_HEADERS, "apikey": ENKRYPT_API_KEY}
 
-    sys_print("Making request to PII redaction API for de-anonymization")
+    sys_print("Making async request to PII redaction API for de-anonymization")
     if IS_DEBUG_LOG_LEVEL:
         sys_print(f"payload: {payload}")
         sys_print(f"headers: {headers}")
 
     try:
-        response = requests.post(PII_REDACTION_URL, json=payload, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        return data["text"]
+        data = await make_http_request(PII_REDACTION_URL, payload, headers)
+        if "error" in data:
+            sys_print(f"De-anonymization error: {data['error']}")
+            return ""
+        return data.get("text", "")
     except Exception as e:
         sys_print(f"De-anonymization error: {e}")
         return ""
 
 
-def check_relevancy(question: str, llm_answer: str) -> dict:
+async def check_relevancy(question: str, llm_answer: str) -> Dict[str, Any]:
     """
-    Checks the relevancy of an LLM answer to a question using EnkryptAI API.
+    Checks the relevancy of an LLM answer to a question using EnkryptAI API (async).
 
     Args:
         question (str): The original question or prompt.
         llm_answer (str): The LLM's answer to the question.
 
     Returns:
-        dict: The response from the relevancy API (parsed JSON).
+        Dict[str, Any]: The response from the relevancy API (parsed JSON).
     """
     payload = {
         "question": question,
@@ -168,33 +247,31 @@ def check_relevancy(question: str, llm_answer: str) -> dict:
     }
     headers = {**DEFAULT_HEADERS, "apikey": ENKRYPT_API_KEY}
 
-    sys_print("Making request to relevancy API")
+    sys_print("Making async request to relevancy API")
     if IS_DEBUG_LOG_LEVEL:
         sys_print(f"payload: {payload}")
         sys_print(f"headers: {headers}")
 
     try:
-        response = requests.post(RELEVANCY_URL, json=payload, headers=headers)
-        response.raise_for_status()
-        res_json = response.json()
+        data = await make_http_request(RELEVANCY_URL, payload, headers)
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"relevancy response: {res_json}")
-        return res_json
+            sys_print(f"relevancy response: {data}")
+        return data
     except Exception as e:
         sys_print(f"Relevancy API error: {e}")
         return {"error": str(e)}
 
 
-def check_adherence(context: str, llm_answer: str) -> dict:
+async def check_adherence(context: str, llm_answer: str) -> Dict[str, Any]:
     """
-    Checks the adherence of an LLM answer to a context using EnkryptAI API.
+    Checks the adherence of an LLM answer to a context using EnkryptAI API (async).
 
     Args:
         context (str): The original context or prompt.
         llm_answer (str): The LLM's answer to the context.
 
     Returns:
-        dict: The response from the adherence API (parsed JSON).
+        Dict[str, Any]: The response from the adherence API (parsed JSON).
     """
     payload = {
         "context": context,
@@ -202,132 +279,117 @@ def check_adherence(context: str, llm_answer: str) -> dict:
     }
     headers = {**DEFAULT_HEADERS, "apikey": ENKRYPT_API_KEY}
 
-    sys_print("Making request to adherence API")
+    sys_print("Making async request to adherence API")
     if IS_DEBUG_LOG_LEVEL:
         sys_print(f"payload: {payload}")
         sys_print(f"headers: {headers}")
 
     try:
-        response = requests.post(ADHERENCE_URL, json=payload, headers=headers)
-        response.raise_for_status()
-        res_json = response.json()
+        data = await make_http_request(ADHERENCE_URL, payload, headers)
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"adherence response: {res_json}")
-        return res_json
+            sys_print(f"adherence response: {data}")
+        return data
     except Exception as e:
         sys_print(f"Adherence API error: {e}")
         return {"error": str(e)}
 
 
-def check_hallucination(request_text: str, response_text: str, context: str = "") -> dict:
+async def check_hallucination(request_text: str, response_text: str, context: str = "") -> Dict[str, Any]:
     """
-    Checks the hallucination of an LLM answer to a request using EnkryptAI API.
+    Checks for hallucinations in an LLM response using EnkryptAI API (async).
 
     Args:
-        request_text (str): The prompt that was used to generate the response.
-        response_text (str): The response from the LLM.
-        context (str): The context of the request (optional).
+        request_text (str): The original request or prompt.
+        response_text (str): The LLM's response to check.
+        context (str): Additional context for the check (optional).
 
     Returns:
-        dict: The response from the hallucination API (parsed JSON).
+        Dict[str, Any]: The response from the hallucination API (parsed JSON).
     """
     payload = {
         "request_text": request_text,
         "response_text": response_text,
-        "context": context if context else ""
+        "context": context
     }
     headers = {**DEFAULT_HEADERS, "apikey": ENKRYPT_API_KEY}
 
-    sys_print("Making request to hallucination API")
+    sys_print("Making async request to hallucination API")
     if IS_DEBUG_LOG_LEVEL:
         sys_print(f"payload: {payload}")
         sys_print(f"headers: {headers}")
 
     try:
-        response = requests.post(HALLUCINATION_URL, json=payload, headers=headers)
-        response.raise_for_status()
-        res_json = response.json()
+        data = await make_http_request(HALLUCINATION_URL, payload, headers)
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"hallucination response: {res_json}")
-        return res_json
+            sys_print(f"hallucination response: {data}")
+        return data
     except Exception as e:
         sys_print(f"Hallucination API error: {e}")
         return {"error": str(e)}
 
 
-# --- Guardrail handling ---
-async def call_guardrail(text, blocks, policy_name):
+async def call_guardrail(text: str, blocks: list, policy_name: str) -> Tuple[bool, list, Dict[str, Any]]:
     """
-    Asynchronously checks text against specified guardrail policies using EnkryptAI API.
-
-    This function evaluates the input text against a set of guardrail policies to detect
-    potential violations or policy breaches. It can check for multiple types of violations
-    specified in the blocks parameter.
+    Calls the guardrail API to check for policy violations (async).
 
     Args:
-        text (str): The text to be checked against guardrail policies.
-        blocks (list): List of policy blocks to check against (e.g., ['toxicity', 'bias', 'harm']).
-        policy_name (str): Name of the policy to apply (e.g., 'default', 'strict', 'custom').
+        text (str): The text to check for violations.
+        blocks (list): List of policy blocks to check against.
+        policy_name (str): Name of the policy being checked.
 
     Returns:
-        tuple: A tuple containing:
-            - violations_detected (bool): True if any policy violations were detected, False otherwise.
-            - violation_types (list): List of types of violations detected (e.g., ['toxicity', 'bias']).
-            - resp_json (dict): Full response from the guardrail API including detailed analysis.
-
-    Example:
-        ```python
-        violations, types, response = await call_guardrail(
-            "Some text to check",
-            ["toxicity", "bias"],
-            "default"
-        )
-        if violations:
-            sys_print(f"Detected violations: {types}")
-        ```
+        Tuple[bool, list, Dict[str, Any]]: A tuple of (violations_detected, violation_types, response)
     """
-    payload = {"text": text}
-    headers = {
-        "X-Enkrypt-Policy": policy_name,
-        "apikey": ENKRYPT_API_KEY,
-        "Content-Type": "application/json"
+    payload = {
+        "text": text,
+        "blocks": blocks,
+        "policy_name": policy_name
     }
+    headers = {**DEFAULT_HEADERS, "apikey": ENKRYPT_API_KEY}
 
-    sys_print(f'making request to guardrail with policy: {policy_name}')
+    sys_print(f"Making async request to guardrail API for policy: {policy_name}")
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f'payload: {payload}')
-        sys_print(f'headers: {headers}')
+        sys_print(f"payload: {payload}")
+        sys_print(f"headers: {headers}")
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(GUARDRAIL_URL, json=payload, headers=headers) as response:
-                resp_json = await response.json()
+        data = await make_http_request(GUARDRAIL_URL, payload, headers)
+        
+        if "error" in data:
+            sys_print(f"Guardrail API error: {data['error']}")
+            return False, [], data
+
+        violations_detected = data.get("violations_detected", False)
+        violation_types = data.get("violation_types", [])
+        
+        if IS_DEBUG_LOG_LEVEL:
+            sys_print(f"guardrail response: {data}")
+            sys_print(f"violations_detected: {violations_detected}")
+            sys_print(f"violation_types: {violation_types}")
+
+        return violations_detected, violation_types, data
+        
     except Exception as e:
         sys_print(f"Guardrail API error: {e}")
-        return {"error": str(e)}
+        return False, [], {"error": str(e)}
 
-    if IS_DEBUG_LOG_LEVEL:
-        sys_print("Guardrail API response received")
-        sys_print(f'resp_json: {resp_json}')
-    
-    if resp_json.get("error"):
-        sys_print(f"Guardrail API error: {resp_json.get('error')}")
-        return False, [], resp_json
 
-    violations_detected = False
-    violation_types = []
-    if "summary" in resp_json:
-        summary = resp_json["summary"]
-        for policy_type in blocks:
-            value = summary.get(policy_type)
-            if IS_DEBUG_LOG_LEVEL:
-                sys_print(f'policy_type: {policy_type}')
-                sys_print(f'value: {value}')
-            if value == 1:
-                violations_detected = True
-                violation_types.append(policy_type)
-            elif isinstance(value, list) and len(value) > 0:
-                violations_detected = True
-                violation_types.append(policy_type)
+# Cleanup function for graceful shutdown
+async def cleanup_guardrail_module():
+    """Clean up resources when shutting down."""
+    await close_http_session()
 
-    return violations_detected, violation_types, resp_json
+
+# Legacy sync functions for backward compatibility (deprecated)
+def anonymize_pii_sync(text: str) -> Tuple[str, str]:
+    """Deprecated: Use anonymize_pii() instead."""
+    import warnings
+    warnings.warn("anonymize_pii_sync is deprecated, use async anonymize_pii instead", DeprecationWarning)
+    return asyncio.run(anonymize_pii(text))
+
+
+def deanonymize_pii_sync(text: str, key: str) -> str:
+    """Deprecated: Use deanonymize_pii() instead."""
+    import warnings
+    warnings.warn("deanonymize_pii_sync is deprecated, use async deanonymize_pii instead", DeprecationWarning)
+    return asyncio.run(deanonymize_pii(text, key))

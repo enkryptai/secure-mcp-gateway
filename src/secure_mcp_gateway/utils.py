@@ -54,7 +54,22 @@ DEFAULT_COMMON_CONFIG = {
     "enkrypt_audit_retention_days": 365,
     "enkrypt_audit_log_path": "/var/log/enkrypt/audit",
     "enkrypt_audit_remote_endpoint": None,
-    "enkrypt_audit_encryption_key": None
+    "enkrypt_audit_encryption_key": None,
+    
+    # Performance Configuration
+    "enkrypt_http_timeout": 30,
+    "enkrypt_http_connect_timeout": 10,
+    "enkrypt_http_max_retries": 3,
+    "enkrypt_http_retry_delay": 1.0,
+    "enkrypt_connection_pool_size": 100,
+    "enkrypt_connection_per_host": 30,
+    "enkrypt_dns_cache_ttl": 300,
+    
+    # Circuit Breaker Configuration
+    "enkrypt_circuit_breaker_enabled": True,
+    "enkrypt_circuit_breaker_failure_threshold": 5,
+    "enkrypt_circuit_breaker_recovery_timeout": 60,
+    "enkrypt_circuit_breaker_expected_exception": "RequestException"
 }
 
 
