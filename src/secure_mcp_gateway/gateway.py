@@ -154,6 +154,27 @@ from secure_mcp_gateway.guardrail import (
     check_hallucination
 )
 
+from secure_mcp_gateway.telemetry import (
+    trace_tool_call,
+    trace_guardrail_check,
+    trace_cache_operation,
+    record_cache_hit,
+    record_cache_miss,
+    record_guardrail_violation,
+    record_api_request,
+    log_security_event,
+    log_compliance_event
+)
+
+from secure_mcp_gateway.audit import (
+    log_authentication_event,
+    log_tool_execution_event,
+    log_guardrail_violation_event,
+    log_security_alert_event,
+    log_data_access_event,
+    AuditSeverity
+)
+
 
 ENKRYPT_GATEWAY_KEY = os.environ.get("ENKRYPT_GATEWAY_KEY", "NULL")
 if ENKRYPT_GATEWAY_KEY == "NULL":
@@ -351,6 +372,12 @@ def enkrypt_authenticate(ctx: Context):
 
     if not ENKRYPT_GATEWAY_KEY:
         sys_print("Error: Gateway key is required. Please update your mcp client config and try again.")
+        asyncio.create_task(log_authentication_event(
+            gateway_id="unknown",
+            user_id="unknown",
+            success=False,
+            failure_reason="Gateway key not provided"
+        ))
         return {"status": "error", "error": "arg --gateway-key is required in MCP client config."}
 
     if IS_DEBUG_LOG_LEVEL:
@@ -439,6 +466,14 @@ def enkrypt_authenticate(ctx: Context):
         })
 
         sys_print(f"[authenticate] Auth successful for gateway/user: {id}")
+        
+        # Log successful authentication
+        asyncio.create_task(log_authentication_event(
+            gateway_id=id,
+            user_id=gateway_config.get("user_id", "unknown"),
+            success=True
+        ))
+        
         mcp_config = gateway_config.get("mcp_config", [])
         return {
             "status": "success",
@@ -451,6 +486,15 @@ def enkrypt_authenticate(ctx: Context):
     except Exception as e:
         sys_print(f"[authenticate] Exception: {e}")
         traceback.print_exc(file=sys.stderr)
+        
+        # Log authentication failure
+        asyncio.create_task(log_authentication_event(
+            gateway_id="unknown",
+            user_id="unknown",
+            success=False,
+            failure_reason=str(e)
+        ))
+        
         return {"status": "error", "error": str(e)}
 
 
@@ -864,6 +908,10 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                 sys_print(f"[secure_call_tools] Session initialized successfully for {server_name}")
 
                 for i, tool_call in enumerate(tool_calls):
+                    tool_start_time = time.time()
+                    tool_name = None
+                    args = {}
+                    
                     try:
                         tool_name = tool_call.get("name") or tool_call.get("tool_name") or tool_call.get("tool") or tool_call.get("function") or tool_call.get("function_name") or tool_call.get("function_id")
                         args = tool_call.get("args", {}) or tool_call.get("arguments", {}) or tool_call.get("parameters", {}) or tool_call.get("input", {}) or tool_call.get("params", {})
@@ -884,8 +932,14 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                             break
 
                         sys_print(f"[secure_call_tools] Processing call {i}: {tool_name} with args: {args}")
+                        
+                        # Start telemetry tracing for this tool call
+                        with trace_tool_call(server_name, tool_name, id, SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"].get("user_id")) as span:
+                            if span:
+                                span.set_attribute("mcp.tool.call_index", i)
+                                span.set_attribute("mcp.tool.args_count", len(args))
 
-                        tool_found = False
+                            tool_found = False
                         if server_config_tools:
                             # Handle tuple return from get_cached_tools() which returns (tools, expires_at)
                             if isinstance(server_config_tools, tuple) and len(server_config_tools) == 2:

@@ -36,7 +36,25 @@ DEFAULT_COMMON_CONFIG = {
     "enkrypt_tool_cache_expiration": 4,
     "enkrypt_gateway_cache_expiration": 24,
     "enkrypt_async_input_guardrails_enabled": False,
-    "enkrypt_async_output_guardrails_enabled": False
+    "enkrypt_async_output_guardrails_enabled": False,
+    
+    # OpenTelemetry Configuration
+    "enkrypt_telemetry_enabled": False,
+    "enkrypt_telemetry_service_name": "enkrypt-mcp-gateway",
+    "enkrypt_telemetry_endpoint": "http://localhost:4317",
+    "enkrypt_telemetry_headers": {},
+    "enkrypt_metrics_enabled": True,
+    "enkrypt_jaeger_enabled": False,
+    "enkrypt_prometheus_enabled": True,
+    "enkrypt_jaeger_endpoint": "http://localhost:14268/api/traces",
+    
+    # Audit Configuration
+    "enkrypt_audit_enabled": True,
+    "enkrypt_audit_encryption_enabled": True,
+    "enkrypt_audit_retention_days": 365,
+    "enkrypt_audit_log_path": "/var/log/enkrypt/audit",
+    "enkrypt_audit_remote_endpoint": None,
+    "enkrypt_audit_encryption_key": None
 }
 
 

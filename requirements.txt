@@ -19,3 +19,18 @@ asyncio>=3.4.3
 
 # MCP
 mcp[cli]
+
+# OpenTelemetry
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-instrumentation>=0.41b0
+opentelemetry-instrumentation-requests>=0.41b0
+opentelemetry-instrumentation-aiohttp-client>=0.41b0
+opentelemetry-instrumentation-redis>=0.41b0
+opentelemetry-exporter-otlp>=1.20.0
+opentelemetry-exporter-jaeger>=1.20.0
+opentelemetry-exporter-prometheus>=1.12.0rc1
+opentelemetry-semantic-conventions>=0.41b0
+
+# Audit and compliance
+structlog>=23.1.0
