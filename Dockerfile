@@ -24,5 +24,8 @@ RUN python -m build
 # Install the package
 RUN pip install .
 
+EXPOSE 8000
+
 # Set the entrypoint to the script
+# ENTRYPOINT ["python", "src/secure_mcp_gateway/gateway.py"]
 ENTRYPOINT ["mcp", "run", "src/secure_mcp_gateway/gateway.py"]

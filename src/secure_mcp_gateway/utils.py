@@ -89,11 +89,11 @@ def is_docker():
         if os.path.exists(indicator):
             return True
 
-    # Check cgroup for Docker-specific entries
+    # Check cgroup for any containerization system entries
     try:
         with open('/proc/1/cgroup', 'rt', encoding='utf-8') as f:
             for line in f:
-                if 'docker' in line:
+                if any(keyword in line for keyword in ['docker', 'kubepods', 'containerd']):
                     return True
     except FileNotFoundError:
         # /proc/1/cgroup doesn't exist, which is common outside of Linux

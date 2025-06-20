@@ -127,6 +127,7 @@ import time
 import asyncio
 import requests
 import traceback
+# from starlette.requests import Request # This is the class of ctx.request_context.request
 from mcp.client.stdio import stdio_client
 from mcp.server.fastmcp import FastMCP, Context
 from mcp import ClientSession, StdioServerParameters
@@ -155,15 +156,11 @@ from secure_mcp_gateway.guardrail import (
 )
 
 
-ENKRYPT_GATEWAY_KEY = os.environ.get("ENKRYPT_GATEWAY_KEY", "NULL")
-if ENKRYPT_GATEWAY_KEY == "NULL":
-    sys_print("Error: Gateway key is required. Please update your mcp client config and try again.")
-    # sys.exit(1) # Not exiting as with initial mcp install we may not have this arg yet
-
 common_config = get_common_config(True)
 
 ENKRYPT_LOG_LEVEL = common_config.get("enkrypt_log_level", "INFO").lower()
 IS_DEBUG_LOG_LEVEL = ENKRYPT_LOG_LEVEL == "debug"
+FASTMCP_LOG_LEVEL = ENKRYPT_LOG_LEVEL.upper()
 
 ENKRYPT_BASE_URL = common_config.get("enkrypt_base_url", "https://api.enkryptai.com")
 ENKRYPT_USE_REMOTE_MCP_CONFIG = common_config.get("enkrypt_use_remote_mcp_config", False)
@@ -178,7 +175,6 @@ ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED = common_config.get("enkrypt_async_outpu
 ENKRYPT_API_KEY = common_config.get("enkrypt_api_key", "null")
 
 sys_print("--------------------------------")
-sys_print(f'ENKRYPT_GATEWAY_KEY: {"****" + ENKRYPT_GATEWAY_KEY[-4:]}')
 sys_print(f'enkrypt_log_level: {ENKRYPT_LOG_LEVEL}')
 sys_print(f'is_debug_log_level: {IS_DEBUG_LOG_LEVEL}')
 sys_print(f'enkrypt_base_url: {ENKRYPT_BASE_URL}')
@@ -202,8 +198,30 @@ AUTH_SERVER_VALIDATE_URL = f"{ENKRYPT_BASE_URL}/mcp-gateway/get-gateway"
 RELEVANCY_THRESHOLD = 0.75
 ADHERENCE_THRESHOLD = 0.75
 
+
 # --- MCP Gateway Server ---
-mcp = FastMCP("Enkrypt Secure MCP Gateway", inspector=True)
+mcp = FastMCP(
+    name="Enkrypt Secure MCP Gateway",
+    instructions="This is the Enkrypt Secure MCP Gateway. It is used to secure the MCP calls to the servers by authenticating with a gateway key and using guardrails to check both requests and responses.",
+    # auth_server_provider=None,
+    # event_store=None,
+    # TODO: Not sure if we need to specify tools as it discovers them automatically
+    # tools=[],
+    settings={
+        "debug": True if FASTMCP_LOG_LEVEL == "DEBUG" else False,
+        "log_level": FASTMCP_LOG_LEVEL,
+        "host": "127.0.0.1",
+        # NOTE: TODO: This does not seem to take the port given. Defaults to 8000
+        "port": 8000,
+        "mount_path": "/",
+        # "sse_path": "/sse",
+        # "message_path": "/messages/",
+        "streamable_http_path": "/mcp",
+        "json_response": True,
+        "stateless_http": False,
+        "dependencies": __dependencies__,
+    }
+)
 
 # --- Session data (for current session only, not persistent) ---
 SESSIONS = {
@@ -223,6 +241,40 @@ else:
 
 
 # --- Helper functions ---
+
+def mask_key(key):
+    """
+    Masks the last 4 characters of the key.
+    """
+    return "****" + key[-4:]
+
+
+# Getting gateway key per request instead of global variable
+# As we can support multuple gateway configs in the same Secure MCP Gateway server
+def get_gateway_key(ctx: Context):
+    """
+    Retrieves the gateway key from the context.
+    """
+    gateway_key = None
+    # Check context first which is different per request
+    if ctx and ctx.request_context and ctx.request_context.request:
+        gateway_key = ctx.request_context.request.headers.get("apikey")
+        if gateway_key:
+            if IS_DEBUG_LOG_LEVEL:
+                sys_print(f"[get_gateway_key] Using gateway key from request context: {mask_key(gateway_key)}")
+            return gateway_key
+        
+    # Fallback to environment variable
+    gateway_key = os.environ.get("ENKRYPT_GATEWAY_KEY", None)
+    if gateway_key:
+        if IS_DEBUG_LOG_LEVEL:
+            sys_print(f"[get_gateway_key] Using gateway key from environment variable: {mask_key(gateway_key)}")
+        return gateway_key
+    
+    if IS_DEBUG_LOG_LEVEL:
+        sys_print("[get_gateway_key] No gateway key found")
+    return None
+
 
 def get_server_info_by_name(gateway_config, server_name):
     """
@@ -349,24 +401,33 @@ def enkrypt_authenticate(ctx: Context):
     if IS_DEBUG_LOG_LEVEL:
         sys_print("[authenticate] Starting authentication")
 
-    if not ENKRYPT_GATEWAY_KEY:
+    enkrypt_gateway_key = get_gateway_key(ctx)
+    if not enkrypt_gateway_key:
         sys_print("Error: Gateway key is required. Please update your mcp client config and try again.")
         return {"status": "error", "error": "arg --gateway-key is required in MCP client config."}
+    
+    if enkrypt_gateway_key == "NULL":
+        # sys_print(f"ctx: {ctx}")
+        # sys_print(f"ctx.fastmcp: {ctx.fastmcp}")
+        # sys_print(f"ctx.request_context: {ctx.request_context}")
+        # sys_print(f"ctx.request_context.request: {ctx.request_context.request}")
+        if ctx and ctx.request_context and ctx.request_context.request:
+            enkrypt_gateway_key = ctx.request_context.request.headers.get("apikey")
 
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"[authenticate] Attempting auth for gateway key: ****{ENKRYPT_GATEWAY_KEY[-4:]}")
+        sys_print(f"[authenticate] Attempting auth for gateway key: {mask_key(enkrypt_gateway_key)}")
 
     # Check if we're already authenticated with this API key
-    if ENKRYPT_GATEWAY_KEY in SESSIONS and SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
+    if enkrypt_gateway_key in SESSIONS and SESSIONS[enkrypt_gateway_key]["authenticated"]:
         if IS_DEBUG_LOG_LEVEL:
             sys_print("[authenticate] Already authenticated in session")
-        mcp_config = SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"].get("mcp_config", [])
+        mcp_config = SESSIONS[enkrypt_gateway_key]["gateway_config"].get("mcp_config", [])
         if IS_DEBUG_LOG_LEVEL:
             sys_print(f'mcp_config: {mcp_config}')
         return {
             "status": "success",
             "message": "Already authenticated",
-            "id": SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"].get("id"),
+            "id": SESSIONS[enkrypt_gateway_key]["gateway_config"].get("id"),
             "mcp_config": mcp_config,
             "available_servers": mcp_config_to_dict(mcp_config)
         }
@@ -374,7 +435,7 @@ def enkrypt_authenticate(ctx: Context):
         sys_print("[authenticate] Not authenticated yet in session")
 
     # Check if we have cached mapping from Gateway key to gateway/user ID
-    cached_id = get_id_from_key(cache_client, ENKRYPT_GATEWAY_KEY)
+    cached_id = get_id_from_key(cache_client, enkrypt_gateway_key)
 
     if cached_id:
         if IS_DEBUG_LOG_LEVEL:
@@ -385,9 +446,9 @@ def enkrypt_authenticate(ctx: Context):
             if IS_DEBUG_LOG_LEVEL:
                 sys_print(f"[authenticate] Found cached config for gateway/user: {cached_id}")
             # Use cached config
-            if ENKRYPT_GATEWAY_KEY not in SESSIONS:
-                SESSIONS[ENKRYPT_GATEWAY_KEY] = {}
-            SESSIONS[ENKRYPT_GATEWAY_KEY].update({
+            if enkrypt_gateway_key not in SESSIONS:
+                SESSIONS[enkrypt_gateway_key] = {}
+            SESSIONS[enkrypt_gateway_key].update({
                 "authenticated": True,
                 "gateway_config": cached_config
             })
@@ -406,7 +467,7 @@ def enkrypt_authenticate(ctx: Context):
 
     try:
         if ENKRYPT_USE_REMOTE_MCP_CONFIG:
-            sys_print(f"[authenticate] No valid cache, contacting auth server with ENKRYPT_API_KEY: ****{ENKRYPT_API_KEY[-4:]}")
+            sys_print(f"[authenticate] No valid cache, contacting auth server with ENKRYPT_API_KEY: {mask_key(ENKRYPT_API_KEY)}")
             # No valid cache, contact auth server
             response = requests.get(AUTH_SERVER_VALIDATE_URL, headers={
                 "apikey": ENKRYPT_API_KEY,
@@ -420,20 +481,24 @@ def enkrypt_authenticate(ctx: Context):
         else:
             if IS_DEBUG_LOG_LEVEL:
                 sys_print("[authenticate] Using local MCP config")
-            gateway_config = get_local_mcp_config(ENKRYPT_GATEWAY_KEY)
+            gateway_config = get_local_mcp_config(enkrypt_gateway_key)
+
+        if not gateway_config:
+            sys_print("[authenticate] No gateway config found")
+            return {"status": "error", "error": "No gateway config found. Probably the gateway key is invalid."}
 
         id = gateway_config.get("id")
 
         # Cache the API key to gateway/user ID mapping
-        cache_key_to_id(cache_client, ENKRYPT_GATEWAY_KEY, id)
+        cache_key_to_id(cache_client, enkrypt_gateway_key, id)
 
         # Cache the gateway config
         cache_gateway_config(cache_client, id, gateway_config)
 
         # Update session
-        if ENKRYPT_GATEWAY_KEY not in SESSIONS:
-            SESSIONS[ENKRYPT_GATEWAY_KEY] = {}
-        SESSIONS[ENKRYPT_GATEWAY_KEY].update({
+        if enkrypt_gateway_key not in SESSIONS:
+            SESSIONS[enkrypt_gateway_key] = {}
+        SESSIONS[enkrypt_gateway_key].update({
             "authenticated": True,
             "gateway_config": gateway_config
         })
@@ -500,20 +565,21 @@ async def enkrypt_list_all_servers(ctx: Context):
     """
     sys_print("[list_available_servers] Request received")
 
+    enkrypt_gateway_key = get_gateway_key(ctx)
     try:
-        if not ENKRYPT_GATEWAY_KEY:
+        if not enkrypt_gateway_key:
             sys_print("[list_available_servers] No gateway key provided")
             return {"status": "error", "error": "No gateway key provided."}
 
-        if ENKRYPT_GATEWAY_KEY not in SESSIONS or not SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
+        if enkrypt_gateway_key not in SESSIONS or not SESSIONS[enkrypt_gateway_key]["authenticated"]:
             result = enkrypt_authenticate(ctx)
             if result.get("status") != "success":
                 if IS_DEBUG_LOG_LEVEL:
                     sys_print("[list_available_servers] Not authenticated")
                 return {"status": "error", "error": "Not authenticated."}
 
-        id = SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"]["id"]
-        mcp_config = SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"].get("mcp_config", [])
+        id = SESSIONS[enkrypt_gateway_key]["gateway_config"]["id"]
+        mcp_config = SESSIONS[enkrypt_gateway_key]["gateway_config"].get("mcp_config", [])
         if IS_DEBUG_LOG_LEVEL:
             sys_print(f'mcp_config: {mcp_config}')
         servers_with_tools = {}
@@ -579,18 +645,19 @@ async def enkrypt_get_server_info(ctx: Context, server_name: str):
     """
     sys_print(f"[get_server_info] Requested for server: {server_name}")
 
-    if ENKRYPT_GATEWAY_KEY not in SESSIONS or not SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
+    enkrypt_gateway_key = get_gateway_key(ctx)
+    if enkrypt_gateway_key not in SESSIONS or not SESSIONS[enkrypt_gateway_key]["authenticated"]:
         result = enkrypt_authenticate(ctx)
         if result.get("status") != "success":
             sys_print("[get_server_info] Not authenticated")
             return {"status": "error", "error": "Not authenticated."}
 
-    server_info = get_server_info_by_name(SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"], server_name)
+    server_info = get_server_info_by_name(SESSIONS[enkrypt_gateway_key]["gateway_config"], server_name)
     if not server_info:
         sys_print(f"[get_server_info] Server '{server_name}' not available")
         return {"status": "error", "error": f"Server '{server_name}' not available."}
 
-    server_info_copy = get_latest_server_info(server_info, SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"]["id"], cache_client)
+    server_info_copy = get_latest_server_info(server_info, SESSIONS[enkrypt_gateway_key]["gateway_config"]["id"], cache_client)
     return {
         "status": "success",
         "server_name": server_name,
@@ -639,20 +706,21 @@ async def enkrypt_discover_server_tools(ctx: Context, server_name: str):
     """
     sys_print(f"[discover_server_tools] Requested for server: {server_name}")
 
-    if ENKRYPT_GATEWAY_KEY not in SESSIONS or not SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
+    enkrypt_gateway_key = get_gateway_key(ctx)
+    if enkrypt_gateway_key not in SESSIONS or not SESSIONS[enkrypt_gateway_key]["authenticated"]:
         result = enkrypt_authenticate(ctx)
         if result.get("status") != "success":
             if IS_DEBUG_LOG_LEVEL:
                 sys_print("[discover_server_tools] Not authenticated")
             return {"status": "error", "error": "Not authenticated."}
 
-    server_info = get_server_info_by_name(SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"], server_name)
+    server_info = get_server_info_by_name(SESSIONS[enkrypt_gateway_key]["gateway_config"], server_name)
     if not server_info:
         if IS_DEBUG_LOG_LEVEL:
             sys_print(f"[discover_server_tools] Server '{server_name}' not available")
         return {"status": "error", "error": f"Server '{server_name}' not available."}
 
-    id = SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"]["id"]
+    id = SESSIONS[enkrypt_gateway_key]["gateway_config"]["id"]
 
     # Check if server has configured tools in the gateway config
     # i.e., tools is not empty {} and are defined explicitly in the gateway config
@@ -682,7 +750,7 @@ async def enkrypt_discover_server_tools(ctx: Context, server_name: str):
         else:
             sys_print(f"[discover_server_tools] No cached tools found for {server_name}")
 
-        result = await forward_tool_call(server_name, None, None, SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"])
+        result = await forward_tool_call(server_name, None, None, SESSIONS[enkrypt_gateway_key]["gateway_config"])
         tools = result["tools"] if isinstance(result, dict) and "tools" in result else result
 
         if tools:
@@ -789,13 +857,14 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
     if num_tool_calls == 0:
         sys_print("[secure_call_tools] No tools provided. Treating this as a discovery call")
 
-    if ENKRYPT_GATEWAY_KEY not in SESSIONS or not SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
+    enkrypt_gateway_key = get_gateway_key(ctx)
+    if enkrypt_gateway_key not in SESSIONS or not SESSIONS[enkrypt_gateway_key]["authenticated"]:
         result = enkrypt_authenticate(ctx)
         if result.get("status") != "success":
             sys_print("[get_server_info] Not authenticated")
             return {"status": "error", "error": "Not authenticated."}
 
-    server_info = get_server_info_by_name(SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"], server_name)
+    server_info = get_server_info_by_name(SESSIONS[enkrypt_gateway_key]["gateway_config"], server_name)
     if not server_info:
         sys_print(f"[secure_call_tools] Server '{server_name}' not available")
         return {"status": "error", "error": f"Server '{server_name}' not available."}
@@ -828,7 +897,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
             sys_print(f"[secure_call_tools] Using command: {server_command} with args: {server_args}")
 
         results = []
-        id = SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"]["id"]
+        id = SESSIONS[enkrypt_gateway_key]["gateway_config"]["id"]
 
         server_config_tools = server_info.get("tools", {})
         if IS_DEBUG_LOG_LEVEL:
@@ -1291,13 +1360,14 @@ async def enkrypt_get_cache_status(ctx: Context):
     """
     sys_print("[get_cache_status] Request received")
 
-    if ENKRYPT_GATEWAY_KEY not in SESSIONS or not SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
+    enkrypt_gateway_key = get_gateway_key(ctx)
+    if enkrypt_gateway_key not in SESSIONS or not SESSIONS[enkrypt_gateway_key]["authenticated"]:
         result = enkrypt_authenticate(ctx)
         if result.get("status") != "success":
             sys_print("[get_cache_status] Not authenticated")
             return {"status": "error", "error": "Not authenticated."}
 
-    id = SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"]["id"]
+    id = SESSIONS[enkrypt_gateway_key]["gateway_config"]["id"]
 
     # Get cache statistics (handles both External and local cache)
     sys_print("[get_cache_status] Getting cache statistics")
@@ -1344,10 +1414,10 @@ async def enkrypt_get_cache_status(ctx: Context):
 
     # Servers cache status
     sys_print("[get_cache_status] Getting server cache status")
-    mcp_config = SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"].get("mcp_config", [])
+    mcp_config = SESSIONS[enkrypt_gateway_key]["gateway_config"].get("mcp_config", [])
     if IS_DEBUG_LOG_LEVEL:
         sys_print(f'mcp_configs: {mcp_config}')
-    local_gateway_config = get_local_mcp_config(ENKRYPT_GATEWAY_KEY)
+    local_gateway_config = get_local_mcp_config(enkrypt_gateway_key)
     if IS_DEBUG_LOG_LEVEL:
         sys_print(f'local gateway_config: {local_gateway_config}')
     servers_cache = {}
@@ -1473,7 +1543,8 @@ async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = N
     """
     sys_print(f"[clear_cache] Requested with id={id}, server_name={server_name}, cache_type={cache_type}")
 
-    if ENKRYPT_GATEWAY_KEY not in SESSIONS or not SESSIONS[ENKRYPT_GATEWAY_KEY]["authenticated"]:
+    enkrypt_gateway_key = get_gateway_key(ctx)
+    if enkrypt_gateway_key not in SESSIONS or not SESSIONS[enkrypt_gateway_key]["authenticated"]:
         result = enkrypt_authenticate(ctx)
         if result.get("status") != "success":
             sys_print("[clear_cache] Not authenticated")
@@ -1481,7 +1552,7 @@ async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = N
 
     # Default id from session if not provided
     if not id:
-        id = SESSIONS[ENKRYPT_GATEWAY_KEY]["gateway_config"]["id"]
+        id = SESSIONS[enkrypt_gateway_key]["gateway_config"]["id"]
 
     sys_print(f"[clear_cache] Gateway/User ID: {id}, Server Name: {server_name}, Cache Type: {cache_type}")
 
@@ -1494,7 +1565,7 @@ async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = N
     if cache_type == "all":
         sys_print("[clear_cache] Clearing all caches")
         cleared_servers = clear_cache_for_servers(cache_client, id)
-        cleared_gateway = clear_gateway_config_cache(cache_client, id, ENKRYPT_GATEWAY_KEY)
+        cleared_gateway = clear_gateway_config_cache(cache_client, id, enkrypt_gateway_key)
         if ENKRYPT_USE_REMOTE_MCP_CONFIG:
             if IS_DEBUG_LOG_LEVEL:
                 sys_print("[clear_cache] Refreshing remote MCP config")
@@ -1514,7 +1585,7 @@ async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = N
     # Clear gateway config cache
     if cache_type == "gateway_config" or cache_type == "gateway" or cache_type == "gateway_cache" or cache_type == "gateway_config_cache":
         sys_print("[clear_cache] Clearing gateway config cache")
-        cleared = clear_gateway_config_cache(cache_client, id, ENKRYPT_GATEWAY_KEY)
+        cleared = clear_gateway_config_cache(cache_client, id, enkrypt_gateway_key)
         if ENKRYPT_USE_REMOTE_MCP_CONFIG:
             if IS_DEBUG_LOG_LEVEL:
                 sys_print("[clear_cache] Refreshing remote MCP config")
@@ -1563,7 +1634,7 @@ async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = N
 if __name__ == "__main__":
     sys_print("Starting Enkrypt Secure MCP Gateway")
     try:
-        mcp.run()
+        mcp.run(transport="streamable-http", mount_path="/mcp")
         sys_print("Enkrypt Secure MCP Gateway is running")
     except Exception as e:
         sys_print(f"Exception in mcp.run(): {e}")

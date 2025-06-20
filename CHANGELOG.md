@@ -2,6 +2,13 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [1.0.4] - 2025-06-23
+
+### New Features in v1.0.4
+
+- `streamable-http` transport support for remote installation
+- `gateway_key` is now fetched from the request context in addition to the environment variable
+
 ## [1.0.3] - 2025-06-17
 
 ### New Features in v1.0.3
