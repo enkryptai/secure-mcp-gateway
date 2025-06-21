@@ -10,6 +10,10 @@ It sits between your MCP client and MCP servers. So, by it's nature it itself al
 
 When your MCP client connects to the Gateway, it acts as an MCP server. When the Gateway connects to the actual MCP server, it acts as an MCP client.
 
+- [Pypi Package](https://pypi.org/project/secure-mcp-gateway/)
+
+- [Docker Image](https://hub.docker.com/r/enkryptai/secure-mcp-gateway)
+
 ## Table of Contents
 
 - [1. Features 🚀](#1-features)
