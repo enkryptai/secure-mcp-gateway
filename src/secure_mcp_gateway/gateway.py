@@ -38,7 +38,7 @@ Example Usage:
     auth_result = enkrypt_authenticate(ctx)
 
     # Discover server tools
-    tools = await enkrypt_discover_server_tools(ctx, "server1")
+    tools = await enkrypt_discover_all_tools(ctx, "server1")
 
     # Call a tool securely
     result = await enkrypt_secure_call_tool(ctx, "server1", "tool1", args)
@@ -128,6 +128,7 @@ import asyncio
 import requests
 import traceback
 # from starlette.requests import Request # This is the class of ctx.request_context.request
+from mcp.server.fastmcp.tools import Tool
 from mcp.client.stdio import stdio_client
 from mcp.server.fastmcp import FastMCP, Context
 from mcp import ClientSession, StdioServerParameters
@@ -198,30 +199,6 @@ AUTH_SERVER_VALIDATE_URL = f"{ENKRYPT_BASE_URL}/mcp-gateway/get-gateway"
 RELEVANCY_THRESHOLD = 0.75
 ADHERENCE_THRESHOLD = 0.75
 
-
-# --- MCP Gateway Server ---
-mcp = FastMCP(
-    name="Enkrypt Secure MCP Gateway",
-    instructions="This is the Enkrypt Secure MCP Gateway. It is used to secure the MCP calls to the servers by authenticating with a gateway key and using guardrails to check both requests and responses.",
-    # auth_server_provider=None,
-    # event_store=None,
-    # TODO: Not sure if we need to specify tools as it discovers them automatically
-    # tools=[],
-    settings={
-        "debug": True if FASTMCP_LOG_LEVEL == "DEBUG" else False,
-        "log_level": FASTMCP_LOG_LEVEL,
-        "host": "127.0.0.1",
-        # NOTE: TODO: This does not seem to take the port given. Defaults to 8000
-        "port": 8000,
-        "mount_path": "/",
-        # "sse_path": "/sse",
-        # "message_path": "/messages/",
-        "streamable_http_path": "/mcp",
-        "json_response": True,
-        "stateless_http": False,
-        "dependencies": __dependencies__,
-    }
-)
 
 # --- Session data (for current session only, not persistent) ---
 SESSIONS = {
@@ -530,24 +507,7 @@ def enkrypt_authenticate(ctx: Context):
 
 # NOTE: If we use the name "enkrypt_list_available_servers", for some reason claude-desktop throws internal server error.
 # So we use a different name as it doesn't even print any logs for us to troubleshoot the issue.
-@mcp.tool(
-    name="enkrypt_list_all_servers",
-    description="Get detailed information about all available servers, including their tools and configuration status.",
-    annotations={
-        "title": "List Available Servers",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-
-        "idempotentHint": True,
-        "openWorldHint": False
-    }
-    # inputSchema={
-    #     "type": "object",
-    #     "properties": {},
-    #     "required": []
-    # }
-)
-async def enkrypt_list_all_servers(ctx: Context):
+async def enkrypt_list_all_servers(ctx: Context, discover_tools: bool = True):
     """
     Lists available servers with their tool information.
 
@@ -596,11 +556,33 @@ async def enkrypt_list_all_servers(ctx: Context):
 
         if IS_DEBUG_LOG_LEVEL:
             sys_print(f"[list_available_servers] Returning {len(servers_with_tools)} servers with tools")
-        return {
-            "status": "success",
-            "available_servers": servers_with_tools,
-            "servers_needing_discovery": servers_needing_discovery
-        }
+        if not discover_tools:
+            return {
+                "status": "success",
+                "available_servers": servers_with_tools,
+                "servers_needing_discovery": servers_needing_discovery
+            }
+        else:
+            # Discover tools for all servers
+            status = "success"
+            message = "Tools discovery tried for all servers"
+            discovery_failed_servers = []
+            discovery_success_servers = []
+            for server_name in servers_needing_discovery:
+                discover_server_result = await enkrypt_discover_all_tools(ctx, server_name)
+                if discover_server_result.get("status") != "success":
+                    status = "error"
+                    discovery_failed_servers.append(server_name)
+                else:
+                    discovery_success_servers.append(server_name)
+                    servers_with_tools[server_name] = discover_server_result
+            return {
+                "status": status,
+                "message": message,
+                "discovery_failed_servers": discovery_failed_servers,
+                "discovery_success_servers": discovery_success_servers,
+                "available_servers": servers_with_tools
+            }
 
     except Exception as e:
         sys_print(f"[list_available_servers] Exception: {e}")
@@ -608,27 +590,6 @@ async def enkrypt_list_all_servers(ctx: Context):
         return {"status": "error", "error": f"Tool discovery failed: {e}"}
 
 
-@mcp.tool(
-    name="enkrypt_get_server_info",
-    description="Get detailed information about a server, including its tools.",
-    annotations={
-        "title": "Get Server Info",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False
-    }
-    # inputSchema={
-    #     "type": "object",
-    #     "properties": {
-    #         "server_name": {
-    #             "type": "string",
-    #             "description": "The name of the server to get info for"
-    #         }
-    #     },
-    #     "required": ["server_name"]
-    # }
-)
 async def enkrypt_get_server_info(ctx: Context, server_name: str):
     """
     Gets detailed information about a server, including its tools.
@@ -665,30 +626,11 @@ async def enkrypt_get_server_info(ctx: Context, server_name: str):
     }
 
 
-@mcp.tool(
-    name="enkrypt_discover_server_tools",
-    description="Discover available tools for a specific server and cache them.",
-    annotations={
-        "title": "Discover Server Tools",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False
-    }
-    # inputSchema={
-    #     "type": "object",
-    #     "properties": {
-    #         "server_name": {
-    #             "type": "string",
-    #             "description": "The name of the server to discover tools for"
-    #         }
-    #     },
-    #     "required": ["server_name"]
-    # }
-)
-async def enkrypt_discover_server_tools(ctx: Context, server_name: str):
+# NOTE: Using name "enkrypt_discover_server_tools" is not working in Cursor for some reason.
+# So using a different name which works.
+async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
     """
-    Discovers and caches available tools for a specific server.
+    Discovers and caches available tools for a specific server or all servers if server_name is None.
 
     This function handles tool discovery for a server, with support for
     caching discovered tools and fallback to configured tools.
@@ -713,6 +655,33 @@ async def enkrypt_discover_server_tools(ctx: Context, server_name: str):
             if IS_DEBUG_LOG_LEVEL:
                 sys_print("[discover_server_tools] Not authenticated")
             return {"status": "error", "error": "Not authenticated."}
+
+    # If server_name is empty, then we discover all tools for all servers
+    if not server_name:
+        sys_print("[discover_server_tools] Discovering tools for all servers as server_name is empty")
+        all_servers = await enkrypt_list_all_servers(ctx, discover_tools=False)
+        all_servers_with_tools = all_servers.get("available_servers", {})
+        servers_needing_discovery = all_servers.get("servers_needing_discovery", [])
+
+        status = "success"
+        message = "Tools discovery tried for all servers"
+        discovery_failed_servers = []
+        discovery_success_servers = []
+        for server_name in servers_needing_discovery:
+            discover_server_result = await enkrypt_discover_all_tools(ctx, server_name)
+            if discover_server_result.get("status") != "success":
+                status = "error"
+                discovery_failed_servers.append(server_name)
+            else:
+                discovery_success_servers.append(server_name)
+                all_servers_with_tools[server_name] = discover_server_result
+        return {
+            "status": status,
+            "message": message,
+            "discovery_failed_servers": discovery_failed_servers,
+            "discovery_success_servers": discovery_success_servers,
+            "available_servers": all_servers_with_tools
+        }
 
     server_info = get_server_info_by_name(SESSIONS[enkrypt_gateway_key]["gateway_config"], server_name)
     if not server_info:
@@ -772,48 +741,6 @@ async def enkrypt_discover_server_tools(ctx: Context, server_name: str):
         return {"status": "error", "error": f"Tool discovery failed: {e}"}
 
 
-@mcp.tool(
-    name="enkrypt_secure_call_tools",
-    description="Securely call tools for a specific server. If there are multiple tool calls to be made, please pass all of them in a single list. If there is only one tool call, pass it as a single object in the list. First check the number of tools needed for the prompt and then pass all of them in a single list. Because if tools are multiple and we pass one by one, it will create a new session for each tool call and that may fail.",
-    annotations={
-        "title": "Securely Call Tools",
-        "readOnlyHint": False,
-        "destructiveHint": True,
-        "idempotentHint": False,
-        "openWorldHint": True
-    }
-    # inputSchema={
-    #     "type": "object",
-    #     "properties": {
-    #         "server_name": {
-    #             "type": "string",
-    #             "description": "The name of the server to call tools for"
-    #         },
-    #         "tool_calls": {
-    #             "type": "array",
-    #             "description": "The list of tool calls to make",
-    #             "items": {
-    #                 "type": "object",
-    #                 "properties": {
-    #                     "name": {
-    #                         "type": "string",
-    #                         "description": "The name of the tool to call"
-    #                     },
-    #                     "args": {
-    #                         "type": "object",
-    #                         "description": "The arguments to pass to the tool"
-    #                     }
-    # #                     "env": {
-    # #                         "type": "object",
-    # #                         "description": "The environment variables to pass to the tool"
-    # #                     }
-    #                 }
-    #             }
-    #         }
-    #     },
-    #     "required": ["server_name", "tool_calls"]
-    # }
-)
 async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: list = []):
     """
     If there are multiple tool calls to be made, please pass all of them in a single list. If there is only one tool call, pass it as a single object in the list.
@@ -908,7 +835,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                 sys_print(f"[secure_call_tools] Server config tools after get_cached_tools: {server_config_tools}")
             if not server_config_tools:
                 try:
-                    discovery_result = await enkrypt_discover_server_tools(ctx, server_name)
+                    discovery_result = await enkrypt_discover_all_tools(ctx, server_name)
                     if IS_DEBUG_LOG_LEVEL:
                         sys_print(f"[enkrypt_secure_call_tools] Discovery result: {discovery_result}")
 
@@ -925,6 +852,16 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
 
         if not server_config_tools:
             return {"status": "error", "error": f"No tools found for {server_name} even after discovery"}
+
+        if num_tool_calls == 0:
+            # Handle tuple return from get_cached_tools() which returns (tools, expires_at)
+            if isinstance(server_config_tools, tuple) and len(server_config_tools) == 2:
+                server_config_tools = server_config_tools[0]  # Extract the tools, ignoring expires_at
+            return {
+                "status": "success",
+                "message": f"Successfully discovered tools for {server_name}",
+                "tools": server_config_tools
+            }
 
         # Single session for all calls
         async with stdio_client(StdioServerParameters(command=server_command, args=server_args, env=server_env)) as (read, write):
@@ -1325,22 +1262,23 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
         return {"status": "error", "error": f"Secure batch tool call failed: {e}"}
 
 
-@mcp.tool(
-    name="enkrypt_get_cache_status",
-    description="Gets the current status of the tool cache for the servers whose tools are empty {} for which tools were discovered. This does not have the servers whose tools are explicitly defined in the MCP config in which case discovery is not needed. Use this only if you need to debug cache issues or asked specifically for cache status.",
-    annotations={
-        "title": "Get Cache Status",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False
-    }
-    # inputSchema={
-    #     "type": "object",
-    #     "properties": {},
-    #     "required": []
-    # }
-)
+# # Using GATEWAY_TOOLS instead of @mcp.tool decorator
+# @mcp.tool(
+#     name="enkrypt_get_cache_status",
+#     description="Gets the current status of the tool cache for the servers whose tools are empty {} for which tools were discovered. This does not have the servers whose tools are explicitly defined in the MCP config in which case discovery is not needed. Use this only if you need to debug cache issues or asked specifically for cache status.",
+#     annotations={
+#         "title": "Get Cache Status",
+#         "readOnlyHint": True,
+#         "destructiveHint": False,
+#         "idempotentHint": True,
+#         "openWorldHint": False
+#     }
+#     # inputSchema={
+#     #     "type": "object",
+#     #     "properties": {},
+#     #     "required": []
+#     # }
+# )
 async def enkrypt_get_cache_status(ctx: Context):
     """
     Gets the current status of the tool cache for the servers whose tools are empty {} for which tools were discovered.
@@ -1490,35 +1428,36 @@ async def enkrypt_get_cache_status(ctx: Context):
     }
 
 
-@mcp.tool(
-    name="enkrypt_clear_cache",
-    description="Clear the gateway cache for all/specific servers/gateway config. Use this only if you need to debug cache issues or asked specifically to clear cache.",
-    annotations={
-        "title": "Clear Cache",
-        "readOnlyHint": False,
-        "destructiveHint": True,
-        "idempotentHint": False,
-        "openWorldHint": True
-    }
-    # inputSchema={
-    #     "type": "object",
-    #     "properties": {
-    #         "id": {
-    #             "type": "string",
-    #             "description": "The ID of the Gateway or User to clear cache for"
-    #         },
-    #         "server_name": {
-    #             "type": "string",
-    #             "description": "The name of the server to clear cache for"
-    #         },
-    #         "cache_type": {
-    #             "type": "string",
-    #             "description": "The type of cache to clear"
-    #         }
-    #     },
-    #     "required": []
-    # }
-)
+# # Using GATEWAY_TOOLS instead of @mcp.tool decorator
+# @mcp.tool(
+#     name="enkrypt_clear_cache",
+#     description="Clear the gateway cache for all/specific servers/gateway config. Use this only if you need to debug cache issues or asked specifically to clear cache.",
+#     annotations={
+#         "title": "Clear Cache",
+#         "readOnlyHint": False,
+#         "destructiveHint": True,
+#         "idempotentHint": False,
+#         "openWorldHint": True
+#     }
+#     # inputSchema={
+#     #     "type": "object",
+#     #     "properties": {
+#     #         "id": {
+#     #             "type": "string",
+#     #             "description": "The ID of the Gateway or User to clear cache for"
+#     #         },
+#     #         "server_name": {
+#     #             "type": "string",
+#     #             "description": "The name of the server to clear cache for"
+#     #         },
+#     #         "cache_type": {
+#     #             "type": "string",
+#     #             "description": "The type of cache to clear"
+#     #         }
+#     #     },
+#     #     "required": []
+#     # }
+# )
 async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = None, cache_type: str = None):
     """
     Clears various types of caches in the MCP Gateway.
@@ -1628,6 +1567,187 @@ async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = N
             "status": "success",
             "message": f"Cache cleared for all servers ({cleared} servers)"
         }
+
+
+# --- MCP Gateway Server ---
+
+GATEWAY_TOOLS = [
+    Tool.from_function(
+        fn=enkrypt_list_all_servers,
+        name="enkrypt_list_all_servers",
+        description="Get detailed information about all available servers, including their tools and configuration status.",
+        annotations={
+            "title": "List Available Servers",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False
+        }
+        # inputSchema={
+        #     "type": "object",
+        #     "properties": {},
+        #     "required": []
+        # }
+    ),
+    Tool.from_function(
+        fn=enkrypt_get_server_info,
+        name="enkrypt_get_server_info",
+        description="Get detailed information about a server, including its tools.",
+        annotations={
+            "title": "Get Server Info",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False
+        }
+        # inputSchema={
+        #     "type": "object",
+        #     "properties": {
+        #         "server_name": {
+        #             "type": "string",
+        #             "description": "The name of the server to get info for"
+        #         }
+        #     },
+        #     "required": ["server_name"]
+        # }
+    ),
+    Tool.from_function(
+        fn=enkrypt_discover_all_tools,
+        name="enkrypt_discover_all_tools",
+        description="Discover available tools for a specific server or all servers if server_name is None",
+        annotations={
+            "title": "Discover Server Tools",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False
+        }
+        # inputSchema={
+        #     "type": "object",
+        #     "properties": {
+        #         "server_name": {
+        #             "type": "string",
+        #             "description": "The name of the server to discover tools for"
+        #         }
+        #     },
+        #     "required": ["server_name"]
+        # }
+    ),
+    Tool.from_function(
+        fn=enkrypt_secure_call_tools,
+        name="enkrypt_secure_call_tools",
+        description="Securely call tools for a specific server. If there are multiple tool calls to be made, please pass all of them in a single list. If there is only one tool call, pass it as a single object in the list. First check the number of tools needed for the prompt and then pass all of them in a single list. Because if tools are multiple and we pass one by one, it will create a new session for each tool call and that may fail. If tools need to be discovered, pass empty list for tool_calls.",
+        annotations={
+            "title": "Securely Call Tools",
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True
+        }
+        # inputSchema={
+        #     "type": "object",
+        #     "properties": {
+        #         "server_name": {
+        #             "type": "string",
+        #             "description": "The name of the server to call tools for"
+        #         },
+        #         "tool_calls": {
+        #             "type": "array",
+        #             "description": "The list of tool calls to make",
+        #             "items": {
+        #                 "type": "object",
+        #                 "properties": {
+        #                     "name": {
+        #                         "type": "string",
+        #                         "description": "The name of the tool to call"
+        #                     },
+        #                     "args": {
+        #                         "type": "object",
+        #                         "description": "The arguments to pass to the tool"
+        #                     }
+        # #                     "env": {
+        # #                         "type": "object",
+        # #                         "description": "The environment variables to pass to the tool"
+        # #                     }
+        #                 }
+        #             }
+        #         }
+        #     },
+        #     "required": ["server_name", "tool_calls"]
+        # }
+    ),
+    Tool.from_function(
+        fn=enkrypt_get_cache_status,
+        name="enkrypt_get_cache_status",
+        description="Gets the current status of the tool cache for the servers whose tools are empty {} for which tools were discovered. This does not have the servers whose tools are explicitly defined in the MCP config in which case discovery is not needed. Use this only if you need to debug cache issues or asked specifically for cache status.",
+        annotations={
+            "title": "Get Cache Status",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False
+        }
+        # inputSchema={
+        #     "type": "object",
+        #     "properties": {},
+        #     "required": []
+        # }
+    ),
+    Tool.from_function(
+        fn=enkrypt_clear_cache,
+        name="enkrypt_clear_cache",
+        description="Clear the gateway cache for all/specific servers/gateway config. Use this only if you need to debug cache issues or asked specifically to clear cache.",
+        annotations={
+            "title": "Clear Cache",
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True
+        }
+        # inputSchema={
+        #     "type": "object",
+        #     "properties": {
+        #         "id": {
+        #             "type": "string",
+        #             "description": "The ID of the Gateway or User to clear cache for"
+        #         },
+        #         "server_name": {
+        #             "type": "string",
+        #             "description": "The name of the server to clear cache for"
+        #         },
+        #         "cache_type": {
+        #             "type": "string",
+        #             "description": "The type of cache to clear"
+        #         }
+        #     },
+        #     "required": []
+        # }
+    )
+]
+
+
+mcp = FastMCP(
+    name="Enkrypt Secure MCP Gateway",
+    instructions="This is the Enkrypt Secure MCP Gateway. It is used to secure the MCP calls to the servers by authenticating with a gateway key and using guardrails to check both requests and responses.",
+    # auth_server_provider=None,
+    # event_store=None,
+    # TODO: Not sure if we need to specify tools as it discovers them automatically
+    tools=GATEWAY_TOOLS,
+    settings={
+        "debug": True if FASTMCP_LOG_LEVEL == "DEBUG" else False,
+        "log_level": FASTMCP_LOG_LEVEL,
+        "host": "0.0.0.0",
+        # NOTE: TODO: This does not seem to take the port given. Defaults to 8000
+        "port": 8000,
+        "mount_path": "/",
+        # "sse_path": "/sse",
+        # "message_path": "/messages/",
+        "streamable_http_path": "/mcp",
+        "json_response": True,
+        "stateless_http": False,
+        "dependencies": __dependencies__,
+    }
+)
 
 
 # --- Run ---
