@@ -44,8 +44,14 @@ def sys_print(*args, **kwargs):
     """
     Print a message to the console
     """
-    kwargs.setdefault('file', sys.stderr)
-    print(*args, **kwargs)
+    # Using try/except to avoid any print errors blocking the flow for edge cases
+    try:
+        kwargs.setdefault('file', sys.stderr)
+        print(*args, **kwargs)
+    except Exception as e:
+        # Ignore any print errors
+        print(f"Error printing using sys_print: {e}", file=sys.stderr)
+        pass
 
 
 def get_file_from_root(file_name):
