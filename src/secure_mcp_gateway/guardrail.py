@@ -114,7 +114,7 @@ def anonymize_pii(text: str) -> tuple[str, str]:
         data = response.json()
         return data["text"], data["key"]
     except Exception as e:
-        sys_print(f"Anonymization error: {e}")
+        sys_print(f"Anonymization error: {e}", is_error=True)
         return "", ""
 
 
@@ -147,7 +147,7 @@ def deanonymize_pii(text: str, key: str) -> str:
         data = response.json()
         return data["text"]
     except Exception as e:
-        sys_print(f"De-anonymization error: {e}")
+        sys_print(f"De-anonymization error: {e}", is_error=True)
         return ""
 
 
@@ -181,7 +181,7 @@ def check_relevancy(question: str, llm_answer: str) -> dict:
             sys_print(f"relevancy response: {res_json}")
         return res_json
     except Exception as e:
-        sys_print(f"Relevancy API error: {e}")
+        sys_print(f"Relevancy API error: {e}", is_error=True)
         return {"error": str(e)}
 
 
@@ -215,7 +215,7 @@ def check_adherence(context: str, llm_answer: str) -> dict:
             sys_print(f"adherence response: {res_json}")
         return res_json
     except Exception as e:
-        sys_print(f"Adherence API error: {e}")
+        sys_print(f"Adherence API error: {e}", is_error=True)
         return {"error": str(e)}
 
 
@@ -251,7 +251,7 @@ def check_hallucination(request_text: str, response_text: str, context: str = ""
             sys_print(f"hallucination response: {res_json}")
         return res_json
     except Exception as e:
-        sys_print(f"Hallucination API error: {e}")
+        sys_print(f"Hallucination API error: {e}", is_error=True)
         return {"error": str(e)}
 
 
@@ -303,7 +303,7 @@ async def call_guardrail(text, blocks, policy_name):
             async with session.post(GUARDRAIL_URL, json=payload, headers=headers) as response:
                 resp_json = await response.json()
     except Exception as e:
-        sys_print(f"Guardrail API error: {e}")
+        sys_print(f"Guardrail API error: {e}", is_error=True)
         return {"error": str(e)}
 
     if IS_DEBUG_LOG_LEVEL:
@@ -311,7 +311,7 @@ async def call_guardrail(text, blocks, policy_name):
         sys_print(f'resp_json: {resp_json}')
     
     if resp_json.get("error"):
-        sys_print(f"Guardrail API error: {resp_json.get('error')}")
+        sys_print(f"Guardrail API error: {resp_json.get('error')}", is_error=True)
         return False, [], resp_json
 
     violations_detected = False

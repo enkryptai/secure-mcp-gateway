@@ -40,14 +40,14 @@ async def echo(ctx: Context, message: str) -> list[types.TextContent]:
         message: The message to echo back
     """
     if not message:
-        print(f"Dummy Echo Server MCP Server: Error: Message is required", file=sys.stderr)
+        print(f"Dummy Echo Server MCP Server: Error: Message is required", file=sys.stdout)
         return [
             types.TextContent(
                 type="text",
                 text="Error: Message is required"
             )
         ]
-    print(f"Dummy Echo Server MCP Server: Echoing message: {message}", file=sys.stderr)
+    print(f"Dummy Echo Server MCP Server: Echoing message: {message}", file=sys.stdout)
     try:
         return [
             types.TextContent(
@@ -82,7 +82,7 @@ async def echo(ctx: Context, message: str) -> list[types.TextContent]:
 )
 async def list_tools() -> list[types.Tool]:
     """Get a list of all available tools on this server."""
-    print(f"Dummy Echo Server MCP Server: Listing tools", file=sys.stderr)
+    print(f"Dummy Echo Server MCP Server: Listing tools", file=sys.stdout)
     return [
         types.Tool(
             name=tool_name,
@@ -95,5 +95,5 @@ async def list_tools() -> list[types.Tool]:
 
 
 if __name__ == "__main__":
-    print("Starting Dummy Echo MCP Server", file=sys.stderr)
+    print("Starting Dummy Echo MCP Server", file=sys.stdout)
     mcp.run()

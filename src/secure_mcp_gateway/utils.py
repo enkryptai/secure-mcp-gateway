@@ -10,7 +10,7 @@ import json
 from importlib.resources import files
 from secure_mcp_gateway.version import __version__
 
-print(f"Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}", file=sys.stderr)
+print(f"Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}", file=sys.stdout)
 
 CONFIG_NAME = "enkrypt_mcp_config.json"
 DOCKER_CONFIG_PATH = f"/app/.enkrypt/docker/{CONFIG_NAME}"
@@ -44,9 +44,14 @@ def sys_print(*args, **kwargs):
     """
     Print a message to the console
     """
+    # If is_error is True, print to stderr
+    if kwargs.get('is_error', False):
+        kwargs.setdefault('file', sys.stderr)
+    else:
+        kwargs.setdefault('file', sys.stdout)
+
     # Using try/except to avoid any print errors blocking the flow for edge cases
     try:
-        kwargs.setdefault('file', sys.stderr)
         print(*args, **kwargs)
     except Exception as e:
         # Ignore any print errors

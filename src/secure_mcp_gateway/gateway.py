@@ -56,14 +56,14 @@ import subprocess
 # As MCP Clients like Claude Desktop use their own Python interpreter, it may not have the modules installed
 # So, we can use this debug system info to identify that python interpreter to install the missing modules using that specific interpreter
 # So, debugging this in gateway module as this info can be used for fixing such issues in other modules
-print("Initializing Enkrypt Secure MCP Gateway Module", file=sys.stderr)
-print("--------------------------------", file=sys.stderr)
-print("SYSTEM INFO: ", file=sys.stderr)
-print(f"Using Python interpreter: {sys.executable}", file=sys.stderr)
-print(f"Python version: {sys.version}", file=sys.stderr)
-print(f"Current working directory: {os.getcwd()}", file=sys.stderr)
-print(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}", file=sys.stderr)
-print("--------------------------------", file=sys.stderr)
+print("Initializing Enkrypt Secure MCP Gateway Module", file=sys.stdout)
+print("--------------------------------", file=sys.stdout)
+print("SYSTEM INFO: ", file=sys.stdout)
+print(f"Using Python interpreter: {sys.executable}", file=sys.stdout)
+print(f"Python version: {sys.version}", file=sys.stdout)
+print(f"Current working directory: {os.getcwd()}", file=sys.stdout)
+print(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}", file=sys.stdout)
+print("--------------------------------", file=sys.stdout)
 
 # Error: Can't find secure_mcp_gateway
 # import importlib
@@ -91,7 +91,7 @@ if src_dir not in sys.path:
 try:
     import secure_mcp_gateway
 except ImportError:
-    print("Installing secure_mcp_gateway package...", file=sys.stderr)
+    print("Installing secure_mcp_gateway package...", file=sys.stdout)
     subprocess.check_call(
         [sys.executable, "-m", "pip", "install", src_dir],
         stdout=subprocess.DEVNULL,
@@ -120,7 +120,7 @@ try:
     )
     sys_print("All dependencies installed successfully.")
 except Exception as e:
-    sys_print(f"Error installing dependencies: {e}")
+    sys_print(f"Error installing dependencies: {e}", is_error=True)
 
 import json
 import time
@@ -352,7 +352,7 @@ def get_local_mcp_config(gateway_key):
             jsonConfig = json.load(f)
             return jsonConfig["gateways"].get(gateway_key)  # Only return the config for the given gateway_key
     else:
-        sys_print(f"[get_local_mcp_config] MCP config file not found at {config_path}")
+        sys_print(f"[get_local_mcp_config] MCP config file not found at {config_path}", is_error=True)
         return None
 
 
@@ -409,7 +409,7 @@ def enkrypt_authenticate(ctx: Context):
             "available_servers": mcp_config_to_dict(mcp_config)
         }
     else:
-        sys_print("[authenticate] Not authenticated yet in session")
+        sys_print("[authenticate] Not authenticated yet in session", is_error=True)
 
     # Check if we have cached mapping from Gateway key to gateway/user ID
     cached_id = get_id_from_key(cache_client, enkrypt_gateway_key)
@@ -440,7 +440,7 @@ def enkrypt_authenticate(ctx: Context):
         else:
             sys_print(f"[authenticate] No cached config found for gateway/user: {cached_id}")
     else:
-        sys_print("[authenticate] No cached gateway/user ID found")
+        sys_print("[authenticate] No cached gateway/user ID found", is_error=True)
 
     try:
         if ENKRYPT_USE_REMOTE_MCP_CONFIG:
@@ -452,7 +452,7 @@ def enkrypt_authenticate(ctx: Context):
                 "X-Enkrypt-MCP-Gateway-Version": ENKRYPT_REMOTE_MCP_GATEWAY_VERSION
             })
             if response.status_code != 200:
-                sys_print("[authenticate] Invalid API key")
+                sys_print("[authenticate] Invalid API key", is_error=True)
                 return {"status": "error", "error": "Invalid API key"}
             gateway_config = response.json()
         else:
@@ -461,7 +461,7 @@ def enkrypt_authenticate(ctx: Context):
             gateway_config = get_local_mcp_config(enkrypt_gateway_key)
 
         if not gateway_config:
-            sys_print("[authenticate] No gateway config found")
+            sys_print("[authenticate] No gateway config found", is_error=True)
             return {"status": "error", "error": "No gateway config found. Probably the gateway key is invalid."}
 
         id = gateway_config.get("id")
@@ -491,7 +491,7 @@ def enkrypt_authenticate(ctx: Context):
         }
 
     except Exception as e:
-        sys_print(f"[authenticate] Exception: {e}")
+        sys_print(f"[authenticate] Exception: {e}", is_error=True)
         traceback.print_exc(file=sys.stderr)
         return {"status": "error", "error": str(e)}
 
@@ -535,7 +535,7 @@ async def enkrypt_list_all_servers(ctx: Context, discover_tools: bool = True):
             result = enkrypt_authenticate(ctx)
             if result.get("status") != "success":
                 if IS_DEBUG_LOG_LEVEL:
-                    sys_print("[list_available_servers] Not authenticated")
+                    sys_print("[list_available_servers] Not authenticated", is_error=True)
                 return {"status": "error", "error": "Not authenticated."}
 
         id = SESSIONS[enkrypt_gateway_key]["gateway_config"]["id"]
@@ -585,7 +585,7 @@ async def enkrypt_list_all_servers(ctx: Context, discover_tools: bool = True):
             }
 
     except Exception as e:
-        sys_print(f"[list_available_servers] Exception: {e}")
+        sys_print(f"[list_available_servers] Exception: {e}", is_error=True)
         traceback.print_exc(file=sys.stderr)
         return {"status": "error", "error": f"Tool discovery failed: {e}"}
 
@@ -653,7 +653,7 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
         result = enkrypt_authenticate(ctx)
         if result.get("status") != "success":
             if IS_DEBUG_LOG_LEVEL:
-                sys_print("[discover_server_tools] Not authenticated")
+                sys_print("[discover_server_tools] Not authenticated", is_error=True)
             return {"status": "error", "error": "Not authenticated."}
 
     # If server_name is empty, then we discover all tools for all servers
@@ -686,7 +686,7 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
     server_info = get_server_info_by_name(SESSIONS[enkrypt_gateway_key]["gateway_config"], server_name)
     if not server_info:
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"[discover_server_tools] Server '{server_name}' not available")
+            sys_print(f"[discover_server_tools] Server '{server_name}' not available", is_error=True)
         return {"status": "error", "error": f"Server '{server_name}' not available."}
 
     id = SESSIONS[enkrypt_gateway_key]["gateway_config"]["id"]
@@ -736,7 +736,7 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
             "source": "discovery"
         }
     except Exception as e:
-        sys_print(f"[discover_server_tools] Exception: {e}")
+        sys_print(f"[discover_server_tools] Exception: {e}", is_error=True)
         traceback.print_exc(file=sys.stderr)
         return {"status": "error", "error": f"Tool discovery failed: {e}"}
 
@@ -788,12 +788,12 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
     if enkrypt_gateway_key not in SESSIONS or not SESSIONS[enkrypt_gateway_key]["authenticated"]:
         result = enkrypt_authenticate(ctx)
         if result.get("status") != "success":
-            sys_print("[get_server_info] Not authenticated")
+            sys_print("[get_server_info] Not authenticated", is_error=True)
             return {"status": "error", "error": "Not authenticated."}
 
     server_info = get_server_info_by_name(SESSIONS[enkrypt_gateway_key]["gateway_config"], server_name)
     if not server_info:
-        sys_print(f"[secure_call_tools] Server '{server_name}' not available")
+        sys_print(f"[secure_call_tools] Server '{server_name}' not available", is_error=True)
         return {"status": "error", "error": f"Server '{server_name}' not available."}
 
     try:
@@ -846,6 +846,8 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                     if IS_DEBUG_LOG_LEVEL:
                         sys_print(f"[enkrypt_secure_call_tools] Discovered tools: {server_config_tools}")
                 except Exception as e:
+                    sys_print(f"[enkrypt_secure_call_tools] Exception: {e}", is_error=True)
+                    traceback.print_exc(file=sys.stderr)
                     return {"status": "error", "error": f"Failed to discover tools: {e}"}
             else:
                 sys_print(f"[enkrypt_secure_call_tools] Found cached tools for {server_name}")
@@ -942,12 +944,12 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                 # Dictionary format like {"echo": "Echo a message"}
                                 elif tool_name not in server_config_tools:
                                     if IS_DEBUG_LOG_LEVEL:
-                                        sys_print(f"[secure_call_tools] Tool '{tool_name}' not found in server_config_tools")
+                                        sys_print(f"[secure_call_tools] Tool '{tool_name}' not found in server_config_tools", is_error=True)
                             else:
-                                sys_print(f"[secure_call_tools] Unknown tool format: {type(server_config_tools)}")
+                                sys_print(f"[secure_call_tools] Unknown tool format: {type(server_config_tools)}", is_error=True)
 
                         if not tool_found:
-                            sys_print(f"[enkrypt_secure_call_tools] Tool '{tool_name}' not found for this server.")
+                            sys_print(f"[enkrypt_secure_call_tools] Tool '{tool_name}' not found for this server.", is_error=True)
                             return {"status": "error", "error": f"Tool '{tool_name}' not found for this server."}
 
                         # Initialize guardrail responses for this call
@@ -1213,7 +1215,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                         })
 
                     except Exception as tool_error:
-                        sys_print(f"[secure_call_tools] Error in call {i} ({tool_name}): {tool_error}")
+                        sys_print(f"[secure_call_tools] Error in call {i} ({tool_name}): {tool_error}", is_error=True)
                         traceback.print_exc(file=sys.stderr)
 
                         results.append({
@@ -1257,7 +1259,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
         }
 
     except Exception as e:
-        sys_print(f"[secure_call_tools] Critical error during batch execution: {e}")
+        sys_print(f"[secure_call_tools] Critical error during batch execution: {e}", is_error=True)
         traceback.print_exc(file=sys.stderr)
         return {"status": "error", "error": f"Secure batch tool call failed: {e}"}
 
@@ -1302,7 +1304,7 @@ async def enkrypt_get_cache_status(ctx: Context):
     if enkrypt_gateway_key not in SESSIONS or not SESSIONS[enkrypt_gateway_key]["authenticated"]:
         result = enkrypt_authenticate(ctx)
         if result.get("status") != "success":
-            sys_print("[get_cache_status] Not authenticated")
+            sys_print("[get_cache_status] Not authenticated", is_error=True)
             return {"status": "error", "error": "Not authenticated."}
 
     id = SESSIONS[enkrypt_gateway_key]["gateway_config"]["id"]
@@ -1380,7 +1382,7 @@ async def enkrypt_get_cache_status(ctx: Context):
                 elif isinstance(tools, dict):
                     tool_count = len(tools)
                 else:
-                    sys_print(f"[get_cache_status] ERROR: Unknown tool format for server: {server_name} - type: {type(tools)}")
+                    sys_print(f"[get_cache_status] ERROR: Unknown tool format for server: {server_name} - type: {type(tools)}", is_error=True)
                     tool_count = None
             servers_cache[server_name] = {
                 "tool_count": tool_count if tool_count is not None else 0,
@@ -1486,7 +1488,7 @@ async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = N
     if enkrypt_gateway_key not in SESSIONS or not SESSIONS[enkrypt_gateway_key]["authenticated"]:
         result = enkrypt_authenticate(ctx)
         if result.get("status") != "success":
-            sys_print("[clear_cache] Not authenticated")
+            sys_print("[clear_cache] Not authenticated", is_error=True)
             return {"status": "error", "error": "Not authenticated."}
 
     # Default id from session if not provided
@@ -1757,7 +1759,7 @@ if __name__ == "__main__":
         mcp.run(transport="streamable-http", mount_path="/mcp")
         sys_print("Enkrypt Secure MCP Gateway is running")
     except Exception as e:
-        sys_print(f"Exception in mcp.run(): {e}")
+        sys_print(f"Exception in mcp.run(): {e}", is_error=True)
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 

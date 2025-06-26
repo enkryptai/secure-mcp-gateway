@@ -1,5 +1,5 @@
 import sys
-print("Initializing Enkrypt Secure MCP Gateway", file=sys.stderr)
+print("Initializing Enkrypt Secure MCP Gateway", file=sys.stdout)
 
 from .version import __version__
 from .dependencies import __dependencies__

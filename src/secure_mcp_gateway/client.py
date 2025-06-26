@@ -138,8 +138,8 @@ def initialize_cache():
         cache_client.ping()
         sys_print(f"[external_cache] Successfully connected to External Cache at {ENKRYPT_CACHE_HOST}:{ENKRYPT_CACHE_PORT}")
     except external_cache_server.ConnectionError as e:
-        sys_print(f"[external_cache] Failed to connect to External Cache: {e}")
-        sys_print("[external_cache] Exiting as External Cache is required for this gateway")
+        sys_print(f"[external_cache] Failed to connect to External Cache: {e}", is_error=True)
+        sys_print("[external_cache] Exiting as External Cache is required for this gateway", is_error=True)
         sys.exit(1)  # Exit if External Cache is unavailable
 
     return cache_client
@@ -246,7 +246,7 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
         ValueError: If gateway_config is missing or server not found
     """
     if not gateway_config:
-        sys_print("[forward_tool_call] Error: No gateway_config provided")
+        sys_print("[forward_tool_call] Error: No gateway_config provided", is_error=True)
         raise ValueError("No gateway configuration provided")
 
     mcp_config = gateway_config.get("mcp_config", [])
@@ -283,7 +283,7 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
                     if IS_DEBUG_LOG_LEVEL:
                         sys_print(f"[forward_tool_call] Tool details for {server_name}: {tools_result}")
                 except Exception as print_error:
-                    sys_print(f"[forward_tool_call] Tools discovered for {server_name} (print error: {print_error})")
+                    sys_print(f"[forward_tool_call] Tools discovered for {server_name} (print error: {print_error})", is_error=True)
                 return tools_result
 
             # Normal tool call
@@ -356,7 +356,7 @@ def get_cached_tools(cache_client, id, server_name):
             sys_print(f"[external_cache] Using cached tools for id '{id}', server '{server_name}' with key hash: {key}")
         return tool_data
     except json.JSONDecodeError:
-        sys_print(f"[external_cache] Error deserializing tools cache for hash key: {key}")
+        sys_print(f"[external_cache] Error deserializing tools cache for hash key: {key}", is_error=True)
         return None
 
 
@@ -404,8 +404,8 @@ def cache_tools(cache_client, id, server_name, tools):
         try:
             serialized_data = json.dumps(tools)
         except TypeError as e:
-            sys_print(f"[external_cache] Warning: Cannot serialize tools - {e}")
-            sys_print("[external_cache] Using simplified tool representation")
+            sys_print(f"[external_cache] Warning: Cannot serialize tools - {e}", is_error=True)
+            sys_print("[external_cache] Using simplified tool representation", is_error=True)
 
             # Fall back to a simplified format if serialization fails
             # This handles cases where tools has complex objects inside
@@ -481,7 +481,7 @@ def get_cached_gateway_config(cache_client, id):
             sys_print(f"[external_cache] Using cached config for id '{id}' with key hash: {config_key}")
         return config_data
     except json.JSONDecodeError:
-        sys_print(f"[external_cache] Error deserializing config cache for hash key: {config_key}")
+        sys_print(f"[external_cache] Error deserializing config cache for hash key: {config_key}", is_error=True)
         return None
 
 
