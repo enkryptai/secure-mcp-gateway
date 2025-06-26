@@ -1,5 +1,5 @@
 import sys
-# Not using sys.stdout as it is expecting JSON and showing errors for some reason
+# TODO: Fix error and use stdout
 print("Initializing Enkrypt Secure MCP Gateway", file=sys.stderr)
 
 from .version import __version__

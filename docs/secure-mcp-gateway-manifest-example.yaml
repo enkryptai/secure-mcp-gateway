@@ -1,0 +1,134 @@
+# Example usage:
+# kubectl apply -f secure-mcp-gateway-manifest.yaml -n dev
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: s3-credentials
+type: Opaque
+data:
+  # Base64 encoded values
+  # Generate using `echo "XXXXX" | base64`
+  AWS_ACCESS_KEY_ID: XXXXX
+  AWS_SECRET_ACCESS_KEY: XXXXX
+  ACCOUNT_ID: "XXXXX" # Example: 1234567890
+  # Create this bucket in your account and upload the enkrypt_mcp_config.json file to it
+  S3_BUCKET_NAME: XXXXX # Example: secure-mcp-gateway-config-ACCOUNT_ID
+  S3_BUCKET_REGION: XXXXX # Example: us-east-1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secure-mcp-gateway
+  labels:
+    app: secure-mcp-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secure-mcp-gateway
+  template:
+    metadata:
+      labels:
+        app: secure-mcp-gateway
+    spec:
+      initContainers:
+      - name: config-downloader
+        image: amazon/aws-cli:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Downloading config file from S3 for ${S3_BUCKET_NAME} in region ${AWS_DEFAULT_REGION} in account ${ACCOUNT_ID}"          
+          mkdir -p /shared-config/.enkrypt/docker/
+          aws s3 cp s3://${S3_BUCKET_NAME}/enkrypt_mcp_config.json /shared-config/.enkrypt/docker/enkrypt_mcp_config.json
+          if [ -f /shared-config/.enkrypt/docker/enkrypt_mcp_config.json ]; then
+            echo
+            echo "Config file downloaded successfully. Listing /shared-config/.enkrypt/docker/"
+            ls -la /shared-config/.enkrypt/docker/
+          else
+            echo
+            echo "Failed to download config file"
+            exit 1
+          fi
+          cp /shared-config/.enkrypt/docker/enkrypt_mcp_config.json .
+          echo
+          echo "Contents of enkrypt_mcp_config.json are:"
+          cat ./enkrypt_mcp_config.json
+          cp ./enkrypt_mcp_config.json /shared-config/.enkrypt/docker
+          mkdir -p /app/.enkrypt
+          mkdir -p /app/.enkrypt/docker
+          cp ./enkrypt_mcp_config.json /app/.enkrypt/docker
+          echo
+          echo "Listing /shared-config/.enkrypt/docker"
+          ls /shared-config/.enkrypt/docker
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: s3-credentials
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: s3-credentials
+              key: AWS_SECRET_ACCESS_KEY
+        - name: AWS_DEFAULT_REGION
+          valueFrom:
+            secretKeyRef:
+              name: s3-credentials
+              key: S3_BUCKET_REGION
+        - name: S3_BUCKET_NAME
+          valueFrom:
+            secretKeyRef:
+              name: s3-credentials
+              key: S3_BUCKET_NAME
+        - name: ACCOUNT_ID
+          valueFrom:
+            secretKeyRef:
+              name: s3-credentials
+              key: ACCOUNT_ID
+        volumeMounts:
+        - name: shared-config
+          mountPath: /app/.enkrypt
+      containers:
+      - name: secure-mcp-gateway
+        image: enkryptai/secure-mcp-gateway:v1.0.4
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Listing /app/.enkrypt"
+          ls -a /app/.enkrypt
+          echo
+          echo "Listing /app/.enkrypt/docker"
+          ls /app/.enkrypt/docker
+          echo
+          echo "Starting Secure MCP Gateway..."
+          python src/secure_mcp_gateway/gateway.py
+        ports:
+        - containerPort: 8000
+          name: http
+        volumeMounts:
+        - name: shared-config
+          mountPath: /app/.enkrypt
+      volumes:
+      - name: shared-config
+        emptyDir: {}
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: secure-mcp-gateway-service
+  labels:
+    app: secure-mcp-gateway
+spec:
+  selector:
+    app: secure-mcp-gateway
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP

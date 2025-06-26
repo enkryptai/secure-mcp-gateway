@@ -10,7 +10,7 @@ import json
 from importlib.resources import files
 from secure_mcp_gateway.version import __version__
 
-# Not using sys.stdout as it is expecting JSON and showing errors for some reason
+# TODO: Fix error and use stdout
 print(f"Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}", file=sys.stderr)
 
 CONFIG_NAME = "enkrypt_mcp_config.json"
@@ -49,7 +49,7 @@ def sys_print(*args, **kwargs):
     if kwargs.get('is_error', False):
         kwargs.setdefault('file', sys.stderr)
     else:
-        # Not using sys.stdout as it is expecting JSON and showing errors for some reason
+        # TODO: Fix error and use stdout
         # kwargs.setdefault('file', sys.stdout)
         kwargs.setdefault('file', sys.stderr)
 

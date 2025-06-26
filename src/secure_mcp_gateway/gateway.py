@@ -56,7 +56,7 @@ import subprocess
 # As MCP Clients like Claude Desktop use their own Python interpreter, it may not have the modules installed
 # So, we can use this debug system info to identify that python interpreter to install the missing modules using that specific interpreter
 # So, debugging this in gateway module as this info can be used for fixing such issues in other modules
-# Not using sys.stdout as it is expecting JSON and showing errors for some reason
+# TODO: Fix error and use stdout
 print("Initializing Enkrypt Secure MCP Gateway Module", file=sys.stderr)
 print("--------------------------------", file=sys.stderr)
 print("SYSTEM INFO: ", file=sys.stderr)
@@ -92,7 +92,7 @@ if src_dir not in sys.path:
 try:
     import secure_mcp_gateway
 except ImportError:
-    # Not using sys.stdout as it is expecting JSON and showing errors for some reason
+    # TODO: Fix error and use stdout
     print("Installing secure_mcp_gateway package...", file=sys.stderr)
     subprocess.check_call(
         [sys.executable, "-m", "pip", "install", src_dir],

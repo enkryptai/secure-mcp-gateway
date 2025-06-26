@@ -652,15 +652,6 @@ cd secure-mcp-gateway
 
 ```bash
 # ------------------
-# uv
-# ------------------
-
-uv init
-
-# Example output
-Initialized project `enkrypt-secure-mcp-gateway`
-
-# ------------------
 # Create a virtual environment
 # ------------------
 
@@ -929,6 +920,9 @@ docker run --rm -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkrypt:/
 
 # On 🪟 Windows run the below
 docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt:/app/.enkrypt --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
+
+# If you are using 📟 Powershell, you can use the below command
+docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt -v ${env:USERPROFILE}\.enkrypt:/app/.enkrypt --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
 ```
 
 <details>
@@ -1012,6 +1006,9 @@ docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkryp
 
 # On 🪟 Windows run the below
 docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt:/app/.enkrypt -v %APPDATA%\Claude:/app/.claude --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
+
+# If you are using 📟 Powershell, you can use the below command
+docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt -v ${env:USERPROFILE}\.enkrypt:/app/.enkrypt -v ${env:APPDATA}\Claude:/app/.claude --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
 ```
 
 #### 4.3.4 Example Claude Desktop config file
@@ -1045,7 +1042,7 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkryp
 
 #### 4.3.5 Install the Gateway in Cursor
 
-- You can find the Cursor config location at the below locations
+- You can find the Cursor config location at the below locations. [For reference see Cursor docs.](https://docs.cursor.com/context/model-context-protocol#configuration-locations)
   - macOS: `~/.cursor`
   - Windows: `%USERPROFILE%\.cursor`
 
@@ -1055,13 +1052,69 @@ docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkryp
 
 # On 🪟 Windows run the below
 docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt:/app/.enkrypt -v %USERPROFILE%\.cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
+
+# If you are using 📟 Powershell, you can use the below command
+docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt -v ${env:USERPROFILE}\.enkrypt:/app/.enkrypt -v ${env:USERPROFILE}\.cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
 ```
 
 </details>
 
 ### 4.4 Remote Installation
 
-- 🌐 *(Coming soon)*
+<details>
+<summary><strong>🌐 Remote Installation Steps </strong></summary>
+
+- **NOTE: Ingress is not working at the moment. Please use locally or port-forward 8000 for now**
+
+#### 4.4.1 Run the Gateway in a remote server
+
+```bash
+python gateway.py
+```
+
+- Or run in k8s using our docker image `enkryptai/secure-mcp-gateway:vx.x.x`
+- Example: `enkryptai/secure-mcp-gateway:v1.0.4`
+- Use the latest version from Docker Hub: <https://hub.docker.com/r/enkryptai/secure-mcp-gateway/tags>
+- You can either mount the config file locally or download the json file from a remote place like `S3` using an `initContainer` and mount the volume
+- See `docs/secure-mcp-gateway-manifest-example.yaml` for the complete manifest file reference
+
+#### 4.4.2 Modify your MCP Client config to use the Gateway
+
+- You can find the Claude config location at the below locations in your system. [For reference see Claude docs.](https://modelcontextprotocol.io/quickstart/user#:~:text=This%20will%20create%20a%20configuration%20file%20at%3A)
+  - macOS: `~/Library/Application Support/Claude`
+  - Windows: `%APPDATA%\Claude`
+
+- You can find the Cursor config location at the below locations. [For reference see Cursor docs.](https://docs.cursor.com/context/model-context-protocol#configuration-locations)
+  - macOS: `~/.cursor`
+  - Windows: `%USERPROFILE%\.cursor`
+
+- Replace the `ENKRYPT_GATEWAY_KEY` with the key you got from the `enkrypt_mcp_config.json` file
+- Replace the `http://0.0.0.0:8000/mcp` with the `http(s)://<remote_server_ip>:<port>/mcp`
+- If you are running this locally, you can use `http://0.0.0.0:8000/mcp`
+- You can setup ingress to route the traffic to the MCP Gateway over `https`
+- Example: `https://mcp.enkryptai.com/mcp`
+
+```json
+{
+  "mcpServers": {
+    "Enkrypt Secure MCP Gateway": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "http://0.0.0.0:8000/mcp",
+        "--allow-http",
+        "--header",
+        "apikey:${ENKRYPT_GATEWAY_KEY}"
+      ],
+      "env": {
+        "ENKRYPT_GATEWAY_KEY": "gQXXXXXXXreVcArmXXXXXh58DMQcZqb-NJeul5lxBXXXXXXX"
+      }
+    }
+  }
+}
+```
+
+</details>
 
 ## 5. Verify Installation and check the files generated
 

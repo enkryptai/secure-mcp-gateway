@@ -11,7 +11,7 @@ from mcp.server.fastmcp import FastMCP, Context
 # https://modelcontextprotocol.io/docs/concepts/tools#python
 mcp = FastMCP("Dummy Echo MCP Server")
 
-# Not using sys.stdout as it is expecting JSON and showing errors for some reason
+# TODO: Fix error and use stdout
 
 @mcp.tool(
     name="echo",
