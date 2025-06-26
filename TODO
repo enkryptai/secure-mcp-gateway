@@ -22,3 +22,7 @@
   - Refactor enkrypt_secure_call_tools to decouple tool call logic and move to client.py
   - Async output guardrails support
 
+
+- Bugs to fix:
+  - Find out why sys.stdout is not working for some reason with JSON parsing issues even when printing normal strings. See `# Not using sys.stdout as it is expecting JSON and showing errors for some reason` in code
+

@@ -56,14 +56,15 @@ import subprocess
 # As MCP Clients like Claude Desktop use their own Python interpreter, it may not have the modules installed
 # So, we can use this debug system info to identify that python interpreter to install the missing modules using that specific interpreter
 # So, debugging this in gateway module as this info can be used for fixing such issues in other modules
-print("Initializing Enkrypt Secure MCP Gateway Module", file=sys.stdout)
-print("--------------------------------", file=sys.stdout)
-print("SYSTEM INFO: ", file=sys.stdout)
-print(f"Using Python interpreter: {sys.executable}", file=sys.stdout)
-print(f"Python version: {sys.version}", file=sys.stdout)
-print(f"Current working directory: {os.getcwd()}", file=sys.stdout)
-print(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}", file=sys.stdout)
-print("--------------------------------", file=sys.stdout)
+# Not using sys.stdout as it is expecting JSON and showing errors for some reason
+print("Initializing Enkrypt Secure MCP Gateway Module", file=sys.stderr)
+print("--------------------------------", file=sys.stderr)
+print("SYSTEM INFO: ", file=sys.stderr)
+print(f"Using Python interpreter: {sys.executable}", file=sys.stderr)
+print(f"Python version: {sys.version}", file=sys.stderr)
+print(f"Current working directory: {os.getcwd()}", file=sys.stderr)
+print(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}", file=sys.stderr)
+print("--------------------------------", file=sys.stderr)
 
 # Error: Can't find secure_mcp_gateway
 # import importlib
@@ -91,7 +92,8 @@ if src_dir not in sys.path:
 try:
     import secure_mcp_gateway
 except ImportError:
-    print("Installing secure_mcp_gateway package...", file=sys.stdout)
+    # Not using sys.stdout as it is expecting JSON and showing errors for some reason
+    print("Installing secure_mcp_gateway package...", file=sys.stderr)
     subprocess.check_call(
         [sys.executable, "-m", "pip", "install", src_dir],
         stdout=subprocess.DEVNULL,
