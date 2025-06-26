@@ -81,7 +81,7 @@ for %%a in (%DEPENDENCIES%) do (
 
 echo Dependencies string for the cli install command: %DEPENDENCIES_STRING%
 
-cd %SCRIPT_DIR%\..\src\secure_mcp_gateway
+cd /d %SCRIPT_DIR%\..\src\secure_mcp_gateway
 
 set "CLI_CMD=mcp install gateway.py --env-var ENKRYPT_GATEWAY_KEY=%ENKRYPT_GATEWAY_KEY% %DEPENDENCIES_STRING%"
 
