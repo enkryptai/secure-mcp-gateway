@@ -1064,8 +1064,6 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enk
 <details>
 <summary><strong>🌐 Remote Installation Steps </strong></summary>
 
-- **NOTE: Ingress is not working at the moment. Please use locally or port-forward 8000 for now**
-
 #### 4.4.1 Run the Gateway in a remote server
 
 ```bash
