@@ -1,29 +1,24 @@
 # TODO
 
-- Coming soon features:
+- **Coming soon features:**
   - Remote installation and configuration of the gateway
   - Add support for logging to Enkrypt
   - Add support for remote mcp config management with CRUD APIs
   - Integrate with Enkrypt Auth server to map user API Key to MCP Gateway Key
   - Enkrypt App MCP UI and Dashboards
 
-
-- Testing pending:
+- **Testing pending:**
   - Test async input guardrails
   - Test linux installation and setup
   - Test with external cache server config
+  - Test remote server over DNS. Currently only tested with localhost and port-forward
 
-
-- Development pending:
+- **Development pending:**
   - Add --dry-run option to install command to print the mcp config. This is useful for custom mcp clients
 
-
-- Nice to have:
+- **Nice to have:**
   - Refactor enkrypt_secure_call_tools to decouple tool call logic and move to client.py
   - Async output guardrails support
 
-
-- Bugs to fix:
+- **Bugs to fix:**
   - Find out why sys.stdout is not working for some reason with JSON parsing issues even when printing normal strings. Search for `# TODO: Fix error and use stdout` in code
-  - Fix ingress issue for remote server. See `NOTE: Ingress is not working at the moment. Please use locally or port-forward 8000 for now` in README.md
-
