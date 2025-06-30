@@ -50,7 +50,6 @@ Example Usage:
 
 import os
 import sys
-import uvicorn
 import subprocess
 
 # Printing system info before importing other modules
