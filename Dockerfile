@@ -17,8 +17,11 @@ COPY CHANGELOG.md CHANGELOG.md
 COPY LICENSE.txt LICENSE.txt
 COPY README.md README.md
 COPY README_PYPI.md README_PYPI.md
+
+# For ingress to work
 ENV HOST=0.0.0.0
 ENV FASTAPI_HOST=0.0.0.0
+
 # Build the package
 RUN python -m build
 
