@@ -1741,7 +1741,6 @@ mcp = FastMCP(
         "debug": True if FASTMCP_LOG_LEVEL == "DEBUG" else False,
         "log_level": FASTMCP_LOG_LEVEL,
         "host": "0.0.0.0",
-        # NOTE: TODO: This does not seem to take the port given. Defaults to 8000
         "port": 8000,
         "mount_path": "/",
         # "sse_path": "/sse",
@@ -1758,6 +1757,8 @@ mcp = FastMCP(
 if __name__ == "__main__":
     sys_print("Starting Enkrypt Secure MCP Gateway")
     try:
+        # Host defined on top does not seem to work
+        # But when we do it here, it works. Not sure why.
         mcp.settings.host = "0.0.0.0"
         mcp.run(transport="streamable-http", mount_path="/mcp")
         sys_print("Enkrypt Secure MCP Gateway is running")
