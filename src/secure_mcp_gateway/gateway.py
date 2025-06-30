@@ -50,6 +50,7 @@ Example Usage:
 
 import os
 import sys
+import uvicorn
 import subprocess
 
 # Printing system info before importing other modules
@@ -1758,6 +1759,7 @@ mcp = FastMCP(
 if __name__ == "__main__":
     sys_print("Starting Enkrypt Secure MCP Gateway")
     try:
+        mcp.settings.host = "0.0.0.0"
         mcp.run(transport="streamable-http", mount_path="/mcp")
         sys_print("Enkrypt Secure MCP Gateway is running")
     except Exception as e:
