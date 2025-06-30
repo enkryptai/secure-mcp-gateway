@@ -94,6 +94,7 @@ spec:
       containers:
       - name: secure-mcp-gateway
         image: enkryptai/secure-mcp-gateway:v1.0.4
+        # imagePullPolicy: Always
         command:
         - /bin/sh
         - -c
