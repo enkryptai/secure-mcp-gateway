@@ -1087,10 +1087,15 @@ python gateway.py
   - Windows: `%USERPROFILE%\.cursor`
 
 - Replace the `ENKRYPT_GATEWAY_KEY` with the key you got from the `enkrypt_mcp_config.json` file
-- Replace the `http://0.0.0.0:8000/mcp` with the `http(s)://<remote_server_ip>:<port>/mcp`
-- If you are running this locally, you can use `http://0.0.0.0:8000/mcp`
+- Replace the `http://0.0.0.0:8000/mcp/` with the `http(s)://<remote_server_ip>:<port>/mcp/`
+- If you are running this locally, you can use `http://0.0.0.0:8000/mcp/`
 - You can setup ingress to route the traffic to the MCP Gateway over `https`
-- Example: `https://mcp.enkryptai.com/mcp`
+- Example: `https://mcp.enkryptai.com/mcp/`
+
+- **NOTE: Please make sure node and npm are installed on the client machine**
+  - To verify, run `node -v` and `npm -v`
+
+- **NOTE: Make sure to use the trailing slash `/` in the MCP URL like `/mcp/`**
 
 ```json
 {
@@ -1099,7 +1104,7 @@ python gateway.py
       "command": "npx",
       "args": [
         "mcp-remote",
-        "http://0.0.0.0:8000/mcp",
+        "http://0.0.0.0:8000/mcp/",
         "--allow-http",
         "--header",
         "apikey:${ENKRYPT_GATEWAY_KEY}"

@@ -1730,6 +1730,8 @@ GATEWAY_TOOLS = [
 ]
 
 
+# NOTE: Settings defined directly do not seem to work
+# But when we do it later in main, it works. Not sure why.
 mcp = FastMCP(
     name="Enkrypt Secure MCP Gateway",
     instructions="This is the Enkrypt Secure MCP Gateway. It is used to secure the MCP calls to the servers by authenticating with a gateway key and using guardrails to check both requests and responses.",
@@ -1757,10 +1759,25 @@ mcp = FastMCP(
 if __name__ == "__main__":
     sys_print("Starting Enkrypt Secure MCP Gateway")
     try:
-        # Host defined on top does not seem to work
+        # --------------------------------------------
+        # Settings defined on top do not seem to work
         # But when we do it here, it works. Not sure why.
+        # --------------------------------------------
+        mcp.name = "Enkrypt Secure MCP Gateway"
+        mcp.instructions = "This is the Enkrypt Secure MCP Gateway. It is used to secure the MCP calls to the servers by authenticating with a gateway key and using guardrails to check both requests and responses."
+        mcp.tools = GATEWAY_TOOLS
+        # --------------------------------------------
+        mcp.settings.debug = True if FASTMCP_LOG_LEVEL == "DEBUG" else False
+        mcp.settings.log_level = FASTMCP_LOG_LEVEL
         mcp.settings.host = "0.0.0.0"
-        mcp.run(transport="streamable-http", mount_path="/mcp")
+        mcp.settings.port = 8000
+        mcp.settings.mount_path = "/"
+        mcp.settings.streamable_http_path = "/mcp/"
+        mcp.settings.json_response = True
+        mcp.settings.stateless_http = False
+        mcp.settings.dependencies = __dependencies__
+        # --------------------------------------------
+        mcp.run(transport="streamable-http", mount_path="/mcp/")
         sys_print("Enkrypt Secure MCP Gateway is running")
     except Exception as e:
         sys_print(f"Exception in mcp.run(): {e}", is_error=True)
