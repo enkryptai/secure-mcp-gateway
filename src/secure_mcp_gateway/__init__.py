@@ -1,4 +1,5 @@
 import sys
+# TODO: Fix error and use stdout
 print("Initializing Enkrypt Secure MCP Gateway", file=sys.stderr)
 
 from .version import __version__

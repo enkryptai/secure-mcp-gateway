@@ -10,6 +10,7 @@ import json
 from importlib.resources import files
 from secure_mcp_gateway.version import __version__
 
+# TODO: Fix error and use stdout
 print(f"Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}", file=sys.stderr)
 
 CONFIG_NAME = "enkrypt_mcp_config.json"
@@ -44,8 +45,24 @@ def sys_print(*args, **kwargs):
     """
     Print a message to the console
     """
-    kwargs.setdefault('file', sys.stderr)
-    print(*args, **kwargs)
+    # If is_error is True, print to stderr
+    if kwargs.get('is_error', False):
+        kwargs.setdefault('file', sys.stderr)
+    else:
+        # TODO: Fix error and use stdout
+        # kwargs.setdefault('file', sys.stdout)
+        kwargs.setdefault('file', sys.stderr)
+
+    # Remove invalid params for print
+    if 'is_error' in kwargs:
+        del kwargs['is_error']
+
+    # Using try/except to avoid any print errors blocking the flow for edge cases
+    try:
+        print(*args, **kwargs)
+    except Exception as e:
+        # Ignore any print errors
+        print(f"Error printing using sys_print: {e}", file=sys.stderr)
 
 
 def get_file_from_root(file_name):
@@ -89,11 +106,12 @@ def is_docker():
         if os.path.exists(indicator):
             return True
 
-    # Check cgroup for Docker-specific entries
+    # Check cgroup for any containerization system entries
+    container_identifiers = ['docker', 'kubepods', 'containerd', 'lxc']
     try:
         with open('/proc/1/cgroup', 'rt', encoding='utf-8') as f:
             for line in f:
-                if 'docker' in line:
+                if any(keyword in line for keyword in container_identifiers):
                     return True
     except FileNotFoundError:
         # /proc/1/cgroup doesn't exist, which is common outside of Linux

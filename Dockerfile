@@ -18,11 +18,18 @@ COPY LICENSE.txt LICENSE.txt
 COPY README.md README.md
 COPY README_PYPI.md README_PYPI.md
 
+# For ingress to work
+ENV HOST=0.0.0.0
+ENV FASTAPI_HOST=0.0.0.0
+
 # Build the package
 RUN python -m build
 
 # Install the package
 RUN pip install .
 
+EXPOSE 8000
+
 # Set the entrypoint to the script
+# ENTRYPOINT ["python", "src/secure_mcp_gateway/gateway.py"]
 ENTRYPOINT ["mcp", "run", "src/secure_mcp_gateway/gateway.py"]

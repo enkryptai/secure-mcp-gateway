@@ -30,3 +30,5 @@ src/enkrypt_mcp_gateway.egg-info
 src/secure_mcp_gateway.egg-info
 build/
 dist/
+
+docs/secure-mcp-gateway-manifest.yaml

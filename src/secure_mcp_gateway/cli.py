@@ -27,7 +27,8 @@ if is_docker_running:
     HOST_OS = os.environ.get("HOST_OS", None)
     HOST_ENKRYPT_HOME = os.environ.get("HOST_ENKRYPT_HOME", None)
     if not HOST_OS or not HOST_ENKRYPT_HOME:
-        sys_print("HOST_OS and HOST_ENKRYPT_HOME environment variables are not set. Please set them when running the Docker container:\n  docker run -e HOST_OS=<your_os> -e HOST_ENKRYPT_HOME=<path_to_enkrypt_home> ...")
+        sys_print("HOST_OS and HOST_ENKRYPT_HOME environment variables are not set.", is_error=True)
+        sys_print("Please set them when running the Docker container:\n  docker run -e HOST_OS=<your_os> -e HOST_ENKRYPT_HOME=<path_to_enkrypt_home> ...", is_error=True)
         sys.exit(1)
     sys_print("HOST_OS: ", HOST_OS)
     sys_print("HOST_ENKRYPT_HOME: ", HOST_ENKRYPT_HOME)
@@ -134,8 +135,8 @@ def add_or_update_cursor_server(config_path, server_name, command, args, env):
         try:
             with open(config_path, "r") as f:
                 config = json.load(f)
-        except json.JSONDecodeError:
-            sys_print(f"Error parsing {config_path}. The file may be corrupted.")
+        except json.JSONDecodeError as e:
+            sys_print(f"Error parsing {config_path}. The file may be corrupted: {str(e)}", is_error=True)
             sys.exit(1)
 
     if "mcpServers" not in config:
@@ -188,7 +189,9 @@ def main():
     
     if args.command == "generate-config":
         if os.path.exists(PICKED_CONFIG_PATH):
-            sys_print(f"Config file already exists at {PICKED_CONFIG_PATH}.\nNot overwriting. Please run install to install on Claude Desktop or Cursor.\nIf you want to start fresh, delete the config file and run again.")
+            sys_print(f"Config file already exists at {PICKED_CONFIG_PATH}.", is_error=True)
+            sys_print("Not overwriting. Please run install to install on Claude Desktop or Cursor.", is_error=True)
+            sys_print("If you want to start fresh, delete the config file and run again.", is_error=True)
             sys.exit(1)
         # Create .enkrypt directory if it doesn't exist
         os.makedirs(os.path.dirname(PICKED_CONFIG_PATH), exist_ok=True)
@@ -203,7 +206,7 @@ def main():
     elif args.command == "install":
         gateway_key = get_gateway_key(PICKED_CONFIG_PATH)
         if not gateway_key:
-            sys_print(f"Gateway key not found in {PICKED_CONFIG_PATH}. Please generate a new config file using 'generate-config' subcommand and try again.")
+            sys_print(f"Gateway key not found in {PICKED_CONFIG_PATH}. Please generate a new config file using 'generate-config' subcommand and try again.", is_error=True)
             sys.exit(1)
 
         env = {
@@ -221,8 +224,8 @@ def main():
                     with open(claude_desktop_config_path, "r") as f:
                         try:
                             claude_desktop_config = json.load(f)
-                        except json.JSONDecodeError:
-                            sys_print(f"Error parsing {claude_desktop_config_path}. The file may be corrupted.")
+                        except json.JSONDecodeError as e:
+                            sys_print(f"Error parsing {claude_desktop_config_path}. The file may be corrupted: {str(e)}", is_error=True)
                             sys.exit(1)
                 else:
                     claude_desktop_config = {"mcpServers": {}}
@@ -247,7 +250,7 @@ def main():
                 ]
                 result = subprocess.run(cmd, capture_output=True, text=True)
                 if result.returncode != 0:
-                    sys_print(f"Error installing gateway: {result.stderr}")
+                    sys_print(f"Error installing gateway: {result.stderr}", is_error=True)
                     sys.exit(1)
                 else:
                     sys_print(f"Successfully installed gateway for {client}")
@@ -267,24 +270,24 @@ def main():
                         claude_desktop_config_path = os.path.join(HOME_DIR, ".claude", "claude_desktop_config.json")
 
                     if not os.path.exists(claude_desktop_config_path):
-                        sys_print(f"claude_desktop_config.json file at: {claude_desktop_config_path} not found. Please check if Claude Desktop is installed and try again.")
+                        sys_print(f"claude_desktop_config.json file at: {claude_desktop_config_path} not found. Please check if Claude Desktop is installed and try again.", is_error=True)
                         sys.exit(1)
 
                     try:
                         with open(claude_desktop_config_path, "r") as f:
                             claude_desktop_config = json.load(f)
-                    except json.JSONDecodeError:
-                        sys_print(f"Error parsing {claude_desktop_config_path}. The file may be corrupted.")
+                    except json.JSONDecodeError as e:
+                        sys_print(f"Error parsing {claude_desktop_config_path}. The file may be corrupted: {str(e)}", is_error=True)
                         sys.exit(1)
                     
                     if "mcpServers" not in claude_desktop_config or "Enkrypt Secure MCP Gateway" not in claude_desktop_config.get("mcpServers", {}):
-                        sys_print("Enkrypt Secure MCP Gateway not found in Claude Desktop configuration. Something went wrong. Please reinstall the gateway.")
+                        sys_print("Enkrypt Secure MCP Gateway not found in Claude Desktop configuration. Something went wrong. Please reinstall the gateway.", is_error=True)
                         sys.exit(1)
 
                     args_list = claude_desktop_config["mcpServers"]["Enkrypt Secure MCP Gateway"].get("args", [])
 
                     if not args_list:
-                        sys_print("No args found for Enkrypt Secure MCP Gateway in Claude Desktop configuration. Something went wrong. Please reinstall the gateway.")
+                        sys_print("No args found for Enkrypt Secure MCP Gateway in Claude Desktop configuration. Something went wrong. Please reinstall the gateway.", is_error=True)
                         sys.exit(1)
 
                     if args_list and args_list[-1] == GATEWAY_PY_PATH:
@@ -297,8 +300,8 @@ def main():
                                 json.dump(claude_desktop_config, f, indent=2)
                             sys_print("Path to gateway modified in claude_desktop_config.json file")
                         except IOError as e:
-                            sys_print(f"Error writing to {claude_desktop_config_path}: {e}")
-                            sys_print("Please retry or manually edit the file to set the correct gateway path.")
+                            sys_print(f"Error writing to {claude_desktop_config_path}: {e}", is_error=True)
+                            sys_print("Please retry or manually edit the file to set the correct gateway path.", is_error=True)
                             sys.exit(1)
                 sys_print("Please restart Claude Desktop to use the gateway.")
                 sys.exit(0)
@@ -332,14 +335,14 @@ def main():
                 sys_print(f"Successfully configured Cursor")
                 sys.exit(0)
             except Exception as e:
-                sys_print(f"Error configuring Cursor: {str(e)}")
+                sys_print(f"Error configuring Cursor: {str(e)}", is_error=True)
                 sys.exit(1)
         else:
-            sys_print(f"Invalid client name: {args.client}. Please use 'claude-desktop' or 'cursor'.")
+            sys_print(f"Invalid client name: {args.client}. Please use 'claude-desktop' or 'cursor'.", is_error=True)
             sys.exit(1)
 
     else:
-        sys_print(f"Invalid command: {args.command}. Please use 'generate-config' or 'install'.")
+        sys_print(f"Invalid command: {args.command}. Please use 'generate-config' or 'install'.", is_error=True)
         parser.print_help()
         sys.exit(1)
 
