@@ -278,12 +278,12 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
                 tools_result = await session.list_tools()
                 try:
                     # Safely print the tools result to avoid async context issues
-                    tools_summary = f"[forward_tool_call] Discovered {len(getattr(tools_result, 'tools', []))} tools for {server_name}"
+                    tools_summary = f"[forward_tool_call] Discovered {len(getattr(tools_result or {}, 'tools', []))} tools for {server_name}"
                     sys_print(tools_summary)
-                    if IS_DEBUG_LOG_LEVEL:
+                    if IS_DEBUG_LOG_LEVEL and tools_result is not None:
                         sys_print(f"[forward_tool_call] Tool details for {server_name}: {tools_result}")
-                except Exception as print_error:
-                    sys_print(f"[forward_tool_call] Tools discovered for {server_name} (print error: {print_error})", is_error=True)
+                except Exception as e:
+                    sys_print(f"[forward_tool_call] Tools discovered for {server_name}, but encountered error when printing details: {e}", is_error=True)
                 return tools_result
 
             # Normal tool call

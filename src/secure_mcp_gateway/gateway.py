@@ -225,6 +225,8 @@ def mask_key(key):
     """
     Masks the last 4 characters of the key.
     """
+    if not key or len(key) < 4:
+        return "****"
     return "****" + key[-4:]
 
 
@@ -385,6 +387,7 @@ def enkrypt_authenticate(ctx: Context):
         sys_print("Error: Gateway key is required. Please update your mcp client config and try again.")
         return {"status": "error", "error": "arg --gateway-key is required in MCP client config."}
     
+    # We may get null if it's not passed in headers or if client is installing for the first time
     if enkrypt_gateway_key == "NULL":
         # sys_print(f"ctx: {ctx}")
         # sys_print(f"ctx.fastmcp: {ctx.fastmcp}")
@@ -629,7 +632,7 @@ async def enkrypt_get_server_info(ctx: Context, server_name: str):
 
 
 # NOTE: Using name "enkrypt_discover_server_tools" is not working in Cursor for some reason.
-# So using a different name which works.
+# So using a different name "enkrypt_discover_all_tools" which works.
 async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
     """
     Discovers and caches available tools for a specific server or all servers if server_name is None.

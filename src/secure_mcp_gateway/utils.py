@@ -53,7 +53,9 @@ def sys_print(*args, **kwargs):
         # kwargs.setdefault('file', sys.stdout)
         kwargs.setdefault('file', sys.stderr)
 
-    kwargs.pop('is_error', None)
+    # Remove invalid params for print
+    if 'is_error' in kwargs:
+        del kwargs['is_error']
 
     # Using try/except to avoid any print errors blocking the flow for edge cases
     try:
@@ -61,7 +63,6 @@ def sys_print(*args, **kwargs):
     except Exception as e:
         # Ignore any print errors
         print(f"Error printing using sys_print: {e}", file=sys.stderr)
-        pass
 
 
 def get_file_from_root(file_name):
@@ -106,10 +107,11 @@ def is_docker():
             return True
 
     # Check cgroup for any containerization system entries
+    container_identifiers = ['docker', 'kubepods', 'containerd', 'lxc']
     try:
         with open('/proc/1/cgroup', 'rt', encoding='utf-8') as f:
             for line in f:
-                if any(keyword in line for keyword in ['docker', 'kubepods', 'containerd']):
+                if any(keyword in line for keyword in container_identifiers):
                     return True
     except FileNotFoundError:
         # /proc/1/cgroup doesn't exist, which is common outside of Linux
