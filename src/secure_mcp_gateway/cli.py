@@ -308,9 +308,11 @@ def main():
 
         elif args.client.lower() == "cursor":           
             if is_docker_running:
+                cursor_config_path = os.path.join("/app", ".cursor", "mcp.json")
                 args_list = DOCKER_ARGS
                 command = DOCKER_COMMAND
             else:
+                cursor_config_path = os.path.join(HOME_DIR, ".cursor", "mcp.json")
                 # non-Docker uv configuration
                 command = "uv"
                 args_list = [
@@ -322,7 +324,6 @@ def main():
                     GATEWAY_PY_PATH
                 ]
 
-            cursor_config_path = os.path.join(HOME_DIR, ".cursor", "mcp.json")
             sys_print("cursor_config_path: ", cursor_config_path)
             try:
                 add_or_update_cursor_server(

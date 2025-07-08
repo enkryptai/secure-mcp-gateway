@@ -19,3 +19,11 @@ asyncio>=3.4.3
 
 # MCP
 mcp[cli]
+
+# OpenTelemetry
+opentelemetry-sdk 
+opentelemetry-exporter-otlp
+opentelemetry-exporter-prometheus
+opentelemetry-instrumentation
+opentelemetry-instrumentation-requests
+structlog

@@ -14,4 +14,11 @@ __dependencies__ = [
     "pyjwt>=2.0.0",
     "asyncio>=3.4.3",
     "mcp[cli]",
+    # OpenTelemetry
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp",
+    "opentelemetry-exporter-prometheus",
+    "opentelemetry-instrumentation",
+    "opentelemetry-instrumentation-requests",
+    "structlog"
 ]

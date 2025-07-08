@@ -262,9 +262,9 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
     sys_print(f"[forward_tool_call] Starting tool call for server: {server_name} and tool: {tool_name}")
 
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"[forward_tool_call] Command: {command}")
-        sys_print(f"[forward_tool_call] Command args: {command_args}")
-        sys_print(f"[forward_tool_call] Env: {env}")
+        sys_print(f"[forward_tool_call] Command: {command}", is_debug=True)
+        sys_print(f"[forward_tool_call] Command args: {command_args}", is_debug=True)
+        sys_print(f"[forward_tool_call] Env: {env}", is_debug=True)
 
     async with stdio_client(StdioServerParameters(command=command, args=command_args, env=env)) as (read, write):
         async with ClientSession(read, write) as session:
@@ -281,7 +281,7 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
                     tools_summary = f"[forward_tool_call] Discovered {len(getattr(tools_result or {}, 'tools', []))} tools for {server_name}"
                     sys_print(tools_summary)
                     if IS_DEBUG_LOG_LEVEL and tools_result is not None:
-                        sys_print(f"[forward_tool_call] Tool details for {server_name}: {tools_result}")
+                        sys_print(f"[forward_tool_call] Tool details for {server_name}: {tools_result}", is_debug=True)
                 except Exception as e:
                     sys_print(f"[forward_tool_call] Tools discovered for {server_name}, but encountered error when printing details: {e}", is_error=True)
                 return tools_result
@@ -353,7 +353,7 @@ def get_cached_tools(cache_client, id, server_name):
     try:
         tool_data = json.loads(cached_data)
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"[external_cache] Using cached tools for id '{id}', server '{server_name}' with key hash: {key}")
+            sys_print(f"[external_cache] Using cached tools for id '{id}', server '{server_name}' with key hash: {key}", is_debug=True)
         return tool_data
     except json.JSONDecodeError:
         sys_print(f"[external_cache] Error deserializing tools cache for hash key: {key}", is_error=True)
@@ -442,7 +442,7 @@ def cache_tools(cache_client, id, server_name, tools):
 
     if IS_DEBUG_LOG_LEVEL:
         expiration_time = datetime.fromtimestamp(time.time() + expires_in_seconds).strftime('%Y-%m-%d %H:%M:%S')
-        sys_print(f"[external_cache] Cached tools for gateway/user '{id}', server '{server_name}' with key '{raw_key}' (hash: {key}) until {expiration_time}")
+        sys_print(f"[external_cache] Cached tools for gateway/user '{id}', server '{server_name}' with key '{raw_key}' (hash: {key}) until {expiration_time}", is_debug=True)
 
     # Maintain a registry of servers for this gateway/user
     registry_key = get_gateway_servers_registry_hashed_key(id)
@@ -478,7 +478,7 @@ def get_cached_gateway_config(cache_client, id):
     try:
         config_data = json.loads(cached_data)
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"[external_cache] Using cached config for id '{id}' with key hash: {config_key}")
+            sys_print(f"[external_cache] Using cached config for id '{id}' with key hash: {config_key}", is_debug=True)
         return config_data
     except json.JSONDecodeError:
         sys_print(f"[external_cache] Error deserializing config cache for hash key: {config_key}", is_error=True)
@@ -507,7 +507,7 @@ def cache_gateway_config(cache_client, id, config):
     cache_client.setex(config_key, expires_in_seconds, serialized_data)
     if IS_DEBUG_LOG_LEVEL:
         expiration_time = datetime.fromtimestamp(time.time() + expires_in_seconds).strftime('%Y-%m-%d %H:%M:%S')
-        sys_print(f"[external_cache] Cached gateway config for '{id}' with key '{id}-mcp-config' (hash: {config_key}) until {expiration_time}")
+        sys_print(f"[external_cache] Cached gateway config for '{id}' with key '{id}-mcp-config' (hash: {config_key}) until {expiration_time}", is_debug=True)
     gateway_registry = get_gateway_registry_hashed_key()
     cache_client.sadd(gateway_registry, id)
 
@@ -532,7 +532,7 @@ def cache_key_to_id(cache_client, gateway_key, id):
 
     cache_client.setex(key, expires_in_seconds, id)
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"[external_cache] Cached key mapping with key 'gateway_key-****{gateway_key[-4:]}' (hash: {key})")
+        sys_print(f"[external_cache] Cached key mapping with key 'gateway_key-****{gateway_key[-4:]}' (hash: {key})", is_debug=True)
 
 
 def get_id_from_key(cache_client, gateway_key):
@@ -556,7 +556,7 @@ def get_id_from_key(cache_client, gateway_key):
     id = cache_client.get(key)
     if id:
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"[external_cache] Found id for key with hash: {key}")
+            sys_print(f"[external_cache] Found id for key with hash: {key}", is_debug=True)
     return id
 
 
@@ -573,7 +573,7 @@ def clear_cache_for_servers(cache_client, id, server_name=None):
         int: Number of cache entries cleared
     """
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"[clear_cache_for_servers] Clearing cache for servers for gateway/user: {id} with current local_server_registry: {local_server_registry}")
+        sys_print(f"[clear_cache_for_servers] Clearing cache for servers for gateway/user: {id} with current local_server_registry: {local_server_registry}", is_debug=True)
 
     count = 0
     # Local cache clear
@@ -588,24 +588,24 @@ def clear_cache_for_servers(cache_client, id, server_name=None):
                 local_server_registry[id].discard(server_name)
     else:
         if IS_DEBUG_LOG_LEVEL:
-            sys_print("[clear_cache_for_servers] Clearing cache for all servers for gateway/user")
+            sys_print("[clear_cache_for_servers] Clearing cache for all servers for gateway/user", is_debug=True)
         # Clear all servers for a gateway/user
         if id in local_server_registry:
             if IS_DEBUG_LOG_LEVEL:
-                sys_print(f"[clear_cache_for_servers] Clearing cache for all servers for gateway/user found in local_server_registry: {id}")
+                sys_print(f"[clear_cache_for_servers] Clearing cache for all servers for gateway/user found in local_server_registry: {id}", is_debug=True)
             for server_name in list(local_server_registry[id]):
                 if IS_DEBUG_LOG_LEVEL:
-                    sys_print(f"[clear_cache_for_servers] Clearing cache for server: {server_name}")
+                    sys_print(f"[clear_cache_for_servers] Clearing cache for server: {server_name}", is_debug=True)
                 key = get_server_hashed_key(id, server_name)
                 if key in local_cache:
                     if IS_DEBUG_LOG_LEVEL:
-                        sys_print(f"[clear_cache_for_servers] Clearing cache for server: {server_name} found in local_cache")
+                        sys_print(f"[clear_cache_for_servers] Clearing cache for server: {server_name} found in local_cache", is_debug=True)
                     del local_cache[key]
                     count += 1
             local_server_registry[id].clear()
         else:
             if IS_DEBUG_LOG_LEVEL:
-                sys_print(f"[clear_cache_for_servers] Clearing cache for all servers for gateway/user not found in local_server_registry: {id}")
+                sys_print(f"[clear_cache_for_servers] Clearing cache for all servers for gateway/user not found in local_server_registry: {id}", is_debug=True)
 
     if cache_client is None:
         return count
@@ -645,18 +645,18 @@ def clear_gateway_config_cache(cache_client, id, gateway_key):
         bool: True if any cache entries were cleared
     """
     if IS_DEBUG_LOG_LEVEL:
-        sys_print("[clear_gateway_config_cache] Clearing all cache entries for gateway/user")
+        sys_print("[clear_gateway_config_cache] Clearing all cache entries for gateway/user", is_debug=True)
     # 1. Clear all tool caches for the gateway/user
     registry_key = get_gateway_servers_registry_hashed_key(id)
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"[clear_gateway_config_cache] Clearing all tool caches for gateway/user: {id} with registry key: {registry_key}")
+        sys_print(f"[clear_gateway_config_cache] Clearing all tool caches for gateway/user: {id} with registry key: {registry_key}", is_debug=True)
     servers = cache_client.smembers(registry_key) if cache_client and cache_client.exists(registry_key) else []
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"[clear_gateway_config_cache] Clearing all tool caches for gateway/user: {id} with servers: {servers}")
+        sys_print(f"[clear_gateway_config_cache] Clearing all tool caches for gateway/user: {id} with servers: {servers}", is_debug=True)
     for server_name in servers:
         tool_key = get_server_hashed_key(id, server_name)
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"[clear_gateway_config_cache] Clearing tool cache for server: {server_name} with tool_key: {tool_key}")
+            sys_print(f"[clear_gateway_config_cache] Clearing tool cache for server: {server_name} with tool_key: {tool_key}", is_debug=True)
         if cache_client and cache_client.exists(tool_key):
             cache_client.delete(tool_key)
     if cache_client and cache_client.exists(registry_key):
@@ -739,3 +739,4 @@ def get_cache_statistics(cache_client):
         "total_config_caches": total_config_caches,
         "cache_type": "external_cache"
     }
+

@@ -15,7 +15,11 @@
     "enkrypt_tool_cache_expiration": 4,
     "enkrypt_gateway_cache_expiration": 24,
     "enkrypt_async_input_guardrails_enabled": false,
-    "enkrypt_async_output_guardrails_enabled": false
+    "enkrypt_async_output_guardrails_enabled": false,
+    "enkrypt_telemetry": {
+      "enabled": false,
+      "endpoint": "http://localhost:4317"
+    }
   },
   "gateways": {
     "UNIQUE_GATEWAY_KEY": {

@@ -2,7 +2,13 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
-## [1.0.4] - 2025-06-23
+## [1.0.5] - 2025-07-07
+
+### New Features in v1.0.5
+
+- `opentelemetry` support for tracing via `prometheus`, `jaeger` and `grafana loki`
+
+## [1.0.4] - 2025-07-07
 
 ### New Features in v1.0.4
 
