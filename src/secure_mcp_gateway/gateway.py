@@ -2595,8 +2595,10 @@ if __name__ == "__main__":
         # Settings defined on top do not seem to work
         # But when we do it here, it works. Not sure why.
         # --------------------------------------------
-        mcp.name = "Enkrypt Secure MCP Gateway"
-        mcp.instructions = "This is the Enkrypt Secure MCP Gateway. It is used to secure the MCP calls to the servers by authenticating with a gateway key and using guardrails to check both requests and responses."
+        # Removing name, instructions due to the below error:
+        # AttributeError: property 'name' of 'FastMCP' object has no setter
+        # mcp.name = "Enkrypt Secure MCP Gateway"
+        # mcp.instructions = "This is the Enkrypt Secure MCP Gateway. It is used to secure the MCP calls to the servers by authenticating with a gateway key and using guardrails to check both requests and responses."
         mcp.tools = GATEWAY_TOOLS
         # --------------------------------------------
         mcp.settings.debug = True if FASTMCP_LOG_LEVEL == "DEBUG" else False
