@@ -6,12 +6,16 @@ import sys
 from mcp import types
 from mcp.server.fastmcp import FastMCP, Context
 
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 # Create a dummy MCP server with tool discovery enabled
 # https://modelcontextprotocol.io/docs/concepts/tools#python
 mcp = FastMCP("Dummy Echo MCP Server")
 
 # TODO: Fix error and use stdout
+# Get tracer
+tracer = trace.get_tracer(__name__)
 
 @mcp.tool(
     name="echo",
@@ -40,29 +44,39 @@ async def echo(ctx: Context, message: str) -> list[types.TextContent]:
     Args:
         message: The message to echo back
     """
-    if not message:
-        print(f"Dummy Echo Server MCP Server: Error: Message is required", file=sys.stderr)
-        return [
-            types.TextContent(
-                type="text",
-                text="Error: Message is required"
-            )
-        ]
-    print(f"Dummy Echo Server MCP Server: Echoing message: {message}", file=sys.stderr)
-    try:
-        return [
-            types.TextContent(
-                type="text",
-                text=message
-            )
-        ]
-    except Exception as error:
-        return [
-            types.TextContent(
-                type="text",
-                text=f"Error: {str(error)}"
-            )
-        ]
+    with tracer.start_as_current_span("echo") as span:
+        span.set_attributes({
+            "message.length": len(message) if message else 0,
+            "request_id": ctx.request_id
+        })
+        
+        if not message:
+            print(f"Dummy Echo Server MCP Server: Error: Message is required", file=sys.stderr)
+            span.set_status(Status(StatusCode.ERROR, "Message is required"))
+            return [
+                types.TextContent(
+                    type="text",
+                    text="Error: Message is required"
+                )
+            ]
+            
+        print(f"Dummy Echo Server MCP Server: Echoing message: {message}", file=sys.stderr)
+        try:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=message
+                )
+            ]
+        except Exception as error:
+            span.record_exception(error, attributes={"error.type": type(error).__name__})
+            span.set_status(Status(StatusCode.ERROR, f"Echo operation failed: {str(error)}"))
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Error: {str(error)}"
+                )
+            ]
 
 
 @mcp.tool(

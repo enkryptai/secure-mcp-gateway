@@ -69,7 +69,7 @@ ENKRYPT_API_KEY = common_config.get("enkrypt_api_key", "null")
 
 ENKRYPT_BASE_URL = common_config.get("enkrypt_base_url", "https://api.enkryptai.com")
 if IS_DEBUG_LOG_LEVEL:
-    sys_print(f"ENKRYPT_BASE_URL: {ENKRYPT_BASE_URL}")
+    sys_print(f"ENKRYPT_BASE_URL: {ENKRYPT_BASE_URL}", is_debug=True)
 
 
 # URLs
@@ -105,8 +105,8 @@ def anonymize_pii(text: str) -> tuple[str, str]:
 
     sys_print("Making request to PII redaction API")
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"payload: {payload}")
-        sys_print(f"headers: {headers}")
+        sys_print(f"payload: {payload}", is_debug=True)
+        sys_print(f"headers: {headers}", is_debug=True)
 
     try:
         response = requests.post(PII_REDACTION_URL, json=payload, headers=headers)
@@ -138,8 +138,8 @@ def deanonymize_pii(text: str, key: str) -> str:
 
     sys_print("Making request to PII redaction API for de-anonymization")
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"payload: {payload}")
-        sys_print(f"headers: {headers}")
+        sys_print(f"payload: {payload}", is_debug=True)
+        sys_print(f"headers: {headers}", is_debug=True)
 
     try:
         response = requests.post(PII_REDACTION_URL, json=payload, headers=headers)
@@ -170,15 +170,15 @@ def check_relevancy(question: str, llm_answer: str) -> dict:
 
     sys_print("Making request to relevancy API")
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"payload: {payload}")
-        sys_print(f"headers: {headers}")
+        sys_print(f"payload: {payload}", is_debug=True)
+        sys_print(f"headers: {headers}", is_debug=True)
 
     try:
         response = requests.post(RELEVANCY_URL, json=payload, headers=headers)
         response.raise_for_status()
         res_json = response.json()
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"relevancy response: {res_json}")
+            sys_print(f"relevancy response: {res_json}", is_debug=True)
         return res_json
     except Exception as e:
         sys_print(f"Relevancy API error: {e}", is_error=True)
@@ -204,15 +204,15 @@ def check_adherence(context: str, llm_answer: str) -> dict:
 
     sys_print("Making request to adherence API")
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"payload: {payload}")
-        sys_print(f"headers: {headers}")
+        sys_print(f"payload: {payload}", is_debug=True)
+        sys_print(f"headers: {headers}", is_debug=True)
 
     try:
         response = requests.post(ADHERENCE_URL, json=payload, headers=headers)
         response.raise_for_status()
         res_json = response.json()
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"adherence response: {res_json}")
+            sys_print(f"adherence response: {res_json}", is_debug=True)
         return res_json
     except Exception as e:
         sys_print(f"Adherence API error: {e}", is_error=True)
@@ -240,15 +240,15 @@ def check_hallucination(request_text: str, response_text: str, context: str = ""
 
     sys_print("Making request to hallucination API")
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"payload: {payload}")
-        sys_print(f"headers: {headers}")
+        sys_print(f"payload: {payload}", is_debug=True)
+        sys_print(f"headers: {headers}", is_debug=True)
 
     try:
         response = requests.post(HALLUCINATION_URL, json=payload, headers=headers)
         response.raise_for_status()
         res_json = response.json()
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(f"hallucination response: {res_json}")
+            sys_print(f"hallucination response: {res_json}", is_debug=True)
         return res_json
     except Exception as e:
         sys_print(f"Hallucination API error: {e}", is_error=True)
@@ -295,8 +295,8 @@ async def call_guardrail(text, blocks, policy_name):
 
     sys_print(f'making request to guardrail with policy: {policy_name}')
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f'payload: {payload}')
-        sys_print(f'headers: {headers}')
+        sys_print(f'payload: {payload}', is_debug=True)
+        sys_print(f'headers: {headers}', is_debug=True)
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -307,8 +307,8 @@ async def call_guardrail(text, blocks, policy_name):
         return {"error": str(e)}
 
     if IS_DEBUG_LOG_LEVEL:
-        sys_print("Guardrail API response received")
-        sys_print(f'resp_json: {resp_json}')
+        sys_print("Guardrail API response received", is_debug=True)
+        sys_print(f'resp_json: {resp_json}', is_debug=True)
     
     if resp_json.get("error"):
         sys_print(f"Guardrail API error: {resp_json.get('error')}", is_error=True)
@@ -321,8 +321,8 @@ async def call_guardrail(text, blocks, policy_name):
         for policy_type in blocks:
             value = summary.get(policy_type)
             if IS_DEBUG_LOG_LEVEL:
-                sys_print(f'policy_type: {policy_type}')
-                sys_print(f'value: {value}')
+                sys_print(f'policy_type: {policy_type}', is_debug=True)
+                sys_print(f'value: {value}', is_debug=True)
             if value == 1:
                 violations_detected = True
                 violation_types.append(policy_type)
@@ -331,3 +331,4 @@ async def call_guardrail(text, blocks, policy_name):
                 violation_types.append(policy_type)
 
     return violations_detected, violation_types, resp_json
+

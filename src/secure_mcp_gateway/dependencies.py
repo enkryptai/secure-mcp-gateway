@@ -13,5 +13,11 @@ __dependencies__ = [
     "cryptography>=3.4.0",
     "pyjwt>=2.0.0",
     "asyncio>=3.4.3",
-    "mcp[cli]",
+    "mcp[cli]>=1.10.1",
+    "opentelemetry-sdk>=1.34.1",
+    "opentelemetry-exporter-otlp>=1.34.1",
+    "opentelemetry-exporter-prometheus>=0.55b1",
+    "opentelemetry-instrumentation>=0.55b1",
+    "opentelemetry-instrumentation-requests>=0.55b1",
+    "structlog>=25.4.0"
 ]

@@ -15,7 +15,12 @@
     "enkrypt_tool_cache_expiration": 4,
     "enkrypt_gateway_cache_expiration": 24,
     "enkrypt_async_input_guardrails_enabled": false,
-    "enkrypt_async_output_guardrails_enabled": false
+    "enkrypt_async_output_guardrails_enabled": false,
+    "enkrypt_telemetry": {
+      "enabled": false,
+      "insecure": true,
+      "endpoint": "http://localhost:4317"
+    }
   },
   "gateways": {
     "UNIQUE_GATEWAY_KEY": {
@@ -26,9 +31,7 @@
           "description": "Dummy Echo Server",
           "config": {
             "command": "python",
-            "args": [
-              "DUMMY_ECHO_MCP_FILE_PATH"
-            ]
+            "args": ["DUMMY_ECHO_MCP_FILE_PATH"]
           },
           "tools": {},
           "input_guardrails_policy": {
@@ -37,9 +40,7 @@
             "additional_config": {
               "pii_redaction": false
             },
-            "block": [
-              "policy_violation"
-            ]
+            "block": ["policy_violation"]
           },
           "output_guardrails_policy": {
             "enabled": false,
@@ -49,9 +50,7 @@
               "hallucination": false,
               "adherence": false
             },
-            "block": [
-              "policy_violation"
-            ]
+            "block": ["policy_violation"]
           }
         }
       ]

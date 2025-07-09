@@ -8,7 +8,7 @@ import subprocess
 from importlib.resources import files
 
 # BASE_DIR = os.path.dirname(secure_mcp_gateway.__file__)
-BASE_DIR = str(files('secure_mcp_gateway'))
+BASE_DIR = files('secure_mcp_gateway')
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
@@ -75,7 +75,12 @@ def generate_default_config():
             "enkrypt_tool_cache_expiration": 4,
             "enkrypt_gateway_cache_expiration": 24,
             "enkrypt_async_input_guardrails_enabled": False,
-            "enkrypt_async_output_guardrails_enabled": False
+            "enkrypt_async_output_guardrails_enabled": False,
+             "enkrypt_telemetry": {
+                "enabled": False,
+                "insecure": True,
+                "endpoint": "http://localhost:4317"
+            }
         },
         "gateways": {
             gateway_key: {
@@ -306,7 +311,11 @@ def main():
                 sys_print("Please restart Claude Desktop to use the gateway.")
                 sys.exit(0)
 
-        elif args.client.lower() == "cursor":           
+        elif args.client.lower() == "cursor":
+            base_path = '/app' if is_docker_running else HOME_DIR
+            cursor_config_path = os.path.join(base_path, '.cursor', 'mcp.json')
+            sys_print("cursor_config_path: ", cursor_config_path)
+
             if is_docker_running:
                 args_list = DOCKER_ARGS
                 command = DOCKER_COMMAND
@@ -322,8 +331,6 @@ def main():
                     GATEWAY_PY_PATH
                 ]
 
-            cursor_config_path = os.path.join(HOME_DIR, ".cursor", "mcp.json")
-            sys_print("cursor_config_path: ", cursor_config_path)
             try:
                 add_or_update_cursor_server(
                     config_path=cursor_config_path,

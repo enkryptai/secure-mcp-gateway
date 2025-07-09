@@ -28,24 +28,25 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
     - [4.2.3 Setup Other MCP Clients 🤖](#423-setup-other-mcp-clients)
   - [4.3 Docker Installation 🐳](#43-docker-installation)
   - [4.4 Remote Installation 🌐](#44-remote-installation) -->
-- [5. Verify Installation and check the files generated ✅](#5-verify-installation-and-check-the-files-generated)
-  <!-- - [5.1 Verify Claude Desktop 🔍](#51-verify-claude-desktop)
-  - [5.2 Example MCP config file generated 📄](#52-example-mcp-config-file-generated)
-  - [5.3 Restart Claude Desktop to run the Gateway 🔄](#53-restart-claude-desktop-to-run-the-gateway)
-  - [5.4 Example prompts 💬](#54-example-prompts)
-  - [5.5 Example config file generated ⚙️](#55-example-config-file-generated)
-  - [5.6 Verify Cursor 🔍](#56-verify-cursor) -->
-- [6. Edit the Gateway config as needed ✏️](#6-edit-the-gateway-config-as-needed)
-- [7. (Optional) Add GitHub MCP Server to the Gateway 🤖](#7-optional-add-github-mcp-server-to-the-gateway)
-- [8. (Optional) Protect GitHub MCP Server and Test Echo Server 🔒](#8-optional-protect-github-mcp-server-and-test-echo-server)
-- [9. Recommendations for using Guardrails 💡](#9-recommendations-for-using-guardrails)
-- [10. Other tools available 🔧](#10-other-tools-available)
-- [11. Deployment Patterns 🪂](#11-deployment-patterns)
-- [12. Uninstall the Gateway 🗑️](#12-uninstall-the-gateway)
-- [13. Troubleshooting 🕵](#13-troubleshooting)
-- [14. Known Issues being worked on 🏗️](#14-known-issues-being-worked-on)
-- [15. Known Limitations ⚠️](#15-known-limitations)
-- [16. Contribute 🤝](#16-contribute)
+- [5. (Optional) OpenTelemetry Setup 📊](#5-optional-opentelemetry-setup)
+- [6. Verify Installation and check the files generated ✅](#6-verify-installation-and-check-the-files-generated)
+  <!-- - [6.1 Verify Claude Desktop 🔍](#61-verify-claude-desktop)
+  - [6.2 Example MCP config file generated 📄](#62-example-mcp-config-file-generated)
+  - [6.3 Restart Claude Desktop to run the Gateway 🔄](#63-restart-claude-desktop-to-run-the-gateway)
+  - [6.4 Example prompts 💬](#64-example-prompts)
+  - [6.5 Example config file generated ⚙️](#65-example-config-file-generated)
+  - [6.6 Verify Cursor 🔍](#66-verify-cursor) -->
+- [7. Edit the Gateway config as needed ✏️](#7-edit-the-gateway-config-as-needed)
+- [8. (Optional) Add GitHub MCP Server to the Gateway 🤖](#8-optional-add-github-mcp-server-to-the-gateway)
+- [9. (Optional) Protect GitHub MCP Server and Test Echo Server 🔒](#9-optional-protect-github-mcp-server-and-test-echo-server)
+- [10. Recommendations for using Guardrails 💡](#10-recommendations-for-using-guardrails)
+- [11. Other tools available 🔧](#11-other-tools-available)
+- [12. Deployment Patterns 🪂](#12-deployment-patterns)
+- [13. Uninstall the Gateway 🗑️](#13-uninstall-the-gateway)
+- [14. Troubleshooting 🕵](#14-troubleshooting)
+- [15. Known Issues being worked on 🏗️](#15-known-issues-being-worked-on)
+- [16. Known Limitations ⚠️](#16-known-limitations)
+- [17. Contribute 🤝](#17-contribute)
 
 ## 1. Features
 
@@ -231,7 +232,11 @@ If you want to protect your MCPs with Enkrypt Guardrails, you need to do the fol
   python -m venv .secure-mcp-gateway-venv
 
   # Activate the virtual environment
+  # On Windows
   .secure-mcp-gateway-venv\Scripts\activate
+
+  # On Linux/macOS
+  source .secure-mcp-gateway-venv/bin/activate
 
   # Run the below to exit the virtual environment later if needed
   deactivate
@@ -1071,7 +1076,7 @@ python gateway.py
 ```
 
 - Or run in k8s using our docker image `enkryptai/secure-mcp-gateway:vx.x.x`
-- Example: `enkryptai/secure-mcp-gateway:v1.0.4`
+- Example: `enkryptai/secure-mcp-gateway:v1.0.5`
 - Use the latest version from Docker Hub: <https://hub.docker.com/r/enkryptai/secure-mcp-gateway/tags>
 - You can either mount the config file locally or download the json file from a remote place like `S3` using an `initContainer` and mount the volume
 - See `docs/secure-mcp-gateway-manifest-example.yaml` for the complete manifest file reference
@@ -1119,12 +1124,136 @@ python gateway.py
 
 </details>
 
-## 5. Verify Installation and check the files generated
+## 5. (Optional) OpenTelemetry Setup
+
+<details>
+<summary><strong>📊 OpenTelemetry Setup and Usage </strong></summary>
+<br>
+
+This section explains how to set up and use OpenTelemetry (OTEL) with the Enkrypt Secure MCP Gateway for observability.
+
+### 5.1 Architecture
+
+The observability stack includes:
+
+- OpenTelemetry Collector: Collects telemetry data (traces, metrics, logs)
+- Jaeger: Distributed tracing visualization
+- Loki: Log aggregation and querying
+- Prometheus: Metrics aggregation
+- Grafana: Unified visualization for metrics and logs
+  - Traces are not visible in Grafana for some reason. Please use Jaeger for traces.
+
+### 5.2 Prerequisites
+
+- Docker and Docker Compose installed
+- Gateway installed and running (follow [section 4](#4-gateway-setup))
+
+### 5.3 Setup Steps
+
+1. **Start the Observability Stack**
+
+   ```bash
+   cd infra
+
+   docker-compose up -d
+   ```
+
+### 5.4 Configuration
+
+- Edit the `enkrypt_mcp_config.json` file to enable telemetry
+
+  ```json
+  {
+    "common_mcp_gateway_config": {
+      ...
+      "enkrypt_telemetry": {
+        "enabled": true,
+        "insecure": true,
+        "endpoint": "http://localhost:4317"
+      }
+    },
+    ...
+  }
+  ```
+
+
+### 5.5 Available Telemetry (Not exhaustive)
+
+1. **Traces**
+   - Request processing pipeline
+   - Tool invocations with duration tracking
+   - Cache operations (hits/misses)
+   - Guardrail checks
+   - Error tracking and status monitoring
+   - Detailed attributes for debugging
+
+2. **Metrics**
+   - `enkrypt_list_all_servers_calls`: API endpoint usage
+   - `mcp_cache_misses_total`: Cache efficiency tracking
+   - `enkrypt_servers_discovered`: Server discovery monitoring
+   - `mcp_tool_calls_total`: Tool invocation tracking
+   - `mcp_tool_call_duration_seconds`: Performance monitoring (histogram)
+
+3. **Logs**
+   - Structured JSON format for better querying
+   - Gateway operations with context
+   - Error conditions with stack traces
+   - Security events and guardrail checks
+   - Performance data with timing information
+
+### 5.6 Verification Steps
+
+1. **Verify Services are Running**
+
+   ```bash
+   # On Windows
+   docker ps | findstr "loki grafana jaeger otel prometheus"
+
+   # On Linux/macOS
+   docker ps | grep -E "loki|grafana|jaeger|otel|prometheus"
+   ```
+
+2. **Access Service UIs**
+
+   - Grafana: <http://localhost:3000> (default credentials: admin/admin)
+
+   - Jaeger: <http://localhost:16686>
+
+   - Prometheus: <http://localhost:9090>
+
+   - Loki: Access through Grafana
+
+      1. Open Grafana (<http://localhost:3000>)
+      2. Go to Explore (left sidebar)
+      3. Select "Loki" from the data source dropdown
+      4. Example queries:
+
+          ```loki
+          {service_name="secure-mcp-gateway"}  # All gateway logs
+          {level="error"}  # Error logs
+          {service_name="secure-mcp-gateway"} |= `tool_call`  # Tool invocation logs
+          ```
+
+3. **Verify Gateway Telemetry**
+   - Make a test request through the Gateway
+   - Check traces in Jaeger:
+     - Look for `enkrypt_discover_all_tools` spans
+     - Examine child spans for cache, tool discovery, etc.
+   - Check metrics in Grafana:
+     - Look for `mcp_tool_calls_total`
+     - Check `mcp_cache_hits_total` and `mcp_cache_misses_total`
+   - Check logs in Grafana/Loki:
+     - Verify JSON structured format
+     - Check for proper context in log entries
+
+</details>
+
+## 6. Verify Installation and check the files generated
 
 <details>
 <summary><strong>✅ Verification steps and files generated</strong></summary>
 
-### 5.1 Verify Claude Desktop
+### 6.1 Verify Claude Desktop
 
 - To verify Claude installation, navigate to `claude_desktop_config.json` file by [following these instructions](https://modelcontextprotocol.io/quickstart/user#2-add-the-filesystem-mcp-server)
 
@@ -1132,7 +1261,7 @@ python gateway.py
 
   - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
-### 5.2 Example MCP config file generated
+### 6.2 Example MCP config file generated
 
 <details>
 <summary><strong>🍎 Example file in macOS</strong></summary>
@@ -1191,7 +1320,7 @@ python gateway.py
 
 </details>
 
-### 5.3 Restart Claude Desktop to run the Gateway
+### 6.3 Restart Claude Desktop to run the Gateway
 
 - After restarting, navigate to Claude Desktop `Settings`
 
@@ -1222,7 +1351,7 @@ python gateway.py
 
 </details>
 
-### 5.4 Example prompts
+### 6.4 Example prompts
 
 - `list all servers, get all tools available and echo test`
   - This uses a test MCP server `echo_server` which is in `test_mcps/echo_mcp.py`
@@ -1248,7 +1377,7 @@ python gateway.py
 
 </details>
 
-### 5.5 Example config file generated
+### 6.5 Example config file generated
 
 - Example `enkrypt_mcp_config.json` generated by the `setup` script in `~/.enkrypt/enkrypt_mcp_config.json` on macOS and `%USERPROFILE%\.enkrypt\enkrypt_mcp_config.json` on Windows
 
@@ -1317,7 +1446,7 @@ python gateway.py
   }
   ```
 
-### 5.6 Verify Cursor
+### 6.6 Verify Cursor
 
 - You can see the MCP server in the list of MCP servers in Cursor by navigating to `~/.cursor/mcp.json` and also by clicking on the settings icon on the top right and then clicking on `Tools & Integrations` or on the `MCP` tab
 
@@ -1338,7 +1467,7 @@ python gateway.py
 
 </details>
 
-## 6. Edit the Gateway config as needed
+## 7. Edit the Gateway config as needed
 
 <details>
 <summary><strong>✂️ Edit Gateway Config </strong></summary>
@@ -1518,7 +1647,7 @@ python gateway.py
 </details>
 </details>
 
-## 7. (Optional) Add GitHub MCP Server to the Gateway
+## 8. (Optional) Add GitHub MCP Server to the Gateway
 
 <details>
 <summary><strong>👨🏻‍💻 Configure GitHub </strong></summary>
@@ -1615,7 +1744,7 @@ python gateway.py
 
 </details>
 
-## 8. (Optional) Protect GitHub MCP Server and Test Echo Server
+## 9. (Optional) Protect GitHub MCP Server and Test Echo Server
 
 <details>
 <summary><strong>🎁 Protect with Enkrypt Guardrails for FREE </strong></summary>
@@ -1703,7 +1832,7 @@ Enforce strict context boundaries across repositories.
 </details>
 <br>
 <details>
-<summary><strong>8.1.2 💡 Prompt used to generate the rules </strong></summary>
+<summary><strong>9.1.2 💡 Prompt used to generate the rules </strong></summary>
 <br>
 
 - `Give numbered list of security rules in plain text for configuring AI guardrails for a GitHub server on the rules and policies it needs to follow to prevent malicious use of the GitHub services`
@@ -1759,7 +1888,7 @@ Enforce strict context boundaries across repositories.
 
 </details>
 <details>
-<summary><strong>8.2 🔑 Get Enkrypt API Key </strong></summary>
+<summary><strong>9.2 🔑 Get Enkrypt API Key </strong></summary>
 <br>
 
 - Now, we need get out FREE API Key from Enkrypt App. Hover over the left sidebar for it to expand and click on `Settings`
@@ -1774,7 +1903,7 @@ Enforce strict context boundaries across repositories.
 
 </details>
 <details>
-<summary><strong>8.3 🔑 Add API Key and the Guardrail to Config File </strong></summary>
+<summary><strong>9.3 🔑 Add API Key and the Guardrail to Config File </strong></summary>
 <br>
 
 - Now we have everything we need from the App. Let's add the API Key to the `enkrypt_mcp_config.json` file
@@ -1863,7 +1992,7 @@ Enforce strict context boundaries across repositories.
 
 </details>
 <details>
-<summary><strong>8.4 🧪 Test Guardrails </strong></summary>
+<summary><strong>9.4 🧪 Test Guardrails </strong></summary>
 <br>
 
 - **Save** the file and restart Claude Desktop for it to detect the changes
@@ -1898,7 +2027,7 @@ Enforce strict context boundaries across repositories.
 </details>
 </details>
 
-## 9. Recommendations for using Guardrails
+## 10. Recommendations for using Guardrails
 
 <details>
 <summary><strong>⭐ Recommendations </strong></summary>
@@ -1935,7 +2064,7 @@ Enforce strict context boundaries across repositories.
 </details>
 </details>
 
-## 10. Other Tools Available
+## 11. Other Tools Available
 
 <details>
 <summary><strong>💾 Cache Management </strong></summary>
@@ -1971,30 +2100,30 @@ Enforce strict context boundaries across repositories.
 </details>
 </details>
 
-## 11. Deployment patterns
+## 12. Deployment patterns
 
 1. [Local Gateway, Local Guardrails and Local MCP Server](#111-local-gateway-local-guardrails-and-local-mcp-server)
 2. [Local Gateway, Local MCP Server with Remote Guardrails](#112-local-gateway-local-mcp-server-with-remote-guardrails)
 3. [Local Gateway with Remote MCP Server and Remote Guardrails](#113-local-gateway-with-remote-mcp-server-and-remote-guardrails)
 4. [Remote Gateway, Remote MCP Server and Remote Guardrails](#114-remote-gateway-remote-mcp-server-and-remote-guardrails)
 
-### 11.1 Local Gateway, Local Guardrails and Local MCP Server
+### 12.1 Local Gateway, Local Guardrails and Local MCP Server
 
 ![Local Gateway with Local Guardrails Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20All%20Local.drawio.png)
 
-### 11.2 Local Gateway, Local MCP Server with Remote Guardrails
+### 12.2 Local Gateway, Local MCP Server with Remote Guardrails
 
 ![Local Gateway with Remote Guardrails Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20Local.drawio.png)
 
-### 11.3 Local Gateway with Remote MCP Server and Remote Guardrails
+### 12.3 Local Gateway with Remote MCP Server and Remote Guardrails
 
 ![Local Gateway with Remote Guardrails and Remote MCP Server Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20Local%20with%20Remote.drawio.png)
 
-### 11.4 Remote Gateway, Remote MCP Server and Remote Guardrails
+### 12.4 Remote Gateway, Remote MCP Server and Remote Guardrails
 
 ![Remote Gateway with Remote Guardrails and Remote MCP Server Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20Full%20Remote.drawio.png)
 
-## 12. Uninstall the Gateway
+## 13. Uninstall the Gateway
 
 <details>
 <summary><strong>🗑️ Uninstall the Gateway </strong></summary>
@@ -2011,7 +2140,7 @@ Enforce strict context boundaries across repositories.
 
 </details>
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 <details>
 <summary><strong>🕵 Troubleshooting </strong></summary>
@@ -2031,17 +2160,70 @@ Enforce strict context boundaries across repositories.
 
 - If we need more detailed logs, please set the `enkrypt_log_level` to `debug` in the `enkrypt_mcp_config.json` file and restart the MCP client.
 
+### 14.1 OpenTelemetry Troubleshooting
+
+1. **SSL Handshake Errors**
+
+   If you see SSL errors like:
+
+   ```bash
+   SSL_ERROR_SSL: error:100000f7:SSL routines:OPENSSL_internal:WRONG_VERSION_NUMBER
+   ```
+
+   Solution: Add `insecure=True` to the OTLP exporter configuration in `telemetry.py`
+
+2. **No Logs in Loki**
+
+   - Verify OTLP collector is running:
+
+     ```bash
+     docker logs secure-mcp-gateway-otel-collector-1
+     ```
+
+   - Check collector config in `otel_collector/otel-collector-config.yaml`
+
+   - Verify Loki is receiving data:
+
+     ```bash
+     curl -G -s "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query={job="enkrypt"}'
+     ```
+
+3. **Missing Metrics**
+
+   - Check OTLP collector metrics pipeline:
+
+     ```bash
+     curl http://localhost:8888/metrics
+     ```
+
+   - Verify metrics in collector logs:
+
+     ```bash
+     docker logs secure-mcp-gateway-otel-collector-1 | grep "metrics"
+     ```
+
+4. **Docker Issues**
+
+   ```bash
+   # Restart the stack
+   docker-compose down
+   docker-compose up -d
+   
+   # Check individual service logs
+   docker logs <service-name>
+   ```
+
 </details>
 
-## 14. Known Issues being worked on
+## 15. Known Issues being worked on
 
 - Output guardrails are not being applied to non-text tool results. Support for other media types like images, audio, etc. is coming soon.
 
-## 15. Known Limitations
+## 16. Known Limitations
 
 - The Gateway does not support a scenario where the Gateway is deployed remotely but the MCP server is deployed locally (without being exposed to the internet). This is because the Gateway needs to know the MCP server's address to forward requests to it.
 
-## 16. Contribute
+## 17. Contribute
 
 - Look at the `TODO` file for the current work in progress and yet to be implemented features
 
@@ -2051,9 +2233,9 @@ Enforce strict context boundaries across repositories.
 
 - Report or fix any bugs you encounter 😊
 
-## 17. License
+## 18. License
 
-### 17.1 Enkrypt AI MCP Gateway Core
+### 18.1 Enkrypt AI MCP Gateway Core
 
 This project's core functionality is licensed under the MIT License.
 
@@ -2065,7 +2247,7 @@ This project's core functionality is licensed under the MIT License.
 
 For the full license text, see the `LICENSE.txt` file in this repository.
 
-### 17.2 Enkrypt AI Guardrails, Logo, and Branding
+### 18.2 Enkrypt AI Guardrails, Logo, and Branding
 
 © 2025 Enkrypt AI. All rights reserved.
 
