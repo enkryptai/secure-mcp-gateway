@@ -1164,6 +1164,7 @@ The observability stack includes:
       ...
       "enkrypt_telemetry": {
         "enabled": true,
+        "insecure": true,
         "endpoint": "http://localhost:4317"
       }
     },

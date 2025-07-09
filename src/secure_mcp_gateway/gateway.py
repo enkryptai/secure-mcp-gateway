@@ -78,7 +78,7 @@ print("--------------------------------", file=sys.stderr)
 # Error: Can't find secure_mcp_gateway
 # Add src directory to Python path
 # from importlib.resources import files
-# BASE_DIR = str(files('secure_mcp_gateway'))
+# BASE_DIR = files('secure_mcp_gateway')
 # if BASE_DIR not in sys.path:
 #     sys.path.insert(0, BASE_DIR)
 

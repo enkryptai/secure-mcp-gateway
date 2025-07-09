@@ -18,6 +18,7 @@
     "enkrypt_async_output_guardrails_enabled": false,
     "enkrypt_telemetry": {
       "enabled": false,
+      "insecure": true,
       "endpoint": "http://localhost:4317"
     }
   },

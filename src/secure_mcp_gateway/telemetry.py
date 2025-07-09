@@ -167,6 +167,7 @@ common_config = get_common_config()
 otel_config = common_config.get("enkrypt_telemetry", {})
 
 is_telemetry_enabled()
+TELEMETRY_INSECURE = otel_config.get("insecure", True) # True for local development
 TELEMETRY_ENDPOINT = otel_config.get("endpoint", "http://localhost:4317")
 
 SERVICE_NAME = "secure-mcp-gateway"
@@ -202,7 +203,7 @@ if IS_TELEMETRY_ENABLED:
     # OTLP gRPC log exporter
     otlp_exporter = OTLPLogExporter(
         endpoint=TELEMETRY_ENDPOINT,
-        insecure=True  # For local development
+        insecure=TELEMETRY_INSECURE
     )
     logger_provider = LoggerProvider(resource=resource)
     logger_provider.add_log_record_processor(BatchLogRecordProcessor(otlp_exporter))
@@ -244,7 +245,8 @@ if IS_TELEMETRY_ENABLED:
 
     # Set up OTLP exporter using gRPC
     otlp_exporter = OTLPSpanExporter(
-        endpoint=TELEMETRY_ENDPOINT  # Use gRPC port
+        endpoint=TELEMETRY_ENDPOINT,  # Use gRPC port
+        insecure=TELEMETRY_INSECURE
     )
 
     # Add span processor
@@ -254,7 +256,8 @@ if IS_TELEMETRY_ENABLED:
     # ---------- METRICS SETUP -----------------------------------------------------
     # Step 1: Set up OTLP gRPC Exporter
     otlp_exporter = OTLPMetricExporter(
-        endpoint=TELEMETRY_ENDPOINT  # Use gRPC port
+        endpoint=TELEMETRY_ENDPOINT,  # Use gRPC port
+        insecure=TELEMETRY_INSECURE
     )
 
     # Step 2: Metric reader
@@ -423,5 +426,5 @@ if __name__ == "__main__":
         tool_call_counter.add(1)
         guardrail_api_request_counter.add(1)
         guardrail_api_request_duration.record(1)
-        time.sleep(2)
+        time.sleep(0.1)
 

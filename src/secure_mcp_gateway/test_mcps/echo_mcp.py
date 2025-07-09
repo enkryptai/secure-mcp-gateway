@@ -69,8 +69,8 @@ async def echo(ctx: Context, message: str) -> list[types.TextContent]:
                 )
             ]
         except Exception as error:
-            span.record_exception(error)
-            span.set_status(Status(StatusCode.ERROR, str(error)))
+            span.record_exception(error, attributes={"error.type": type(error).__name__})
+            span.set_status(Status(StatusCode.ERROR, f"Echo operation failed: {str(error)}"))
             return [
                 types.TextContent(
                     type="text",

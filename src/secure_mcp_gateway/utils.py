@@ -91,7 +91,7 @@ def is_docker():
     return False
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=16)
 def get_common_config(print_debug=False):
     """
     Get the common configuration for the Enkrypt Secure MCP Gateway
@@ -171,19 +171,36 @@ def is_telemetry_enabled():
 
 
 def generate_custom_id():
-    # Generate 34 random characters (letters + digits)
-    charset = string.ascii_letters + string.digits
-    random_part = ''.join(secrets.choice(charset) for _ in range(34))
+    """
+    Generate a unique identifier consisting of 34 random characters followed by current timestamp.
+    
+    Returns:
+        str: A string in format '{random_chars}_{timestamp_ms}' that can be used as a unique identifier
+    """
+    try:
+        # Generate 34 random characters (letters + digits)
+        charset = string.ascii_letters + string.digits
+        random_part = ''.join(secrets.choice(charset) for _ in range(34))
 
-    # Get current epoch time in milliseconds
-    timestamp_ms = int(time.time() * 1000)
+        # Get current epoch time in milliseconds
+        timestamp_ms = int(time.time() * 1000)
 
-    return f"{random_part}_{timestamp_ms}"
+        return f"{random_part}_{timestamp_ms}"
+    except Exception as e:
+        print(f"[utils] Error generating custom ID: {e}", file=sys.stderr)
+        # Fallback to a simpler ID if there's an error
+        return f"fallback_{int(time.time())}"
 
 
 def sys_print(*args, **kwargs):
     """
-    Print a message to the console
+    Print a message to the console and optionally log it via telemetry.
+    
+    Args:
+        *args: Arguments to print
+        **kwargs: Keyword arguments including:
+            - is_error (bool): If True, print to stderr and log as error
+            - is_debug (bool): If True, log as debug instead of info
     """
     is_error=kwargs.pop('is_error', False)
     is_debug=kwargs.pop('is_debug', False)
@@ -198,19 +215,19 @@ def sys_print(*args, **kwargs):
 
     # Using try/except to avoid any print errors blocking the flow for edge cases
     try:
-        # Only log if there are arguments to log
-        if is_telemetry_enabled() and args:
-            # Format args similar to how print() does it
-            sep = kwargs.get('sep', ' ')
-            log_message = sep.join(str(arg) for arg in args)
-            if is_error:
-                logger.error(log_message)
-            elif is_debug:
-                logger.debug(log_message)
+        if args:
+            if is_telemetry_enabled():
+                # Format args similar to how print() does it
+                sep = kwargs.get('sep', ' ')
+                log_message = sep.join(str(arg) for arg in args)
+                if is_error:
+                    logger.error(log_message)
+                elif is_debug:
+                    logger.debug(log_message)
+                else:
+                    logger.info(log_message)
             else:
-                logger.info(log_message)
-        else:
-            print(*args, **kwargs)
+                print(*args, **kwargs)
     except Exception as e:
         # Ignore any print errors
         print(f"[utils] Error printing using sys_print: {e}", file=sys.stderr)
