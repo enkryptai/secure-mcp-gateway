@@ -16,3 +16,12 @@ datasources:
       exemplarTraceIdDestinations:
         - name: trace_id
           datasourceUid: jaeger
+
+  - name: Jaeger
+    type: jaeger
+    uid: jaeger
+    access: proxy
+    url: http://jaeger:16685
+    jsonData:
+      nodeGraph:
+        enabled: true

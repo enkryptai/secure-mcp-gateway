@@ -30,9 +30,7 @@
           "description": "Dummy Echo Server",
           "config": {
             "command": "python",
-            "args": [
-              "DUMMY_ECHO_MCP_FILE_PATH"
-            ]
+            "args": ["DUMMY_ECHO_MCP_FILE_PATH"]
           },
           "tools": {},
           "input_guardrails_policy": {
@@ -41,9 +39,7 @@
             "additional_config": {
               "pii_redaction": false
             },
-            "block": [
-              "policy_violation"
-            ]
+            "block": ["policy_violation"]
           },
           "output_guardrails_policy": {
             "enabled": false,
@@ -53,9 +49,7 @@
               "hallucination": false,
               "adherence": false
             },
-            "block": [
-              "policy_violation"
-            ]
+            "block": ["policy_violation"]
           }
         }
       ]
