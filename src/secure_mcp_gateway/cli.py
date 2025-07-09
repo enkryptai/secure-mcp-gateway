@@ -75,7 +75,11 @@ def generate_default_config():
             "enkrypt_tool_cache_expiration": 4,
             "enkrypt_gateway_cache_expiration": 24,
             "enkrypt_async_input_guardrails_enabled": False,
-            "enkrypt_async_output_guardrails_enabled": False
+            "enkrypt_async_output_guardrails_enabled": False,
+             "enkrypt_telemetry": {
+                "enabled": False,
+                "endpoint": "http://localhost:4317"
+            }
         },
         "gateways": {
             gateway_key: {

@@ -85,8 +85,16 @@ print("--------------------------------", file=sys.stderr)
 # Add src directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.abspath(os.path.join(current_dir, '..'))
+# Go up one more level to reach project root
+root_dir = os.path.abspath(os.path.join(src_dir, '..')) 
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
+
+print("--------------------------------", file=sys.stderr)
+print("PATHS: ", file=sys.stderr)
+print(f"src_dir: {src_dir}", file=sys.stderr)
+print(f"root_dir: {root_dir}", file=sys.stderr)
+print("--------------------------------", file=sys.stderr)
 
 # Try to install the package if not found to cater for clients like Claude Desktop who use a separate python interpreter
 try:
@@ -194,6 +202,8 @@ ENKRYPT_GATEWAY_CACHE_EXPIRATION = int(common_config.get("enkrypt_gateway_cache_
 ENKRYPT_MCP_USE_EXTERNAL_CACHE = common_config.get("enkrypt_mcp_use_external_cache", False)
 ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED = common_config.get("enkrypt_async_input_guardrails_enabled", False)
 ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED = common_config.get("enkrypt_async_output_guardrails_enabled", False)
+ENKRYPT_TELEMETRY_ENABLED = common_config.get("enkrypt_telemetry", {}).get("enabled", False)
+ENKRYPT_TELEMETRY_ENDPOINT = common_config.get("enkrypt_telemetry", {}).get("endpoint", "http://localhost:4317")
 
 ENKRYPT_API_KEY = common_config.get("enkrypt_api_key", "null")
 
@@ -212,6 +222,8 @@ sys_print(f'enkrypt_mcp_use_external_cache: {ENKRYPT_MCP_USE_EXTERNAL_CACHE}')
 sys_print(f'enkrypt_async_input_guardrails_enabled: {ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED}')
 if IS_DEBUG_LOG_LEVEL:
     sys_print(f'enkrypt_async_output_guardrails_enabled: {ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED}', is_debug=True)
+sys_print(f'enkrypt_telemetry_enabled: {ENKRYPT_TELEMETRY_ENABLED}')
+sys_print(f'enkrypt_telemetry_endpoint: {ENKRYPT_TELEMETRY_ENDPOINT}')
 sys_print("--------------------------------")
 
 # TODO

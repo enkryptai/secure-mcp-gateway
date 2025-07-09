@@ -9,7 +9,9 @@ import sys
 import json
 import time
 import string
+import socket
 import secrets
+from urllib.parse import urlparse
 from functools import lru_cache
 from importlib.resources import files
 from secure_mcp_gateway.telemetry import logger
@@ -25,6 +27,8 @@ from secure_mcp_gateway.consts import (
 
 # TODO: Fix error and use stdout
 print(f"[utils] Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}", file=sys.stderr)
+
+IS_TELEMETRY_ENABLED = None
 
 # --------------------------------------------------------------------------
 # Also redefined funcations in telemetry.py to avoid circular imports
@@ -134,7 +138,36 @@ def is_telemetry_enabled():
     """
     Check if telemetry is enabled
     """
-    return get_common_config().get("enkrypt_telemetry", {}).get("enabled", False)
+    global IS_TELEMETRY_ENABLED
+    if IS_TELEMETRY_ENABLED:
+        return True
+    elif IS_TELEMETRY_ENABLED is not None:
+        return False
+
+    config = get_common_config()
+    telemetry_config = config.get("enkrypt_telemetry", {})
+    if not telemetry_config.get("enabled", False):
+        IS_TELEMETRY_ENABLED = False
+        return False
+
+    endpoint = telemetry_config.get("endpoint", "http://localhost:4317")
+
+    try:
+        parsed_url = urlparse(endpoint)
+        hostname = parsed_url.hostname
+        port = parsed_url.port
+        if not hostname or not port:
+            print(f"[utils] Invalid OTLP endpoint URL: {endpoint}", file=sys.stderr)
+            IS_TELEMETRY_ENABLED = False
+            return False
+        
+        with socket.create_connection((hostname, port), timeout=1):
+            IS_TELEMETRY_ENABLED = True
+            return True
+    except (socket.error, AttributeError, TypeError, ValueError) as e:
+        print(f"[utils] Telemetry is enabled in config, but endpoint {endpoint} is not accessible. So, disabling telemetry. Error: {e}", file=sys.stderr)
+        IS_TELEMETRY_ENABLED = False
+        return False
 
 
 def generate_custom_id():
