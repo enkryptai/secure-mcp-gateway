@@ -52,6 +52,9 @@ import os
 import sys
 import subprocess
 
+# ENKRYPT_ENVIRONMENT = os.environ.get("ENKRYPT_ENVIRONMENT", "production")
+# IS_LOCAL_ENVIRONMENT = ENKRYPT_ENVIRONMENT == "local"
+
 # Printing system info before importing other modules
 # As MCP Clients like Claude Desktop use their own Python interpreter, it may not have the modules installed
 # So, we can use this debug system info to identify that python interpreter to install the missing modules using that specific interpreter
@@ -64,6 +67,8 @@ print(f"Using Python interpreter: {sys.executable}", file=sys.stderr)
 print(f"Python version: {sys.version}", file=sys.stderr)
 print(f"Current working directory: {os.getcwd()}", file=sys.stderr)
 print(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}", file=sys.stderr)
+# print(f"ENKRYPT_ENVIRONMENT: {ENKRYPT_ENVIRONMENT}", file=sys.stderr)
+# print(f"IS_LOCAL_ENVIRONMENT: {IS_LOCAL_ENVIRONMENT}", file=sys.stderr)
 print("--------------------------------", file=sys.stderr)
 
 # Error: Can't find secure_mcp_gateway
@@ -100,6 +105,8 @@ print("--------------------------------", file=sys.stderr)
 try:
     import secure_mcp_gateway
 except ImportError:
+    # package_name = src_dir if IS_LOCAL_ENVIRONMENT else "secure_mcp_gateway"
+
     # TODO: Fix error and use stdout
     print("Installing secure_mcp_gateway package...", file=sys.stderr)
     subprocess.check_call(
