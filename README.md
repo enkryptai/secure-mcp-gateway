@@ -1136,7 +1136,8 @@ The observability stack includes:
 - Jaeger: Distributed tracing visualization
 - Loki: Log aggregation and querying
 - Prometheus: Metrics aggregation
-- Grafana: Unified visualization for traces and logs
+- Grafana: Unified visualization for metrics and logs
+  - Traces are not visible in Grafana for some reason. Please use Jaeger for traces.
 
 ### 5.2 Prerequisites
 
@@ -1148,35 +1149,28 @@ The observability stack includes:
 1. **Start the Observability Stack**
 
    ```bash
+   cd infra
+
    docker-compose up -d
    ```
 
 ### 5.4 Configuration
 
-The Gateway is pre-configured to send telemetry data to the OpenTelemetry Collector. Key configuration files:
+- Edit the `enkrypt_mcp_config.json` file to enable telemetry
 
-- `docker-compose.yml`: Defines the observability stack services
-- `otel_collector/otel-collector-config.yaml`: OTEL Collector configuration
-- Gateway instrumentation in `src/secure_mcp_gateway/telemetry.py`
+  ```json
+  {
+    "common_mcp_gateway_config": {
+      ...
+      "enkrypt_telemetry": {
+        "enabled": true,
+        "endpoint": "http://localhost:4317"
+      }
+    },
+    ...
+  }
+  ```
 
-Important configuration notes:
-
-1. OTLP exporter is configured to use gRPC with insecure mode for local development:
-
-   ```python
-   otlp_exporter = OTLPLogExporter(
-       endpoint="localhost:4317",
-       insecure=True  # For local development
-   )
-   ```
-
-2. Structured JSON logging format:
-
-   ```python
-   json_formatter = logging.Formatter(
-       '{"timestamp":"%(asctime)s", "level":"%(levelname)s", "name":"%(name)s", "message":"%(message)s"}'
-   )
-   ```
 
 ### 5.5 Available Telemetry (Not exhaustive)
 
@@ -1230,9 +1224,9 @@ Important configuration notes:
       4. Example queries:
 
           ```loki
-          {job="enkrypt"}  # All gateway logs
-          {job="enkrypt"} |= "error"  # Error logs
-          {job="enkrypt"} |= "tool_call"  # Tool invocation logs
+          {service_name="secure-mcp-gateway"}  # All gateway logs
+          {level="error"}  # Error logs
+          {service_name="secure-mcp-gateway"} |= `tool_call`  # Tool invocation logs
           ```
 
 3. **Verify Gateway Telemetry**
@@ -1246,59 +1240,6 @@ Important configuration notes:
    - Check logs in Grafana/Loki:
      - Verify JSON structured format
      - Check for proper context in log entries
-
-### 5.7 Troubleshooting
-
-1. **SSL Handshake Errors**
-
-   If you see SSL errors like:
-
-   ```bash
-   SSL_ERROR_SSL: error:100000f7:SSL routines:OPENSSL_internal:WRONG_VERSION_NUMBER
-   ```
-
-   Solution: Add `insecure=True` to the OTLP exporter configuration in `telemetry.py`
-
-2. **No Logs in Loki**
-
-   - Verify OTLP collector is running:
-
-     ```bash
-     docker logs secure-mcp-gateway-otel-collector-1
-     ```
-
-   - Check collector config in `otel_collector/otel-collector-config.yaml`
-
-   - Verify Loki is receiving data:
-
-     ```bash
-     curl -G -s "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query={job="enkrypt"}'
-     ```
-
-3. **Missing Metrics**
-
-   - Check OTLP collector metrics pipeline:
-
-     ```bash
-     curl http://localhost:8888/metrics
-     ```
-
-   - Verify metrics in collector logs:
-
-     ```bash
-     docker logs secure-mcp-gateway-otel-collector-1 | grep "metrics"
-     ```
-
-4. **Docker Issues**
-
-   ```bash
-   # Restart the stack
-   docker-compose down
-   docker-compose up -d
-   
-   # Check individual service logs
-   docker logs <service-name>
-   ```
 
 </details>
 
@@ -2213,6 +2154,59 @@ Enforce strict context boundaries across repositories.
   - Any pre-requisites for the MCP server to run are met like `docker` running, etc.
 
 - If we need more detailed logs, please set the `enkrypt_log_level` to `debug` in the `enkrypt_mcp_config.json` file and restart the MCP client.
+
+### 14.1 OpenTelemetry Troubleshooting
+
+1. **SSL Handshake Errors**
+
+   If you see SSL errors like:
+
+   ```bash
+   SSL_ERROR_SSL: error:100000f7:SSL routines:OPENSSL_internal:WRONG_VERSION_NUMBER
+   ```
+
+   Solution: Add `insecure=True` to the OTLP exporter configuration in `telemetry.py`
+
+2. **No Logs in Loki**
+
+   - Verify OTLP collector is running:
+
+     ```bash
+     docker logs secure-mcp-gateway-otel-collector-1
+     ```
+
+   - Check collector config in `otel_collector/otel-collector-config.yaml`
+
+   - Verify Loki is receiving data:
+
+     ```bash
+     curl -G -s "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query={job="enkrypt"}'
+     ```
+
+3. **Missing Metrics**
+
+   - Check OTLP collector metrics pipeline:
+
+     ```bash
+     curl http://localhost:8888/metrics
+     ```
+
+   - Verify metrics in collector logs:
+
+     ```bash
+     docker logs secure-mcp-gateway-otel-collector-1 | grep "metrics"
+     ```
+
+4. **Docker Issues**
+
+   ```bash
+   # Restart the stack
+   docker-compose down
+   docker-compose up -d
+   
+   # Check individual service logs
+   docker logs <service-name>
+   ```
 
 </details>
 
