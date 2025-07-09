@@ -105,6 +105,7 @@ print("--------------------------------", file=sys.stderr)
 try:
     import secure_mcp_gateway
 except ImportError:
+    # What if user is intalling a specific version of the package?
     # package_name = src_dir if IS_LOCAL_ENVIRONMENT else "secure_mcp_gateway"
 
     # TODO: Fix error and use stdout
