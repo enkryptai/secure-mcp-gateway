@@ -232,7 +232,11 @@ If you want to protect your MCPs with Enkrypt Guardrails, you need to do the fol
   python -m venv .secure-mcp-gateway-venv
 
   # Activate the virtual environment
+  # On Windows
   .secure-mcp-gateway-venv\Scripts\activate
+
+  # On Linux/macOS
+  source .secure-mcp-gateway-venv/bin/activate
 
   # Run the below to exit the virtual environment later if needed
   deactivate
