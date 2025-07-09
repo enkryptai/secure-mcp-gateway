@@ -14,7 +14,7 @@ print(f"Initializing Enkrypt Secure MCP Gateway Common Constants Module v{__vers
 
 CONFIG_NAME = "enkrypt_mcp_config.json"
 DOCKER_CONFIG_PATH = f"/app/.enkrypt/docker/{CONFIG_NAME}"
-CONFIG_PATH = os.path.join(os.path.expanduser("~") if "HOME" in os.environ else os.getcwd(), ".enkrypt", CONFIG_NAME)
+CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".enkrypt", CONFIG_NAME)
 
 BASE_DIR = files('secure_mcp_gateway')
 EXAMPLE_CONFIG_NAME = f"example_{CONFIG_NAME}"
