@@ -1614,7 +1614,7 @@ The observability stack includes:
 
     - Possible values in the array are:
 
-      - `topic_detector, nsfw, toxicity, pii, injection_attack, keyword_detector, policy_violation, bias`
+      - `topic_detector, nsfw, toxicity, pii, injection_attack, keyword_detector, policy_violation, bias, sponge_attack`
 
       - `system_prompt_protection, copyright_protection` *(Coming soon)*
 
