@@ -506,9 +506,9 @@ def enkrypt_authenticate(ctx: Context):
             # Get credentials
             with tracer.start_as_current_span("get_credentials") as cred_span:
                 credentials = get_gateway_credentials(ctx)
-                gateway_key = credentials.get("gateway_key")
-                project_id = credentials.get("project_id")
-                user_id = credentials.get("user_id")
+                gateway_key = credentials.get("gateway_key", "not_provided")
+                project_id = credentials.get("project_id", "not_provided")
+                user_id = credentials.get("user_id", "not_provided")
 
                 local_mcp_config = get_local_mcp_config(gateway_key, project_id, user_id)
                 if not local_mcp_config:
@@ -781,9 +781,9 @@ async def enkrypt_list_all_servers(ctx: Context, discover_tools: bool = True):
         sys_print("[list_available_servers] Request received")
         
         credentials = get_gateway_credentials(ctx)
-        enkrypt_gateway_key = credentials.get("gateway_key")
-        enkrypt_project_id = credentials.get("project_id")
-        enkrypt_user_id = credentials.get("user_id")
+        enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
+        enkrypt_project_id = credentials.get("project_id", "not_provided")
+        enkrypt_user_id = credentials.get("user_id", "not_provided")
         gateway_config = get_local_mcp_config(enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id)
         if not gateway_config:
             sys_print(f"[list_available_servers] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}", is_error=True)
@@ -966,9 +966,9 @@ async def enkrypt_get_server_info(ctx: Context, server_name: str):
         "server_name": server_name
     })
     credentials = get_gateway_credentials(ctx)
-    enkrypt_gateway_key = credentials.get("gateway_key")
-    enkrypt_project_id = credentials.get("project_id")
-    enkrypt_user_id = credentials.get("user_id")
+    enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
+    enkrypt_project_id = credentials.get("project_id", "not_provided")
+    enkrypt_user_id = credentials.get("user_id", "not_provided")
     gateway_config = get_local_mcp_config(enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id)
     if not gateway_config:
         sys_print(f"[get_server_info] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}", is_error=True)
@@ -1106,9 +1106,9 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
             "server_name": server_name
         })
         credentials = get_gateway_credentials(ctx)
-        enkrypt_gateway_key = credentials.get("gateway_key")
-        enkrypt_project_id = credentials.get("project_id")
-        enkrypt_user_id = credentials.get("user_id")
+        enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
+        enkrypt_project_id = credentials.get("project_id", "not_provided")
+        enkrypt_user_id = credentials.get("user_id", "not_provided")
         gateway_config = get_local_mcp_config(enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id)
         if not gateway_config:
             sys_print(f"[enkrypt_discover_all_tools] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}", is_error=True)
@@ -1365,9 +1365,9 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
             # Authentication
             with tracer.start_as_current_span("authenticate_gateway") as auth_span:
                 credentials = get_gateway_credentials(ctx)
-                enkrypt_gateway_key = credentials.get("gateway_key")
-                enkrypt_project_id = credentials.get("project_id")
-                enkrypt_user_id = credentials.get("user_id")
+                enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
+                enkrypt_project_id = credentials.get("project_id", "not_provided")
+                enkrypt_user_id = credentials.get("user_id", "not_provided")
                 gateway_config = get_local_mcp_config(enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id)
                 if not gateway_config:
                     sys_print(f"[secure_call_tools] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}", is_error=True)
@@ -2137,9 +2137,9 @@ async def enkrypt_get_cache_status(ctx: Context):
             # Authentication
             with tracer.start_as_current_span("authenticate_gateway") as auth_span:
                 credentials = get_gateway_credentials(ctx)
-                enkrypt_gateway_key = credentials.get("gateway_key")
-                enkrypt_project_id = credentials.get("project_id")
-                enkrypt_user_id = credentials.get("user_id")
+                enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
+                enkrypt_project_id = credentials.get("project_id", "not_provided")
+                enkrypt_user_id = credentials.get("user_id", "not_provided")
                 gateway_config = get_local_mcp_config(enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id)
                 if not gateway_config:
                     sys_print(f"[enkrypt_get_cache_status] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}", is_error=True)
@@ -2443,9 +2443,9 @@ async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = N
             # Authentication
             with tracer.start_as_current_span("authenticate_gateway") as auth_span:
                 credentials = get_gateway_credentials(ctx)
-                enkrypt_gateway_key = credentials.get("gateway_key")
-                enkrypt_project_id = credentials.get("project_id")
-                enkrypt_user_id = credentials.get("user_id")
+                enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
+                enkrypt_project_id = credentials.get("project_id", "not_provided")
+                enkrypt_user_id = credentials.get("user_id", "not_provided")
                 gateway_config = get_local_mcp_config(enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id)
                 if not gateway_config:
                     sys_print(f"[enkrypt_clear_cache] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}", is_error=True)
