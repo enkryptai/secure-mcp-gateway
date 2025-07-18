@@ -785,6 +785,10 @@ async def enkrypt_list_all_servers(ctx: Context, discover_tools: bool = True):
         enkrypt_project_id = credentials.get("project_id")
         enkrypt_user_id = credentials.get("user_id")
         gateway_config = get_local_mcp_config(enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id)
+        if not gateway_config:
+            sys_print(f"[list_available_servers] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}", is_error=True)
+            return {"status": "error", "error": "No MCP config found. Please check your credentials."}
+
         enkrypt_project_name = gateway_config.get("project_name", "not_provided")
         enkrypt_email = gateway_config.get("email", "not_provided")
         enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
@@ -966,6 +970,10 @@ async def enkrypt_get_server_info(ctx: Context, server_name: str):
     enkrypt_project_id = credentials.get("project_id")
     enkrypt_user_id = credentials.get("user_id")
     gateway_config = get_local_mcp_config(enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id)
+    if not gateway_config:
+        sys_print(f"[get_server_info] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}", is_error=True)
+        return {"status": "error", "error": "No MCP config found. Please check your credentials."}
+    
     enkrypt_project_name = gateway_config.get("project_name", "not_provided")
     enkrypt_email = gateway_config.get("email", "not_provided")
     enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
@@ -1102,6 +1110,10 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
         enkrypt_project_id = credentials.get("project_id")
         enkrypt_user_id = credentials.get("user_id")
         gateway_config = get_local_mcp_config(enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id)
+        if not gateway_config:
+            sys_print(f"[enkrypt_discover_all_tools] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}", is_error=True)
+            return {"status": "error", "error": "No MCP config found. Please check your credentials."}
+
         enkrypt_project_name = gateway_config.get("project_name", "not_provided")
         enkrypt_email = gateway_config.get("email", "not_provided")
         enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
@@ -1357,6 +1369,10 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                 enkrypt_project_id = credentials.get("project_id")
                 enkrypt_user_id = credentials.get("user_id")
                 gateway_config = get_local_mcp_config(enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id)
+                if not gateway_config:
+                    sys_print(f"[secure_call_tools] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}", is_error=True)
+                    return {"status": "error", "error": "No MCP config found. Please check your credentials."}
+        
                 enkrypt_project_name = gateway_config.get("project_name", "not_provided")
                 enkrypt_email = gateway_config.get("email", "not_provided")
                 enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
@@ -2125,6 +2141,10 @@ async def enkrypt_get_cache_status(ctx: Context):
                 enkrypt_project_id = credentials.get("project_id")
                 enkrypt_user_id = credentials.get("user_id")
                 gateway_config = get_local_mcp_config(enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id)
+                if not gateway_config:
+                    sys_print(f"[enkrypt_get_cache_status] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}", is_error=True)
+                    return {"status": "error", "error": "No MCP config found. Please check your credentials."}
+                
                 enkrypt_project_name = gateway_config.get("project_name", "not_provided")
                 enkrypt_email = gateway_config.get("email", "not_provided")
                 enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
@@ -2230,6 +2250,10 @@ async def enkrypt_get_cache_status(ctx: Context):
                     logger.info("enkrypt_get_cache_status.mcp_configs", extra=build_log_extra(ctx, custom_id, mcp_configs=mcp_config))
                 
                 local_gateway_config = get_local_mcp_config(enkrypt_gateway_key)
+                if not local_gateway_config:
+                    sys_print(f"[enkrypt_get_cache_status] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}", is_error=True)
+                    return {"status": "error", "error": "No MCP config found. Please check your credentials."}
+
                 if IS_DEBUG_LOG_LEVEL:
                     sys_print(f'local gateway_config: {local_gateway_config}', is_debug=True)
                     logger.info("enkrypt_get_cache_status.local_gateway_config", extra=build_log_extra(ctx, custom_id, local_gateway_config=local_gateway_config))
@@ -2423,6 +2447,10 @@ async def enkrypt_clear_cache(ctx: Context, id: str = None, server_name: str = N
                 enkrypt_project_id = credentials.get("project_id")
                 enkrypt_user_id = credentials.get("user_id")
                 gateway_config = get_local_mcp_config(enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id)
+                if not gateway_config:
+                    sys_print(f"[enkrypt_clear_cache] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}", is_error=True)
+                    return {"status": "error", "error": "No MCP config found. Please check your credentials."}
+
                 enkrypt_project_name = gateway_config.get("project_name", "not_provided")
                 enkrypt_email = gateway_config.get("email", "not_provided")
                 enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
