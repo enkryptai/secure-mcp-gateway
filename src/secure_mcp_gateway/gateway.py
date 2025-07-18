@@ -406,7 +406,7 @@ def get_local_mcp_config(gateway_key, project_id=None, user_id=None):
             apikeys = json_config.get("apikeys", {})
             if gateway_key not in apikeys:
                 sys_print(f"[get_local_mcp_config] Gateway key not found in apikeys", is_error=True)
-                return None
+                return {}
             
             key_info = apikeys[gateway_key]
             config_project_id = key_info.get("project_id")
@@ -421,16 +421,16 @@ def get_local_mcp_config(gateway_key, project_id=None, user_id=None):
             # Validate that provided IDs match config
             if project_id != config_project_id:
                 sys_print(f"[get_local_mcp_config] Project ID mismatch: provided={project_id}, config={config_project_id}", is_error=True)
-                return None
+                return {}
             if user_id != config_user_id:
                 sys_print(f"[get_local_mcp_config] User ID mismatch: provided={user_id}, config={config_user_id}", is_error=True)
-                return None
+                return {}
             
             # Get project configuration
             projects = json_config.get("projects", {})
             if project_id not in projects:
                 sys_print(f"[get_local_mcp_config] Project {project_id} not found in projects", is_error=True)
-                return None
+                return {}
             
             project_config = projects[project_id]
 
@@ -438,7 +438,7 @@ def get_local_mcp_config(gateway_key, project_id=None, user_id=None):
             users = json_config.get("users", {})
             if user_id not in users:
                 sys_print(f"[get_local_mcp_config] User {user_id} not found in users", is_error=True)
-                return None
+                return {}
             
             user_config = users[user_id]
             
@@ -446,7 +446,7 @@ def get_local_mcp_config(gateway_key, project_id=None, user_id=None):
             mcp_config_id = project_config.get("mcp_config_id")
             if not mcp_config_id:
                 sys_print(f"[get_local_mcp_config] No mcp_config_id found for project {project_id}", is_error=True)
-                return None
+                return {}
             else:
                 sys_print(f"[get_local_mcp_config] Found mcp_config_id for project {project_id}: {mcp_config_id}", is_debug=True)
             
@@ -454,7 +454,7 @@ def get_local_mcp_config(gateway_key, project_id=None, user_id=None):
             mcp_configs = json_config.get("mcp_configs", {})
             if mcp_config_id not in mcp_configs:
                 sys_print(f"[get_local_mcp_config] MCP config {mcp_config_id} not found in mcp_configs", is_error=True)
-                return None
+                return {}
             
             mcp_config_entry = mcp_configs[mcp_config_id]
             return {
@@ -468,7 +468,7 @@ def get_local_mcp_config(gateway_key, project_id=None, user_id=None):
             }
     else:
         sys_print(f"[get_local_mcp_config] MCP config file not found at {config_path}", is_error=True)
-        return None
+        return {}
 
 
 def enkrypt_authenticate(ctx: Context):
@@ -722,7 +722,7 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
     user_id = credentials.get("user_id", "not_provided")
     # if project_id == "not_provided" or user_id == "not_provided" or mcp_config_id == "not_provided":
     #     sys_print(f"[build_log_extra] Project ID, User ID or MCP Config ID is not provided", is_error=True)
-    #     return None
+    #     return {}
 
     gateway_config = get_local_mcp_config(gateway_key, project_id, user_id)
     project_name = gateway_config.get("project_name", "not_provided")
