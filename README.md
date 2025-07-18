@@ -14,10 +14,13 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 
 - [Docker Image](https://hub.docker.com/r/enkryptai/secure-mcp-gateway)
 
+- Also see [CLI-Commands-Reference.md](./CLI-Commands-Reference.md) for the list of commands and their usage
+
 ## Table of Contents
 
 - [1. Features 🚀](#1-features)
-  <!-- - [1.1 Guardrails 🔒 🚧](#11-guardrails) -->
+  <!-- - [1.1 Guardrails 🔒 🚧](#11-guardrails)
+  - [1.2 Concepts 💡](#12-concepts) -->
 - [2. High level steps of how the MCP Gateway works 🪜](#2-high-level-steps-of-how-the-mcp-gateway-works)
 - [3. Prerequisites 🧩](#3-prerequisites)
 - [4. Gateway Setup 👨‍💻](#4-gateway-setup)
@@ -75,6 +78,21 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 **Input Protection:** Topic detection, NSFW filtering, toxicity detection, injection attack prevention, keyword detection, policy violation detection, bias detection, and PII redaction (More coming soon like system prompt protection, copyright protection, etc.)  
 
 **Output Protection:** All input protections plus adherence checking and relevancy validation (More coming soon like hallucination detection, etc.) We also auto unredact the response if it was redacted on input.
+
+### 1.2 Concepts
+
+- MCP Config is an array of MCP servers like `mcp_server_1`, `mcp_server_2`, `mcp_server_3` etc.
+  - Each config has a unique ID
+- User is a user of the gateway with unique email and ID
+- A project is a collection of users that share an MCP Config
+  - Project has a name and unique ID
+  - The MCP Config can be updated or can be pointed to a different config by the Admin
+  - Users can be added to multiple projects
+- An API Key is created for a user and project combination
+  - A user can have different API Keys for different projects
+  - This API Key is used to authenticate the user and identify the right project and MCP Config
+
+- *See [6.5 Example config file generated](#65-example-config-file-generated) and [7. Edit the Gateway config as needed](#7-edit-the-gateway-config-as-needed) for schema reference*
 
 ## 2. High level steps of how the MCP Gateway works
 
@@ -280,7 +298,6 @@ Getting Enkrypt Common Configuration
 config_path: C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
 example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\example_enkrypt_mcp_config.json
 No enkrypt_mcp_config.json file found. Defaulting to example_enkrypt_mcp_config.json
-config: {'common_mcp_gateway_config': {'enkrypt_log_level': 'INFO', 'enkrypt_guardrails_enabled': False, 'enkrypt_base_url': 'https://api.enkryptai.com', 'enkrypt_api_key': 'YOUR_ENKRYPT_API_KEY', 'enkrypt_use_remote_mcp_config': False, 'enkrypt_remote_mcp_gateway_name': 'enkrypt-secure-mcp-gateway-1', 'enkrypt_remote_mcp_gateway_version': 'v1', 'enkrypt_mcp_use_external_cache': False, 'enkrypt_cache_host': 'localhost', 'enkrypt_cache_port': 6379, 'enkrypt_cache_db': 0, 'enkrypt_cache_password': None, 'enkrypt_tool_cache_expiration': 4, 'enkrypt_gateway_cache_expiration': 24, 'enkrypt_async_input_guardrails_enabled': False, 'enkrypt_async_output_guardrails_enabled': False}, 'gateways': {'UNIQUE_GATEWAY_KEY': {'id': 'UNIQUE_UUID', 'mcp_config': [{'server_name': 'echo_server', 'description': 'Dummy Echo Server', 'config': {'command': 'python', 'args': ['DUMMY_ECHO_MCP_FILE_PATH']}, 'tools': {}, 'input_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'pii_redaction': False}, 'block': ['policy_violation']}, 'output_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'relevancy': False, 'hallucination': False, 'adherence': False}, 'block': ['policy_violation']}}]}}}
 --------------------------------
 ENKRYPT_GATEWAY_KEY: ****NULL
 enkrypt_log_level: info
@@ -326,11 +343,16 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
     "enkrypt_tool_cache_expiration": 4,
     "enkrypt_gateway_cache_expiration": 24,
     "enkrypt_async_input_guardrails_enabled": false,
-    "enkrypt_async_output_guardrails_enabled": false
+    "enkrypt_async_output_guardrails_enabled": false,
+    "enkrypt_telemetry": {
+      "enabled": true,
+      "insecure": true,
+      "endpoint": "http://localhost:4317"
+    }
   },
-  "gateways": {
-    "hjf1qb-hfw0wuliUxucJ5EXxNhAltilw_fCcPCv8EUAb2n0a": {
-      "id": "c3dd5f01-5e66-424f-ac85-36f1cc49aaf6",
+  "mcp_configs": {
+    "fcbd4508-1432-4f13-abb9-c495c946f638": {
+      "mcp_config_name": "default_config",
       "mcp_config": [
         {
           "server_name": "echo_server",
@@ -367,6 +389,29 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
         }
       ]
     }
+  },
+  "projects": {
+    "3c09f06c-1f0d-4153-9ac5-366397937641": {
+      "project_name": "default_project",
+      "mcp_config_id": "fcbd4508-1432-4f13-abb9-c495c946f638",
+      "users": [
+        "6469a670-1d64-4da5-b2b3-790de21ac726"
+      ],
+      "created_at": "2025-07-16T17:02:00.406877"
+    }
+  },
+  "users": {
+    "6469a670-1d64-4da5-b2b3-790de21ac726": {
+      "email": "default@example.com",
+      "created_at": "2025-07-16T17:02:00.406902"
+    }
+  },
+  "apikeys": {
+    "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat": {
+      "project_id": "3c09f06c-1f0d-4153-9ac5-366397937641",
+      "user_id": "6469a670-1d64-4da5-b2b3-790de21ac726",
+      "created_at": "2025-07-16T17:02:00.406905"
+    }
   }
 }
 ```
@@ -396,11 +441,16 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
     "enkrypt_tool_cache_expiration": 4,
     "enkrypt_gateway_cache_expiration": 24,
     "enkrypt_async_input_guardrails_enabled": false,
-    "enkrypt_async_output_guardrails_enabled": false
+    "enkrypt_async_output_guardrails_enabled": false,
+    "enkrypt_telemetry": {
+      "enabled": true,
+      "insecure": true,
+      "endpoint": "http://localhost:4317"
+    }
   },
-  "gateways": {
-    "q6ppy8f79oWi4wouSfYVWp0jc7-DIJIaibqtFjCekyPPjpjg": {
-      "id": "d35c88c5-10c7-4594-92e1-7029e9c4be3e",
+  "mcp_configs": {
+    "fcbd4508-1432-4f13-abb9-c495c946f638": {
+      "mcp_config_name": "default_config",
       "mcp_config": [
         {
           "server_name": "echo_server",
@@ -436,6 +486,29 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
           }
         }
       ]
+    }
+  },
+  "projects": {
+    "3c09f06c-1f0d-4153-9ac5-366397937641": {
+      "project_name": "default_project",
+      "mcp_config_id": "fcbd4508-1432-4f13-abb9-c495c946f638",
+      "users": [
+        "6469a670-1d64-4da5-b2b3-790de21ac726"
+      ],
+      "created_at": "2025-07-16T17:02:00.406877"
+    }
+  },
+  "users": {
+    "6469a670-1d64-4da5-b2b3-790de21ac726": {
+      "email": "default@example.com",
+      "created_at": "2025-07-16T17:02:00.406902"
+    }
+  },
+  "apikeys": {
+    "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat": {
+      "project_id": "3c09f06c-1f0d-4153-9ac5-366397937641",
+      "user_id": "6469a670-1d64-4da5-b2b3-790de21ac726",
+      "created_at": "2025-07-16T17:02:00.406905"
     }
   }
 }
@@ -479,7 +552,6 @@ Getting Enkrypt Common Configuration
 config_path: C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
 example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\example_enkrypt_mcp_config.json
 Loading enkrypt_mcp_config.json file...
-config: {'common_mcp_gateway_config': {'enkrypt_log_level': 'INFO', 'enkrypt_guardrails_enabled': False, 'enkrypt_base_url': 'https://api.enkryptai.com', 'enkrypt_api_key': 'YOUR_ENKRYPT_API_KEY', 'enkrypt_use_remote_mcp_config': False, 'enkrypt_remote_mcp_gateway_name': 'enkrypt-secure-mcp-gateway-1', 'enkrypt_remote_mcp_gateway_version': 'v1', 'enkrypt_mcp_use_external_cache': False, 'enkrypt_cache_host': 'localhost', 'enkrypt_cache_port': 6379, 'enkrypt_cache_db': 0, 'enkrypt_cache_password': None, 'enkrypt_tool_cache_expiration': 4, 'enkrypt_gateway_cache_expiration': 24, 'enkrypt_async_input_guardrails_enabled': False, 'enkrypt_async_output_guardrails_enabled': False}, 'gateways': {'q6ppy8f79oWi4wouSfYVWp0jc7-DIJIaibqtFjCekyPPjpjg': {'id': 'd35c88c5-10c7-4594-92e1-7029e9c4be3e', 'mcp_config': [{'server_name': 'echo_server', 'description': 'Dummy Echo Server', 'config': {'command': 'python', 'args': ['C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\test_mcps\\echo_mcp.py']}, 'tools': {}, 'input_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'pii_redaction': False}, 'block': ['policy_violation']}, 'output_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'relevancy': False, 'hallucination': False, 'adherence': False}, 'block': ['policy_violation']}}]}}}
 --------------------------------
 ENKRYPT_GATEWAY_KEY: ****NULL
 enkrypt_log_level: info
@@ -527,7 +599,9 @@ Please restart Claude Desktop to use the gateway.
           "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/secure_mcp_gateway/gateway.py"
         ],
         "env": {
-          "ENKRYPT_GATEWAY_KEY": "C6x3RQMd0GQ2c7nmacLDiJnPZzVtFnYB8WL4UpleW5ptqncy"
+          "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
+          "ENKRYPT_PROJECT_ID": "3c09f06c-1f0d-4153-9ac5-366397937641",
+          "ENKRYPT_USER_ID": "6469a670-1d64-4da5-b2b3-790de21ac726"
         }
       }
     }
@@ -555,7 +629,9 @@ Please restart Claude Desktop to use the gateway.
           "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\gateway.py"
         ],
         "env": {
-          "ENKRYPT_GATEWAY_KEY": "q6ppy8f79oWi4wouSfYVWp0jc7-DIJIaibqtFjCekyPPjpjg"
+          "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
+          "ENKRYPT_PROJECT_ID": "3c09f06c-1f0d-4153-9ac5-366397937641",
+          "ENKRYPT_USER_ID": "6469a670-1d64-4da5-b2b3-790de21ac726"
         }
       }
     }
@@ -596,7 +672,9 @@ Please restart Claude Desktop to use the gateway.
           "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/secure_mcp_gateway/gateway.py"
         ],
         "env": {
-          "ENKRYPT_GATEWAY_KEY": "C6x3RQMd0GQ2c7nmacLDiJnPZzVtFnYB8WL4UpleW5ptqncy"
+          "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
+          "ENKRYPT_PROJECT_ID": "3c09f06c-1f0d-4153-9ac5-366397937641",
+          "ENKRYPT_USER_ID": "6469a670-1d64-4da5-b2b3-790de21ac726"
         }
       }
     }
@@ -624,7 +702,9 @@ Please restart Claude Desktop to use the gateway.
           "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\gateway.py"
         ],
         "env": {
-          "ENKRYPT_GATEWAY_KEY": "q6ppy8f79oWi4wouSfYVWp0jc7-DIJIaibqtFjCekyPPjpjg"
+          "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
+          "ENKRYPT_PROJECT_ID": "3c09f06c-1f0d-4153-9ac5-366397937641",
+          "ENKRYPT_USER_ID": "6469a670-1d64-4da5-b2b3-790de21ac726"
         }
       }
     }
@@ -719,7 +799,7 @@ MCP version 1.9.2
 
 - This script creates the config file at `~/.enkrypt/enkrypt_mcp_config.json` on macOS and `%USERPROFILE%\.enkrypt\enkrypt_mcp_config.json` on Windows based on `src/secure_mcp_gateway/example_enkrypt_mcp_config.json` file
 
-- It replaces `UNIQUE_GATEWAY_KEY` and `UNIQUE_UUID` with auto generated values and also replaces `DUMMY_MCP_FILE_PATH` with the actual path to the test MCP file `test_mcps/echo_mcp.py`
+- It replaces `UNIQUE_GATEWAY_KEY` and other `UUIDs` with auto generated values and also replaces `DUMMY_MCP_FILE_PATH` with the actual path to the test MCP file `test_mcps/echo_mcp.py`
 
 - It also installs the MCP client in Claude Desktop
 
@@ -781,7 +861,6 @@ Getting Enkrypt Common Configuration
 config_path: C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
 example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\example_enkrypt_mcp_config.json
 Loading enkrypt_mcp_config.json file...
-config: {'common_mcp_gateway_config': {'enkrypt_log_level': 'INFO', 'enkrypt_guardrails_enabled': False, 'enkrypt_base_url': 'https://api.enkryptai.com', 'enkrypt_api_key': 'YOUR_ENKRYPT_API_KEY', 'enkrypt_use_remote_mcp_config': False, 'enkrypt_remote_mcp_gateway_name': 'enkrypt-secure-mcp-gateway-1', 'enkrypt_remote_mcp_gateway_version': 'v1', 'enkrypt_mcp_use_external_cache': False, 'enkrypt_cache_host': 'localhost', 'enkrypt_cache_port': 6379, 'enkrypt_cache_db': 0, 'enkrypt_cache_password': None, 'enkrypt_tool_cache_expiration': 4, 'enkrypt_gateway_cache_expiration': 24, 'enkrypt_async_input_guardrails_enabled': False, 'enkrypt_async_output_guardrails_enabled': False}, 'gateways': {'WTZOpoU1mXJz8b_ZJQ42DuSXlQCSCtWOn3FX0jG8sO_FKYNJetjYEgSluvhtBN8_': {'id': '7920749a-228e-47fe-a6a9-cd2d64a2283b', 'mcp_config': [{'server_name': 'echo_server', 'description': 'Dummy Echo Server', 'config': {'command': 'python', 'args': ['C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\secure_mcp_gateway\\test_mcps\\echo_mcp.py']}, 'tools': {}, 'input_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'pii_redaction': False}, 'block': ['policy_violation']}, 'output_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'relevancy': False, 'hallucination': False, 'adherence': False}, 'block': ['policy_violation']}}]}}}
 --------------------------------
 ENKRYPT_GATEWAY_KEY: ****BN8_
 enkrypt_log_level: info
@@ -809,7 +888,6 @@ Getting Enkrypt Common Configuration
 config_path: C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
 example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\example_enkrypt_mcp_config.json
 Loading enkrypt_mcp_config.json file...
-config: {'common_mcp_gateway_config': {'enkrypt_log_level': 'INFO', 'enkrypt_guardrails_enabled': False, 'enkrypt_base_url': 'https://api.enkryptai.com', 'enkrypt_api_key': 'YOUR_ENKRYPT_API_KEY', 'enkrypt_use_remote_mcp_config': False, 'enkrypt_remote_mcp_gateway_name': 'enkrypt-secure-mcp-gateway-1', 'enkrypt_remote_mcp_gateway_version': 'v1', 'enkrypt_mcp_use_external_cache': False, 'enkrypt_cache_host': 'localhost', 'enkrypt_cache_port': 6379, 'enkrypt_cache_db': 0, 'enkrypt_cache_password': None, 'enkrypt_tool_cache_expiration': 4, 'enkrypt_gateway_cache_expiration': 24, 'enkrypt_async_input_guardrails_enabled': False, 'enkrypt_async_output_guardrails_enabled': False}, 'gateways': {'WTZOpoU1mXJz8b_ZJQ42DuSXlQCSCtWOn3FX0jG8sO_FKYNJetjYEgSluvhtBN8_': {'id': '7920749a-228e-47fe-a6a9-cd2d64a2283b', 'mcp_config': [{'server_name': 'echo_server', 'description': 'Dummy Echo Server', 'config': {'command': 'python', 'args': ['C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\secure_mcp_gateway\\test_mcps\\echo_mcp.py']}, 'tools': {}, 'input_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'pii_redaction': False}, 'block': ['policy_violation']}, 'output_guardrails_policy': {'enabled': False, 'policy_name': 'Sample Airline Guardrail', 'additional_config': {'relevancy': False, 'hallucination': False, 'adherence': False}, 'block': ['policy_violation']}}]}}}
 --------------------------------
 ENKRYPT_GATEWAY_KEY: ****BN8_
 enkrypt_log_level: info
@@ -952,11 +1030,16 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkryp
     "enkrypt_tool_cache_expiration": 4,
     "enkrypt_gateway_cache_expiration": 24,
     "enkrypt_async_input_guardrails_enabled": false,
-    "enkrypt_async_output_guardrails_enabled": false
+    "enkrypt_async_output_guardrails_enabled": false,
+    "enkrypt_telemetry": {
+      "enabled": true,
+      "insecure": true,
+      "endpoint": "http://localhost:4317"
+    }
   },
-  "gateways": {
-    "6AhqMSQZjJdD_NYY5dXSHaP0uAqnkCgbjxhMDLM247j2tzIt": {
-      "id": "f4dc6b5d-50eb-4c76-bfb2-0a1d40a8d34a",
+  "mcp_configs": {
+    "fcbd4508-1432-4f13-abb9-c495c946f638": {
+      "mcp_config_name": "default_config",
       "mcp_config": [
         {
           "server_name": "echo_server",
@@ -992,6 +1075,29 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkryp
           }
         }
       ]
+    }
+  },
+  "projects": {
+    "3c09f06c-1f0d-4153-9ac5-366397937641": {
+      "project_name": "default_project",
+      "mcp_config_id": "fcbd4508-1432-4f13-abb9-c495c946f638",
+      "users": [
+        "6469a670-1d64-4da5-b2b3-790de21ac726"
+      ],
+      "created_at": "2025-07-16T17:02:00.406877"
+    }
+  },
+  "users": {
+    "6469a670-1d64-4da5-b2b3-790de21ac726": {
+      "email": "default@example.com",
+      "created_at": "2025-07-16T17:02:00.406902"
+    }
+  },
+  "apikeys": {
+    "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat": {
+      "project_id": "3c09f06c-1f0d-4153-9ac5-366397937641",
+      "user_id": "6469a670-1d64-4da5-b2b3-790de21ac726",
+      "created_at": "2025-07-16T17:02:00.406905"
     }
   }
 }
@@ -1036,7 +1142,9 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enk
         "secure-mcp-gateway"
       ],
       "env": {
-        "ENKRYPT_GATEWAY_KEY": "6AhqMSQZjJdD_NYY5dXSHaP0uAqnkCgbjxhMDLM247j2tzIt"
+        "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
+        "ENKRYPT_PROJECT_ID": "3c09f06c-1f0d-4153-9ac5-366397937641",
+        "ENKRYPT_USER_ID": "6469a670-1d64-4da5-b2b3-790de21ac726"
       }
     }
   }
@@ -1076,7 +1184,7 @@ python gateway.py
 ```
 
 - Or run in k8s using our docker image `enkryptai/secure-mcp-gateway:vx.x.x`
-- Example: `enkryptai/secure-mcp-gateway:v1.0.5`
+- Example: `enkryptai/secure-mcp-gateway:v2.0.0`
 - Use the latest version from Docker Hub: <https://hub.docker.com/r/enkryptai/secure-mcp-gateway/tags>
 - You can either mount the config file locally or download the json file from a remote place like `S3` using an `initContainer` and mount the volume
 - See `docs/secure-mcp-gateway-manifest-example.yaml` for the complete manifest file reference
@@ -1112,10 +1220,16 @@ python gateway.py
         "http://0.0.0.0:8000/mcp/",
         "--allow-http",
         "--header",
-        "apikey:${ENKRYPT_GATEWAY_KEY}"
+        "apikey:${ENKRYPT_GATEWAY_KEY}",
+        "--header",
+        "project_id:${ENKRYPT_PROJECT_ID}",
+        "--header",
+        "user_id:${ENKRYPT_USER_ID}"
       ],
       "env": {
-        "ENKRYPT_GATEWAY_KEY": "gQXXXXXXXreVcArmXXXXXh58DMQcZqb-NJeul5lxBXXXXXXX"
+        "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
+        "ENKRYPT_PROJECT_ID": "3c09f06c-1f0d-4153-9ac5-366397937641",
+        "ENKRYPT_USER_ID": "6469a670-1d64-4da5-b2b3-790de21ac726"
       }
     }
   }
@@ -1158,6 +1272,13 @@ The observability stack includes:
    docker-compose up -d
    ```
 
+2. **To stop the Observability Stack**
+
+   ```bash
+   # When we want to stop the Observability Stack, run the below command
+   docker-compose down
+   ```
+
 ### 5.4 Configuration
 
 - Edit the `enkrypt_mcp_config.json` file to enable telemetry
@@ -1176,32 +1297,7 @@ The observability stack includes:
   }
   ```
 
-
-### 5.5 Available Telemetry (Not exhaustive)
-
-1. **Traces**
-   - Request processing pipeline
-   - Tool invocations with duration tracking
-   - Cache operations (hits/misses)
-   - Guardrail checks
-   - Error tracking and status monitoring
-   - Detailed attributes for debugging
-
-2. **Metrics**
-   - `enkrypt_list_all_servers_calls`: API endpoint usage
-   - `mcp_cache_misses_total`: Cache efficiency tracking
-   - `enkrypt_servers_discovered`: Server discovery monitoring
-   - `mcp_tool_calls_total`: Tool invocation tracking
-   - `mcp_tool_call_duration_seconds`: Performance monitoring (histogram)
-
-3. **Logs**
-   - Structured JSON format for better querying
-   - Gateway operations with context
-   - Error conditions with stack traces
-   - Security events and guardrail checks
-   - Performance data with timing information
-
-### 5.6 Verification Steps
+### 5.5 Verification Steps
 
 1. **Verify Services are Running**
 
@@ -1226,25 +1322,53 @@ The observability stack includes:
       1. Open Grafana (<http://localhost:3000>)
       2. Go to Explore (left sidebar)
       3. Select "Loki" from the data source dropdown
-      4. Example queries:
-
-          ```loki
-          {service_name="secure-mcp-gateway"}  # All gateway logs
-          {level="error"}  # Error logs
-          {service_name="secure-mcp-gateway"} |= `tool_call`  # Tool invocation logs
-          ```
 
 3. **Verify Gateway Telemetry**
-   - Make a test request through the Gateway
+   - Make test requests through the Gateway like `List all servers and tools` and `echo test`
    - Check traces in Jaeger:
-     - Look for `enkrypt_discover_all_tools` spans
-     - Examine child spans for cache, tool discovery, etc.
+      - Add optional tags like `enkrypt_email=default@example.com` or `enkrypt_project_name=default_project` or `enkrypt_mcp_config_id=fcbd4508-1432-4f13-abb9-c495c946f638` to see the traces for a specific user, project or MCP config etc.
+      - We can also combine tags by separating them with spaces like `enkrypt_email=default@example.com enkrypt_project_name=default_project`
+      - Look for `enkrypt_discover_all_tools` spans
+      - Examine child spans for cache, tool discovery, etc.
+
+        ![jaeger-1](./docs/images/jaeger-1.png)
+
    - Check metrics in Grafana:
-     - Look for `mcp_tool_calls_total`
-     - Check `mcp_cache_hits_total` and `mcp_cache_misses_total`
-   - Check logs in Grafana/Loki:
-     - Verify JSON structured format
-     - Check for proper context in log entries
+     - Navigate to `Drilldown` -> `metrics`
+     - We can filter on various labels like `email`, `user_id`, `mcp_config_id`, `project_id`, `project_name` etc.
+
+        ![grafana-metrics-1](./docs/images/grafana-metrics-1.png)
+
+   - Check logs in Grafana
+     - Navigate to `Drilldown` -> `Logs`
+     - Select label as `service_name=secure-mcp-gateway` and click `Show logs`
+     - Now we can filter by various labels like `attributes_project_name`, `attributes_project_id`, `attributes_email`, `attributes_user_id`, `attributes_mcp_config_id`, `attributes_tool_name` etc.
+
+        ![grafana-logs-1](./docs/images/grafana-logs-1.png)
+
+### 5.6 Available Telemetry (Not exhaustive)
+
+1. **Traces**
+   - Request processing pipeline
+   - Tool invocations with duration tracking
+   - Cache operations (hits/misses)
+   - Guardrail checks
+   - Error tracking and status monitoring
+   - Detailed attributes for debugging
+
+2. **Metrics**
+   - `enkrypt_list_all_servers_calls`: API endpoint usage
+   - `mcp_cache_misses_total`: Cache efficiency tracking
+   - `enkrypt_servers_discovered`: Server discovery monitoring
+   - `mcp_tool_calls_total`: Tool invocation tracking
+   - `mcp_tool_call_duration_seconds`: Performance monitoring (histogram)
+
+3. **Logs**
+   - Structured JSON format for better querying
+   - Gateway operations with context
+   - Error conditions with stack traces
+   - Security events and guardrail checks
+   - Performance data with timing information
 
 </details>
 
@@ -1283,7 +1407,9 @@ The observability stack includes:
           "/Users/user/enkryptai/secure-mcp-gateway/src/secure_mcp_gateway/gateway.py"
         ],
         "env": {
-          "ENKRYPT_GATEWAY_KEY": "C6x3RQMd0GQ2c7nmacLDiJnPZzVtFnYB8WL4UpleW5ptqncy"
+          "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
+          "ENKRYPT_PROJECT_ID": "3c09f06c-1f0d-4153-9ac5-366397937641",
+          "ENKRYPT_USER_ID": "6469a670-1d64-4da5-b2b3-790de21ac726"
         }
       }
     }
@@ -1311,7 +1437,9 @@ The observability stack includes:
           "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\secure_mcp_gateway\\gateway.py"
         ],
         "env": {
-          "ENKRYPT_GATEWAY_KEY": "WTZOpoU1mXJz8b_ZJQ42DuSXlQCSCtWOn3FX0jG8sO_FKYNJetjYEgSluvhtBN8_"
+          "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
+          "ENKRYPT_PROJECT_ID": "3c09f06c-1f0d-4153-9ac5-366397937641",
+          "ENKRYPT_USER_ID": "6469a670-1d64-4da5-b2b3-790de21ac726"
         }
       }
     }
@@ -1401,11 +1529,16 @@ The observability stack includes:
       "enkrypt_tool_cache_expiration": 4,
       "enkrypt_gateway_cache_expiration": 24,
       "enkrypt_async_input_guardrails_enabled": false,
-      "enkrypt_async_output_guardrails_enabled": false
+      "enkrypt_async_output_guardrails_enabled": false,
+      "enkrypt_telemetry": {
+        "enabled": true,
+        "insecure": true,
+        "endpoint": "http://localhost:4317"
+      }
     },
-    "gateways": {
-      "WTZOpoU1mXJz8b_ZJQ42DuSXlQCSCtWOn3FX0jG8sO_FKYNJetjYEgSluvhtBN8_": {
-        "id": "7920749a-228e-47fe-a6a9-cd2d64a2283b",
+    "mcp_configs": {
+      "fcbd4508-1432-4f13-abb9-c495c946f638": {
+        "mcp_config_name": "default_config",
         "mcp_config": [
           {
             "server_name": "echo_server",
@@ -1441,6 +1574,29 @@ The observability stack includes:
             }
           }
         ]
+      }
+    },
+    "projects": {
+      "3c09f06c-1f0d-4153-9ac5-366397937641": {
+        "project_name": "default_project",
+        "mcp_config_id": "fcbd4508-1432-4f13-abb9-c495c946f638",
+        "users": [
+          "6469a670-1d64-4da5-b2b3-790de21ac726"
+        ],
+        "created_at": "2025-07-16T17:02:00.406877"
+      }
+    },
+    "users": {
+      "6469a670-1d64-4da5-b2b3-790de21ac726": {
+        "email": "default@example.com",
+        "created_at": "2025-07-16T17:02:00.406902"
+      }
+    },
+    "apikeys": {
+      "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat": {
+        "project_id": "3c09f06c-1f0d-4153-9ac5-366397937641",
+        "user_id": "6469a670-1d64-4da5-b2b3-790de21ac726",
+        "created_at": "2025-07-16T17:02:00.406905"
       }
     }
   }
@@ -1488,16 +1644,18 @@ The observability stack includes:
       ```json
       {
         "common_mcp_gateway_config": {...},
-        "gateways": { 
-          "UNIQUE_GATEWAY_KEY_1": {
-            "id": "UNIQUE_UUID_1",
+        "mcp_configs": {
+          "UNIQUE_MCP_CONFIG_ID": {
+            "mcp_config_name": "default_config",
             "mcp_config": [
               {
                 "server_name": "MCP_SERVER_NAME_1",
                 "description": "MCP_SERVER_DESCRIPTION_1",
                 "config": {
                   "command": "python/npx/etc.",
-                  "args": ["arg1", "arg2", ...],
+                  "args": [
+                    "arg1", "arg2", ...
+                  ],
                   "env": { "key": "value" }
                 },
                 // Set explicit tools to restrict access to only the allowed tools
@@ -1518,6 +1676,33 @@ The observability stack includes:
               }
             ]
           },
+          "UNIQUE_MCP_CONFIG_ID_2": {...}
+        },
+        "projects": {
+          "UNIQUE_PROJECT_ID": {
+            "project_name": "default_project",
+            "mcp_config_id": "UNIQUE_MCP_CONFIG_ID",
+            "users": [
+              "UNIQUE_USER_ID"
+            ],
+            "created_at": "2025-01-01T00:00:00.000000"
+          },
+          "UNIQUE_PROJECT_ID_2": {...}
+        },
+        "users": {
+          "UNIQUE_USER_ID": {
+            "email": "default@example.com",
+            "created_at": "2025-01-01T00:00:00.000000"
+          },
+          "UNIQUE_USER_ID_2": {...}
+        },
+        "apikeys": {
+          "UNIQUE_GATEWAY_KEY": {
+            "project_id": "UNIQUE_PROJECT_ID",
+            "user_id": "UNIQUE_USER_ID",
+            "created_at": "2025-01-01T00:00:00.000000"
+          },
+          "UNIQUE_GATEWAY_KEY_2": {...}
         }
       }
       ```
@@ -1526,17 +1711,13 @@ The observability stack includes:
 <details>
 <summary><strong>⛩️ Gateway Config Schema</strong></summary>
 
-- If you want a different set of MCP servers for a separate client/user, you can generate a new unqiue `key` and unique `UUID` by looking at the `setup` scripts and add it to the `gateways` section of the config file
-
-  - Example: `{ gateways: { UNIQUE_GATEWAY_KEY_1: {...}, UNIQUE_GATEWAY_KEY_2: {...}, ... }, ... }`
-
-  - Make sure you also set different `UNIQUE_UUID` inside the various gateways
+- If you want a different set of MCP servers for a separate client/user, you can add a new `mcp_config` section to the config file. Also, you can run cli commands. See [CLI-Commands-Reference.md](./CLI-Commands-Reference.md) section `2. CONFIGURATION MANAGEMENT` for details
 
 - Set `enkrypt_log_level` to `DEBUG` to get more detailed logs inside `common_mcp_gateway_config` part of the config file
 
   - This defaults to `INFO`
 
-- Now, inside `gateways` array, inside `mcp_config` array, for each individual MCP server config, you can set the following:
+- Now, inside `mcp_configs` array, for each individual MCP config, you can set the following:
 
   - `server_name`: A name of the MCP server which we connect to
 
@@ -1614,7 +1795,7 @@ The observability stack includes:
 
     - Possible values in the array are:
 
-      - `topic_detector, nsfw, toxicity, pii, injection_attack, keyword_detector, policy_violation, bias`
+      - `topic_detector, nsfw, toxicity, pii, injection_attack, keyword_detector, policy_violation, bias, sponge_attack`
 
       - `system_prompt_protection, copyright_protection` *(Coming soon)*
 
@@ -1665,6 +1846,8 @@ The observability stack includes:
   - *NOTE: Don't forget to add comma `,` after the echo server block*
 
   - Replace `REPLACE_WITH_YOUR_PERSONAL_ACCESS_TOKEN` with the personal access token you created
+
+  - You can also add via the cli. See [CLI-Commands-Reference.md](./CLI-Commands-Reference.md) section `2. CONFIGURATION MANAGEMENT` for details
 
   - Example:
 
@@ -1935,13 +2118,13 @@ Enforce strict context boundaries across repositories.
       "enkrypt_api_key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
       ...
     },
-    "gateways": {
-      "tLIYf0YEFTIPLXDO337zPRQhmnoXnLqLUKB3XuDX1inent9vGRFvwLDJGoeaktWu": {
-        "id": "2536722c-e5d7-4719-97ab-2cdd4ce942c0",
+    "mcp_configs": {
+      "fcbd4508-1432-4f13-abb9-c495c946f638": {
+        "mcp_config_name": "default_config",
         "mcp_config": [
           {
             "server_name": "echo_server",
-            "...": "..."
+            ...
           },
           {
             "server_name": "github_server",
@@ -1967,9 +2150,7 @@ Enforce strict context boundaries across repositories.
               "additional_config": {
                 "pii_redaction": false
               },
-              "block": [
-                "policy_violation"
-              ]
+              "block": ["policy_violation"]
             },
             "output_guardrails_policy": {
               "enabled": false,
@@ -1979,13 +2160,20 @@ Enforce strict context boundaries across repositories.
                 "hallucination": false,
                 "adherence": false
               },
-              "block": [
-                "policy_violation"
-              ]
+              "block": ["policy_violation"]
             }
           }
         ]
       }
+    },
+    "projects": {
+      ...
+    },
+    "users": {
+      ...
+    },
+    "apikeys": {
+      ...
     }
   }
   ```

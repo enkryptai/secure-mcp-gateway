@@ -162,9 +162,10 @@ def hash_key(key):
 def get_server_hashed_key(id, server_name):
     """
     Generates a hashed cache key for server tools.
+    
 
     Args:
-        id (str): The ID of the Gateway or User
+        id (str): ID includes project_id, user_id, and mcp_config_id context.
         server_name (str): Name of the server
 
     Returns:

@@ -268,7 +268,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(otel_enkrypt_list_all_servers_calls[5m])",
+          "expr": "rate(otel_enkrypt_list_all_servers_calls_total[5m])",
           "instant": false,
           "legendFormat": "List Servers Rate",
           "range": true,
