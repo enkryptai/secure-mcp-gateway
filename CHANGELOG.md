@@ -2,6 +2,31 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [2.0.0] - 2025-07-18
+
+### New Features in v2.0.0
+
+- Updated `enkrypt_mcp_config.json` structure to include projects, users and apikeys **(Breaking Change)**
+  - Please update your existing `enkrypt_mcp_config.json` or delete and regenerate using `secure-mcp-gateway generate-config`
+
+- Introduced the concept of Projects, Users and MCP Configs
+  - MCP Config is an array of MCP servers like `mcp_server_1`, `mcp_server_2`, `mcp_server_3` etc.
+    - Each config has a unique ID
+  - User is a user of the gateway with unique email and ID
+  - A project is a collection of users that share an MCP Config
+    - Project has a name and unique ID
+    - The MCP Config can be updated or can be pointed to a different config by the Admin
+    - Users can be added to multiple projects
+  - An API Key is created for a user and project combination
+    - A user can have different API Keys for different projects
+    - This API Key is used to authenticate the user and identify the right project and MCP Config
+
+- Added new `cli` commands to manage `mcp_configs`, `projects`, `users`, `apikeys` and `guardrails`
+  - We can list, add, get, update, remove resources based on the config file
+  - See `CLI-Commands-Reference.md` for more details
+
+- Enhanced the metrics, logs and traces with labels like `project_id`, `project_name`, `user_id`, `email`, `mcp_config_id` for better filtering and analysis
+
 ## [1.0.5] - 2025-07-09
 
 ### New Features in v1.0.5
