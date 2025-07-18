@@ -1220,7 +1220,11 @@ python gateway.py
         "http://0.0.0.0:8000/mcp/",
         "--allow-http",
         "--header",
-        "apikey:${ENKRYPT_GATEWAY_KEY}"
+        "apikey:${ENKRYPT_GATEWAY_KEY}",
+        "--header",
+        "project_id:${ENKRYPT_PROJECT_ID}",
+        "--header",
+        "user_id:${ENKRYPT_USER_ID}"
       ],
       "env": {
         "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
