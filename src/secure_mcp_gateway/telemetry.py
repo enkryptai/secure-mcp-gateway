@@ -8,7 +8,6 @@ import socket
 import logging
 from urllib.parse import urlparse
 
-
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.resources import Resource
 
