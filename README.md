@@ -1184,7 +1184,7 @@ python gateway.py
 ```
 
 - Or run in k8s using our docker image `enkryptai/secure-mcp-gateway:vx.x.x`
-- Example: `enkryptai/secure-mcp-gateway:v2.0.0`
+- Example: `enkryptai/secure-mcp-gateway:v2.0.1`
 - Use the latest version from Docker Hub: <https://hub.docker.com/r/enkryptai/secure-mcp-gateway/tags>
 - You can either mount the config file locally or download the json file from a remote place like `S3` using an `initContainer` and mount the volume
 - See `docs/secure-mcp-gateway-manifest-example.yaml` for the complete manifest file reference
