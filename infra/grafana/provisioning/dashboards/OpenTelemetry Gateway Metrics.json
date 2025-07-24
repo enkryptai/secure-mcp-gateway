@@ -95,7 +95,7 @@
           "disableTextWrap": false,
           "editorMode": "code",
           "exemplar": false,
-          "expr": "otel_enkrypt_tool_calls_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=\"$project_id\",mcp_config_id=\"$mcp_config_id\"}",
+          "expr": "sum(otel_enkrypt_tool_calls_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=\"$project_id\",mcp_config_id=\"$mcp_config_id\"})",
           "format": "table",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
@@ -2744,12 +2744,17 @@
     "list": [
       {
         "current": {
-          "text": "default_project",
-          "value": "default_project"
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "definition": "label_values(otel_enkrypt_tool_calls_total,project_name)",
         "includeAll": true,
         "label": "Project Name",
+        "multi": true,
         "name": "project_name",
         "options": [],
         "query": {
@@ -2788,10 +2793,10 @@
       {
         "current": {
           "text": [
-            "default@example.com"
+            "All"
           ],
           "value": [
-            "default@example.com"
+            "$__all"
           ]
         },
         "definition": "label_values(email)",
@@ -2905,11 +2910,17 @@
       },
       {
         "current": {
-          "text": "echo",
-          "value": "echo"
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "definition": "label_values(otel_enkrypt_guardrail_violations_total,tool)",
+        "includeAll": true,
         "label": "Tool Name",
+        "multi": true,
         "name": "tool_name",
         "options": [],
         "query": {
