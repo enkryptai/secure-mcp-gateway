@@ -1326,8 +1326,6 @@ The observability stack includes:
 3. **Verify Gateway Telemetry**
    - Make test requests through the Gateway like `List all servers and tools` and `echo test`
 
-   - Check Dashboards in Grafana by navigating to `Dashboards` -> `OpenTelemetry Gateway Metrics`
-
    - Check traces in Jaeger:
       - Add optional tags like `enkrypt_email=default@example.com` or `enkrypt_project_name=default_project` or `enkrypt_mcp_config_id=fcbd4508-1432-4f13-abb9-c495c946f638` to see the traces for a specific user, project or MCP config etc.
       - We can also combine tags by separating them with spaces like `enkrypt_email=default@example.com enkrypt_project_name=default_project`
@@ -1348,6 +1346,9 @@ The observability stack includes:
      - Now we can filter by various labels like `attributes_project_name`, `attributes_project_id`, `attributes_email`, `attributes_user_id`, `attributes_mcp_config_id`, `attributes_tool_name` etc.
 
         ![grafana-logs-1](./docs/images/grafana-logs-1.png)
+
+   - Check Dashboards in Grafana by navigating to `Dashboards` -> `OpenTelemetry Gateway Metrics`
+      - **Due to issues in Grafana, you may need to edit each tile and click `Run queries` to see the data**
 
 ### 5.6 Available Telemetry (Not exhaustive)
 
