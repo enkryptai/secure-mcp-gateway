@@ -2,6 +2,12 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [2.0.1] - 2025-07-24
+
+### New Features in v2.0.1
+
+- Added Grafana dashboard and some more metrics
+
 ## [2.0.0] - 2025-07-18
 
 ### New Features in v2.0.0
