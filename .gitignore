@@ -32,3 +32,4 @@ dist/
 
 docs/secure-mcp-gateway-manifest.yaml
 
+src/secure_mcp_gateway/venv

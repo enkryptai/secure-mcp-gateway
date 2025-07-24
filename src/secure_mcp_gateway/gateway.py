@@ -135,18 +135,28 @@ from secure_mcp_gateway.telemetry import (
     logger, 
     list_servers_call_count,
     servers_discovered_count,
-    # request_duration,
-    # request_size,
-    # response_size,
-    # request_errors,
     cache_hit_counter,
     cache_miss_counter,
     tool_call_counter,
     tool_call_duration,
     guardrail_violation_counter,
     guardrail_api_request_counter,
-    guardrail_api_request_duration
-
+    guardrail_api_request_duration,
+    # --- Advanced metrics ---
+    tool_call_success_counter,
+    tool_call_failure_counter,
+    tool_call_error_counter,
+    tool_call_blocked_counter,
+    input_guardrail_violation_counter,
+    output_guardrail_violation_counter,
+    relevancy_violation_counter,
+    adherence_violation_counter,
+    hallucination_violation_counter,
+    auth_success_counter,
+    auth_failure_counter,
+    active_sessions_gauge,
+    active_users_gauge,
+    pii_redactions_counter
 )
 
 try:
@@ -552,6 +562,11 @@ def enkrypt_authenticate(ctx: Context):
                     main_span.set_attribute("auth_source", "session")
                     main_span.set_attribute("success", True)
                     
+                    auth_success_counter.add(1, attributes=build_log_extra(ctx))
+                    active_sessions_gauge.add(1, attributes=build_log_extra(ctx))
+                    active_users_gauge.add(1, attributes=build_log_extra(ctx))
+                    
+
                     return {
                         "status": "success",
                         "message": "Already authenticated",
@@ -598,7 +613,11 @@ def enkrypt_authenticate(ctx: Context):
                             "authenticated": True,
                             "gateway_config": cached_config
                         })
-                        
+
+                        auth_success_counter.add(1, attributes=build_log_extra(ctx))
+                        active_sessions_gauge.add(1, attributes=build_log_extra(ctx))
+                        active_users_gauge.add(1, attributes=build_log_extra(ctx))
+
                         main_span.set_attribute("auth_source", "cache")
                         main_span.set_attribute("success", True)
                         
@@ -610,7 +629,7 @@ def enkrypt_authenticate(ctx: Context):
                             "available_servers": mcp_config_to_dict(mcp_config)
                         }
                     else:
-                        cache_miss_counter.add(1, attributes=build_log_extra(ctx, custom_id))
+                        cache_miss_counter.add(1, attributes=build_log_extra(ctx))
                         sys_print(f"[authenticate] No cached config found for ID: {cached_id}")
 
             # Config retrieval
@@ -700,6 +719,10 @@ def enkrypt_authenticate(ctx: Context):
             main_span.set_attribute("success", True)
             main_span.set_attribute("server_count", len(mcp_config))
             
+            auth_success_counter.add(1, attributes=build_log_extra(ctx))
+            active_sessions_gauge.add(1, attributes=build_log_extra(ctx))
+            active_users_gauge.add(1, attributes=build_log_extra(ctx))
+
             return {
                 "status": "success",
                 "message": "Authentication successful",
@@ -713,6 +736,7 @@ def enkrypt_authenticate(ctx: Context):
             main_span.set_attribute("error", str(e))
             sys_print(f"[authenticate] Exception: {e}", is_error=True)
             traceback.print_exc(file=sys.stderr)
+            auth_failure_counter.add(1, attributes=build_log_extra(ctx))
             return {"status": "error", "error": str(e)}
 
 def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs):
@@ -728,10 +752,12 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
     project_name = gateway_config.get("project_name", "not_provided")
     email = gateway_config.get("email", "not_provided")
     mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
+    # Filter out None values from kwargs
+    filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
 
     return {
         # "request_id": getattr(ctx, 'request_id', None),
-        # "custom_id": custom_id,
+        "custom_id": custom_id or "",
         "server_name": server_name or "",
         "project_id": project_id or "",
         "project_name": project_name or "",
@@ -739,7 +765,7 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
         "email": email or "",
         "mcp_config_id": mcp_config_id or "",
         "error": error or "",
-        **kwargs
+        **filtered_kwargs
     }
 
 # --- MCP Tools ---
@@ -978,13 +1004,6 @@ async def enkrypt_get_server_info(ctx: Context, server_name: str):
     enkrypt_email = gateway_config.get("email", "not_provided")
     enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
     session_key = f"{enkrypt_gateway_key}_{enkrypt_project_id}_{enkrypt_user_id}_{enkrypt_mcp_config_id}"
-
-    main_span.set_attribute("enkrypt_project_id", enkrypt_project_id)
-    main_span.set_attribute("enkrypt_user_id", enkrypt_user_id)
-    main_span.set_attribute("enkrypt_mcp_config_id", enkrypt_mcp_config_id)
-    main_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
-    main_span.set_attribute("enkrypt_email", enkrypt_email)
-
     
     with tracer.start_as_current_span("enkrypt_get_server_info") as main_span:
         main_span.set_attribute("server_name", server_name)
@@ -992,6 +1011,11 @@ async def enkrypt_get_server_info(ctx: Context, server_name: str):
         main_span.set_attribute("env", "dev")
         main_span.set_attribute("custom_id", custom_id)
         main_span.set_attribute("enkrypt_gateway_key", mask_key(enkrypt_gateway_key))
+        main_span.set_attribute("enkrypt_project_id", enkrypt_project_id)
+        main_span.set_attribute("enkrypt_user_id", enkrypt_user_id)
+        main_span.set_attribute("enkrypt_mcp_config_id", enkrypt_mcp_config_id)
+        main_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
+        main_span.set_attribute("enkrypt_email", enkrypt_email)
         
         try:
             # Authentication check
@@ -1178,7 +1202,8 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
                             server_span.set_attribute("success", discover_server_result.get("status") == "success")
                             
                             tool_call_duration.record(end_time - start_time, attributes=build_log_extra(ctx, custom_id))
-                            tool_call_counter.add(1, attributes=build_log_extra(ctx, custom_id))
+                            tool_call_counter.add(1, attributes=build_log_extra(ctx))
+                            servers_discovered_count.add(1, attributes=build_log_extra(ctx))
                             if discover_server_result.get("status") != "success":
                                 status = "error"
                                 discovery_failed_servers.append(server_name)
@@ -1186,7 +1211,7 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
                                 discovery_success_servers.append(server_name)
                                 all_servers_with_tools[server_name] = discover_server_result
                     
-                    servers_discovered_count.add(len(discovery_success_servers), attributes=build_log_extra(ctx, custom_id))
+                    servers_discovered_count.add(len(discovery_success_servers), attributes=build_log_extra(ctx))
                     all_span.set_attribute("discovery_success_count", len(discovery_success_servers))
                     all_span.set_attribute("discovery_failed_count", len(discovery_failed_servers))
                     
@@ -1242,7 +1267,7 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
                     cache_span.set_attribute("cache_hit", cached_tools is not None)
                     
                     if cached_tools:
-                        cache_hit_counter.add(1, attributes=build_log_extra(ctx, custom_id))
+                        cache_hit_counter.add(1, attributes=build_log_extra(ctx))
                         sys_print(f"[discover_server_tools] Tools already cached for {server_name}")
                         logger.info("enkrypt_discover_all_tools.tools_already_cached", extra=build_log_extra(ctx, custom_id, server_name))
                         main_span.set_attribute("success", True)
@@ -1253,7 +1278,7 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
                             "source": "cache"
                         }
                     else:
-                        cache_miss_counter.add(1, attributes=build_log_extra(ctx, custom_id))
+                        cache_miss_counter.add(1, attributes=build_log_extra(ctx))
                         sys_print(f"[discover_server_tools] No cached tools found for {server_name}")
                         logger.info("enkrypt_discover_all_tools.no_cached_tools", extra=build_log_extra(ctx, custom_id, server_name))
 
@@ -1466,13 +1491,13 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                     discovery_span.set_attribute("cache_hit", bool(server_config_tools))
                     
                     if server_config_tools:
-                        cache_hit_counter.add(1, attributes=build_log_extra(ctx, custom_id))
-                        logger.info("enkrypt_secure_call_tools.server_config_tools_after_get_cached_tools", extra=build_log_extra(ctx, custom_id, server_name, server_config_tools=server_config_tools))
+                        cache_hit_counter.add(1, attributes=build_log_extra(ctx))
+                        logger.info("enkrypt_secure_call_tools.server_config_tools_after_get_cached_tools", extra=build_log_extra(ctx, custom_id, server_name))
                     if IS_DEBUG_LOG_LEVEL:
-                        logger.info("enkrypt_secure_call_tools.server_config_tools_after_get_cached_tools", extra=build_log_extra(ctx, custom_id, server_name, server_config_tools=server_config_tools))
+                        logger.info("enkrypt_secure_call_tools.server_config_tools_after_get_cached_tools", extra=build_log_extra(ctx, custom_id, server_name))
                         sys_print(f"[secure_call_tools] Server config tools after get_cached_tools: {server_config_tools}", is_debug=True)
                     if not server_config_tools:
-                        cache_miss_counter.add(1, attributes=build_log_extra(ctx, custom_id))
+                        cache_miss_counter.add(1, attributes=build_log_extra(ctx))
                         try:
                             discovery_span.set_attribute("discovery_required", True)
                             list_servers_call_count.add(1, attributes=build_log_extra(ctx, custom_id))
@@ -1491,7 +1516,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
 
                             if discovery_result.get("status") == "success":
                                 server_config_tools = discovery_result.get("tools", {})
-                                servers_discovered_count.add(1, attributes=build_log_extra(ctx, custom_id))
+                                servers_discovered_count.add(1, attributes=build_log_extra(ctx))
                                 
                             if IS_DEBUG_LOG_LEVEL:
                                 sys_print(f"[enkrypt_secure_call_tools] Discovered tools: {server_config_tools}", is_debug=True)
@@ -1687,7 +1712,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                             end_time = time.time()
                                             guardrail_api_request_duration.record(end_time - start_time, attributes=build_log_extra(ctx, custom_id))
                                             
-                                            tool_call_counter.add(1, attributes=build_log_extra(ctx, custom_id))
+                                            tool_call_counter.add(1, attributes=build_log_extra(ctx))
                                             start_time = time.time()
                                             tool_call_task = asyncio.create_task(session.call_tool(tool_name, arguments=args))
                                             end_time = time.time()
@@ -1714,9 +1739,10 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                             # input_span.set_status(Status(StatusCode.ERROR))
                                             input_span.set_attribute("error", f"Input violations: {input_violation_types}")
                                             for violation_type in input_violation_types:
-                                                guardrail_violation_counter.add(1, {"violation_type": violation_type})
+                                                guardrail_violation_counter.add(1, attributes=build_log_extra(ctx, violation_type=violation_type, server_name=server_name, tool=tool_name))
+                                                input_guardrail_violation_counter.add(1, attributes=build_log_extra(ctx, server_name=server_name, tool=tool_name, violation_type=violation_type))
                                             
-                                            sys_print(f"[secure_call_tools] Call {i}: Blocked due to input violations: {input_violation_types} for {tool_name} of server {server_name}")
+                                            sys_print(f"[secure_call_tools] Call {i}: Blocked due to input guardrail violations: {input_violation_types} for {tool_name} of server {server_name}")
                                             logger.info("enkrypt_secure_call_tools.blocked_due_to_input_violations", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, input_violations_detected=input_violations_detected, input_violation_types=input_violation_types))
                                             results.append({
                                                 "status": "blocked_input",
@@ -1745,7 +1771,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                             if IS_DEBUG_LOG_LEVEL:
                                                 sys_print(f"[secure_call_tools] Call {i}: Waiting for tool call to complete in async mode", is_debug=True)
                                             logger.info("enkrypt_secure_call_tools.waiting_for_tool_call_to_complete_in_async_mode", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name))
-                                            tool_call_counter.add(1, attributes=build_log_extra(ctx, custom_id))
+                                            tool_call_counter.add(1, attributes=build_log_extra(ctx))
                                             start_time = time.time()
                                             result = await tool_call_task
                                             end_time = time.time()
@@ -1828,8 +1854,9 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                                 # output_span.set_status(Status(StatusCode.ERROR))
                                                 output_span.set_attribute("error", f"Output violations: {output_violation_types}")
                                                 for violation_type in output_violation_types:
-                                                    guardrail_violation_counter.add(1, {"violation_type": violation_type})
-                                                
+                                                    guardrail_violation_counter.add(1, attributes=build_log_extra(ctx, violation_type=violation_type, server_name=server_name, tool=tool_name))
+                                                    
+                                                    output_guardrail_violation_counter.add(1, attributes=build_log_extra(ctx, server_name=server_name, tool=tool_name, violation_type=violation_type))
                                                 sys_print(f"[secure_call_tools] Call {i}: Blocked due to output violations: {output_violation_types}")
                                                 logger.info("enkrypt_secure_call_tools.blocked_due_to_output_violations", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, output_violations_detected=output_violations_detected, output_violation_types=output_violation_types))
                                                 results.append({
@@ -1872,7 +1899,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                                 logger.info("enkrypt_secure_call_tools.relevancy_response", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, output_relevancy_response=output_relevancy_response))
                                             if "relevancy" in output_blocks and output_relevancy_response.get("summary", {}).get("relevancy_score") > RELEVANCY_THRESHOLD:
                                                 output_span.set_attribute("relevancy_violation", True)
-                                                guardrail_violation_counter.add(1, {"violation_type": "relevancy"})
+                                                relevancy_violation_counter.add(1, {"violation_type": "relevancy"})
                                                 logger.info("enkrypt_secure_call_tools.blocked_due_to_relevancy_violations", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, output_relevancy_response=output_relevancy_response))
                                                 results.append({
                                                     "status": "blocked_output_relevancy",
@@ -1916,7 +1943,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                                 logger.info("enkrypt_secure_call_tools.adherence_response", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, output_adherence_response=output_adherence_response))
                                             if "adherence" in output_blocks and output_adherence_response.get("summary", {}).get("adherence_score") > ADHERENCE_THRESHOLD:
                                                 output_span.set_attribute("adherence_violation", True)
-                                                guardrail_violation_counter.add(1, {"violation_type": "adherence"})
+                                                adherence_violation_counter.add(1, {"violation_type": "adherence"})
                                                 logger.info("enkrypt_secure_call_tools.blocked_due_to_adherence_violations", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, output_adherence_response=output_adherence_response))
                                                 results.append({
                                                     "status": "blocked_output_adherence",
@@ -1959,7 +1986,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                                 logger.info("enkrypt_secure_call_tools.hallucination_response", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, output_hallucination_response=output_hallucination_response))
                                             if "hallucination" in output_blocks and output_hallucination_response.get("summary", {}).get("is_hallucination") > 0:
                                                 output_span.set_attribute("hallucination_violation", True)
-                                                guardrail_violation_counter.add(1, {"violation_type": "hallucination"})
+                                                hallucination_violation_counter.add(1, {"violation_type": "hallucination"})
                                                 logger.info("enkrypt_secure_call_tools.blocked_due_to_hallucination_violations", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, output_hallucination_response=output_hallucination_response))
                                                 results.append({
                                                     "status": "blocked_output_hallucination",
@@ -2029,6 +2056,8 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                         "output_hallucination_response": output_hallucination_response
                                     }
                                 })
+                                tool_call_success_counter.add(1, attributes=build_log_extra(ctx, server_name=server_name, tool=tool_name))
+                                pii_redactions_counter.add(1, attributes=build_log_extra(ctx, custom_id, server_name=server_name, tool=tool_name))
 
                             except Exception as tool_error:
                                 # tool_span.set_status(Status(StatusCode.ERROR))
@@ -2049,11 +2078,14 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                     }
                                 })
                                 break
-
+                                
             # Calculate summary statistics
             successful_calls = len([r for r in results if r["status"] == "success"])
             blocked_calls = len([r for r in results if r["status"].startswith("blocked")])
             failed_calls = len([r for r in results if r["status"] == "error"])
+            tool_call_failure_counter.add(failed_calls, attributes=build_log_extra(ctx, server_name=server_name))
+            tool_call_error_counter.add(failed_calls, attributes=build_log_extra(ctx, server_name=server_name))
+            tool_call_blocked_counter.add(blocked_calls, attributes=build_log_extra(ctx, server_name=server_name))
 
             sys_print(f"[secure_call_tools] Batch execution completed: {successful_calls} successful, {blocked_calls} blocked, {failed_calls} failed")
             logger.info("enkrypt_secure_call_tools.batch_execution_completed", extra=build_log_extra(ctx, custom_id, server_name, successful_calls=successful_calls, blocked_calls=blocked_calls, failed_calls=failed_calls))
@@ -2224,7 +2256,7 @@ async def enkrypt_get_cache_status(ctx: Context):
                         "is_expired": False
                     }
                 else:
-                    cache_miss_counter.add(1, attributes=build_log_extra(ctx, custom_id))
+                    cache_miss_counter.add(1, attributes=build_log_extra(ctx))
                     config_span.set_attribute("cache_hit", False)
                     
                     sys_print(f"[get_cache_status] No cached gateway config found for {id}", is_debug=True)

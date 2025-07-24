@@ -1,0 +1,1677 @@
+{
+    "annotations": {
+      "list": []
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 1,
+    "links": [],
+    "liveNow": false,
+    "panels": [
+      {
+        "collapsed": false,
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 0
+        },
+        "id": 100,
+        "panels": [],
+        "title": "Traffic & Usage Overview",
+        "type": "row"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 20,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "never",
+              "spanNulls": true,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "reqps"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 0,
+          "y": 1
+        },
+        "id": 1,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "rate(otel_enkrypt_tool_calls_total[5m])",
+            "instant": false,
+            "legendFormat": "Tool Calls/sec",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "Tool Call Rate",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 20,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "never",
+              "spanNulls": true,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "reqps"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 6,
+          "y": 1
+        },
+        "id": 2,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "rate(otel_enkrypt_api_requests_total[5m])",
+            "instant": false,
+            "legendFormat": "API Requests/sec",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "API Request Rate",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 20,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "never",
+              "spanNulls": true,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "reqps"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 12,
+          "y": 1
+        },
+        "id": 3,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "rate(otel_enkrypt_list_all_servers_calls_total[5m])",
+            "instant": false,
+            "legendFormat": "Server Calls/sec",
+            "range": true,
+            "refId": "A"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "rate(otel_enkrypt_servers_discovered[5m])",
+            "instant": false,
+            "legendFormat": "Discovery Rate/sec",
+            "range": true,
+            "refId": "B"
+          }
+        ],
+        "title": "Server Discovery Activity",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [],
+            "max": 100,
+            "min": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 70
+                },
+                {
+                  "color": "green",
+                  "value": 90
+                }
+              ]
+            },
+            "unit": "percent"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 18,
+          "y": 1
+        },
+        "id": 4,
+        "options": {
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": ""
+          },
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        },
+        "pluginVersion": "10.0.0",
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "rate(otel_enkrypt_cache_hits_total[5m]) / (rate(otel_enkrypt_cache_hits_total[5m]) + rate(otel_enkrypt_cache_misses_total[5m])) * 100",
+            "instant": false,
+            "legendFormat": "Cache Hit Rate %",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "Cache Hit Rate",
+        "type": "gauge"
+      },
+      {
+        "collapsed": false,
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 9
+        },
+        "id": 200,
+        "panels": [],
+        "title": "Performance Metrics",
+        "type": "row"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 20,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "never",
+              "spanNulls": true,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "s"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 10
+        },
+        "id": 5,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "histogram_quantile(0.50, rate(otel_enkrypt_tool_call_duration_seconds_bucket[5m]))",
+            "instant": false,
+            "legendFormat": "p50",
+            "range": true,
+            "refId": "A"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "histogram_quantile(0.95, rate(otel_enkrypt_tool_call_duration_seconds_bucket[5m]))",
+            "instant": false,
+            "legendFormat": "p95",
+            "range": true,
+            "refId": "B"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "histogram_quantile(0.99, rate(otel_enkrypt_tool_call_duration_seconds_bucket[5m]))",
+            "instant": false,
+            "legendFormat": "p99",
+            "range": true,
+            "refId": "C"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "rate(otel_enkrypt_tool_call_duration_seconds_sum[5m]) / rate(otel_enkrypt_tool_call_duration_seconds_count[5m])",
+            "instant": false,
+            "legendFormat": "Average",
+            "range": true,
+            "refId": "D"
+          }
+        ],
+        "title": "Tool Call Duration",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 20,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "never",
+              "spanNulls": true,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "s"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 10
+        },
+        "id": 6,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "histogram_quantile(0.50, rate(otel_enkrypt_api_request_duration_seconds_bucket[5m]))",
+            "instant": false,
+            "legendFormat": "p50",
+            "range": true,
+            "refId": "A"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "histogram_quantile(0.95, rate(otel_enkrypt_api_request_duration_seconds_bucket[5m]))",
+            "instant": false,
+            "legendFormat": "p95",
+            "range": true,
+            "refId": "B"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "histogram_quantile(0.99, rate(otel_enkrypt_api_request_duration_seconds_bucket[5m]))",
+            "instant": false,
+            "legendFormat": "p99",
+            "range": true,
+            "refId": "C"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "rate(otel_enkrypt_api_request_duration_seconds_sum[5m]) / rate(otel_enkrypt_api_request_duration_seconds_count[5m])",
+            "instant": false,
+            "legendFormat": "Average",
+            "range": true,
+            "refId": "D"
+          }
+        ],
+        "title": "API Request Duration",
+        "type": "timeseries"
+      },
+      {
+        "collapsed": false,
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 18
+        },
+        "id": 300,
+        "panels": [],
+        "title": "Cache & Security Monitoring",
+        "type": "row"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 20,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "never",
+              "spanNulls": true,
+              "stacking": {
+                "group": "A",
+                "mode": "normal"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "reqps"
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Cache Hits/sec"
+              },
+              "properties": [
+                {
+                  "id": "color",
+                  "value": {
+                    "mode": "fixed",
+                    "fixedColor": "green"
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Cache Misses/sec"
+              },
+              "properties": [
+                {
+                  "id": "color",
+                  "value": {
+                    "mode": "fixed",
+                    "fixedColor": "red"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 19
+        },
+        "id": 7,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "rate(otel_enkrypt_cache_hits_total[5m])",
+            "instant": false,
+            "legendFormat": "Cache Hits/sec",
+            "range": true,
+            "refId": "A"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "rate(otel_enkrypt_cache_misses_total[5m])",
+            "instant": false,
+            "legendFormat": "Cache Misses/sec",
+            "range": true,
+            "refId": "B"
+          }
+        ],
+        "title": "Cache Activity (Hits vs Misses)",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 20,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "never",
+              "spanNulls": true,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "line"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 0.1
+                },
+                {
+                  "color": "red",
+                  "value": 1
+                }
+              ]
+            },
+            "unit": "reqps"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 19
+        },
+        "id": 8,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "rate(otel_enkrypt_guardrail_violations_total[5m])",
+            "instant": false,
+            "legendFormat": "Violations/sec",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "Guardrail Violations Rate",
+        "type": "timeseries"
+      },
+      {
+        "collapsed": false,
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 27
+        },
+        "id": 400,
+        "panels": [],
+        "title": "Current Statistics",
+        "type": "row"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "short"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 4,
+          "x": 0,
+          "y": 28
+        },
+        "id": 9,
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "pluginVersion": "10.0.0",
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "increase(otel_enkrypt_tool_calls_total[1h])",
+            "instant": false,
+            "legendFormat": "Tool Calls (1h)",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "Total Tool Calls (1h)",
+        "type": "stat"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "short"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 4,
+          "x": 4,
+          "y": 28
+        },
+        "id": 10,
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "pluginVersion": "10.0.0",
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "increase(otel_enkrypt_api_requests_total[1h])",
+            "instant": false,
+            "legendFormat": "API Requests (1h)",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "Total API Requests (1h)",
+        "type": "stat"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "short"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 4,
+          "x": 8,
+          "y": 28
+        },
+        "id": 11,
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "pluginVersion": "10.0.0",
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "otel_enkrypt_servers_discovered",
+            "instant": false,
+            "legendFormat": "Servers Discovered",
+            "range": true,
+            "refId": "A"
+          }
+        ],
+        "title": "Total Servers Discovered",
+        "type": "stat"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "short"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 4,
+          "x": 12,
+          "y": 28
+        },
+        "id": 12,
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "pluginVersion": "10.0.0",
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "increase(otel_enkrypt_cache_hits_total[1h])",
+            "instant": false,
+            "legendFormat": "Cache Hits (1h)",
+            "range": true,
+            "refId": "A"
+        }
+        ],
+        "title": "Total Cache Hits (1h)",
+        "type": "stat"
+    },
+    {
+        "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+        },
+        "fieldConfig": {
+        "defaults": {
+            "color": {
+            "mode": "thresholds"
+            },
+            "mappings": [],
+            "thresholds": {
+            "mode": "absolute",
+            "steps": [
+                {
+                "color": "green",
+                "value": null
+                },
+                {
+                "color": "yellow",
+                "value": 10
+                },
+                {
+                "color": "red",
+                "value": 50
+                }
+            ]
+            },
+            "unit": "short"
+        },
+        "overrides": []
+        },
+        "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 28
+        },
+        "id": 13,
+        "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+            "values": false,
+            "calcs": [
+            "lastNotNull"
+            ],
+            "fields": ""
+        },
+        "textMode": "auto"
+        },
+        "pluginVersion": "10.0.0",
+        "targets": [
+        {
+            "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "increase(otel_enkrypt_cache_misses_total[1h])",
+            "instant": false,
+            "legendFormat": "Cache Misses (1h)",
+            "range": true,
+            "refId": "A"
+        }
+        ],
+        "title": "Total Cache Misses (1h)",
+        "type": "stat"
+    },
+    {
+        "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+        },
+        "fieldConfig": {
+        "defaults": {
+            "color": {
+            "mode": "thresholds"
+            },
+            "mappings": [],
+            "thresholds": {
+            "mode": "absolute",
+            "steps": [
+                {
+                "color": "green",
+                "value": null
+                },
+                {
+                "color": "yellow",
+                "value": 1
+                },
+                {
+                "color": "red",
+                "value": 10
+                }
+            ]
+            },
+            "unit": "short"
+        },
+        "overrides": []
+        },
+        "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 28
+        },
+        "id": 14,
+        "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+            "values": false,
+            "calcs": [
+            "lastNotNull"
+            ],
+            "fields": ""
+        },
+        "textMode": "auto"
+        },
+        "pluginVersion": "10.0.0",
+        "targets": [
+        {
+            "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "increase(otel_enkrypt_guardrail_violations_total[1h])",
+            "instant": false,
+            "legendFormat": "Violations (1h)",
+            "range": true,
+            "refId": "A"
+        }
+        ],
+        "title": "Total Guardrail Violations (1h)",
+        "type": "stat"
+    },
+    {
+        "collapsed": false,
+        "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 32
+        },
+        "id": 500,
+        "panels": [],
+        "title": "Performance Heatmaps",
+        "type": "row"
+    },
+    {
+        "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+        },
+        "fieldConfig": {
+        "defaults": {
+            "custom": {
+            "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+            },
+            "scaleDistribution": {
+                "type": "linear"
+            }
+            }
+        },
+        "overrides": []
+        },
+        "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 33
+        },
+        "id": 15,
+        "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "cellValues": {
+            "unit": "short"
+        },
+        "color": {
+            "exponent": 0.5,
+            "fill": "dark-orange",
+            "mode": "scheme",
+            "reverse": false,
+            "scale": "exponential",
+            "scheme": "Spectral",
+            "steps": 64
+        },
+        "exemplars": {
+            "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+            "le": 1e-9
+        },
+        "legend": {
+            "show": true
+        },
+        "rowsFrame": {
+            "layout": "auto"
+        },
+        "tooltip": {
+            "show": true,
+            "yHistogram": false
+        },
+        "yAxis": {
+            "axisPlacement": "left",
+            "reverse": false,
+            "unit": "s"
+        }
+        },
+        "pluginVersion": "10.0.0",
+        "targets": [
+        {
+            "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "rate(otel_enkrypt_tool_call_duration_seconds_bucket[5m])",
+            "format": "heatmap",
+            "instant": false,
+            "legendFormat": "{{le}}",
+            "range": true,
+            "refId": "A"
+        }
+        ],
+        "title": "Tool Call Duration Distribution",
+        "type": "heatmap"
+    },
+    {
+        "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+        },
+        "fieldConfig": {
+        "defaults": {
+            "custom": {
+            "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+            },
+            "scaleDistribution": {
+                "type": "linear"
+            }
+            }
+        },
+        "overrides": []
+        },
+        "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 33
+        },
+        "id": 16,
+        "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "cellValues": {
+            "unit": "short"
+        },
+        "color": {
+            "exponent": 0.5,
+            "fill": "dark-orange",
+            "mode": "scheme",
+            "reverse": false,
+            "scale": "exponential",
+            "scheme": "Spectral",
+            "steps": 64
+        },
+        "exemplars": {
+            "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+            "le": 1e-9
+        },
+        "legend": {
+            "show": true
+        },
+        "rowsFrame": {
+            "layout": "auto"
+        },
+        "tooltip": {
+            "show": true,
+            "yHistogram": false
+        },
+        "yAxis": {
+            "axisPlacement": "left",
+            "reverse": false,
+            "unit": "s"
+        }
+        },
+        "pluginVersion": "10.0.0",
+        "targets": [
+        {
+            "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+            },
+            "editorMode": "code",
+            "expr": "rate(otel_enkrypt_api_request_duration_seconds_bucket[5m])",
+            "format": "heatmap",
+            "instant": false,
+            "legendFormat": "{{le}}",
+            "range": true,
+            "refId": "A"
+        }
+        ],
+        "title": "API Request Duration Distribution",
+        "type": "heatmap"
+    },
+    {
+      "type": "timeseries",
+      "title": "Guardrail Violations by Type",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 41},
+      "id": 1001,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (type) (rate(otel_enkrypt_guardrail_violations_total[5m]))",
+          "legendFormat": "{{type}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Guardrail Violations by Tool",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 41},
+      "id": 1002,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (tool) (rate(otel_enkrypt_guardrail_violations_total[5m]))",
+          "legendFormat": "{{tool}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Block Rate per Tool",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 49},
+      "id": 1003,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (tool) (rate(otel_enkrypt_guardrail_violations_total[5m])) / sum by (tool) (rate(otel_enkrypt_tool_calls_total[5m]))",
+          "legendFormat": "{{tool}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool Call Success Rate",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 49},
+      "id": 1004,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(rate(otel_enkrypt_tool_call_success_total[5m])) / sum(rate(otel_enkrypt_tool_calls_total[5m]))",
+          "legendFormat": "Success Rate",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool Call Failure Rate",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 57},
+      "id": 1005,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(rate(otel_enkrypt_tool_call_failure_total[5m])) / sum(rate(otel_enkrypt_tool_calls_total[5m]))",
+          "legendFormat": "Failure Rate",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool Call Errors by Type",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 57},
+      "id": 1006,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (error_type) (rate(otel_enkrypt_tool_call_errors_total[5m]))",
+          "legendFormat": "{{error_type}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool Call Duration p95 by Tool",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 65},
+      "id": 1007,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (tool, le) (rate(otel_enkrypt_tool_call_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{tool}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active Sessions / Active Users",
+      "gridPos": {"h": 4, "w": 12, "x": 12, "y": 65},
+      "id": 1008,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "max(otel_enkrypt_active_sessions)",
+          "legendFormat": "Active Sessions",
+          "refId": "A"
+        },
+        {
+          "expr": "max(otel_enkrypt_active_users)",
+          "legendFormat": "Active Users",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Input Guardrail Violations",
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 70},
+      "id": 1010,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "rate(otel_enkrypt_input_guardrail_violations_total[5m])",
+          "legendFormat": "Input Violations",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Output Guardrail Violations",
+      "gridPos": {"h": 6, "w": 8, "x": 8, "y": 70},
+      "id": 1011,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "rate(otel_enkrypt_output_guardrail_violations_total[5m])",
+          "legendFormat": "Output Violations",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Relevancy Violations",
+      "gridPos": {"h": 6, "w": 8, "x": 16, "y": 70},
+      "id": 1012,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "rate(otel_enkrypt_relevancy_violations_total[5m])",
+          "legendFormat": "Relevancy Violations",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Adherence Violations",
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 76},
+      "id": 1013,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "rate(otel_enkrypt_adherence_violations_total[5m])",
+          "legendFormat": "Adherence Violations",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Hallucination Violations",
+      "gridPos": {"h": 6, "w": 8, "x": 8, "y": 76},
+      "id": 1014,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "rate(otel_enkrypt_hallucination_violations_total[5m])",
+          "legendFormat": "Hallucination Violations",
+          "refId": "A"
+        }
+      ]
+    }
+    ],
+    "refresh": "30s",
+    "schemaVersion": 38,
+    "style": "dark",
+    "tags": ["gateway", "opentelemetry", "metrics", "performance"],
+    "templating": {
+    "list": []
+    },
+    "time": {
+    "from": "now-1h",
+    "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "",
+    "title": "OpenTelemetry Gateway Metrics",
+    "uid": "otel-gateway-metrics",
+    "version": 1,
+    "weekStart": ""
+    }

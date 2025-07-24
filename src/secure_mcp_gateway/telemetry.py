@@ -270,6 +270,7 @@ if IS_TELEMETRY_ENABLED:
     meter = metrics.get_meter("enkrypt.meter")
 
     #############################
+    # Basic Counters
     list_servers_call_count = meter.create_counter(
         "enkrypt_list_all_servers_calls",
         description="Number of times enkrypt_list_all_servers was called"
@@ -313,7 +314,107 @@ if IS_TELEMETRY_ENABLED:
         description="Duration of tool calls in seconds",
         unit="s"
     )
-    ################################################
+
+    # --- Advanced Metrics ---
+    # Tool call success/failure/error counters
+    tool_call_success_counter = meter.create_counter(
+        "enkrypt_tool_call_success_total",
+        description="Total successful tool calls",
+        unit="1"
+    )
+    tool_call_failure_counter = meter.create_counter(
+        "enkrypt_tool_call_failure_total",
+        description="Total failed tool calls",
+        unit="1"
+    )
+    tool_call_error_counter = meter.create_counter(
+        "enkrypt_tool_call_errors_total",
+        description="Total tool call errors",
+        unit="1"
+    )
+    # Authentication
+    auth_success_counter = meter.create_counter(
+        "enkrypt_auth_success_total",
+        description="Total successful authentications",
+        unit="1"
+    )
+    auth_failure_counter = meter.create_counter(
+        "enkrypt_auth_failure_total",
+        description="Total failed authentications",
+        unit="1"
+    )
+    # Active sessions/users (UpDownCounter = gauge)
+    active_sessions_gauge = meter.create_up_down_counter(
+        "enkrypt_active_sessions",
+        description="Current active sessions",
+        unit="1"
+    )
+    active_users_gauge = meter.create_up_down_counter(
+        "enkrypt_active_users",
+        description="Current active users",
+        unit="1"
+    )
+    # PII redactions
+    pii_redactions_counter = meter.create_counter(
+        "enkrypt_pii_redactions_total",
+        description="Total PII redactions",
+        unit="1"
+    )
+    # Blocked tool calls (for block rate calculation)
+    tool_call_blocked_counter = meter.create_counter(
+        "enkrypt_tool_call_blocked_total",
+        description="Total blocked tool calls (guardrail blocks)",
+        unit="1"
+    )
+    # Per-violation-type counters (optional, for direct Prometheus queries)
+    input_guardrail_violation_counter = meter.create_counter(
+        "enkrypt_input_guardrail_violations_total",
+        description="Input guardrail violations",
+        unit="1"
+    )
+    output_guardrail_violation_counter = meter.create_counter(
+        "enkrypt_output_guardrail_violations_total",
+        description="Output guardrail violations",
+        unit="1"
+    )
+    relevancy_violation_counter = meter.create_counter(
+        "enkrypt_relevancy_violations_total",
+        description="Relevancy guardrail violations",
+        unit="1"
+    )
+    adherence_violation_counter = meter.create_counter(
+        "enkrypt_adherence_violations_total",
+        description="Adherence guardrail violations",
+        unit="1"
+    )
+    hallucination_violation_counter = meter.create_counter(
+        "enkrypt_hallucination_violations_total",
+        description="Hallucination guardrail violations",
+        unit="1"
+    )
+    # ... add more as needed ...
+
+    # --- Example usage in your code ---
+    # tool_call_counter.add(1, attributes={"tool": tool_name, "server": server_name, "user": user_id, "project": project_id})
+    # tool_call_success_counter.add(1, attributes={"tool": tool_name, "server": server_name})
+    # tool_call_failure_counter.add(1, attributes={"tool": tool_name, "server": server_name})
+    # tool_call_error_counter.add(1, attributes={"tool": tool_name, "server": server_name, "error_type": error_type})
+    # tool_call_duration.record(duration, attributes={"tool": tool_name, "server": server_name})
+    # guardrail_violation_counter.add(1, attributes={"type": violation_type, "tool": tool_name, "server": server_name, "user": user_id, "project": project_id, "policy": policy_name})
+    # tool_call_blocked_counter.add(1, attributes={"tool": tool_name, "server": server_name, "user": user_id, "project": project_id, "block_reason": reason})
+    # input_guardrail_violation_counter.add(1, attributes={"tool": tool_name, "server": server_name})
+    # output_guardrail_violation_counter.add(1, attributes={"tool": tool_name, "server": server_name})
+    # relevancy_violation_counter.add(1, attributes={"tool": tool_name, "server": server_name})
+    # adherence_violation_counter.add(1, attributes={"tool": tool_name, "server": server_name})
+    # hallucination_violation_counter.add(1, attributes={"tool": tool_name, "server": server_name})
+    # auth_success_counter.add(1, attributes={"user": user_id, "project": project_id})
+    # auth_failure_counter.add(1, attributes={"user": user_id, "project": project_id, "reason": reason})
+    # active_sessions_gauge.add(1)  # or add(-1) when session ends
+    # active_users_gauge.add(1, attributes={"user": user_id})
+    # pii_redactions_counter.add(1, attributes={"user": user_id, "project": project_id})
+    #
+    # Use these metrics throughout your codebase wherever relevant events occur.
+    #############################
 
     # request_counter = meter.create_counter(
     #     name="enkrypt_request_count",

@@ -12,6 +12,7 @@ datasources:
     type: prometheus
     access: proxy
     url: http://prometheus:9090
+    isDefault: true
     jsonData:
       exemplarTraceIdDestinations:
         - name: trace_id
@@ -21,7 +22,7 @@ datasources:
     type: jaeger
     uid: jaeger
     access: proxy
-    url: http://jaeger:16685
+    url: http://jaeger:16686/jaeger
     jsonData:
       nodeGraph:
         enabled: true
