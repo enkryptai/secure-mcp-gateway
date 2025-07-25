@@ -130,34 +130,38 @@ from secure_mcp_gateway.dependencies import __dependencies__
 
 sys_print(f"Successfully imported secure_mcp_gateway v{__version__} in gateway module")
 
-from secure_mcp_gateway.telemetry import (
-    tracer,
-    logger, 
-    list_servers_call_count,
-    servers_discovered_count,
-    cache_hit_counter,
-    cache_miss_counter,
-    tool_call_counter,
-    tool_call_duration,
-    guardrail_violation_counter,
-    guardrail_api_request_counter,
-    guardrail_api_request_duration,
-    # --- Advanced metrics ---
-    tool_call_success_counter,
-    tool_call_failure_counter,
-    tool_call_error_counter,
-    tool_call_blocked_counter,
-    input_guardrail_violation_counter,
-    output_guardrail_violation_counter,
-    relevancy_violation_counter,
-    adherence_violation_counter,
-    hallucination_violation_counter,
-    auth_success_counter,
-    auth_failure_counter,
-    active_sessions_gauge,
-    active_users_gauge,
-    pii_redactions_counter
-)
+try:
+    from secure_mcp_gateway.telemetry import (
+        tracer,
+        logger, 
+        list_servers_call_count,
+        servers_discovered_count,
+        cache_hit_counter,
+        cache_miss_counter,
+        tool_call_counter,
+        tool_call_duration,
+        guardrail_violation_counter,
+        guardrail_api_request_counter,
+        guardrail_api_request_duration,
+        # --- Advanced metrics ---
+        tool_call_success_counter,
+        tool_call_failure_counter,
+        tool_call_error_counter,
+        tool_call_blocked_counter,
+        input_guardrail_violation_counter,
+        output_guardrail_violation_counter,
+        relevancy_violation_counter,
+        adherence_violation_counter,
+        hallucination_violation_counter,
+        auth_success_counter,
+        auth_failure_counter,
+        active_sessions_gauge,
+        active_users_gauge,
+        pii_redactions_counter
+    )
+except ImportError as e:
+    # Handle the import error, e.g., log it or provide fallback behavior
+    sys_print(f"Import failed: {e}", is_error=True)
 
 try:
     sys_print("Installing dependencies...")
@@ -1689,6 +1693,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                             logger.info("enkrypt_secure_call_tools.pii_redaction_enabled", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name))
                                             guardrail_api_request_counter.add(1, attributes=build_log_extra(ctx, custom_id))
                                             anonymized_text, redaction_key = anonymize_pii(input_json_string)
+                                            pii_redactions_counter.add(1, attributes=build_log_extra(ctx, server_name=server_name, tool_name=tool_name))
                                             end_time = time.time()
                                             guardrail_api_request_duration.record(end_time - start_time, attributes=build_log_extra(ctx, custom_id))
                                             input_span.set_attribute("pii_redaction_duration", end_time - start_time)
@@ -1899,7 +1904,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                                 logger.info("enkrypt_secure_call_tools.relevancy_response", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, output_relevancy_response=output_relevancy_response))
                                             if "relevancy" in output_blocks and output_relevancy_response.get("summary", {}).get("relevancy_score") > RELEVANCY_THRESHOLD:
                                                 output_span.set_attribute("relevancy_violation", True)
-                                                relevancy_violation_counter.add(1, {"violation_type": "relevancy"})
+                                                relevancy_violation_counter.add(1, attributes=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, violation_type="relevancy"))
                                                 logger.info("enkrypt_secure_call_tools.blocked_due_to_relevancy_violations", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, output_relevancy_response=output_relevancy_response))
                                                 results.append({
                                                     "status": "blocked_output_relevancy",
@@ -1943,7 +1948,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                                 logger.info("enkrypt_secure_call_tools.adherence_response", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, output_adherence_response=output_adherence_response))
                                             if "adherence" in output_blocks and output_adherence_response.get("summary", {}).get("adherence_score") > ADHERENCE_THRESHOLD:
                                                 output_span.set_attribute("adherence_violation", True)
-                                                adherence_violation_counter.add(1, {"violation_type": "adherence"})
+                                                adherence_violation_counter.add(1, attributes=build_log_extra(ctx, violation_type="adherence", server_name=server_name, tool=tool_name))
                                                 logger.info("enkrypt_secure_call_tools.blocked_due_to_adherence_violations", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, output_adherence_response=output_adherence_response))
                                                 results.append({
                                                     "status": "blocked_output_adherence",
@@ -1986,7 +1991,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                                 logger.info("enkrypt_secure_call_tools.hallucination_response", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, output_hallucination_response=output_hallucination_response))
                                             if "hallucination" in output_blocks and output_hallucination_response.get("summary", {}).get("is_hallucination") > 0:
                                                 output_span.set_attribute("hallucination_violation", True)
-                                                hallucination_violation_counter.add(1, {"violation_type": "hallucination"})
+                                                hallucination_violation_counter.add(1, attributes=build_log_extra(ctx, violation_type="hallucination", server_name=server_name, tool=tool_name))
                                                 logger.info("enkrypt_secure_call_tools.blocked_due_to_hallucination_violations", extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name, output_hallucination_response=output_hallucination_response))
                                                 results.append({
                                                     "status": "blocked_output_hallucination",
@@ -2057,7 +2062,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
                                     }
                                 })
                                 tool_call_success_counter.add(1, attributes=build_log_extra(ctx, server_name=server_name, tool=tool_name))
-                                pii_redactions_counter.add(1, attributes=build_log_extra(ctx, custom_id, server_name=server_name, tool=tool_name))
+                                
 
                             except Exception as tool_error:
                                 # tool_span.set_status(Status(StatusCode.ERROR))
@@ -2083,6 +2088,7 @@ async def enkrypt_secure_call_tools(ctx: Context, server_name: str, tool_calls: 
             successful_calls = len([r for r in results if r["status"] == "success"])
             blocked_calls = len([r for r in results if r["status"].startswith("blocked")])
             failed_calls = len([r for r in results if r["status"] == "error"])
+            
             tool_call_failure_counter.add(failed_calls, attributes=build_log_extra(ctx, server_name=server_name))
             tool_call_error_counter.add(failed_calls, attributes=build_log_extra(ctx, server_name=server_name))
             tool_call_blocked_counter.add(blocked_calls, attributes=build_log_extra(ctx, server_name=server_name))

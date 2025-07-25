@@ -269,7 +269,7 @@ if IS_TELEMETRY_ENABLED:
     # Step 4: Create a meter and a counter
     meter = metrics.get_meter("enkrypt.meter")
 
-    #############################
+    ################################################
     # Basic Counters
     list_servers_call_count = meter.create_counter(
         "enkrypt_list_all_servers_calls",
@@ -414,7 +414,7 @@ if IS_TELEMETRY_ENABLED:
     # pii_redactions_counter.add(1, attributes={"user": user_id, "project": project_id})
     #
     # Use these metrics throughout your codebase wherever relevant events occur.
-    #############################
+    ################################################
 
     # request_counter = meter.create_counter(
     #     name="enkrypt_request_count",
