@@ -110,6 +110,7 @@ except ImportError:
 
     # TODO: Fix error and use stdout
     print("Installing secure_mcp_gateway package...", file=sys.stderr)
+    print(f"src_dir: {src_dir}", file=sys.stderr)
     subprocess.check_call(
         [sys.executable, "-m", "pip", "install", src_dir],
         stdout=subprocess.DEVNULL,
@@ -2859,19 +2860,17 @@ mcp = FastMCP(
     # event_store=None,
     # TODO: Not sure if we need to specify tools as it discovers them automatically
     tools=GATEWAY_TOOLS,
-    settings={
-        "debug": True if FASTMCP_LOG_LEVEL == "DEBUG" else False,
-        "log_level": FASTMCP_LOG_LEVEL,
-        "host": "0.0.0.0",
-        "port": 8000,
-        "mount_path": "/",
-        # "sse_path": "/sse/",
-        # "message_path": "/messages/",
-        "streamable_http_path": "/mcp/",
-        "json_response": True,
-        "stateless_http": False,
-        "dependencies": __dependencies__,
-    }
+    debug=True if FASTMCP_LOG_LEVEL == "DEBUG" else False,
+    log_level=FASTMCP_LOG_LEVEL,
+    host="0.0.0.0",
+    port=8000,
+    mount_path="/",
+    # sse_path="/sse/",
+    # message_path="/messages/",
+    streamable_http_path="/mcp/",
+    json_response=True,
+    stateless_http=False,
+    dependencies=__dependencies__,
 )
 
 
@@ -2906,4 +2905,3 @@ if __name__ == "__main__":
         sys_print(f"Exception in mcp.run(): {e}", is_error=True)
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
-
