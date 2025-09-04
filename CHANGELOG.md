@@ -2,6 +2,13 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [2.0.2] - 2025-09-04
+
+### Updates in v2.0.2
+
+- Updated gateway according to latest `FastMCP` version
+- Locked dependencies to fix the version mismatch issues
+
 ## [2.0.1] - 2025-07-24
 
 ### New Features in v2.0.1
