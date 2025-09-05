@@ -478,6 +478,8 @@ else:
             return NoOpCounter()
         def create_histogram(self, name, **kwargs):
             return NoOpHistogram()
+        def create_up_down_counter(self, name, **kwargs):
+            return NoOpCounter()  # Using NoOpCounter for up_down_counter as well
     
     class NoOpCounter:
         def add(self, amount, attributes=None): pass
@@ -498,6 +500,22 @@ else:
     guardrail_api_request_counter = NoOpCounter()
     guardrail_api_request_duration = NoOpHistogram()
     guardrail_violation_counter = NoOpCounter()
+    
+    # --- Advanced Metrics (No-op versions) ---
+    tool_call_success_counter = NoOpCounter()
+    tool_call_failure_counter = NoOpCounter()
+    tool_call_error_counter = NoOpCounter()
+    tool_call_blocked_counter = NoOpCounter()
+    input_guardrail_violation_counter = NoOpCounter()
+    output_guardrail_violation_counter = NoOpCounter()
+    relevancy_violation_counter = NoOpCounter()
+    adherence_violation_counter = NoOpCounter()
+    hallucination_violation_counter = NoOpCounter()
+    auth_success_counter = NoOpCounter()
+    auth_failure_counter = NoOpCounter()
+    active_sessions_gauge = NoOpCounter()  # Using NoOpCounter for gauge
+    active_users_gauge = NoOpCounter()     # Using NoOpCounter for gauge
+    pii_redactions_counter = NoOpCounter()
 
 # ---------- TEST EXECUTION ----------
 if __name__ == "__main__":
