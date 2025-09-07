@@ -2,6 +2,10 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [2.0.3] - 2025-09-05
+
+- Fixed no-op issue when telemetry is disabled
+
 ## [2.0.2] - 2025-09-04
 
 ### Updates in v2.0.2
