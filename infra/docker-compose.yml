@@ -3,7 +3,7 @@ name: secure-mcp-gateway-infra
 services:
   # OpenTelemetry Collector
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.134.1
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./otel_collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml
@@ -17,7 +17,7 @@ services:
 
   # Jaeger for trace visualization
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.73.0
     ports:
       - "16686:16686"  # Web UI
       - "14250:14250"  # gRPC for collector
@@ -30,13 +30,16 @@ services:
 
   # Loki for log aggregation
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:main-cadc824
     ports:
       - "3100:3100"
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
 
   # Prometheus for metrics
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.5.0
     ports:
       - "9090:9090"
     volumes:
@@ -51,7 +54,7 @@ services:
 
   # Grafana for visualization
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:12.2.0-17535958692
     ports:
       - "3000:3000"
     environment:
@@ -63,3 +66,4 @@ services:
       - loki
       - otel-collector
       - prometheus
+ 
