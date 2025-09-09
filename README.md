@@ -14,7 +14,9 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 
 - [Docker Image](https://hub.docker.com/r/enkryptai/secure-mcp-gateway)
 
-- Also see [CLI-Commands-Reference.md](./CLI-Commands-Reference.md) for the list of commands and their usage
+- Also see: 
+  - [CLI-Commands-Reference.md](./CLI-Commands-Reference.md) for the list of commands and their usage
+  - [MCP Gateway Setup Notebook](./mcp_gateway_setup.ipynb) for a complete walkthrough of all the essential commands
 
 ## Table of Contents
 
