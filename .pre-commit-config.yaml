@@ -68,6 +68,7 @@ repos:
         description: An extremely fast Python code formatter.
         files: ^src/.*\.py$
 
+  # TODO
   # Security checks (using ruff with security rules) - disabled for now
   # - repo: https://github.com/astral-sh/ruff-pre-commit
   #   rev: v0.1.9
@@ -79,6 +80,7 @@ repos:
   #       files: ^src/.*\.py$
   #       exclude: ^src/secure_mcp_gateway/test_mcps/.*\.py$
 
+  # TODO
   # Type checking (optional - uncomment if you want to add type hints)
   # - repo: https://github.com/pre-commit/mirrors-mypy
   #   rev: v1.8.0
