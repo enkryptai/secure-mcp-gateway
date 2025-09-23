@@ -5,9 +5,16 @@ redis~=6.4.0
 requests~=2.32.5
 aiohttp~=3.12.15
 
+# FastAPI and REST API dependencies
+fastapi~=0.115.6
+uvicorn[standard]~=0.32.1
+pydantic~=2.11.0
+pydantic[email]~=2.11.0
+
 # Logging and utilities
 python-json-logger~=3.3.0
 python-dateutil~=2.9.0.post0
+psutil~=6.1.0
 
 # Security and encryption
 cryptography~=45.0.7

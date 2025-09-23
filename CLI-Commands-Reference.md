@@ -933,28 +933,28 @@ secure-mcp-gateway system health-check
 
 ### COMMON ISSUES & SOLUTIONS
 
-**Issue:** "Config file not found"  
-**Solution:** 
+**Issue:** "Config file not found"
+**Solution:**
 
 ```bash
 secure-mcp-gateway generate-config
 ```
 
-**Issue:** "Config 'name' not found"  
+**Issue:** "Config 'name' not found"
 **Solution:**
 
 ```bash
 secure-mcp-gateway config list  # to see available configs
 ```
 
-**Issue:** "User already exists"  
+**Issue:** "User already exists"
 **Solution:**
 
 ```bash
 secure-mcp-gateway user get --email "email@example.com"  # to check existing user
 ```
 
-**Issue:** "Cannot delete config - being used by projects"  
+**Issue:** "Cannot delete config - being used by projects"
 **Solution:**
 1.
 
@@ -974,7 +974,7 @@ secure-mcp-gateway project unassign-config --project-name "project-name"
 secure-mcp-gateway config remove --config-name "config-name"
 ```
 
-**Issue:** "Cannot delete user - has active API keys"  
+**Issue:** "Cannot delete user - has active API keys"
 **Solution:**
 
 1.
@@ -996,7 +996,7 @@ secure-mcp-gateway user delete --email "user@example.com"
 ```
 
 
-**Issue:** "Cannot delete project - has active API keys"  
+**Issue:** "Cannot delete project - has active API keys"
 **Solution:**
 
 1.
@@ -1018,8 +1018,8 @@ secure-mcp-gateway project remove --project-name "project-name"
 ```
 
 
-**Issue:** "System health check failing"  
-**Solution:** 
+**Issue:** "System health check failing"
+**Solution:**
 
 ```bash
 secure-mcp-gateway system health-check  # shows specific issues to fix

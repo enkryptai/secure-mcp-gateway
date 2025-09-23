@@ -24,8 +24,8 @@ NOTE: We can use `secure-mcp-gateway` instead of `python cli.py` in the commands
 ===============================================================================
 
 ✅ python cli.py generate-config
-✅ python cli.py install --client claude-desktop 
-✅ python cli.py install --client cursor 
+✅ python cli.py install --client claude-desktop
+✅ python cli.py install --client cursor
 
 ===============================================================================
 2. CONFIG COMMANDS TESTED (50+ tests)
@@ -621,7 +621,7 @@ ISSUE: "Server 'name' not found in config"
 SOLUTION: python cli.py config list-servers --config-name <config>  # to see available servers
 
 ISSUE: "Invalid JSON for guardrails policy"
-SOLUTION: 
+SOLUTION:
 - Use policy files instead of JSON strings
 - Validate JSON syntax in a JSON validator
 - Use proper escaping for your platform
@@ -648,7 +648,7 @@ SOLUTION: Check policy structure matches expected format:
 }
 
 ERROR: Server not found for guardrails update
-SOLUTION: 
+SOLUTION:
 1. Verify server exists: python cli.py config get-server --config-name <config> --server-name <server>
 2. Check server was created with proper name spelling
 
@@ -721,7 +721,7 @@ COMMAND SUMMARY BY CATEGORY
 
 SETUP: 4 commands
 CONFIG (BASIC): 20+ commands
-CONFIG (SERVERS): 15+ commands  
+CONFIG (SERVERS): 15+ commands
 CONFIG (GUARDRAILS): 12+ commands ⭐ NEW
 CONFIG (MANAGEMENT): 10+ commands
 PROJECT: 20+ commands
@@ -737,7 +737,7 @@ TOTAL: ~210+ COMMANDS TESTED
 
 ⭐ NEW FEATURES:
 - 12+ Guardrails update commands
-- 5+ Guardrails error scenarios  
+- 5+ Guardrails error scenarios
 - 8+ Guardrails workflow commands
 - 3+ Guardrails help commands
 - 4+ Policy file artifacts

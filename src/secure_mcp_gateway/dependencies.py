@@ -19,5 +19,5 @@ __dependencies__ = [
     "opentelemetry-exporter-prometheus>=0.55b1",
     "opentelemetry-instrumentation>=0.55b1",
     "opentelemetry-instrumentation-requests>=0.55b1",
-    "structlog>=25.4.0"
+    "structlog>=25.4.0",
 ]

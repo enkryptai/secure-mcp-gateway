@@ -4,29 +4,31 @@ Enkrypt Secure MCP Gateway Common Utilities Module
 This module provides common utilities for the Enkrypt Secure MCP Gateway
 """
 
-import os
-import sys
 import json
-import time
-import string
-import socket
+import os
 import secrets
-from urllib.parse import urlparse
+import socket
+import string
+import sys
+import time
 from functools import lru_cache
-from importlib.resources import files
-from secure_mcp_gateway.telemetry import logger
-from secure_mcp_gateway.version import __version__
+from urllib.parse import urlparse
 
 from secure_mcp_gateway.consts import (
     CONFIG_PATH,
+    DEFAULT_COMMON_CONFIG,
     DOCKER_CONFIG_PATH,
-    EXAMPLE_CONFIG_PATH,
     EXAMPLE_CONFIG_NAME,
-    DEFAULT_COMMON_CONFIG
+    EXAMPLE_CONFIG_PATH,
 )
+from secure_mcp_gateway.telemetry import logger
+from secure_mcp_gateway.version import __version__
 
 # TODO: Fix error and use stdout
-print(f"[utils] Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}", file=sys.stderr)
+print(
+    f"[utils] Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}",
+    file=sys.stderr,
+)
 
 IS_TELEMETRY_ENABLED = None
 
@@ -60,7 +62,7 @@ def does_file_exist(file_name_or_path, is_absolute_path=None):
     if is_absolute_path is None:
         # Try to determine if it's an absolute path
         is_absolute_path = os.path.isabs(file_name_or_path)
-    
+
     if is_absolute_path:
         return os.path.exists(file_name_or_path)
     else:
@@ -72,15 +74,15 @@ def is_docker():
     Check if the code is running inside a Docker container.
     """
     # Check for Docker environment markers
-    docker_env_indicators = ['/.dockerenv', '/run/.containerenv']
+    docker_env_indicators = ["/.dockerenv", "/run/.containerenv"]
     for indicator in docker_env_indicators:
         if os.path.exists(indicator):
             return True
 
     # Check cgroup for any containerization system entries
-    container_identifiers = ['docker', 'kubepods', 'containerd', 'lxc']
+    container_identifiers = ["docker", "kubepods", "containerd", "lxc"]
     try:
-        with open('/proc/1/cgroup', 'rt', encoding='utf-8') as f:
+        with open("/proc/1/cgroup", encoding="utf-8") as f:
             for line in f:
                 if any(keyword in line for keyword in container_identifiers):
                     return True
@@ -102,7 +104,7 @@ def get_common_config(print_debug=False):
     # So we are using print instead.
 
     # TODO: Fix error and use stdout
-    print(f"[utils] Getting Enkrypt Common Configuration", file=sys.stderr)
+    print("[utils] Getting Enkrypt Common Configuration", file=sys.stderr)
 
     if print_debug:
         print(f"[utils] config_path: {CONFIG_PATH}", file=sys.stderr)
@@ -114,17 +116,20 @@ def get_common_config(print_debug=False):
     picked_config_path = DOCKER_CONFIG_PATH if is_running_in_docker else CONFIG_PATH
     if does_file_exist(picked_config_path):
         print(f"[utils] Loading {picked_config_path} file...", file=sys.stderr)
-        with open(picked_config_path, 'r', encoding='utf-8') as f:
+        with open(picked_config_path, encoding="utf-8") as f:
             config = json.load(f)
     else:
         print("[utils] No config file found. Loading example config.", file=sys.stderr)
         if does_file_exist(EXAMPLE_CONFIG_PATH):
             if print_debug:
                 print(f"[utils] Loading {EXAMPLE_CONFIG_NAME} file...", file=sys.stderr)
-            with open(EXAMPLE_CONFIG_PATH, 'r', encoding='utf-8') as f:
+            with open(EXAMPLE_CONFIG_PATH, encoding="utf-8") as f:
                 config = json.load(f)
         else:
-            print("[utils] Example config file not found. Using default common config.", file=sys.stderr)
+            print(
+                "[utils] Example config file not found. Using default common config.",
+                file=sys.stderr,
+            )
 
     if print_debug and config:
         print(f"[utils] config: {config}", file=sys.stderr)
@@ -160,12 +165,15 @@ def is_telemetry_enabled():
             print(f"[utils] Invalid OTLP endpoint URL: {endpoint}", file=sys.stderr)
             IS_TELEMETRY_ENABLED = False
             return False
-        
+
         with socket.create_connection((hostname, port), timeout=1):
             IS_TELEMETRY_ENABLED = True
             return True
-    except (socket.error, AttributeError, TypeError, ValueError) as e:
-        print(f"[utils] Telemetry is enabled in config, but endpoint {endpoint} is not accessible. So, disabling telemetry. Error: {e}", file=sys.stderr)
+    except (OSError, AttributeError, TypeError, ValueError) as e:
+        print(
+            f"[utils] Telemetry is enabled in config, but endpoint {endpoint} is not accessible. So, disabling telemetry. Error: {e}",
+            file=sys.stderr,
+        )
         IS_TELEMETRY_ENABLED = False
         return False
 
@@ -173,14 +181,14 @@ def is_telemetry_enabled():
 def generate_custom_id():
     """
     Generate a unique identifier consisting of 34 random characters followed by current timestamp.
-    
+
     Returns:
         str: A string in format '{random_chars}_{timestamp_ms}' that can be used as a unique identifier
     """
     try:
         # Generate 34 random characters (letters + digits)
         charset = string.ascii_letters + string.digits
-        random_part = ''.join(secrets.choice(charset) for _ in range(34))
+        random_part = "".join(secrets.choice(charset) for _ in range(34))
 
         # Get current epoch time in milliseconds
         timestamp_ms = int(time.time() * 1000)
@@ -195,30 +203,30 @@ def generate_custom_id():
 def sys_print(*args, **kwargs):
     """
     Print a message to the console and optionally log it via telemetry.
-    
+
     Args:
         *args: Arguments to print
         **kwargs: Keyword arguments including:
             - is_error (bool): If True, print to stderr and log as error
             - is_debug (bool): If True, log as debug instead of info
     """
-    is_error=kwargs.pop('is_error', False)
-    is_debug=kwargs.pop('is_debug', False)
+    is_error = kwargs.pop("is_error", False)
+    is_debug = kwargs.pop("is_debug", False)
 
     # If is_error is True, print to stderr
     if is_error:
-        kwargs.setdefault('file', sys.stderr)
+        kwargs.setdefault("file", sys.stderr)
     else:
         # TODO: Fix error and use stdout
         # kwargs.setdefault('file', sys.stdout)
-        kwargs.setdefault('file', sys.stderr)
+        kwargs.setdefault("file", sys.stderr)
 
     # Using try/except to avoid any print errors blocking the flow for edge cases
     try:
         if args:
             if is_telemetry_enabled():
                 # Format args similar to how print() does it
-                sep = kwargs.get('sep', ' ')
+                sep = kwargs.get("sep", " ")
                 log_message = sep.join(str(arg) for arg in args)
                 if is_error:
                     logger.error(log_message)
@@ -232,4 +240,3 @@ def sys_print(*args, **kwargs):
         # Ignore any print errors
         print(f"[utils] Error printing using sys_print: {e}", file=sys.stderr)
         pass
-

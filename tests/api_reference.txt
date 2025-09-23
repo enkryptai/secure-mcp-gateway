@@ -1,0 +1,807 @@
+ENKRYPT SECURE MCP GATEWAY API - COMPREHENSIVE CURL REFERENCE
+===============================================================================
+
+TOTAL API ENDPOINTS: 50+ endpoints
+BASE URL: http://localhost:8001
+API KEY: 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw
+
+===============================================================================
+AUTHENTICATION
+===============================================================================
+
+All API endpoints (except /health) require Bearer token authentication:
+Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw
+
+===============================================================================
+1. HEALTH CHECK
+===============================================================================
+
+✅ GET /health
+curl -X GET "http://localhost:8001/health" \
+  -H "accept: application/json"
+
+===============================================================================
+2. CONFIG MANAGEMENT ENDPOINTS (20 endpoints)
+===============================================================================
+
+BASIC CONFIG OPERATIONS:
+------------------------
+✅ GET /api/v1/configs
+curl -X GET "http://localhost:8001/api/v1/configs" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ POST /api/v1/configs
+curl -X POST "http://localhost:8001/api/v1/configs" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"config_name": "test-config-1"}'
+
+✅ POST /api/v1/configs/copy
+curl -X POST "http://localhost:8001/api/v1/configs/copy" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"source_config": "test-config-1", "target_config": "test-config-copy"}'
+
+✅ PUT /api/v1/configs/{config_identifier}/rename
+curl -X PUT "http://localhost:8001/api/v1/configs/test-config-copy/rename" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"new_name": "test-config-renamed"}'
+
+✅ GET /api/v1/configs/{config_identifier}
+curl -X GET "http://localhost:8001/api/v1/configs/test-config-1" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ DELETE /api/v1/configs/{config_identifier}
+curl -X DELETE "http://localhost:8001/api/v1/configs/test-config-renamed" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+SERVER MANAGEMENT:
+------------------
+✅ GET /api/v1/configs/{config_identifier}/servers
+curl -X GET "http://localhost:8001/api/v1/configs/test-config-1/servers" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ GET /api/v1/configs/{config_identifier}/servers/{server_name}
+curl -X GET "http://localhost:8001/api/v1/configs/test-config-1/servers/echo_server" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ POST /api/v1/configs/{config_identifier}/servers
+curl -X POST "http://localhost:8001/api/v1/configs/test-config-1/servers" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{
+    "server_name": "test-server-1",
+    "server_command": "python",
+    "args": ["test.py"],
+    "description": "Test server"
+  }'
+
+✅ PUT /api/v1/configs/{config_identifier}/servers/{server_name}
+curl -X PUT "http://localhost:8001/api/v1/configs/test-config-1/servers/test-server-1" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{
+    "description": "Updated test server"
+  }'
+
+✅ DELETE /api/v1/configs/{config_identifier}/servers/{server_name}
+curl -X DELETE "http://localhost:8001/api/v1/configs/test-config-1/servers/test-server-1" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ DELETE /api/v1/configs/{config_identifier}/servers
+curl -X DELETE "http://localhost:8001/api/v1/configs/test-config-1/servers" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+🛡️ GUARDRAILS MANAGEMENT (NEW):
+--------------------------------
+✅ PUT /api/v1/configs/{config_identifier}/servers/{server_name}/input-guardrails
+curl -X PUT "http://localhost:8001/api/v1/configs/test-config-1/servers/echo_server/input-guardrails" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{
+    "policy": {
+      "enabled": true,
+      "policy_name": "Input Guardrail Policy",
+      "additional_config": {
+        "pii_redaction": true
+      },
+      "block": ["policy_violation", "injection_attack"]
+    }
+  }'
+
+✅ PUT /api/v1/configs/{config_identifier}/servers/{server_name}/output-guardrails
+curl -X PUT "http://localhost:8001/api/v1/configs/test-config-1/servers/echo_server/output-guardrails" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{
+    "policy": {
+      "enabled": true,
+      "policy_name": "Output Guardrail Policy",
+      "additional_config": {
+        "relevancy": true,
+        "hallucination": true
+      },
+      "block": ["policy_violation", "hallucination"]
+    }
+  }'
+
+✅ PUT /api/v1/configs/{config_identifier}/servers/{server_name}/guardrails
+curl -X PUT "http://localhost:8001/api/v1/configs/test-config-1/servers/echo_server/guardrails" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{
+    "input_policy": {
+      "enabled": true,
+      "policy_name": "Input Policy"
+    },
+    "output_policy": {
+      "enabled": true,
+      "policy_name": "Output Policy"
+    }
+  }'
+
+CONFIG UTILITIES:
+-----------------
+✅ GET /api/v1/configs/{config_identifier}/projects
+curl -X GET "http://localhost:8001/api/v1/configs/test-config-1/projects" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ POST /api/v1/configs/{config_identifier}/validate
+curl -X POST "http://localhost:8001/api/v1/configs/test-config-1/validate" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ POST /api/v1/configs/{config_identifier}/export
+curl -X POST "http://localhost:8001/api/v1/configs/test-config-1/export" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"output_file": "config-export.json"}'
+
+✅ POST /api/v1/configs/import
+curl -X POST "http://localhost:8001/api/v1/configs/import" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{
+    "input_file": "config-export.json",
+    "config_name": "imported-config"
+  }'
+
+✅ POST /api/v1/configs/search
+curl -X POST "http://localhost:8001/api/v1/configs/search" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"search_term": "test"}'
+
+===============================================================================
+3. PROJECT MANAGEMENT ENDPOINTS (13 endpoints)
+===============================================================================
+
+BASIC PROJECT OPERATIONS:
+-------------------------
+✅ GET /api/v1/projects
+curl -X GET "http://localhost:8001/api/v1/projects" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ POST /api/v1/projects
+curl -X POST "http://localhost:8001/api/v1/projects" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"project_name": "test-project-1"}'
+
+✅ GET /api/v1/projects/{project_identifier}
+curl -X GET "http://localhost:8001/api/v1/projects/test-project-1" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ DELETE /api/v1/projects/{project_identifier}
+curl -X DELETE "http://localhost:8001/api/v1/projects/test-project-1" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+CONFIG ASSIGNMENT:
+------------------
+✅ POST /api/v1/projects/{project_identifier}/assign-config
+curl -X POST "http://localhost:8001/api/v1/projects/test-project-1/assign-config" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"config_name": "test-config-1"}'
+
+✅ POST /api/v1/projects/{project_identifier}/unassign-config
+curl -X POST "http://localhost:8001/api/v1/projects/test-project-1/unassign-config" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ GET /api/v1/projects/{project_identifier}/config
+curl -X GET "http://localhost:8001/api/v1/projects/test-project-1/config" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+USER MANAGEMENT:
+----------------
+✅ GET /api/v1/projects/{project_identifier}/users
+curl -X GET "http://localhost:8001/api/v1/projects/test-project-1/users" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ POST /api/v1/projects/{project_identifier}/users
+curl -X POST "http://localhost:8001/api/v1/projects/test-project-1/users" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"email": "test-user-1@example.com"}'
+
+✅ DELETE /api/v1/projects/{project_identifier}/users/{user_identifier}
+curl -X DELETE "http://localhost:8001/api/v1/projects/test-project-1/users/test-user-1@example.com" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ DELETE /api/v1/projects/{project_identifier}/users
+curl -X DELETE "http://localhost:8001/api/v1/projects/test-project-1/users" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+PROJECT UTILITIES:
+------------------
+✅ POST /api/v1/projects/{project_identifier}/export
+curl -X POST "http://localhost:8001/api/v1/projects/test-project-1/export" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"output_file": "project-export.json"}'
+
+✅ POST /api/v1/projects/search
+curl -X POST "http://localhost:8001/api/v1/projects/search" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"search_term": "test"}'
+
+===============================================================================
+4. USER MANAGEMENT ENDPOINTS (15 endpoints)
+===============================================================================
+
+BASIC USER OPERATIONS:
+----------------------
+✅ GET /api/v1/users
+curl -X GET "http://localhost:8001/api/v1/users" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ POST /api/v1/users
+curl -X POST "http://localhost:8001/api/v1/users" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"email": "test-user-1@example.com"}'
+
+✅ GET /api/v1/users/{user_identifier}
+curl -X GET "http://localhost:8001/api/v1/users/test-user-1@example.com" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ PUT /api/v1/users/{user_identifier}
+curl -X PUT "http://localhost:8001/api/v1/users/test-user-1@example.com" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"new_email": "updated-user-1@example.com"}'
+
+✅ DELETE /api/v1/users/{user_identifier}
+curl -X DELETE "http://localhost:8001/api/v1/users/updated-user-1@example.com" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ GET /api/v1/users/{user_identifier}/projects
+curl -X GET "http://localhost:8001/api/v1/users/test-user-1@example.com/projects" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+API KEY MANAGEMENT:
+-------------------
+✅ POST /api/v1/users/{user_identifier}/api-keys
+curl -X POST "http://localhost:8001/api/v1/users/test-user-1@example.com/api-keys" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"project_name": "test-project-1"}'
+
+✅ GET /api/v1/users/{user_identifier}/api-keys
+curl -X GET "http://localhost:8001/api/v1/users/test-user-1@example.com/api-keys" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ DELETE /api/v1/users/{user_identifier}/api-keys
+curl -X DELETE "http://localhost:8001/api/v1/users/test-user-1@example.com/api-keys" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ GET /api/v1/api-keys
+curl -X GET "http://localhost:8001/api/v1/api-keys" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ POST /api/v1/api-keys/rotate
+curl -X POST "http://localhost:8001/api/v1/api-keys/rotate" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"api_key": "22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"}'
+
+✅ POST /api/v1/api-keys/{api_key}/disable
+curl -X POST "http://localhost:8001/api/v1/api-keys/22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw/disable" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ POST /api/v1/api-keys/{api_key}/enable
+curl -X POST "http://localhost:8001/api/v1/api-keys/22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw/enable" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ DELETE /api/v1/api-keys/{api_key}
+curl -X DELETE "http://localhost:8001/api/v1/api-keys/22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+USER UTILITIES:
+---------------
+✅ POST /api/v1/users/search
+curl -X POST "http://localhost:8001/api/v1/users/search" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"search_term": "test"}'
+
+===============================================================================
+5. SYSTEM MANAGEMENT ENDPOINTS (4 endpoints)
+===============================================================================
+
+SYSTEM OPERATIONS:
+------------------
+✅ GET /api/v1/system/health
+curl -X GET "http://localhost:8001/api/v1/system/health" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+✅ POST /api/v1/system/backup
+curl -X POST "http://localhost:8001/api/v1/system/backup" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"output_file": "system-backup.json"}'
+
+✅ POST /api/v1/system/restore
+curl -X POST "http://localhost:8001/api/v1/system/restore" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"input_file": "system-backup.json"}'
+
+✅ POST /api/v1/system/reset
+curl -X POST "http://localhost:8001/api/v1/system/reset" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"confirm": true}'
+
+===============================================================================
+6. ERROR SCENARIOS (Expected to fail)
+===============================================================================
+
+NON-EXISTENT RESOURCE ACCESS:
+------------------------------
+❌ GET non-existent config
+curl -X GET "http://localhost:8001/api/v1/configs/non-existent-config" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+❌ GET non-existent project
+curl -X GET "http://localhost:8001/api/v1/projects/non-existent-project" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+❌ GET non-existent user
+curl -X GET "http://localhost:8001/api/v1/users/non-existent@example.com" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+DUPLICATE CREATION:
+-------------------
+❌ POST duplicate config
+curl -X POST "http://localhost:8001/api/v1/configs" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"config_name": "test-config-1"}'
+
+❌ POST duplicate project
+curl -X POST "http://localhost:8001/api/v1/projects" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"project_name": "test-project-1"}'
+
+❌ POST duplicate user
+curl -X POST "http://localhost:8001/api/v1/users" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"email": "test-user-1@example.com"}'
+
+🛡️ GUARDRAILS ERROR SCENARIOS:
+-------------------------------
+❌ PUT guardrails on non-existent config
+curl -X PUT "http://localhost:8001/api/v1/configs/non-existent-config/servers/test-server/input-guardrails" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"policy": {"enabled": true}}'
+
+❌ PUT guardrails on non-existent server
+curl -X PUT "http://localhost:8001/api/v1/configs/test-config-1/servers/non-existent-server/input-guardrails" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"policy": {"enabled": true}}'
+
+AUTHENTICATION ERRORS:
+----------------------
+❌ Missing Authorization header
+curl -X GET "http://localhost:8001/api/v1/configs" \
+  -H "accept: application/json"
+
+❌ Invalid API key
+curl -X GET "http://localhost:8001/api/v1/configs" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer invalid-api-key"
+
+===============================================================================
+7. COMPLEX WORKFLOWS
+===============================================================================
+
+MIGRATION WORKFLOW:
+-------------------
+# 1. Backup system
+curl -X POST "http://localhost:8001/api/v1/system/backup" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"output_file": "pre-migration-backup.json"}'
+
+# 2. Copy config
+curl -X POST "http://localhost:8001/api/v1/configs/copy" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"source_config": "production-config", "target_config": "new-production-config"}'
+
+# 3. Validate config
+curl -X POST "http://localhost:8001/api/v1/configs/new-production-config/validate" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+# 4. Create project
+curl -X POST "http://localhost:8001/api/v1/projects" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"project_name": "New-Production"}'
+
+# 5. Assign config to project
+curl -X POST "http://localhost:8001/api/v1/projects/New-Production/assign-config" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"config_name": "new-production-config"}'
+
+# 6. Health check
+curl -X GET "http://localhost:8001/api/v1/system/health" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+TEAM MANAGEMENT WORKFLOW:
+-------------------------
+# 1. Create users
+curl -X POST "http://localhost:8001/api/v1/users" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"email": "team-lead@example.com"}'
+
+curl -X POST "http://localhost:8001/api/v1/users" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"email": "developer-1@example.com"}'
+
+# 2. Add users to project
+curl -X POST "http://localhost:8001/api/v1/projects/New-Production/users" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"email": "team-lead@example.com"}'
+
+# 3. Generate API keys
+curl -X POST "http://localhost:8001/api/v1/users/team-lead@example.com/api-keys" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"project_name": "New-Production"}'
+
+🛡️ GUARDRAILS MANAGEMENT WORKFLOW:
+-----------------------------------
+# 1. Add server with initial guardrails
+curl -X POST "http://localhost:8001/api/v1/configs/staging-config/servers" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{
+    "server_name": "security-test-server",
+    "server_command": "python",
+    "args": ["security.py"],
+    "description": "Security testing server"
+  }'
+
+# 2. Update input guardrails
+curl -X PUT "http://localhost:8001/api/v1/configs/staging-config/servers/security-test-server/input-guardrails" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{
+    "policy": {
+      "enabled": true,
+      "policy_name": "Enhanced Input Policy",
+      "additional_config": {
+        "pii_redaction": true,
+        "content_filtering": true
+      },
+      "block": ["policy_violation", "sensitive_data"]
+    }
+  }'
+
+# 3. Update output guardrails
+curl -X PUT "http://localhost:8001/api/v1/configs/staging-config/servers/security-test-server/output-guardrails" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{
+    "policy": {
+      "enabled": true,
+      "policy_name": "Enhanced Output Policy",
+      "additional_config": {
+        "relevancy": true,
+        "hallucination": true,
+        "adherence": true
+      },
+      "block": ["policy_violation", "hallucination"]
+    }
+  }'
+
+# 4. Update both guardrails together
+curl -X PUT "http://localhost:8001/api/v1/configs/staging-config/servers/security-test-server/guardrails" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{
+    "input_policy": {
+      "enabled": true,
+      "policy_name": "Updated Input Policy",
+      "additional_config": {
+        "pii_redaction": false,
+        "content_filtering": true
+      },
+      "block": ["policy_violation"]
+    },
+    "output_policy": {
+      "enabled": true,
+      "policy_name": "Updated Output Policy",
+      "additional_config": {
+        "relevancy": false,
+        "hallucination": true,
+        "adherence": true
+      },
+      "block": ["policy_violation", "hallucination"]
+    }
+  }'
+
+# 5. Verify server configuration
+curl -X GET "http://localhost:8001/api/v1/configs/staging-config/servers/security-test-server" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+# 6. Validate configuration
+curl -X POST "http://localhost:8001/api/v1/configs/staging-config/validate" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+
+# 7. Export configuration
+curl -X POST "http://localhost:8001/api/v1/configs/staging-config/export" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw" \
+  -d '{"output_file": "staging-config-with-guardrails.json"}'
+
+===============================================================================
+8. CLI SERVER MANAGEMENT COMMANDS
+===============================================================================
+
+✅ Start API Server
+python cli.py system start-api --host 0.0.0.0 --port 8001
+
+✅ Start API Server with Auto-reload (Development)
+python cli.py system start-api --host 0.0.0.0 --port 8001 --reload
+
+✅ Stop API Server (Graceful)
+python cli.py system stop-api --port 8001
+
+✅ Stop API Server (Force)
+python cli.py system stop-api --port 8001 --force
+
+===============================================================================
+9. SWAGGER UI ACCESS
+===============================================================================
+
+✅ Interactive API Documentation
+URL: http://localhost:8001/docs
+
+✅ Alternative Documentation
+URL: http://localhost:8001/redoc
+
+✅ OpenAPI Schema
+URL: http://localhost:8001/openapi.json
+
+===============================================================================
+10. COVERAGE SUMMARY
+===============================================================================
+
+API ENDPOINT CATEGORIES:
+------------------------
+- Health Check: 1 endpoint
+- Config Management: 20 endpoints (including 3 guardrails endpoints)
+- Project Management: 13 endpoints
+- User Management: 15 endpoints
+- System Management: 4 endpoints
+- Error Scenarios: 10+ scenarios
+- Complex Workflows: 3 workflows
+
+TOTAL API ENDPOINTS: 53+ endpoints
+SUCCESS CRITERIA: All endpoints return proper HTTP status codes
+ERROR HANDLING: All expected failures properly handled with exact CLI error messages
+GUARDRAILS COVERAGE: Complete coverage of all guardrails update operations
+
+🛡️ NEW GUARDRAILS FEATURES:
+============================
+- Input Guardrails Updates: ✅ API endpoint available
+- Output Guardrails Updates: ✅ API endpoint available
+- Combined Guardrails Updates: ✅ API endpoint available
+- Policy JSON Support: ✅ Full JSON policy support
+- Error Handling: ✅ Proper error responses
+- Workflow Integration: ✅ Complete workflow support
+
+🛠️ NEW SERVER MANAGEMENT:
+==========================
+- Start API Server: ✅ CLI command available
+- Stop API Server: ✅ CLI command available (graceful & force)
+- Auto-reload Support: ✅ Development mode available
+- Port Configuration: ✅ Custom port support
+
+===============================================================================
+11. TROUBLESHOOTING GUIDE
+===============================================================================
+
+COMMON ISSUES & SOLUTIONS:
+---------------------------
+
+ISSUE: "401 Unauthorized"
+SOLUTION: Ensure Authorization header is included with valid API key
+
+ISSUE: "404 Not Found"
+SOLUTION: Check if resource exists using GET endpoints first
+
+ISSUE: "400 Bad Request"
+SOLUTION: Check JSON format and required fields in request body
+
+ISSUE: "500 Internal Server Error"
+SOLUTION: Check server logs and ensure API server is running
+
+GUARDRAILS-SPECIFIC TROUBLESHOOTING:
+------------------------------------
+
+ISSUE: "Config not found for guardrails update"
+SOLUTION: Verify config exists: GET /api/v1/configs/{config_identifier}
+
+ISSUE: "Server not found for guardrails update"
+SOLUTION: Verify server exists: GET /api/v1/configs/{config_identifier}/servers/{server_name}
+
+ISSUE: "Invalid policy JSON"
+SOLUTION: Validate JSON structure matches expected format
+
+===============================================================================
+12. BEST PRACTICES
+===============================================================================
+
+API USAGE:
+----------
+1. Always include Authorization header with valid API key
+2. Use proper Content-Type headers for JSON requests
+3. Handle HTTP status codes appropriately
+4. Use GET endpoints to verify resources exist before operations
+5. Test in development environment before production
+
+GUARDRAILS MANAGEMENT:
+----------------------
+1. Use descriptive policy names for easier identification
+2. Test guardrails policies in staging before production
+3. Validate configurations after guardrails updates
+4. Regular backups before major guardrails changes
+5. Monitor system health after changes
+
+SERVER MANAGEMENT:
+------------------
+1. Use graceful stop before force stop
+2. Check if server is running before starting
+3. Use auto-reload for development
+4. Monitor server logs for issues
+5. Use proper port configuration
+
+WORKFLOW RECOMMENDATIONS:
+-------------------------
+1. Backup system before major changes
+2. Create and test configurations in staging
+3. Validate configurations after updates
+4. Export configurations for backup
+5. Monitor system health regularly
+
+===============================================================================
+13. COMMAND SUMMARY BY CATEGORY
+===============================================================================
+
+HEALTH: 1 endpoint
+CONFIG (BASIC): 8 endpoints
+CONFIG (SERVERS): 6 endpoints
+CONFIG (GUARDRAILS): 3 endpoints ⭐ NEW
+CONFIG (UTILITIES): 5 endpoints
+PROJECT (BASIC): 4 endpoints
+PROJECT (CONFIG): 3 endpoints
+PROJECT (USERS): 4 endpoints
+PROJECT (UTILITIES): 2 endpoints
+USER (BASIC): 5 endpoints
+USER (API KEYS): 8 endpoints
+USER (UTILITIES): 1 endpoint
+SYSTEM: 4 endpoints
+ERRORS: 10+ scenarios
+WORKFLOWS: 3 workflows (including guardrails workflow) ⭐ NEW
+
+TOTAL: 53+ API ENDPOINTS
+
+⭐ NEW FEATURES:
+- 3 Guardrails update endpoints
+- Complete guardrails management workflow
+- Enhanced error handling with exact CLI messages
+- Comprehensive API documentation
+
+===============================================================================
+END OF COMPREHENSIVE API CURL REFERENCE
+===============================================================================

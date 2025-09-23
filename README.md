@@ -14,8 +14,9 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 
 - [Docker Image](https://hub.docker.com/r/enkryptai/secure-mcp-gateway)
 
-- Also see: 
+- Also see:
   - [CLI-Commands-Reference.md](./CLI-Commands-Reference.md) for the list of commands and their usage
+  - [API-Reference.md](./API-Reference.md) for the list of API endpoints and their usage
   - [MCP Gateway Setup Notebook](./mcp_gateway_setup.ipynb) for a complete walkthrough of all the essential commands
 
 ## Table of Contents
@@ -1186,7 +1187,7 @@ python gateway.py
 ```
 
 - Or run in k8s using our docker image `enkryptai/secure-mcp-gateway:vx.x.x`
-- Example: `enkryptai/secure-mcp-gateway:v2.0.3`
+- Example: `enkryptai/secure-mcp-gateway:v2.0.4`
 - Use the latest version from Docker Hub: <https://hub.docker.com/r/enkryptai/secure-mcp-gateway/tags>
 - You can either mount the config file locally or download the json file from a remote place like `S3` using an `initContainer` and mount the volume
 - See `docs/secure-mcp-gateway-manifest-example.yaml` for the complete manifest file reference

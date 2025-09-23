@@ -51,10 +51,7 @@ Example Usage:
 import aiohttp
 import requests
 
-from secure_mcp_gateway.utils import (
-    get_common_config,
-    sys_print
-)
+from secure_mcp_gateway.utils import get_common_config, sys_print
 from secure_mcp_gateway.version import __version__
 
 sys_print(f"Initializing Enkrypt Secure MCP Gateway Guardrail Module v{__version__}")
@@ -79,12 +76,11 @@ RELEVANCY_URL = f"{ENKRYPT_BASE_URL}/guardrails/relevancy"
 ADHERENCE_URL = f"{ENKRYPT_BASE_URL}/guardrails/adherence"
 HALLUCINATION_URL = f"{ENKRYPT_BASE_URL}/guardrails/hallucination"
 
-DEFAULT_HEADERS = {
-    "Content-Type": "application/json"
-}
+DEFAULT_HEADERS = {"Content-Type": "application/json"}
 
 
 # --- PII Handling ---
+
 
 def anonymize_pii(text: str) -> tuple[str, str]:
     """
@@ -96,11 +92,7 @@ def anonymize_pii(text: str) -> tuple[str, str]:
     Returns:
         tuple[str, str]: A tuple of (anonymized_text, key)
     """
-    payload = {
-        "text": text,
-        "mode": "request",
-        "key": "null"
-    }
+    payload = {"text": text, "mode": "request", "key": "null"}
     headers = {**DEFAULT_HEADERS, "apikey": ENKRYPT_API_KEY}
 
     sys_print("Making request to PII redaction API")
@@ -129,11 +121,7 @@ def deanonymize_pii(text: str, key: str) -> str:
     Returns:
         str: The fully de-anonymized text.
     """
-    payload = {
-        "text": text,
-        "mode": "response",
-        "key": key
-    }
+    payload = {"text": text, "mode": "response", "key": key}
     headers = {**DEFAULT_HEADERS, "apikey": ENKRYPT_API_KEY}
 
     sys_print("Making request to PII redaction API for de-anonymization")
@@ -162,10 +150,7 @@ def check_relevancy(question: str, llm_answer: str) -> dict:
     Returns:
         dict: The response from the relevancy API (parsed JSON).
     """
-    payload = {
-        "question": question,
-        "llm_answer": llm_answer
-    }
+    payload = {"question": question, "llm_answer": llm_answer}
     headers = {**DEFAULT_HEADERS, "apikey": ENKRYPT_API_KEY}
 
     sys_print("Making request to relevancy API")
@@ -196,10 +181,7 @@ def check_adherence(context: str, llm_answer: str) -> dict:
     Returns:
         dict: The response from the adherence API (parsed JSON).
     """
-    payload = {
-        "context": context,
-        "llm_answer": llm_answer
-    }
+    payload = {"context": context, "llm_answer": llm_answer}
     headers = {**DEFAULT_HEADERS, "apikey": ENKRYPT_API_KEY}
 
     sys_print("Making request to adherence API")
@@ -219,7 +201,9 @@ def check_adherence(context: str, llm_answer: str) -> dict:
         return {"error": str(e)}
 
 
-def check_hallucination(request_text: str, response_text: str, context: str = "") -> dict:
+def check_hallucination(
+    request_text: str, response_text: str, context: str = ""
+) -> dict:
     """
     Checks the hallucination of an LLM answer to a request using EnkryptAI API.
 
@@ -234,7 +218,7 @@ def check_hallucination(request_text: str, response_text: str, context: str = ""
     payload = {
         "request_text": request_text,
         "response_text": response_text,
-        "context": context if context else ""
+        "context": context if context else "",
     }
     headers = {**DEFAULT_HEADERS, "apikey": ENKRYPT_API_KEY}
 
@@ -290,17 +274,19 @@ async def call_guardrail(text, blocks, policy_name):
     headers = {
         "X-Enkrypt-Policy": policy_name,
         "apikey": ENKRYPT_API_KEY,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
-    sys_print(f'making request to guardrail with policy: {policy_name}')
+    sys_print(f"making request to guardrail with policy: {policy_name}")
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f'payload: {payload}', is_debug=True)
-        sys_print(f'headers: {headers}', is_debug=True)
+        sys_print(f"payload: {payload}", is_debug=True)
+        sys_print(f"headers: {headers}", is_debug=True)
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(GUARDRAIL_URL, json=payload, headers=headers) as response:
+            async with session.post(
+                GUARDRAIL_URL, json=payload, headers=headers
+            ) as response:
                 resp_json = await response.json()
     except Exception as e:
         sys_print(f"Guardrail API error: {e}", is_error=True)
@@ -308,8 +294,8 @@ async def call_guardrail(text, blocks, policy_name):
 
     if IS_DEBUG_LOG_LEVEL:
         sys_print("Guardrail API response received", is_debug=True)
-        sys_print(f'resp_json: {resp_json}', is_debug=True)
-    
+        sys_print(f"resp_json: {resp_json}", is_debug=True)
+
     if resp_json.get("error"):
         sys_print(f"Guardrail API error: {resp_json.get('error')}", is_error=True)
         return False, [], resp_json
@@ -321,8 +307,8 @@ async def call_guardrail(text, blocks, policy_name):
         for policy_type in blocks:
             value = summary.get(policy_type)
             if IS_DEBUG_LOG_LEVEL:
-                sys_print(f'policy_type: {policy_type}', is_debug=True)
-                sys_print(f'value: {value}', is_debug=True)
+                sys_print(f"policy_type: {policy_type}", is_debug=True)
+                sys_print(f"value: {value}", is_debug=True)
             if value == 1:
                 violations_detected = True
                 violation_types.append(policy_type)
@@ -331,4 +317,3 @@ async def call_guardrail(text, blocks, policy_name):
                 violation_types.append(policy_type)
 
     return violations_detected, violation_types, resp_json
-

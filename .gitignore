@@ -35,3 +35,8 @@ docs/secure-mcp-gateway-manifest.yaml
 src/secure_mcp_gateway/venv
 
 .secure-mcp-gateway-venv
+
+tmp
+
+# Security checks
+bandit-report.json

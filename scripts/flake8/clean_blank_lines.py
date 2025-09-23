@@ -3,42 +3,37 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-if len(sys.argv) < 2:
-    print("Error: No file name provided")
-    print("Usage: python clean_blank_lines.py <filename>")
-    print("Provide a file name which is inside src directory")
-    sys.exit(1)
+# Handle command line arguments for pre-commit
+if len(sys.argv) > 1:
+    # Pre-commit passes filenames as arguments
+    files_to_process = sys.argv[1:]
+else:
+    # Default behavior - process all Python files in src
+    files_to_process = [str(f) for f in Path("src").rglob("*.py")]
 
-file_name = sys.argv[1]
-if not file_name:
-    print("No file name provided. Provide a file name which is inside src directory")
-    sys.exit(1)
+changed_files = 0
+for file_path in files_to_process:
+    file = Path(file_path)
+    if file.exists() and file.suffix == ".py":
+        lines = file.read_text(encoding="utf-8").splitlines()
 
-# Get the script's directory and resolve the src path
-script_dir = Path(__file__).parent
-src_dir = script_dir.parent.parent / "src" / "secure_mcp_gateway"
-file_path = src_dir / file_name
+        # Keep lines, replacing empty-with-whitespace with just newline
+        cleaned = [(line if line.strip() else "") for line in lines]
 
-if not file_path.exists():
-    print(f"File does not exist at: {file_path}")
-    sys.exit(1)
+        # Only write if there are changes
+        if cleaned != lines:
+            # Create backups directory if it doesn't exist
+            script_dir = Path(__file__).parent
+            backups_dir = script_dir / "backups"
+            backups_dir.mkdir(exist_ok=True)
 
-# Create backups directory if it doesn't exist
-backups_dir = script_dir / "backups"
-backups_dir.mkdir(exist_ok=True)
+            # Create backup with timestamp
+            backup_filename = f"{file.stem}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}{file.suffix}"
+            backup_path = backups_dir / backup_filename
+            shutil.copy2(file, backup_path)
 
-# Create backup with timestamp
-backup_filename = f"{file_path.stem}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}{file_path.suffix}"
-backup_path = backups_dir / backup_filename
-shutil.copy2(file_path, backup_path)
-print(f"Created backup at: {backup_path}")
+            file.write_text("\n".join(cleaned) + "\n", encoding="utf-8")
+            changed_files += 1
 
-print("Cleaning blank lines from: ", file_path)
-
-lines = file_path.read_text(encoding="utf-8").splitlines()
-
-# Keep lines, replacing empty-with-whitespace with just newline
-cleaned = [(line if line.strip() else "") for line in lines]
-
-file_path.write_text("\n".join(cleaned) + "\n", encoding="utf-8")
-print("Cleaned:", file_path)
+if changed_files > 0:
+    print(f"Cleaned blank lines from {changed_files} files")
