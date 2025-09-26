@@ -21,8 +21,22 @@ from secure_mcp_gateway.consts import (
     EXAMPLE_CONFIG_NAME,
     EXAMPLE_CONFIG_PATH,
 )
-from secure_mcp_gateway.telemetry import logger
+from secure_mcp_gateway.services.telemetry_service import logger
 from secure_mcp_gateway.version import __version__
+
+
+# Get debug log level (lazy-loaded to avoid circular imports)
+def _get_debug_log_level():
+    return get_common_config().get("enkrypt_log_level", "INFO").lower() == "debug"
+
+
+# Use a property-like approach to avoid circular imports
+class _DebugLevel:
+    def __bool__(self):
+        return _get_debug_log_level()
+
+
+IS_DEBUG_LOG_LEVEL = _DebugLevel()
 
 # TODO: Fix error and use stdout
 print(
@@ -240,3 +254,164 @@ def sys_print(*args, **kwargs):
         # Ignore any print errors
         print(f"[utils] Error printing using sys_print: {e}", file=sys.stderr)
         pass
+
+
+def mask_key(key):
+    """
+    Masks the last 4 characters of the key.
+    """
+    if not key or len(key) < 4:
+        return "****"
+    return "****" + key[-4:]
+
+
+def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs):
+    from secure_mcp_gateway.services.auth_service import auth_service
+
+    credentials = auth_service.get_gateway_credentials(ctx)
+    gateway_key = credentials.get("gateway_key")
+    project_id = credentials.get("project_id", "not_provided")
+    user_id = credentials.get("user_id", "not_provided")
+    # if project_id == "not_provided" or user_id == "not_provided" or mcp_config_id == "not_provided":
+    #     sys_print(f"[build_log_extra] Project ID, User ID or MCP Config ID is not provided", is_error=True)
+    #     return {}
+
+    gateway_config = auth_service.get_local_mcp_config(gateway_key, project_id, user_id)
+    project_name = gateway_config.get("project_name", "not_provided")
+    email = gateway_config.get("email", "not_provided")
+    mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
+    # Filter out None values from kwargs
+    filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
+
+    return {
+        # "request_id": getattr(ctx, 'request_id', None),
+        "custom_id": custom_id or "",
+        "server_name": server_name or "",
+        "project_id": project_id or "",
+        "project_name": project_name or "",
+        "user_id": user_id or "",
+        "email": email or "",
+        "mcp_config_id": mcp_config_id or "",
+        "error": error or "",
+        **filtered_kwargs,
+    }
+
+
+def mask_server_config_sensitive_data(server_info):
+    """
+    Masks sensitive data in server configuration before returning to client.
+
+    Args:
+        server_info (dict): Server configuration dictionary
+
+    Returns:
+        dict: Server configuration with sensitive data masked
+    """
+    if not server_info:
+        return server_info
+
+    # Create a deep copy to avoid modifying the original
+    import copy
+
+    masked_server_info = copy.deepcopy(server_info)
+
+    # Mask environment variables in config
+    if "config" in masked_server_info and "env" in masked_server_info["config"]:
+        masked_server_info["config"]["env"] = mask_sensitive_env_vars(
+            masked_server_info["config"]["env"]
+        )
+
+    return masked_server_info
+
+
+def mask_sensitive_env_vars(env_vars):
+    """
+    Masks sensitive environment variables that may contain tokens, keys, or secrets.
+
+    Args:
+        env_vars (dict): Dictionary of environment variables
+
+    Returns:
+        dict: Environment variables with sensitive values masked
+    """
+    if not env_vars:
+        return env_vars
+
+    sensitive_keys = [
+        "token",
+        "key",
+        "secret",
+        "password",
+        "pass",
+        "auth",
+        "credential",
+        "api_key",
+        "access_token",
+        "refresh_token",
+        "bearer",
+        "jwt",
+        "github_token",
+        "github_key",
+        "gitlab_token",
+        "bitbucket_token",
+        "aws_key",
+        "aws_secret",
+        "azure_key",
+        "gcp_key",
+        "database_url",
+        "connection_string",
+        "uri",
+        "url",
+    ]
+
+    masked_env = {}
+    for key, value in env_vars.items():
+        key_lower = key.lower()
+        is_sensitive = any(
+            sensitive_key in key_lower for sensitive_key in sensitive_keys
+        )
+
+        if is_sensitive and value:
+            # Mask the value, showing only first 4 and last 4 characters
+            if len(value) <= 8:
+                masked_env[key] = "****"
+            else:
+                masked_env[key] = value[:4] + "****" + value[-4:]
+        else:
+            masked_env[key] = value
+
+    return masked_env
+
+
+def get_server_info_by_name(gateway_config, server_name):
+    """
+    Retrieves server configuration by server name from gateway config.
+
+    Args:
+        gateway_config (dict): Gateway/user's configuration containing server details
+        server_name (str): Name of the server to look up
+
+    Returns:
+        dict: Server configuration if found, None otherwise
+    """
+    if IS_DEBUG_LOG_LEVEL:
+        sys_print(
+            f"[get_server_info_by_name] Getting server info for {server_name}",
+            is_debug=True,
+        )
+    mcp_config = gateway_config.get("mcp_config", [])
+    if IS_DEBUG_LOG_LEVEL:
+        # Mask sensitive data in debug logs
+        masked_mcp_config = []
+        for server in mcp_config:
+            masked_server = server.copy()
+            if "config" in masked_server and "env" in masked_server["config"]:
+                masked_server["config"] = masked_server["config"].copy()
+                masked_server["config"]["env"] = mask_sensitive_env_vars(
+                    masked_server["config"]["env"]
+                )
+            masked_mcp_config.append(masked_server)
+        sys_print(
+            f"[get_server_info_by_name] mcp_config: {masked_mcp_config}", is_debug=True
+        )
+    return next((s for s in mcp_config if s.get("server_name") == server_name), None)
