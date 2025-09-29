@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from opentelemetry import trace
+
 from secure_mcp_gateway.client import forward_tool_call
 from secure_mcp_gateway.services.auth_service import auth_service
 from secure_mcp_gateway.services.cache_service import cache_service
@@ -13,6 +15,7 @@ from secure_mcp_gateway.services.telemetry_service import (
     servers_discovered_count,
     tool_call_counter,
     tool_call_duration,
+    tracer,
 )
 from secure_mcp_gateway.utils import (
     build_log_extra,
@@ -38,7 +41,7 @@ class DiscoveryService:
         self,
         ctx,
         server_name: str | None = None,
-        tracer=None,
+        tracer_obj=None,
         logger=None,
         IS_DEBUG_LOG_LEVEL: bool = False,
     ) -> dict[str, Any]:
@@ -48,7 +51,7 @@ class DiscoveryService:
         Args:
             ctx: The MCP context
             server_name: Name of the server to discover tools for (None for all servers)
-            tracer: OpenTelemetry tracer
+            tracer_obj: OpenTelemetry tracer
             logger: Logger instance
             IS_DEBUG_LOG_LEVEL: Debug logging flag
 
@@ -66,7 +69,9 @@ class DiscoveryService:
             },
         )
 
-        with tracer.start_as_current_span("enkrypt_discover_all_tools") as main_span:
+        with tracer_obj.start_as_current_span(
+            "enkrypt_discover_all_tools"
+        ) as main_span:
             main_span.set_attribute("server_name", server_name or "all")
             main_span.set_attribute("custom_id", custom_id)
             main_span.set_attribute("job", "enkrypt")
@@ -116,7 +121,7 @@ class DiscoveryService:
                     ctx,
                     session_key,
                     enkrypt_gateway_key,
-                    tracer,
+                    tracer_obj,
                     custom_id,
                     logger,
                     server_name,
@@ -129,7 +134,7 @@ class DiscoveryService:
                     return await self._discover_all_servers(
                         ctx,
                         session_key,
-                        tracer,
+                        tracer_obj,
                         custom_id,
                         logger,
                         IS_DEBUG_LOG_LEVEL,
@@ -145,7 +150,7 @@ class DiscoveryService:
                     ctx,
                     server_name,
                     session_key,
-                    tracer,
+                    tracer_obj,
                     custom_id,
                     logger,
                     IS_DEBUG_LOG_LEVEL,
@@ -175,14 +180,14 @@ class DiscoveryService:
         ctx,
         session_key,
         enkrypt_gateway_key,
-        tracer,
+        tracer_obj,
         custom_id,
         logger,
         server_name,
     ):
         """Check authentication and return error if needed."""
         if not self.auth_service.is_session_authenticated(session_key):
-            with tracer.start_as_current_span("check_auth") as auth_span:
+            with tracer_obj.start_as_current_span("check_auth") as auth_span:
                 auth_span.set_attribute("custom_id", custom_id)
                 auth_span.set_attribute(
                     "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
@@ -212,7 +217,7 @@ class DiscoveryService:
         self,
         ctx,
         session_key,
-        tracer,
+        tracer_obj,
         custom_id,
         logger,
         IS_DEBUG_LOG_LEVEL,
@@ -223,7 +228,7 @@ class DiscoveryService:
         enkrypt_email,
     ):
         """Discover tools for all servers."""
-        with tracer.start_as_current_span("discover_all_servers") as all_span:
+        with tracer_obj.start_as_current_span("discover_all_servers") as all_span:
             all_span.set_attribute("custom_id", custom_id)
             all_span.set_attribute("discovery_started", True)
             all_span.set_attribute("project_id", enkrypt_project_id)
@@ -256,14 +261,14 @@ class DiscoveryService:
             discovery_success_servers = []
 
             for server_name in servers_needing_discovery:
-                with tracer.start_as_current_span(
+                with tracer_obj.start_as_current_span(
                     f"discover_server_{server_name}"
                 ) as server_span:
                     server_span.set_attribute("server_name", server_name)
                     server_span.set_attribute("custom_id", custom_id)
                     start_time = time.time()
                     discover_server_result = await self.discover_tools(
-                        ctx, server_name, tracer, logger, IS_DEBUG_LOG_LEVEL
+                        ctx, server_name, tracer_obj, logger, IS_DEBUG_LOG_LEVEL
                     )
                     end_time = time.time()
                     server_span.set_attribute("duration", end_time - start_time)
@@ -296,7 +301,7 @@ class DiscoveryService:
                 "discovery_failed_count", len(discovery_failed_servers)
             )
 
-            main_span = tracer.get_current_span()
+            main_span = trace.get_current_span()
             main_span.set_attribute("success", True)
             return {
                 "status": status,
@@ -311,14 +316,14 @@ class DiscoveryService:
         ctx,
         server_name,
         session_key,
-        tracer,
+        tracer_obj,
         custom_id,
         logger,
         IS_DEBUG_LOG_LEVEL,
     ):
         """Discover tools for a single server."""
         # Server info check
-        with tracer.start_as_current_span("get_server_info") as info_span:
+        with tracer_obj.start_as_current_span("get_server_info") as info_span:
             info_span.set_attribute("server_name", server_name)
 
             server_info = get_server_info_by_name(
@@ -359,7 +364,7 @@ class DiscoveryService:
                     "enkrypt_discover_all_tools.tools_already_defined_in_config",
                     extra=build_log_extra(ctx, custom_id, server_name),
                 )
-                main_span = tracer.get_current_span()
+                main_span = trace.get_current_span()
                 main_span.set_attribute("success", True)
                 return {
                     "status": "success",
@@ -369,11 +374,11 @@ class DiscoveryService:
                 }
 
         # Tool discovery
-        with tracer.start_as_current_span("discover_tools") as discover_span:
+        with tracer_obj.start_as_current_span("discover_tools") as discover_span:
             discover_span.set_attribute("server_name", server_name)
 
             # Cache check
-            with tracer.start_as_current_span("check_tools_cache") as cache_span:
+            with tracer_obj.start_as_current_span("check_tools_cache") as cache_span:
                 cached_tools = self.cache_service.get_cached_tools(id, server_name)
                 cache_span.set_attribute("cache_hit", cached_tools is not None)
 
@@ -386,7 +391,7 @@ class DiscoveryService:
                         "enkrypt_discover_all_tools.tools_already_cached",
                         extra=build_log_extra(ctx, custom_id, server_name),
                     )
-                    main_span = tracer.get_current_span()
+                    main_span = trace.get_current_span()
                     main_span.set_attribute("success", True)
                     return {
                         "status": "success",
@@ -405,7 +410,7 @@ class DiscoveryService:
                     )
 
             # Forward tool call
-            with tracer.start_as_current_span("forward_tool_call") as tool_span:
+            with tracer_obj.start_as_current_span("forward_tool_call") as tool_span:
                 tool_call_counter.add(1, attributes=build_log_extra(ctx, custom_id))
                 start_time = time.time()
                 result = await forward_tool_call(
@@ -439,7 +444,7 @@ class DiscoveryService:
                         )
 
                     # Cache write
-                    with tracer.start_as_current_span(
+                    with tracer_obj.start_as_current_span(
                         "cache_tools"
                     ) as cache_write_span:
                         cache_write_span.set_attribute("server_name", server_name)
@@ -454,7 +459,7 @@ class DiscoveryService:
                         extra=build_log_extra(ctx, custom_id, server_name),
                     )
 
-                main_span = tracer.get_current_span()
+                main_span = trace.get_current_span()
                 main_span.set_attribute("success", True)
                 return {
                     "status": "success",

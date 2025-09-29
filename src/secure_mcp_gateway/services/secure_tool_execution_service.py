@@ -632,6 +632,10 @@ class SecureToolExecutionService:
                         tool_span,
                         logger,
                     )
+                    # Extract input guardrail response from result
+                    input_guardrail_response = result.get(
+                        "input_guardrail_response", {}
+                    )
                 else:
                     result = await self._execute_without_input_guardrails(
                         ctx,
@@ -664,7 +668,22 @@ class SecureToolExecutionService:
                         logger,
                     )
                     if output_result:
-                        return output_result
+                        # Check if it's a blocking result
+                        if output_result.get("status") in ["blocked_output", "error"]:
+                            return output_result
+                        # Extract guardrail responses
+                        output_guardrail_response = output_result.get(
+                            "output_guardrail_response", {}
+                        )
+                        output_relevancy_response = output_result.get(
+                            "output_relevancy_response", {}
+                        )
+                        output_adherence_response = output_result.get(
+                            "output_adherence_response", {}
+                        )
+                        output_hallucination_response = output_result.get(
+                            "output_hallucination_response", {}
+                        )
 
                 # Build successful result
                 return self._build_successful_result(
@@ -861,7 +880,11 @@ class SecureToolExecutionService:
 
             # Process result
             text_result = self._extract_text_result(result)
-            return {"text_result": text_result, "result": result}
+            return {
+                "text_result": text_result,
+                "result": result,
+                "input_guardrail_response": input_guardrail_response,
+            }
 
     async def _execute_without_input_guardrails(
         self,
@@ -993,6 +1016,34 @@ class SecureToolExecutionService:
             extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name),
         )
 
+        # Initialize guardrail responses
+        output_guardrail_response = {}
+        output_relevancy_response = {}
+        output_adherence_response = {}
+        output_hallucination_response = {}
+
+        # Debug: Check if output policy is enabled
+        sys_print(
+            f"[DEBUG] output_policy_enabled: {guardrails_config.get('output_policy_enabled', 'NOT_SET')}",
+            is_debug=True,
+        )
+        sys_print(
+            f"[DEBUG] guardrails_config keys: {list(guardrails_config.keys())}",
+            is_debug=True,
+        )
+        sys_print(
+            f"[DEBUG] relevancy: {guardrails_config.get('relevancy', 'NOT_SET')}",
+            is_debug=True,
+        )
+        sys_print(
+            f"[DEBUG] adherence: {guardrails_config.get('adherence', 'NOT_SET')}",
+            is_debug=True,
+        )
+        sys_print(
+            f"[DEBUG] hallucination: {guardrails_config.get('hallucination', 'NOT_SET')}",
+            is_debug=True,
+        )
+
         if guardrails_config["output_policy_enabled"]:
             # Output guardrail check
             (
@@ -1039,9 +1090,28 @@ class SecureToolExecutionService:
                 )
 
         # Additional checks (relevancy, adherence, hallucination)
-        # ... (implementation would continue with relevancy, adherence, hallucination checks)
+        if guardrails_config["relevancy"]:
+            output_relevancy_response = self.guardrail_service.check_relevancy(
+                input_json_string, text_result
+            )
 
-        return None  # No blocking occurred
+        if guardrails_config["adherence"]:
+            output_adherence_response = self.guardrail_service.check_adherence(
+                input_json_string, text_result
+            )
+
+        if guardrails_config["hallucination"]:
+            output_hallucination_response = self.guardrail_service.check_hallucination(
+                input_json_string, text_result, ""
+            )
+
+        # Return guardrail responses even when no violations
+        return {
+            "output_guardrail_response": output_guardrail_response,
+            "output_relevancy_response": output_relevancy_response,
+            "output_adherence_response": output_adherence_response,
+            "output_hallucination_response": output_hallucination_response,
+        }
 
     async def _process_async_output_guardrails(
         self,
@@ -1067,6 +1137,12 @@ class SecureToolExecutionService:
         )
 
         tasks = {}
+
+        # Initialize guardrail responses
+        output_guardrail_response = {}
+        output_relevancy_response = {}
+        output_adherence_response = {}
+        output_hallucination_response = {}
 
         # Start all guardrail tasks concurrently
         if guardrails_config["output_policy_enabled"]:
@@ -1102,6 +1178,7 @@ class SecureToolExecutionService:
                     self.guardrail_service.check_hallucination,
                     input_json_string,
                     text_result,
+                    "",
                 )
             )
 
@@ -1132,10 +1209,23 @@ class SecureToolExecutionService:
                     {},
                 )
 
-        # Process other checks...
-        # ... (implementation would continue with relevancy, adherence, hallucination checks)
+        # Process other checks
+        if "relevancy" in tasks:
+            output_relevancy_response = await tasks["relevancy"]
 
-        return None  # No blocking occurred
+        if "adherence" in tasks:
+            output_adherence_response = await tasks["adherence"]
+
+        if "hallucination" in tasks:
+            output_hallucination_response = await tasks["hallucination"]
+
+        # Return guardrail responses even when no violations
+        return {
+            "output_guardrail_response": output_guardrail_response,
+            "output_relevancy_response": output_relevancy_response,
+            "output_adherence_response": output_adherence_response,
+            "output_hallucination_response": output_hallucination_response,
+        }
 
     def _build_blocked_result(
         self,

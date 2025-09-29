@@ -358,7 +358,7 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
     return await service.discover_tools(
         ctx=ctx,
         server_name=server_name,
-        tracer=tracer,
+        tracer_obj=tracer,
         logger=logger,
         IS_DEBUG_LOG_LEVEL=IS_DEBUG_LOG_LEVEL,
     )
