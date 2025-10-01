@@ -4,83 +4,75 @@ Enkrypt Secure MCP Gateway Services Module
 This module contains all the service classes and utilities for the Enkrypt Secure MCP Gateway.
 """
 
-# Import only the logger from telemetry_service to avoid circular imports
-from secure_mcp_gateway.services.telemetry_service import logger
+# Import logger directly to avoid circular imports
+from secure_mcp_gateway.services.telemetry import logger
 
 
 # Use lazy imports for other services to avoid circular dependencies
 def get_auth_service():
-    from secure_mcp_gateway.services.auth_service import auth_service
+    from secure_mcp_gateway.services.auth import auth_service
 
     return auth_service
 
 
 def get_cache_service():
-    from secure_mcp_gateway.services.cache_service import cache_service
+    from secure_mcp_gateway.services.cache import cache_service
 
     return cache_service
 
 
 def get_cache_management_service():
-    from secure_mcp_gateway.services.cache_management_service import (
-        cache_management_service,
-    )
+    from secure_mcp_gateway.services.cache import get_cache_management_service as _get
 
-    return cache_management_service
+    return _get()
 
 
 def get_cache_status_service():
-    from secure_mcp_gateway.services.cache_status_service import cache_status_service
+    from secure_mcp_gateway.services.cache import get_cache_status_service as _get
 
-    return cache_status_service
+    return _get()
 
 
 def get_discovery_service():
-    from secure_mcp_gateway.services.discovery_service import discovery_service
+    from secure_mcp_gateway.services.discovery import discovery_service
 
     return discovery_service
 
 
 def get_guardrail_service():
-    from secure_mcp_gateway.services.guardrail_service import guardrail_service
+    from secure_mcp_gateway.services.guardrails import guardrail_service
 
     return guardrail_service
 
 
 def get_secure_tool_execution_service():
-    from secure_mcp_gateway.services.secure_tool_execution_service import (
-        secure_tool_execution_service,
-    )
+    from secure_mcp_gateway.services.execution import SecureToolExecutionService
 
-    return secure_tool_execution_service
+    return SecureToolExecutionService()
 
 
 def get_server_info_service():
-    from secure_mcp_gateway.services.server_info_service import server_info_service
+    from secure_mcp_gateway.services.server import ServerInfoService
 
-    return server_info_service
+    return ServerInfoService()
 
 
 def get_server_listing_service():
-    from secure_mcp_gateway.services.server_listing_service import (
-        server_listing_service,
-    )
+    from secure_mcp_gateway.services.server import ServerListingService
 
-    return server_listing_service
+    return ServerListingService()
 
 
 def get_telemetry_service():
-    from secure_mcp_gateway.services.telemetry_service import telemetry_service
+    from secure_mcp_gateway.services.telemetry import logger, tracer
 
-    return telemetry_service
+    return {"logger": logger, "tracer": tracer}
 
 
 def get_tool_execution_service():
-    from secure_mcp_gateway.services.tool_execution_service import (
-        tool_execution_service,
-    )
+    from secure_mcp_gateway.services.execution import ToolExecutionService
 
-    return tool_execution_service
+    return ToolExecutionService()
 
 
 __all__ = [

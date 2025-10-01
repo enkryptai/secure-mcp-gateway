@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from secure_mcp_gateway.services.auth_service import auth_service
-from secure_mcp_gateway.services.cache_service import cache_service
-from secure_mcp_gateway.services.telemetry_service import (
+from secure_mcp_gateway.services.auth.auth_service import auth_service
+from secure_mcp_gateway.services.cache.cache_service import cache_service
+from secure_mcp_gateway.services.telemetry.telemetry_service import (
     list_servers_call_count,
     servers_discovered_count,
 )

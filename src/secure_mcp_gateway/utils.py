@@ -21,7 +21,7 @@ from secure_mcp_gateway.consts import (
     EXAMPLE_CONFIG_NAME,
     EXAMPLE_CONFIG_PATH,
 )
-from secure_mcp_gateway.services.telemetry_service import logger
+from secure_mcp_gateway.services.telemetry.telemetry_service import logger
 from secure_mcp_gateway.version import __version__
 
 
@@ -266,7 +266,7 @@ def mask_key(key):
 
 
 def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs):
-    from secure_mcp_gateway.services.auth_service import auth_service
+    from secure_mcp_gateway.services.auth.auth_service import auth_service
 
     credentials = auth_service.get_gateway_credentials(ctx)
     gateway_key = credentials.get("gateway_key")

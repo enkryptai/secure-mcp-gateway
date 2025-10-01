@@ -6,9 +6,9 @@ from typing import Any
 from opentelemetry import trace
 
 from secure_mcp_gateway.client import forward_tool_call
-from secure_mcp_gateway.services.auth_service import auth_service
-from secure_mcp_gateway.services.cache_service import cache_service
-from secure_mcp_gateway.services.telemetry_service import (
+from secure_mcp_gateway.services.auth.auth_service import auth_service
+from secure_mcp_gateway.services.cache.cache_service import cache_service
+from secure_mcp_gateway.services.telemetry.telemetry_service import (
     cache_hit_counter,
     cache_miss_counter,
     list_servers_call_count,

@@ -49,7 +49,7 @@ secure-mcp-gateway = "secure_mcp_gateway.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["secure_mcp_gateway", "secure_mcp_gateway.services", "secure_mcp_gateway.test_mcps"]
+packages = {find = {where = ["src"]}}
 package-data = { "secure_mcp_gateway" = ["example_*.json"] }
 
 # Ruff configuration
@@ -77,6 +77,7 @@ exclude = [
     "dist",
     "node_modules",
     ".secure-mcp-gateway-venv",
+    ".venv",
     "venv",
     "docs",
     "tests",

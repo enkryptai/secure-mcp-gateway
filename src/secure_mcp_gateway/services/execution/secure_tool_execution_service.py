@@ -5,12 +5,17 @@ import sys
 import traceback
 from typing import Any
 
-from secure_mcp_gateway.services.auth_service import auth_service
-from secure_mcp_gateway.services.cache_service import cache_service
-from secure_mcp_gateway.services.execution_utils import extract_input_text_from_args
-from secure_mcp_gateway.services.guardrail_service import guardrail_service
-from secure_mcp_gateway.services.telemetry_service import tracer
-from secure_mcp_gateway.services.tool_execution_service import ToolExecutionService
+from secure_mcp_gateway.plugins.auth import AuthCredentials, get_auth_config_manager
+from secure_mcp_gateway.services.auth.auth_service import auth_service
+from secure_mcp_gateway.services.cache.cache_service import cache_service
+from secure_mcp_gateway.services.execution.execution_utils import (
+    extract_input_text_from_args,
+)
+from secure_mcp_gateway.services.execution.tool_execution_service import (
+    ToolExecutionService,
+)
+from secure_mcp_gateway.services.guardrails.guardrail_service import guardrail_service
+from secure_mcp_gateway.services.telemetry.telemetry_service import tracer
 from secure_mcp_gateway.utils import (
     build_log_extra,
     generate_custom_id,
@@ -194,59 +199,72 @@ class SecureToolExecutionService:
         with tracer.start_as_current_span(
             "secure_tool_execution.authenticate"
         ) as auth_span:
-            credentials = auth_service.get_gateway_credentials(ctx)
-            enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
-            enkrypt_project_id = credentials.get("project_id", "not_provided")
-            enkrypt_user_id = credentials.get("user_id", "not_provided")
+            # Gather credentials
+            creds = auth_service.get_gateway_credentials(ctx)
 
-            gateway_config = auth_service.get_local_mcp_config(
-                enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
-            )
+            # Decide whether to use auth plugins
+            common_config = get_common_config()
+            auth_plugins = common_config.get("auth_plugins", {})
+            use_plugins = bool(auth_plugins.get("enabled", False))
 
-            if not gateway_config:
-                sys_print(
-                    f"[secure_call_tools] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}",
-                    is_error=True,
+            if use_plugins:
+                # Authenticate via plugin manager
+                manager = get_auth_config_manager()
+                auth_result = await manager.authenticate(
+                    ctx,
+                    credentials=AuthCredentials(
+                        gateway_key=creds.get("gateway_key"),
+                        project_id=creds.get("project_id"),
+                        user_id=creds.get("user_id"),
+                    ),
+                    provider_name=auth_plugins.get("default_provider"),
                 )
-                return {
-                    "status": "error",
-                    "error": "No MCP config found. Please check your credentials.",
-                }
+                if not auth_result.is_success:
+                    return {
+                        "status": "error",
+                        "error": f"Authentication failed: {auth_result.message}",
+                    }
 
-            enkrypt_project_name = gateway_config.get("project_name", "not_provided")
-            enkrypt_email = gateway_config.get("email", "not_provided")
-            enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
-
-            # Set span attributes
-            auth_span.set_attribute("gateway_key", mask_key(enkrypt_gateway_key))
-            auth_span.set_attribute("enkrypt_project_id", enkrypt_project_id)
-            auth_span.set_attribute("enkrypt_user_id", enkrypt_user_id)
-            auth_span.set_attribute("enkrypt_mcp_config_id", enkrypt_mcp_config_id)
-            auth_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
-            auth_span.set_attribute("enkrypt_email", enkrypt_email)
-
-            session_key = f"{credentials.get('gateway_key')}_{credentials.get('project_id')}_{credentials.get('user_id')}_{enkrypt_mcp_config_id}"
-
-            if not self.auth_service.is_session_authenticated(session_key):
-                auth_span.set_attribute("required_new_auth", True)
-                from secure_mcp_gateway.gateway import enkrypt_authenticate
-
-                result = enkrypt_authenticate(ctx)
-                if result.get("status") != "success":
-                    auth_span.set_attribute("error", "Authentication failed")
-                    sys_print("[get_server_info] Not authenticated", is_error=True)
-                    logger.error(
-                        "secure_tool_execution.execute_secure_tools.not_authenticated",
-                        extra=build_log_extra(ctx, custom_id, server_name),
-                    )
-                    return {"status": "error", "error": "Not authenticated."}
+                # Build session and resolve server info from returned gateway_config
+                mcp_config_id = (auth_result.gateway_config or {}).get(
+                    "mcp_config_id", "not_provided"
+                )
+                session_key = f"{creds.get('gateway_key')}_{creds.get('project_id')}_{creds.get('user_id')}_{mcp_config_id}"
+                server_info = get_server_info_by_name(
+                    auth_result.gateway_config, server_name
+                )
             else:
-                auth_span.set_attribute("required_new_auth", False)
+                # Fallback to legacy authentication path
+                temp_session_key = f"{creds.get('gateway_key')}_{creds.get('project_id')}_{creds.get('user_id')}_"
+                if not self.auth_service.is_session_authenticated(temp_session_key):
+                    auth_span.set_attribute("required_new_auth", True)
+                    from secure_mcp_gateway.gateway import enkrypt_authenticate
 
-            # Server info validation
-            server_info = get_server_info_by_name(
-                self.auth_service.get_session_gateway_config(session_key), server_name
-            )
+                    result = enkrypt_authenticate(ctx)
+                    if result.get("status") != "success":
+                        auth_span.set_attribute("error", "Authentication failed")
+                        sys_print("[get_server_info] Not authenticated", is_error=True)
+                        logger.error(
+                            "secure_tool_execution.execute_secure_tools.not_authenticated",
+                            extra=build_log_extra(ctx, custom_id, server_name),
+                        )
+                        return {"status": "error", "error": "Not authenticated."}
+                else:
+                    auth_span.set_attribute("required_new_auth", False)
+
+                try:
+                    suffix = self.auth_service.get_session_gateway_config_key_suffix(
+                        creds
+                    )
+                except Exception:
+                    suffix = "not_provided"
+                session_key = f"{creds.get('gateway_key')}_{creds.get('project_id')}_{creds.get('user_id')}_{suffix}"
+                server_info = get_server_info_by_name(
+                    self.auth_service.get_session_gateway_config(session_key),
+                    server_name,
+                )
+
+            # Validate server availability
             if not server_info:
                 auth_span.set_attribute(
                     "error", f"Server '{server_name}' not available"
@@ -351,7 +369,7 @@ class SecureToolExecutionService:
                 discovery_span.set_attribute("cache_hit", bool(server_config_tools))
 
                 if server_config_tools:
-                    from secure_mcp_gateway.services.telemetry_service import (
+                    from secure_mcp_gateway.services.telemetry.telemetry_service import (
                         cache_hit_counter,
                     )
 
@@ -364,14 +382,14 @@ class SecureToolExecutionService:
                         f"[enkrypt_secure_call_tools] Found cached tools for {server_name}"
                     )
                 else:
-                    from secure_mcp_gateway.services.telemetry_service import (
+                    from secure_mcp_gateway.services.telemetry.telemetry_service import (
                         cache_miss_counter,
                     )
 
                     cache_miss_counter.add(1, attributes=build_log_extra(ctx))
                     try:
                         discovery_span.set_attribute("discovery_required", True)
-                        from secure_mcp_gateway.services.telemetry_service import (
+                        from secure_mcp_gateway.services.telemetry.telemetry_service import (
                             list_servers_call_count,
                         )
 
@@ -406,7 +424,7 @@ class SecureToolExecutionService:
 
                         if discovery_result.get("status") == "success":
                             server_config_tools = discovery_result.get("tools", {})
-                            from secure_mcp_gateway.services.telemetry_service import (
+                            from secure_mcp_gateway.services.telemetry.telemetry_service import (
                                 servers_discovered_count,
                             )
 

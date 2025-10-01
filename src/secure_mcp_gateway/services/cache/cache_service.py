@@ -3,7 +3,7 @@
 import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from secure_mcp_gateway.services.telemetry_service import (
+from secure_mcp_gateway.services.telemetry.telemetry_service import (
     cache_hit_counter,
     cache_miss_counter,
 )

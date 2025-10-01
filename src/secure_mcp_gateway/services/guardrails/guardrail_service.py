@@ -1,3 +1,5 @@
+# FIXED VERSION - Copy this to guardrail_service.py
+
 from typing import Any, Dict, List, Tuple
 
 import aiohttp
@@ -6,6 +8,11 @@ import requests
 from secure_mcp_gateway.utils import get_common_config, sys_print
 from secure_mcp_gateway.version import __version__
 
+# Removed circular import - will be imported when needed
+
+# Global manager instance (set by gateway.py)
+GUARDRAIL_MANAGER = None
+
 
 class GuardrailService:
     """
@@ -13,9 +20,13 @@ class GuardrailService:
     Handles all guardrail operations including PII handling, policy detection, and content quality checks.
     """
 
-    def __init__(self):
+    def __init__(
+        self, api_key: str = None, base_url: str = "https://api.enkryptai.com"
+    ):
         """Initialize the guardrail service."""
         sys_print("Initializing Enkrypt Secure MCP Gateway Guardrail Service")
+        self.api_key = api_key
+        self.base_url = base_url
 
         # Get configuration
         self.common_config = get_common_config()
@@ -39,6 +50,10 @@ class GuardrailService:
         self.default_headers = {"Content-Type": "application/json"}
 
         sys_print(f"Guardrail service initialized with base URL: {self.base_url}")
+
+    # ============================================================================
+    # Legacy Enkrypt Methods (keep for backward compatibility)
+    # ============================================================================
 
     def guardrail_response_has_pii_redaction(
         self, guardrail_response: Dict[str, Any]
@@ -73,16 +88,15 @@ class GuardrailService:
         """
         Asynchronously checks text against specified guardrail policies using EnkryptAI API.
 
+        NOTE: This is a legacy method. New code should use the plugin system.
+
         Args:
             text (str): The text to be checked against guardrail policies.
-            blocks (list): List of policy blocks to check against (e.g., ['toxicity', 'bias', 'harm']).
-            policy_name (str): Name of the policy to apply (e.g., 'default', 'strict', 'custom').
+            blocks (list): List of policy blocks to check against.
+            policy_name (str): Name of the policy to apply.
 
         Returns:
-            tuple: A tuple containing:
-                - violations_detected (bool): True if any policy violations were detected
-                - violation_types (list): List of types of violations detected
-                - resp_json (dict): Full response from the guardrail API
+            tuple: (violations_detected, violation_types, resp_json)
         """
         payload = {"text": text}
         headers = {
@@ -168,7 +182,7 @@ class GuardrailService:
         De-anonymizes previously redacted text using the key.
 
         Args:
-            text (str): The anonymized text (e.g., with <PERSON_0> etc.)
+            text (str): The anonymized text
             key (str): The key returned during anonymization.
 
         Returns:
@@ -194,23 +208,13 @@ class GuardrailService:
             return ""
 
     def check_relevancy(self, question: str, llm_answer: str) -> Dict[str, Any]:
-        """
-        Checks the relevancy of an LLM answer to a question using EnkryptAI API.
-
-        Args:
-            question (str): The original question or prompt.
-            llm_answer (str): The LLM's answer to the question.
-
-        Returns:
-            dict: The response from the relevancy API (parsed JSON).
-        """
+        """Checks relevancy using EnkryptAI API."""
         payload = {"question": question, "llm_answer": llm_answer}
         headers = {**self.default_headers, "apikey": self.api_key}
 
         sys_print("Making request to relevancy API")
         if self.is_debug:
             sys_print(f"payload: {payload}", is_debug=True)
-            sys_print(f"headers: {headers}", is_debug=True)
 
         try:
             response = requests.post(self.relevancy_url, json=payload, headers=headers)
@@ -224,23 +228,13 @@ class GuardrailService:
             return {"error": str(e)}
 
     def check_adherence(self, context: str, llm_answer: str) -> Dict[str, Any]:
-        """
-        Checks the adherence of an LLM answer to a context using EnkryptAI API.
-
-        Args:
-            context (str): The original context or prompt.
-            llm_answer (str): The LLM's answer to the context.
-
-        Returns:
-            dict: The response from the adherence API (parsed JSON).
-        """
+        """Checks adherence using EnkryptAI API."""
         payload = {"context": context, "llm_answer": llm_answer}
         headers = {**self.default_headers, "apikey": self.api_key}
 
         sys_print("Making request to adherence API")
         if self.is_debug:
             sys_print(f"payload: {payload}", is_debug=True)
-            sys_print(f"headers: {headers}", is_debug=True)
 
         try:
             response = requests.post(self.adherence_url, json=payload, headers=headers)
@@ -256,17 +250,7 @@ class GuardrailService:
     def check_hallucination(
         self, request_text: str, response_text: str, context: str = ""
     ) -> Dict[str, Any]:
-        """
-        Checks the hallucination of an LLM answer to a request using EnkryptAI API.
-
-        Args:
-            request_text (str): The prompt that was used to generate the response.
-            response_text (str): The response from the LLM.
-            context (str): The context of the request (optional).
-
-        Returns:
-            dict: The response from the hallucination API (parsed JSON).
-        """
+        """Checks hallucination using EnkryptAI API."""
         payload = {
             "request_text": request_text,
             "response_text": response_text,
@@ -277,7 +261,6 @@ class GuardrailService:
         sys_print("Making request to hallucination API")
         if self.is_debug:
             sys_print(f"payload: {payload}", is_debug=True)
-            sys_print(f"headers: {headers}", is_debug=True)
 
         try:
             response = requests.post(
@@ -291,6 +274,182 @@ class GuardrailService:
         except Exception as e:
             sys_print(f"Hallucination API error: {e}", is_error=True)
             return {"error": str(e)}
+
+    # ============================================================================
+    # NEW: Plugin System Methods
+    # ============================================================================
+
+    async def check_input_guardrails(
+        self, server_config: Dict[str, Any], tool_name: str, tool_args: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Check input guardrails using the plugin system.
+
+        Args:
+            server_config: Server configuration dict
+            tool_name: Name of the tool being called
+            tool_args: Tool arguments
+
+        Returns:
+            dict: Guardrail check results
+        """
+        global GUARDRAIL_MANAGER
+
+        if GUARDRAIL_MANAGER is None:
+            from secure_mcp_gateway.plugins.guardrails import (
+                get_guardrail_config_manager,
+            )
+
+            GUARDRAIL_MANAGER = get_guardrail_config_manager()
+
+        # Get the appropriate guardrail for this server
+        input_guardrail = GUARDRAIL_MANAGER.get_input_guardrail(server_config)
+
+        if input_guardrail is None:
+            # Guardrails not enabled for this server
+            return {
+                "status": "success",
+                "is_safe": True,
+                "message": "No input guardrails configured",
+            }
+
+        # Create request
+        from secure_mcp_gateway.plugins.guardrails import GuardrailRequest
+
+        request = GuardrailRequest(
+            content=str(tool_args),
+            tool_name=tool_name,
+            tool_args=tool_args,
+            server_name=server_config.get("server_name"),
+            context={
+                "environment": "production",
+            },
+        )
+
+        # Validate
+        try:
+            response = await input_guardrail.validate(request)
+
+            if response.is_safe:
+                return {
+                    "status": "success",
+                    "is_safe": True,
+                    "message": "Input validation passed",
+                    "metadata": response.metadata,
+                }
+            else:
+                return {
+                    "status": "blocked",
+                    "is_safe": False,
+                    "message": "Input validation failed",
+                    "violations": [
+                        {
+                            "type": v.violation_type.value,
+                            "severity": v.severity,
+                            "message": v.message,
+                            "action": v.action.value,
+                        }
+                        for v in response.violations
+                    ],
+                    "metadata": response.metadata,
+                }
+
+        except Exception as e:
+            sys_print(f"Error in guardrail check: {e}", is_error=True)
+
+            # Decide whether to fail open or closed based on config
+            fail_open = server_config.get("input_guardrails_policy", {}).get(
+                "fail_open", False
+            )
+
+            return {
+                "status": "error" if not fail_open else "success",
+                "is_safe": fail_open,
+                "message": f"Guardrail error: {e!s}",
+                "error": str(e),
+            }
+
+    async def check_output_guardrails(
+        self,
+        server_config: Dict[str, Any],
+        response_content: str,
+        original_request: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Check output guardrails using the plugin system.
+
+        Args:
+            server_config: Server configuration dict
+            response_content: Response content from the tool
+            original_request: Original request that triggered the tool call
+
+        Returns:
+            dict: Guardrail check results
+        """
+        global GUARDRAIL_MANAGER
+
+        if GUARDRAIL_MANAGER is None:
+            from secure_mcp_gateway.plugins.guardrails import (
+                get_guardrail_config_manager,
+            )
+
+            GUARDRAIL_MANAGER = get_guardrail_config_manager()
+
+        output_guardrail = GUARDRAIL_MANAGER.get_output_guardrail(server_config)
+
+        if output_guardrail is None:
+            return {
+                "status": "success",
+                "is_safe": True,
+                "message": "No output guardrails configured",
+            }
+
+        try:
+            from secure_mcp_gateway.plugins.guardrails import GuardrailRequest
+
+            response = await output_guardrail.validate(
+                response_content,
+                GuardrailRequest(
+                    content=original_request.get("content", ""),
+                    tool_name=original_request.get("tool_name"),
+                    tool_args=original_request.get("tool_args"),
+                ),
+            )
+
+            if response.is_safe:
+                return {
+                    "status": "success",
+                    "is_safe": True,
+                    "modified_content": response.modified_content,
+                    "metadata": response.metadata,
+                }
+            else:
+                return {
+                    "status": "blocked",
+                    "is_safe": False,
+                    "violations": [
+                        {
+                            "type": v.violation_type.value,
+                            "severity": v.severity,
+                            "message": v.message,
+                        }
+                        for v in response.violations
+                    ],
+                    "metadata": response.metadata,
+                }
+
+        except Exception as e:
+            sys_print(f"Error in output guardrail check: {e}", is_error=True)
+            fail_open = server_config.get("output_guardrails_policy", {}).get(
+                "fail_open", False
+            )
+
+            return {
+                "status": "error" if not fail_open else "success",
+                "is_safe": fail_open,
+                "message": f"Guardrail error: {e!s}",
+                "error": str(e),
+            }
 
 
 # Global guardrail service instance

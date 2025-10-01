@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from secure_mcp_gateway.services.auth_service import auth_service
+from secure_mcp_gateway.services.auth.auth_service import auth_service
 from secure_mcp_gateway.utils import (
     build_log_extra,
     get_server_info_by_name,
@@ -262,7 +262,7 @@ class ServerInfoService:
             info_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
             info_span.set_attribute("enkrypt_email", enkrypt_email)
 
-            from secure_mcp_gateway.services.cache_service import CacheService
+            from secure_mcp_gateway.services.cache.cache_service import CacheService
 
             cache_service = CacheService()
             server_info_copy = cache_service.get_latest_server_info(

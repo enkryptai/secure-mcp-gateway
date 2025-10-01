@@ -3,14 +3,14 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from secure_mcp_gateway.services.auth_service import auth_service
-from secure_mcp_gateway.services.cache_service import (
+from secure_mcp_gateway.services.auth.auth_service import auth_service
+from secure_mcp_gateway.services.cache.cache_service import (
     ENKRYPT_GATEWAY_CACHE_EXPIRATION,
     ENKRYPT_MCP_USE_EXTERNAL_CACHE,
     ENKRYPT_TOOL_CACHE_EXPIRATION,
     cache_service,
 )
-from secure_mcp_gateway.services.telemetry_service import tracer
+from secure_mcp_gateway.services.telemetry.telemetry_service import tracer
 from secure_mcp_gateway.utils import (
     IS_DEBUG_LOG_LEVEL,
     build_log_extra,
@@ -215,7 +215,7 @@ class CacheStatusService:
 
             cached_result = self.cache_service.get_cached_gateway_config(id)
             if cached_result:
-                from secure_mcp_gateway.services.telemetry_service import (
+                from secure_mcp_gateway.services.telemetry.telemetry_service import (
                     cache_hit_counter,
                 )
 
@@ -273,7 +273,7 @@ class CacheStatusService:
                     "is_expired": False,
                 }
             else:
-                from secure_mcp_gateway.services.telemetry_service import (
+                from secure_mcp_gateway.services.telemetry.telemetry_service import (
                     cache_miss_counter,
                 )
 

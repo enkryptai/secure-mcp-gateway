@@ -119,7 +119,7 @@ except ImportError:
     )
 
 from secure_mcp_gateway.dependencies import __dependencies__
-from secure_mcp_gateway.services.auth_service import (
+from secure_mcp_gateway.services.auth.auth_service import (
     auth_service,  # Import the new auth service
 )
 from secure_mcp_gateway.utils import (
@@ -131,7 +131,7 @@ from secure_mcp_gateway.version import __version__
 sys_print(f"Successfully imported secure_mcp_gateway v{__version__} in gateway module")
 
 try:
-    from secure_mcp_gateway.services.telemetry_service import (
+    from secure_mcp_gateway.services.telemetry.telemetry_service import (
         logger,
         tracer,
     )
@@ -157,17 +157,91 @@ from mcp.server.fastmcp import Context, FastMCP
 # from starlette.requests import Request # This is the class of ctx.request_context.request
 from mcp.server.fastmcp.tools import Tool
 
-from secure_mcp_gateway.services.cache_service import (
+from secure_mcp_gateway.plugins.auth import initialize_auth_system
+from secure_mcp_gateway.plugins.guardrails import (
+    get_guardrail_config_manager,
+    initialize_guardrail_system,
+)
+from secure_mcp_gateway.plugins.guardrails.example_providers import (
+    CustomKeywordProvider,
+    OpenAIGuardrailProvider,
+)
+from secure_mcp_gateway.services.cache.cache_service import (
     ENKRYPT_GATEWAY_CACHE_EXPIRATION,
     ENKRYPT_MCP_USE_EXTERNAL_CACHE,
     ENKRYPT_TOOL_CACHE_EXPIRATION,
     cache_client,
 )
-from secure_mcp_gateway.services.discovery_service import DiscoveryService
-from secure_mcp_gateway.services.server_info_service import ServerInfoService
-from secure_mcp_gateway.services.server_listing_service import ServerListingService
+from secure_mcp_gateway.services.discovery import DiscoveryService
+from secure_mcp_gateway.services.server.server_info_service import ServerInfoService
+from secure_mcp_gateway.services.server.server_listing_service import (
+    ServerListingService,
+)
 
 common_config = get_common_config()  # Pass True to print debug info
+
+# Initialize guardrail system and get manager
+initialize_guardrail_system(common_config)
+guardrail_manager = get_guardrail_config_manager()
+
+# Initialize auth system
+initialize_auth_system(common_config)
+
+# Initialize telemetry system
+from secure_mcp_gateway.plugins.telemetry import (
+    get_telemetry_config_manager,
+    initialize_telemetry_system,
+)
+
+initialize_telemetry_system(common_config)
+telemetry_manager = get_telemetry_config_manager()
+sys_print(f"Telemetry providers: {telemetry_manager.list_providers()}")
+
+# Register additional providers from config
+plugin_config = common_config.get("guardrail_plugins", {})
+if plugin_config.get("enabled", False):
+    sys_print("Loading guardrail plugins from config...")
+
+    from secure_mcp_gateway.plugins.provider_loader import (
+        create_provider_from_config,
+    )
+
+    for provider_config in plugin_config.get("providers", []):
+        provider_name = provider_config.get("name")
+        provider_class = provider_config.get("class")
+        provider_cfg = provider_config.get("config", {})
+
+        sys_print(f"Loading provider: {provider_name}")
+
+        try:
+            if not provider_class:
+                sys_print(
+                    f"Provider '{provider_name}' must have 'class' field",
+                    is_error=True,
+                )
+                continue
+
+            provider = create_provider_from_config(
+                {
+                    "name": provider_name,
+                    "class": provider_class,
+                    "config": provider_cfg,
+                },
+                plugin_type="guardrail",
+            )
+            guardrail_manager.register_provider(provider)
+            sys_print(f"✓ Registered provider: {provider_name}")
+
+        except Exception as e:
+            sys_print(f"Error registering provider {provider_name}: {e}", is_error=True)
+
+sys_print(f"Registered guardrail providers: {guardrail_manager.list_providers()}")
+
+# Store globally for use in services
+import secure_mcp_gateway.services.guardrails.guardrail_service as guardrail_service
+
+guardrail_service.GUARDRAIL_MANAGER = guardrail_manager
+
 
 ENKRYPT_LOG_LEVEL = common_config.get("enkrypt_log_level", "INFO").lower()
 IS_DEBUG_LOG_LEVEL = ENKRYPT_LOG_LEVEL == "debug"
@@ -197,6 +271,7 @@ ENKRYPT_TELEMETRY_ENDPOINT = common_config.get("enkrypt_telemetry", {}).get(
 )
 
 ENKRYPT_API_KEY = common_config.get("enkrypt_api_key", "null")
+
 
 sys_print("--------------------------------")
 sys_print(f"enkrypt_log_level: {ENKRYPT_LOG_LEVEL}")
@@ -402,7 +477,7 @@ async def enkrypt_secure_call_tools(
             - message: Response message
             - Additional response data or error details
     """
-    from secure_mcp_gateway.services.secure_tool_execution_service import (
+    from secure_mcp_gateway.services.execution.secure_tool_execution_service import (
         SecureToolExecutionService,
     )
 
@@ -446,7 +521,9 @@ async def enkrypt_get_cache_status(ctx: Context):
             - status: Success/error status
             - cache_status: Detailed cache statistics and status
     """
-    from secure_mcp_gateway.services.cache_status_service import CacheStatusService
+    from secure_mcp_gateway.services.cache.cache_status_service import (
+        CacheStatusService,
+    )
 
     cache_status_service = CacheStatusService()
     return await cache_status_service.get_cache_status(ctx, logger)
@@ -506,7 +583,7 @@ async def enkrypt_clear_cache(
             - status: Success/error status
             - message: Cache clearing result message
     """
-    from secure_mcp_gateway.services.cache_management_service import (
+    from secure_mcp_gateway.services.cache.cache_management_service import (
         CacheManagementService,
     )
 

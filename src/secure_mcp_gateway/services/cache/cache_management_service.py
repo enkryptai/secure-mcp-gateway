@@ -4,9 +4,8 @@ from typing import Any
 
 import requests
 
-from secure_mcp_gateway.services.auth_service import auth_service
-from secure_mcp_gateway.services.cache_service import cache_service
-from secure_mcp_gateway.services.telemetry_service import tracer
+from secure_mcp_gateway.services.cache.cache_service import cache_service
+from secure_mcp_gateway.services.telemetry.telemetry_service import tracer
 from secure_mcp_gateway.utils import (
     build_log_extra,
     generate_custom_id,
@@ -25,6 +24,9 @@ class CacheManagementService:
     """
 
     def __init__(self):
+        # Lazy import to avoid circular dependency
+        from secure_mcp_gateway.services.auth.auth_service import auth_service
+
         self.auth_service = auth_service
         self.cache_service = cache_service
 

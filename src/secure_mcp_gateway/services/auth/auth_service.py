@@ -33,7 +33,7 @@ Configuration Variables:
 
 Example Usage:
     ```python
-    from secure_mcp_gateway.services.auth_service import AuthService
+    from secure_mcp_gateway.services.auth.auth_service import AuthService
 
     auth_service = AuthService()
 
@@ -58,7 +58,7 @@ from typing import Any, Dict, Optional, Tuple
 import requests
 from mcp.server.fastmcp import Context
 
-from secure_mcp_gateway.services.cache_service import cache_service
+from secure_mcp_gateway.services.cache.cache_service import cache_service
 from secure_mcp_gateway.utils import (
     CONFIG_PATH,
     DOCKER_CONFIG_PATH,
@@ -654,6 +654,26 @@ class AuthService:
             "authenticated_sessions": authenticated_sessions,
             "unauthenticated_sessions": total_sessions - authenticated_sessions,
         }
+
+    def get_session_gateway_config_key_suffix(self, credentials: Dict[str, Any]) -> str:
+        """Derive the session key suffix (mcp_config_id) from local config.
+
+        Args:
+            credentials: Dict with at least gateway_key, project_id, user_id
+
+        Returns:
+            str: mcp_config_id if found, otherwise "not_provided"
+        """
+        try:
+            gateway_key = credentials.get("gateway_key")
+            project_id = credentials.get("project_id")
+            user_id = credentials.get("user_id")
+            local_cfg = self.get_local_mcp_config(gateway_key, project_id, user_id)
+            if not local_cfg:
+                return "not_provided"
+            return local_cfg.get("mcp_config_id", "not_provided")
+        except Exception:
+            return "not_provided"
 
     def get_session_gateway_config(self, session_key: str) -> Dict[str, Any]:
         if session_key not in self.sessions:
