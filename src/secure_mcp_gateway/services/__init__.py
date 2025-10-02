@@ -39,12 +39,6 @@ def get_discovery_service():
     return discovery_service
 
 
-def get_guardrail_service():
-    from secure_mcp_gateway.services.guardrails import guardrail_service
-
-    return guardrail_service
-
-
 def get_secure_tool_execution_service():
     from secure_mcp_gateway.services.execution import SecureToolExecutionService
 
@@ -82,7 +76,6 @@ __all__ = [
     "get_cache_management_service",
     "get_cache_status_service",
     "get_discovery_service",
-    "get_guardrail_service",
     "get_secure_tool_execution_service",
     "get_server_info_service",
     "get_server_listing_service",

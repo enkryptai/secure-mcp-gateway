@@ -237,11 +237,6 @@ if plugin_config.get("enabled", False):
 
 sys_print(f"Registered guardrail providers: {guardrail_manager.list_providers()}")
 
-# Store globally for use in services
-import secure_mcp_gateway.services.guardrails.guardrail_service as guardrail_service
-
-guardrail_service.GUARDRAIL_MANAGER = guardrail_manager
-
 
 ENKRYPT_LOG_LEVEL = common_config.get("enkrypt_log_level", "INFO").lower()
 IS_DEBUG_LOG_LEVEL = ENKRYPT_LOG_LEVEL == "debug"

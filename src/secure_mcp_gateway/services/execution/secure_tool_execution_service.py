@@ -6,6 +6,11 @@ import traceback
 from typing import Any
 
 from secure_mcp_gateway.plugins.auth import AuthCredentials, get_auth_config_manager
+from secure_mcp_gateway.plugins.guardrails import (
+    GuardrailAction,
+    GuardrailRequest,
+    get_guardrail_config_manager,
+)
 from secure_mcp_gateway.services.auth.auth_service import auth_service
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 from secure_mcp_gateway.services.execution.execution_utils import (
@@ -14,7 +19,6 @@ from secure_mcp_gateway.services.execution.execution_utils import (
 from secure_mcp_gateway.services.execution.tool_execution_service import (
     ToolExecutionService,
 )
-from secure_mcp_gateway.services.guardrails.guardrail_service import guardrail_service
 from secure_mcp_gateway.services.telemetry.telemetry_service import tracer
 from secure_mcp_gateway.utils import (
     build_log_extra,
@@ -37,7 +41,7 @@ class SecureToolExecutionService:
     def __init__(self):
         self.auth_service = auth_service
         self.cache_service = cache_service
-        self.guardrail_service = guardrail_service
+        self.guardrail_manager = get_guardrail_config_manager()
         self.tool_execution_service = ToolExecutionService()
 
         # Load constants from common config
@@ -826,52 +830,64 @@ class SecureToolExecutionService:
                 extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name),
             )
 
-            # Input guardrail check
+            # Get input guardrail from manager
+            input_guardrail = self.guardrail_manager.get_input_guardrail(
+                server_config={
+                    "input_guardrails_policy": guardrails_config[
+                        "input_guardrails_policy"
+                    ]
+                }
+            )
+
+            if input_guardrail is None:
+                # Guardrails not enabled, proceed directly
+                result = await self.tool_execution_service.call_tool(
+                    session, tool_name, args
+                )
+                text_result = self._extract_text_result(result)
+                return {
+                    "text_result": text_result,
+                    "result": result,
+                    "input_guardrail_response": {"is_safe": True, "enabled": False},
+                }
+
+            # Create guardrail request
+            request = GuardrailRequest(
+                content=input_text_content,
+                tool_name=tool_name,
+                tool_args=args,
+                server_name=server_name,
+                context={"call_index": i},
+            )
+
+            # Validate with plugin
             if self.ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED:
                 input_span.set_attribute("async_guardrails", True)
                 # Start both guardrail and tool call tasks concurrently
-                guardrail_task = asyncio.create_task(
-                    self.guardrail_service.call_guardrail_async(
-                        input_text_content,
-                        guardrails_config["input_blocks"],
-                        guardrails_config["input_policy_name"],
-                    )
-                )
+                guardrail_task = asyncio.create_task(input_guardrail.validate(request))
                 tool_call_task = asyncio.create_task(
                     self.tool_execution_service.call_tool(session, tool_name, args)
                 )
-
-                # Wait for both to complete
-                (
-                    input_violations_detected,
-                    input_violation_types,
-                    input_guardrail_response,
-                ) = await guardrail_task
-                result = await tool_call_task
+                guardrail_response, result = await asyncio.gather(
+                    guardrail_task, tool_call_task
+                )
             else:
                 input_span.set_attribute("async_guardrails", False)
-                (
-                    input_violations_detected,
-                    input_violation_types,
-                    input_guardrail_response,
-                ) = await self.guardrail_service.call_guardrail_async(
-                    input_text_content,
-                    guardrails_config["input_blocks"],
-                    guardrails_config["input_policy_name"],
-                )
-
-                # Execute tool
+                guardrail_response = await input_guardrail.validate(request)
                 result = await self.tool_execution_service.call_tool(
                     session, tool_name, args
                 )
 
-            # Check for input violations
-            if input_violations_detected:
+            # Check if blocked
+            if not guardrail_response.is_safe:
+                violation_types = [
+                    v.violation_type.value for v in guardrail_response.violations
+                ]
                 input_span.set_attribute(
-                    "error", f"Input violations: {input_violation_types}"
+                    "error", f"Input violations: {violation_types}"
                 )
                 sys_print(
-                    f"[secure_call_tools] Call {i}: Blocked due to input guardrail violations: {input_violation_types} for {tool_name} of server {server_name}"
+                    f"[secure_call_tools] Call {i}: Blocked due to input guardrail violations: {violation_types} for {tool_name} of server {server_name}"
                 )
                 logger.info(
                     "secure_tool_execution.execute_secure_tools.blocked_due_to_input_violations",
@@ -880,13 +896,13 @@ class SecureToolExecutionService:
                         custom_id,
                         server_name,
                         tool_name=tool_name,
-                        input_violations_detected=input_violations_detected,
-                        input_violation_types=input_violation_types,
+                        input_violations_detected=True,
+                        input_violation_types=violation_types,
                     ),
                 )
                 return {
                     "status": "blocked_input",
-                    "message": f"Request blocked due to input guardrail violations: {', '.join(input_violation_types)}",
+                    "message": f"Request blocked due to input guardrail violations: {', '.join(violation_types)}",
                     "response": "",
                     "enkrypt_mcp_data": {
                         "call_index": i,
@@ -894,14 +910,33 @@ class SecureToolExecutionService:
                         "tool_name": tool_name,
                         "args": args,
                     },
+                    "input_guardrail_response": {
+                        "is_safe": False,
+                        "violations": [
+                            {
+                                "type": v.violation_type.value,
+                                "severity": v.severity,
+                                "message": v.message,
+                                "action": v.action.value,
+                                "metadata": v.metadata,
+                            }
+                            for v in guardrail_response.violations
+                        ],
+                        "processing_time_ms": guardrail_response.processing_time_ms,
+                        "metadata": guardrail_response.metadata,
+                    },
                 }
 
-            # Process result
+            # Success
             text_result = self._extract_text_result(result)
             return {
                 "text_result": text_result,
                 "result": result,
-                "input_guardrail_response": input_guardrail_response,
+                "input_guardrail_response": {
+                    "is_safe": True,
+                    "processing_time_ms": guardrail_response.processing_time_ms,
+                    "metadata": guardrail_response.metadata,
+                },
             }
 
     async def _execute_without_input_guardrails(
@@ -1062,24 +1097,54 @@ class SecureToolExecutionService:
             is_debug=True,
         )
 
-        if guardrails_config["output_policy_enabled"]:
-            # Output guardrail check
-            (
-                output_violations_detected,
-                output_violation_types,
-                output_guardrail_response,
-            ) = await self.guardrail_service.call_guardrail_async(
-                text_result,
-                guardrails_config["output_blocks"],
-                guardrails_config["output_policy_name"],
+        # Get output guardrail from manager
+        output_guardrail = self.guardrail_manager.get_output_guardrail(
+            server_config={
+                "output_guardrails_policy": guardrails_config[
+                    "output_guardrails_policy"
+                ]
+            }
+        )
+
+        if output_guardrail is None:
+            # No output guardrails enabled
+            return {
+                "output_guardrail_response": {},
+                "output_relevancy_response": {},
+                "output_adherence_response": {},
+                "output_hallucination_response": {},
+            }
+
+        # Create request for context
+        original_request = GuardrailRequest(
+            content=input_json_string,
+            tool_name=tool_name,
+            tool_args=args,
+            server_name=server_name,
+        )
+
+        # Validate output (includes ALL checks: policy, relevancy, adherence, hallucination)
+        guardrail_response = await output_guardrail.validate(
+            response_content=text_result, original_request=original_request
+        )
+
+        # Check if blocked
+        if not guardrail_response.is_safe:
+            violation_types = [
+                v.violation_type.value for v in guardrail_response.violations
+            ]
+
+            # Check if any are blocking violations
+            has_blocking = any(
+                v.action == GuardrailAction.BLOCK for v in guardrail_response.violations
             )
 
-            if output_violations_detected:
+            if has_blocking:
                 output_span.set_attribute(
-                    "error", f"Output violations: {output_violation_types}"
+                    "error", f"Output violations: {violation_types}"
                 )
                 sys_print(
-                    f"[secure_call_tools] Call {i}: Blocked due to output violations: {output_violation_types}"
+                    f"[secure_call_tools] Call {i}: Blocked due to output violations: {violation_types}"
                 )
                 logger.info(
                     "secure_tool_execution.execute_secure_tools.blocked_due_to_output_violations",
@@ -1088,40 +1153,57 @@ class SecureToolExecutionService:
                         custom_id,
                         server_name,
                         tool_name=tool_name,
-                        output_violations_detected=output_violations_detected,
-                        output_violation_types=output_violation_types,
+                        output_violations_detected=True,
+                        output_violation_types=violation_types,
                     ),
                 )
                 return self._build_blocked_result(
                     "blocked_output",
-                    f"Request blocked due to output guardrail violations: {', '.join(output_violation_types)}",
+                    f"Request blocked due to output guardrail violations: {', '.join(violation_types)}",
                     i,
                     server_name,
                     tool_name,
                     args,
                     text_result,
                     guardrails_config,
-                    output_guardrail_response,
-                    {},
-                    {},
-                    {},
+                    {
+                        "is_safe": False,
+                        "violations": [
+                            {
+                                "type": v.violation_type.value,
+                                "severity": v.severity,
+                                "message": v.message,
+                                "action": v.action.value,
+                            }
+                            for v in guardrail_response.violations
+                        ],
+                        "processing_time_ms": guardrail_response.processing_time_ms,
+                    },
+                    guardrail_response.metadata.get("relevancy", {}),
+                    guardrail_response.metadata.get("adherence", {}),
+                    guardrail_response.metadata.get("hallucination", {}),
                 )
 
-        # Additional checks (relevancy, adherence, hallucination)
-        if guardrails_config["relevancy"]:
-            output_relevancy_response = self.guardrail_service.check_relevancy(
-                input_json_string, text_result
-            )
+        # Extract individual check results from metadata
+        # (EnkryptOutputGuardrail includes these in metadata)
+        metadata = guardrail_response.metadata or {}
 
-        if guardrails_config["adherence"]:
-            output_adherence_response = self.guardrail_service.check_adherence(
-                input_json_string, text_result
-            )
-
-        if guardrails_config["hallucination"]:
-            output_hallucination_response = self.guardrail_service.check_hallucination(
-                input_json_string, text_result, ""
-            )
+        output_guardrail_response = {
+            "is_safe": True,
+            "processing_time_ms": guardrail_response.processing_time_ms,
+            "warnings": [
+                {
+                    "type": v.violation_type.value,
+                    "severity": v.severity,
+                    "message": v.message,
+                }
+                for v in guardrail_response.violations
+                if v.action == GuardrailAction.WARN
+            ],
+        }
+        output_relevancy_response = metadata.get("relevancy", {})
+        output_adherence_response = metadata.get("adherence", {})
+        output_hallucination_response = metadata.get("hallucination", {})
 
         # Return guardrail responses even when no violations
         return {
@@ -1162,80 +1244,95 @@ class SecureToolExecutionService:
         output_adherence_response = {}
         output_hallucination_response = {}
 
-        # Start all guardrail tasks concurrently
-        if guardrails_config["output_policy_enabled"]:
-            tasks["output_guardrail"] = asyncio.create_task(
-                self.guardrail_service.call_guardrail_async(
-                    text_result,
-                    guardrails_config["output_blocks"],
-                    guardrails_config["output_policy_name"],
-                )
+        # Get output guardrail from manager
+        output_guardrail = self.guardrail_manager.get_output_guardrail(
+            server_config={
+                "output_guardrails_policy": guardrails_config[
+                    "output_guardrails_policy"
+                ]
+            }
+        )
+
+        if output_guardrail is None:
+            # No output guardrails enabled
+            return {
+                "output_guardrail_response": {},
+                "output_relevancy_response": {},
+                "output_adherence_response": {},
+                "output_hallucination_response": {},
+            }
+
+        # Create request for context
+        original_request = GuardrailRequest(
+            content=input_json_string,
+            tool_name=tool_name,
+            tool_args=args,
+            server_name=server_name,
+        )
+
+        # Single call - provider handles async internally
+        guardrail_response = await output_guardrail.validate(
+            response_content=text_result, original_request=original_request
+        )
+
+        # Check if blocked
+        if not guardrail_response.is_safe:
+            violation_types = [
+                v.violation_type.value for v in guardrail_response.violations
+            ]
+
+            # Check if any are blocking violations
+            has_blocking = any(
+                v.action == GuardrailAction.BLOCK for v in guardrail_response.violations
             )
 
-        if guardrails_config["relevancy"]:
-            tasks["relevancy"] = asyncio.create_task(
-                asyncio.to_thread(
-                    self.guardrail_service.check_relevancy,
-                    input_json_string,
-                    text_result,
-                )
-            )
-
-        if guardrails_config["adherence"]:
-            tasks["adherence"] = asyncio.create_task(
-                asyncio.to_thread(
-                    self.guardrail_service.check_adherence,
-                    input_json_string,
-                    text_result,
-                )
-            )
-
-        if guardrails_config["hallucination"]:
-            tasks["hallucination"] = asyncio.create_task(
-                asyncio.to_thread(
-                    self.guardrail_service.check_hallucination,
-                    input_json_string,
-                    text_result,
-                    "",
-                )
-            )
-
-        # Process results in order of priority
-        if "output_guardrail" in tasks:
-            (
-                output_violations_detected,
-                output_violation_types,
-                output_guardrail_response,
-            ) = await tasks["output_guardrail"]
-            if output_violations_detected:
-                # Cancel remaining tasks
-                for task_name, task in tasks.items():
-                    if task_name != "output_guardrail" and not task.done():
-                        task.cancel()
+            if has_blocking:
                 return self._build_blocked_result(
                     "blocked_output",
-                    f"Request blocked due to output guardrail violations: {', '.join(output_violation_types)}",
+                    f"Request blocked due to output guardrail violations: {', '.join(violation_types)}",
                     i,
                     server_name,
                     tool_name,
                     args,
                     text_result,
                     guardrails_config,
-                    output_guardrail_response,
-                    {},
-                    {},
-                    {},
+                    {
+                        "is_safe": False,
+                        "violations": [
+                            {
+                                "type": v.violation_type.value,
+                                "severity": v.severity,
+                                "message": v.message,
+                                "action": v.action.value,
+                            }
+                            for v in guardrail_response.violations
+                        ],
+                        "processing_time_ms": guardrail_response.processing_time_ms,
+                    },
+                    guardrail_response.metadata.get("relevancy", {}),
+                    guardrail_response.metadata.get("adherence", {}),
+                    guardrail_response.metadata.get("hallucination", {}),
                 )
 
-        # Process other checks
-        if "relevancy" in tasks:
-            output_relevancy_response = await tasks["relevancy"]
+        # Extract individual check results from metadata
+        metadata = guardrail_response.metadata or {}
 
-        if "adherence" in tasks:
-            output_adherence_response = await tasks["adherence"]
-
-        if "hallucination" in tasks:
-            output_hallucination_response = await tasks["hallucination"]
+        output_guardrail_response = {
+            "is_safe": True,
+            "processing_time_ms": guardrail_response.processing_time_ms,
+            "warnings": [
+                {
+                    "type": v.violation_type.value,
+                    "severity": v.severity,
+                    "message": v.message,
+                }
+                for v in guardrail_response.violations
+                if v.action == GuardrailAction.WARN
+            ],
+        }
+        output_relevancy_response = metadata.get("relevancy", {})
+        output_adherence_response = metadata.get("adherence", {})
+        output_hallucination_response = metadata.get("hallucination", {})
 
         # Return guardrail responses even when no violations
         return {

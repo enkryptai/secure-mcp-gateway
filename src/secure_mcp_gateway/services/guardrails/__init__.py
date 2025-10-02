@@ -1,11 +1,8 @@
 """
-Enkrypt Secure MCP Gateway Guardrails Module
+Enkrypt Secure MCP Gateway Guardrails Package
 
-This module contains guardrail services and providers for the Enkrypt Secure MCP Gateway.
+This package hosts guardrail plugin providers and related helpers.
+Legacy `guardrail_service` is removed in favor of plugin system.
 """
-from secure_mcp_gateway.services.guardrails.guardrail_service import (
-    GuardrailService,
-    guardrail_service,
-)
 
-__all__ = ["GuardrailService", "guardrail_service"]
+__all__: list[str] = []
