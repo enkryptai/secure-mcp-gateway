@@ -43,7 +43,7 @@ Example Usage:
 """
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
 import aiohttp
 
@@ -56,6 +56,8 @@ from secure_mcp_gateway.plugins.guardrails.base import (
     InputGuardrail,
     OutputGuardrail,
     PIIHandler,
+    ServerRegistrationRequest,
+    ToolRegistrationRequest,
     ViolationType,
 )
 from secure_mcp_gateway.utils import sys_print
@@ -680,6 +682,446 @@ class EnkryptPIIHandler:
             return content
 
 
+class EnkryptServerRegistrationGuardrail:
+    """
+    Handles server and tool registration validation using Enkrypt batch API.
+
+    This class validates servers and tools during discovery to prevent
+    malicious or unsafe MCP servers/tools from being registered.
+    """
+
+    # Server validation detector config
+    SERVER_DETECTORS: ClassVar[Dict[str, Any]] = {
+        "injection_attack": {"enabled": True},
+        "policy_violation": {
+            "enabled": True,
+            "coc_policy_name": "Safe Server Registration Policy",
+            "need_explanation": True,
+        },
+        "keyword_detector": {
+            "enabled": True,
+            "banned_keywords": [
+                "exec",
+                "shell",
+                "eval",
+                "system",
+                "command",
+                "root",
+                "admin",
+                "sudo",
+                "rm -rf",
+                "delete_all",
+            ],
+        },
+        "toxicity": {"enabled": True},
+        "nsfw": {"enabled": True},
+        "topic_detector": {"enabled": False, "topic": []},
+        "pii": {"enabled": False, "entities": []},
+        "system_prompt": {"enabled": False},
+        "copyright_ip": {"enabled": False},
+        "bias": {"enabled": False},
+        "sponge_attack": {"enabled": False},
+    }
+
+    # Tool validation detector config
+    TOOL_DETECTORS: ClassVar[Dict[str, Any]] = {
+        "injection_attack": {"enabled": True},
+        "policy_violation": {
+            "enabled": True,
+            # "coc_policy_name": "Safe Tool Registration Policy",
+            "policy_text": "Allow only safe tools to be registered for this MCP server and find any malicious tools to be blocked",
+            "need_explanation": True,
+        },
+        "keyword_detector": {
+            "enabled": True,
+            "banned_keywords": [
+                "exec",
+                "shell",
+                "eval",
+                # "system",
+                # "command",
+                # "execute",
+                "run_code",
+                # "delete",
+                # "drop",
+                # "truncate",
+                # "remove",
+                "destroy",
+                "wipe",
+                # "format",
+                "kill",
+                "terminate",
+                "exploit",
+                "hack",
+                "crack",
+                "bypass",
+                "override",
+                # "privilege",
+                "escalate",
+                # "root",
+                # "admin",
+                "sudo",
+                "chmod",
+                "chown",
+            ],
+        },
+        "toxicity": {"enabled": True},
+        "nsfw": {"enabled": True},
+        "topic_detector": {
+            "enabled": False,
+            # "topic": [],
+        },
+        "pii": {"enabled": False, "entities": []},
+        # "system_prompt": {"enabled": True},
+        # "copyright_ip": {"enabled": False},
+        "bias": {"enabled": False},
+        "sponge_attack": {"enabled": True},
+    }
+
+    def __init__(self, api_key: str, base_url: str, config: Dict[str, Any] = None):
+        self.api_key = api_key
+        self.base_url = base_url
+        self.config = config or {}
+        self.batch_url = f"{base_url}/guardrails/batch/detect"
+        self.debug = self.config.get("debug", False)
+
+        # Get custom detectors from config if provided
+        registration_config = self.config.get("registration_validation", {})
+        if registration_config.get("custom_detectors"):
+            self.SERVER_DETECTORS = registration_config.get(
+                "server_detectors", self.SERVER_DETECTORS
+            )
+            self.TOOL_DETECTORS = registration_config.get(
+                "tool_detectors", self.TOOL_DETECTORS
+            )
+
+    async def validate_server(
+        self, request: ServerRegistrationRequest
+    ) -> GuardrailResponse:
+        """Validate server registration."""
+        start_time = time.time()
+
+        try:
+            # Build text from server metadata
+            server_text = f"MCP Server: {request.server_name}"
+            if request.server_description:
+                server_text += f" - {request.server_description}"
+            # Command triggers injection attacks. So only checking with name and description
+            # if request.server_command:
+            #     server_text += f" | Command: {request.server_command}"
+
+            if self.debug:
+                sys_print(
+                    f"[EnkryptServerRegistration] Validating server: {request.server_name}",
+                    is_debug=True,
+                )
+                sys_print(
+                    f"[EnkryptServerRegistration] Text: {server_text}", is_debug=True
+                )
+
+            # Call Enkrypt batch API
+            response = await self._call_batch_api(
+                texts=[server_text], detectors=self.SERVER_DETECTORS
+            )
+
+            sys_print(
+                f"[EnkryptServerRegistration] Guardrail Response: {response}",
+                is_debug=True,
+            )
+
+            # Analyze response
+            result = response[0]
+            violations = []
+
+            # Check each detector
+            if result["summary"].get("injection_attack", 0) == 1:
+                violations.append(
+                    GuardrailViolation(
+                        violation_type=ViolationType.INJECTION_ATTACK,
+                        severity=1.0,
+                        message="Injection attack detected in server metadata",
+                        action=GuardrailAction.BLOCK,
+                        metadata=result["details"].get("injection_attack", {}),
+                    )
+                )
+
+            if result["summary"].get("policy_violation", 0) == 1:
+                policy_details = result["details"].get("policy_violation", {})
+                explanation = policy_details.get(
+                    "explanation", "Policy violation detected"
+                )
+                violations.append(
+                    GuardrailViolation(
+                        violation_type=ViolationType.POLICY_VIOLATION,
+                        severity=1.0,
+                        message=f"Policy violation: {explanation}",
+                        action=GuardrailAction.BLOCK,
+                        metadata=policy_details,
+                    )
+                )
+
+            if result["summary"].get("toxicity", 0) == 1:
+                violations.append(
+                    GuardrailViolation(
+                        violation_type=ViolationType.TOXIC_CONTENT,
+                        severity=0.8,
+                        message="Toxic content detected in server description",
+                        action=GuardrailAction.BLOCK,
+                        metadata=result["details"].get("toxicity", {}),
+                    )
+                )
+
+            if result["summary"].get("nsfw", 0) == 1:
+                violations.append(
+                    GuardrailViolation(
+                        violation_type=ViolationType.NSFW_CONTENT,
+                        severity=0.8,
+                        message="NSFW content detected in server description",
+                        action=GuardrailAction.BLOCK,
+                        metadata=result["details"].get("nsfw", {}),
+                    )
+                )
+
+            is_safe = len(violations) == 0
+            processing_time = (time.time() - start_time) * 1000
+
+            if self.debug:
+                sys_print(
+                    f"[EnkryptServerRegistration] Server validation result: {'SAFE' if is_safe else 'BLOCKED'}",
+                    is_debug=True,
+                )
+                if not is_safe:
+                    sys_print(
+                        f"[EnkryptServerRegistration] Violations: {[v.message for v in violations]}",
+                        is_debug=True,
+                    )
+
+            return GuardrailResponse(
+                is_safe=is_safe,
+                action=GuardrailAction.ALLOW if is_safe else GuardrailAction.BLOCK,
+                violations=violations,
+                processing_time_ms=processing_time,
+                metadata={
+                    "server_name": request.server_name,
+                    "detection_details": result,
+                },
+            )
+
+        except Exception as e:
+            sys_print(
+                f"[EnkryptServerRegistration] Error validating server: {e}",
+                is_error=True,
+            )
+            # Fail open: allow on error to avoid blocking legitimate servers
+            return GuardrailResponse(
+                is_safe=True,
+                action=GuardrailAction.ALLOW,
+                violations=[],
+                metadata={"error": str(e)},
+            )
+
+    async def validate_tools(
+        self, request: ToolRegistrationRequest
+    ) -> GuardrailResponse:
+        """Validate and filter tools."""
+        start_time = time.time()
+
+        try:
+            # Build texts array from tool descriptions
+            texts = []
+            for tool in request.tools:
+                # Handle both dict and Tool object
+                if isinstance(tool, dict):
+                    tool_name = tool.get("name", "unknown")
+                    tool_desc = tool.get("description", "")
+                    annotations = tool.get("annotations", {})
+                else:
+                    # Tool object (has attributes)
+                    tool_name = getattr(tool, "name", "unknown")
+                    tool_desc = getattr(tool, "description", "")
+                    annotations = getattr(tool, "annotations", {}) or {}
+
+                tool_text = f"Tool: {tool_name}"
+
+                if tool_desc:
+                    tool_text += f" - {tool_desc}"
+
+                # Add annotations
+                if isinstance(annotations, dict):
+                    if annotations.get("destructiveHint"):
+                        tool_text += " [DESTRUCTIVE]"
+                    if annotations.get("readOnlyHint"):
+                        tool_text += " [READ-ONLY]"
+
+                texts.append(tool_text)
+
+            if self.debug:
+                sys_print(
+                    f"[EnkryptToolRegistration] Validating {len(texts)} tools for {request.server_name}",
+                    is_debug=True,
+                )
+
+            # Call Enkrypt batch API
+            response = await self._call_batch_api(
+                texts=texts, detectors=self.TOOL_DETECTORS
+            )
+
+            sys_print(
+                f"[EnkryptToolRegistration] Guardrail Response: {response}",
+                is_debug=True,
+            )
+
+            # Analyze results
+            safe_tools = []
+            blocked_tools = []
+            all_violations = []
+
+            for i, (tool, result) in enumerate(zip(request.tools, response)):
+                # Check all enabled detectors
+                tool_violations = []
+
+                if result["summary"].get("injection_attack", 0) == 1:
+                    tool_violations.append("injection attack detected")
+                if result["summary"].get("policy_violation", 0) == 1:
+                    explanation = (
+                        result["details"]
+                        .get("policy_violation", {})
+                        .get("explanation", "policy violation")
+                    )
+                    tool_violations.append(explanation)
+                if result["summary"].get("toxicity", 0) == 1:
+                    tool_violations.append("toxic content")
+                if result["summary"].get("nsfw", 0) == 1:
+                    tool_violations.append("NSFW content")
+                if result["summary"].get("topic_detector", 0) == 1:
+                    tool_violations.append("dangerous topic detected")
+
+                # Get tool name for reporting
+                if isinstance(tool, dict):
+                    tool_name = tool.get("name", "unknown")
+                else:
+                    tool_name = getattr(tool, "name", "unknown")
+
+                if len(tool_violations) == 0:
+                    safe_tools.append(tool)
+                else:
+                    blocked_tool_info = {
+                        "name": tool_name,
+                        "reasons": tool_violations,
+                        "detection_details": result,
+                    }
+                    blocked_tools.append(blocked_tool_info)
+
+                    # Create violation objects
+                    for reason in tool_violations:
+                        all_violations.append(
+                            GuardrailViolation(
+                                violation_type=ViolationType.POLICY_VIOLATION,
+                                severity=1.0,
+                                message=f"Blocked tool '{tool_name}': {reason}",
+                                action=GuardrailAction.BLOCK,
+                                metadata={"tool": tool_name, "reason": reason},
+                            )
+                        )
+
+            # Determine overall safety based on mode
+            if request.validation_mode == "block_all":
+                # Block all if any tool is unsafe
+                is_safe = len(blocked_tools) == 0
+            else:
+                # Filter mode: allow but filter unsafe tools
+                is_safe = True
+
+            processing_time = (time.time() - start_time) * 1000
+
+            if self.debug:
+                sys_print(
+                    "[EnkryptToolRegistration] Validation complete:", is_debug=True
+                )
+                sys_print(f"  - Total tools: {len(request.tools)}", is_debug=True)
+                sys_print(f"  - Safe tools: {len(safe_tools)}", is_debug=True)
+                sys_print(f"  - Blocked tools: {len(blocked_tools)}", is_debug=True)
+                if blocked_tools:
+                    sys_print(
+                        f"  - Blocked: {[t['name'] for t in blocked_tools]}",
+                        is_debug=True,
+                    )
+
+            return GuardrailResponse(
+                is_safe=is_safe,
+                action=GuardrailAction.ALLOW if is_safe else GuardrailAction.BLOCK,
+                violations=all_violations,
+                processing_time_ms=processing_time,
+                metadata={
+                    "server_name": request.server_name,
+                    "total_tools": len(request.tools),
+                    "safe_tools_count": len(safe_tools),
+                    "blocked_tools_count": len(blocked_tools),
+                    "blocked_tools": blocked_tools,
+                    "filtered_tools": safe_tools,
+                    "validation_mode": request.validation_mode,
+                },
+            )
+
+        except Exception as e:
+            sys_print(
+                f"[EnkryptToolRegistration] Error validating tools: {e}", is_error=True
+            )
+            # Fail open: allow all tools on error
+            return GuardrailResponse(
+                is_safe=True,
+                action=GuardrailAction.ALLOW,
+                violations=[],
+                metadata={
+                    "error": str(e),
+                    "filtered_tools": request.tools,  # Return all tools on error
+                },
+            )
+
+    async def _call_batch_api(
+        self, texts: List[str], detectors: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Call Enkrypt batch detection API."""
+        try:
+            payload = {"texts": texts, "detectors": detectors}
+
+            headers = {
+                "apikey": self.api_key,
+                "Content-Type": "application/json",
+            }
+
+            if self.debug:
+                sys_print(
+                    f"[EnkryptBatchAPI] Calling batch API with {len(texts)} texts",
+                    is_debug=True,
+                )
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.batch_url,
+                    json=payload,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        raise Exception(f"API error {response.status}: {error_text}")
+
+                    result = await response.json()
+
+            if self.debug:
+                sys_print(
+                    "[EnkryptBatchAPI] Batch API response received", is_debug=True
+                )
+
+            return result
+
+        except Exception as e:
+            sys_print(f"[EnkryptBatchAPI] Batch API call failed: {e}", is_error=True)
+            # Return safe default (fail open)
+            return [{"text": text, "summary": {}, "details": {}} for text in texts]
+
+
 class EnkryptGuardrailProvider(GuardrailProvider):
     """
     Enkrypt AI guardrail provider implementation.
@@ -688,9 +1130,20 @@ class EnkryptGuardrailProvider(GuardrailProvider):
     All API calls are made directly from this provider.
     """
 
-    def __init__(self, api_key: str, base_url: str = "https://api.enkryptai.com"):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = "https://api.enkryptai.com",
+        config: Dict[str, Any] = None,
+    ):
         self.api_key = api_key
         self.base_url = base_url
+        self.config = config or {}
+
+        # Initialize registration guardrail
+        self.registration_guardrail = EnkryptServerRegistrationGuardrail(
+            api_key=api_key, base_url=base_url, config=self.config
+        )
 
     def get_name(self) -> str:
         """Get provider name."""
@@ -736,6 +1189,18 @@ class EnkryptGuardrailProvider(GuardrailProvider):
         """Get required config keys."""
         return ["enabled", "policy_name"]
 
+    async def validate_server_registration(
+        self, request: ServerRegistrationRequest
+    ) -> Optional[GuardrailResponse]:
+        """Validate server registration using Enkrypt batch API."""
+        return await self.registration_guardrail.validate_server(request)
+
+    async def validate_tool_registration(
+        self, request: ToolRegistrationRequest
+    ) -> Optional[GuardrailResponse]:
+        """Validate tool registration using Enkrypt batch API."""
+        return await self.registration_guardrail.validate_tools(request)
+
     def get_metadata(self) -> Dict[str, Any]:
         """Get provider metadata."""
         base_metadata = super().get_metadata()
@@ -743,13 +1208,16 @@ class EnkryptGuardrailProvider(GuardrailProvider):
             {
                 "api_url": self.base_url,
                 "supports_async": True,
-                "supports_batch": False,
+                "supports_batch": True,
                 "max_content_length": 100000,
                 "supports_policy_detection": True,
                 "supports_relevancy": True,
                 "supports_adherence": True,
                 "supports_hallucination": True,
                 "supports_pii_redaction": True,
+                "supports_registration_validation": True,
+                "supports_server_validation": True,
+                "supports_tool_validation": True,
             }
         )
         return base_metadata

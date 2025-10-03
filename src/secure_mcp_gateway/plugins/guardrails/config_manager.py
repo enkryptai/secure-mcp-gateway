@@ -219,6 +219,71 @@ class GuardrailConfigManager:
                 metadata[name] = provider_metadata
         return metadata
 
+    async def validate_server_registration(
+        self, server_name: str, server_config: Dict[str, Any]
+    ) -> Optional[Any]:  # GuardrailResponse
+        """
+        Validate a server during registration/discovery.
+
+        Args:
+            server_name: Name of the server
+            server_config: Server configuration dictionary
+
+        Returns:
+            GuardrailResponse or None if no provider supports registration
+        """
+        from secure_mcp_gateway.plugins.guardrails.base import ServerRegistrationRequest
+
+        # Try to get Enkrypt provider first, or use any available provider
+        provider = self.registry.get_provider("enkrypt")
+        if not provider:
+            # Fallback to first available provider
+            all_providers = self.registry.get_all_providers()
+            if not all_providers:
+                return None
+            provider = next(iter(all_providers.values()))
+
+        request = ServerRegistrationRequest(
+            server_name=server_name,
+            server_config=server_config,
+            server_description=server_config.get("description"),
+            server_command=server_config.get("command"),
+            server_metadata=server_config,
+        )
+
+        return await provider.validate_server_registration(request)
+
+    async def validate_tool_registration(
+        self, server_name: str, tools: List[Dict[str, Any]], mode: str = "filter"
+    ) -> Optional[Any]:  # GuardrailResponse
+        """
+        Validate and filter tools during discovery.
+
+        Args:
+            server_name: Name of the server
+            tools: List of tool dictionaries
+            mode: "filter" to filter unsafe tools, "block_all" to block if any unsafe
+
+        Returns:
+            GuardrailResponse or None if no provider supports registration
+        """
+        from secure_mcp_gateway.plugins.guardrails.base import ToolRegistrationRequest
+
+        # Try to get Enkrypt provider first, or use any available provider
+        provider = self.registry.get_provider("enkrypt")
+        if not provider:
+            # Fallback to first available provider
+            all_providers = self.registry.get_all_providers()
+            if not all_providers:
+                return None
+            provider = next(iter(all_providers.values()))
+
+        request = ToolRegistrationRequest(
+            server_name=server_name, tools=tools, validation_mode=mode
+        )
+
+        return await provider.validate_tool_registration(request)
+
 
 # ============================================================================
 # Configuration Schema Helpers

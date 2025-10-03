@@ -39,6 +39,18 @@ class DiscoveryService:
         self.auth_manager = get_auth_config_manager()
         self.cache_service = cache_service
 
+        # Import guardrail manager for registration validation
+        try:
+            from secure_mcp_gateway.plugins.guardrails import (
+                get_guardrail_config_manager,
+            )
+
+            self.guardrail_manager = get_guardrail_config_manager()
+            self.registration_validation_enabled = True
+        except Exception:
+            self.guardrail_manager = None
+            self.registration_validation_enabled = False
+
     async def discover_tools(
         self,
         ctx,
@@ -354,6 +366,93 @@ class DiscoveryService:
             id = self.auth_manager.get_session_gateway_config(session_key)["id"]
             info_span.set_attribute("gateway_id", id)
 
+            # NEW: Validate server registration before proceeding
+            if self.registration_validation_enabled and self.guardrail_manager:
+                with tracer_obj.start_as_current_span(
+                    "validate_server_registration"
+                ) as server_validation_span:
+                    server_validation_span.set_attribute("server_name", server_name)
+
+                    sys_print(
+                        f"[discover_server_tools] Validating server registration for {server_name}"
+                    )
+
+                    try:
+                        server_validation_response = (
+                            await self.guardrail_manager.validate_server_registration(
+                                server_name=server_name, server_config=server_info
+                            )
+                        )
+
+                        if (
+                            server_validation_response
+                            and not server_validation_response.is_safe
+                        ):
+                            # Server is unsafe - block it entirely
+                            violations = server_validation_response.violations
+                            violation_messages = [v.message for v in violations]
+
+                            server_validation_span.set_attribute("server_blocked", True)
+                            server_validation_span.set_attribute(
+                                "violation_count", len(violations)
+                            )
+
+                            sys_print(
+                                f"[discover_server_tools] ⚠️  BLOCKED UNSAFE SERVER: {server_name}",
+                                is_error=True,
+                            )
+                            sys_print(
+                                "[discover_server_tools] === SERVER BLOCKED ===",
+                                is_error=True,
+                            )
+                            for violation in violations:
+                                sys_print(
+                                    f"[discover_server_tools]   ❌ {violation.message}",
+                                    is_error=True,
+                                )
+                            sys_print(
+                                "[discover_server_tools] ========================",
+                                is_error=True,
+                            )
+
+                            logger.error(
+                                "enkrypt_discover_all_tools.server_blocked_by_guardrails",
+                                extra={
+                                    **build_log_extra(ctx, custom_id, server_name),
+                                    "violations": violation_messages,
+                                },
+                            )
+
+                            return {
+                                "status": "error",
+                                "error": f"Server '{server_name}' blocked by security guardrails: {', '.join(violation_messages)}",
+                                "blocked": True,
+                                "violations": violation_messages,
+                            }
+                        else:
+                            # Server is safe
+                            sys_print(
+                                f"[discover_server_tools] ✓ Server {server_name} passed validation"
+                            )
+                            server_validation_span.set_attribute("server_safe", True)
+
+                    except Exception as server_validation_error:
+                        # Fail open: if validation fails, allow the server
+                        sys_print(
+                            f"[discover_server_tools] Server validation error: {server_validation_error}",
+                            is_error=True,
+                        )
+                        logger.error(
+                            "enkrypt_discover_all_tools.server_validation_error",
+                            extra={
+                                **build_log_extra(ctx, custom_id, server_name),
+                                "error": str(server_validation_error),
+                            },
+                        )
+                        server_validation_span.set_attribute(
+                            "validation_error", str(server_validation_error)
+                        )
+
             # Check if server has configured tools in the gateway config
             config_tools = server_info.get("tools", {})
             info_span.set_attribute("has_config_tools", bool(config_tools))
@@ -444,6 +543,127 @@ class DiscoveryService:
                             "enkrypt_discover_all_tools.tools_discovered",
                             extra=build_log_extra(ctx, custom_id, server_name),
                         )
+
+                    # NEW: Validate tools with guardrails before caching
+                    if self.registration_validation_enabled and self.guardrail_manager:
+                        with tracer_obj.start_as_current_span(
+                            "validate_tool_registration"
+                        ) as validation_span:
+                            validation_span.set_attribute("server_name", server_name)
+
+                            # Extract tool list from ListToolsResult or dict
+                            if hasattr(tools, "tools"):
+                                # ListToolsResult object
+                                tool_list = list(tools.tools)
+                            elif isinstance(tools, dict):
+                                tool_list = tools.get("tools", [])
+                            else:
+                                tool_list = list(tools) if tools else []
+
+                            tool_count = len(tool_list)
+                            validation_span.set_attribute("tool_count", tool_count)
+
+                            sys_print(
+                                f"[discover_server_tools] Validating {tool_count} tools for {server_name}"
+                            )
+
+                            try:
+                                validation_response = await self.guardrail_manager.validate_tool_registration(
+                                    server_name=server_name,
+                                    tools=tool_list,
+                                    mode="filter",  # Filter unsafe tools but allow safe ones
+                                )
+
+                                if validation_response and validation_response.metadata:
+                                    blocked_count = validation_response.metadata.get(
+                                        "blocked_tools_count", 0
+                                    )
+                                    safe_count = validation_response.metadata.get(
+                                        "safe_tools_count", 0
+                                    )
+
+                                    validation_span.set_attribute(
+                                        "blocked_tools_count", blocked_count
+                                    )
+                                    validation_span.set_attribute(
+                                        "safe_tools_count", safe_count
+                                    )
+
+                                    if blocked_count > 0:
+                                        blocked_tools = (
+                                            validation_response.metadata.get(
+                                                "blocked_tools", []
+                                            )
+                                        )
+                                        sys_print(
+                                            f"[discover_server_tools] ⚠️  Blocked {blocked_count} unsafe tools from {server_name}",
+                                            is_error=True,
+                                        )
+                                        sys_print(
+                                            "[discover_server_tools] === BLOCKED TOOLS DETAILS ===",
+                                            is_error=True,
+                                        )
+                                        for blocked_tool in blocked_tools:
+                                            tool_name = blocked_tool.get(
+                                                "name", "unknown"
+                                            )
+                                            reasons = blocked_tool.get("reasons", [])
+                                            sys_print(
+                                                f"[discover_server_tools]   ❌ {tool_name}:",
+                                                is_error=True,
+                                            )
+                                            for reason in reasons:
+                                                sys_print(
+                                                    f"[discover_server_tools]      → {reason}",
+                                                    is_error=True,
+                                                )
+                                        sys_print(
+                                            "[discover_server_tools] ==============================",
+                                            is_error=True,
+                                        )
+                                        logger.warning(
+                                            "enkrypt_discover_all_tools.tools_blocked_by_guardrails",
+                                            extra={
+                                                **build_log_extra(
+                                                    ctx, custom_id, server_name
+                                                ),
+                                                "blocked_count": blocked_count,
+                                                "blocked_tools": blocked_tools,
+                                            },
+                                        )
+
+                                    # Update tools with filtered list
+                                    filtered_tools = validation_response.metadata.get(
+                                        "filtered_tools", tool_list
+                                    )
+                                    if isinstance(tools, dict):
+                                        tools["tools"] = filtered_tools
+                                    else:
+                                        tools = filtered_tools
+
+                                    sys_print(
+                                        f"[discover_server_tools] ✓ {safe_count} safe tools approved for {server_name}"
+                                    )
+                                    validation_span.set_attribute(
+                                        "validation_success", True
+                                    )
+
+                            except Exception as validation_error:
+                                # Fail open: if validation fails, allow all tools
+                                sys_print(
+                                    f"[discover_server_tools] Tool validation error: {validation_error}",
+                                    is_error=True,
+                                )
+                                logger.error(
+                                    "enkrypt_discover_all_tools.tool_validation_error",
+                                    extra={
+                                        **build_log_extra(ctx, custom_id, server_name),
+                                        "error": str(validation_error),
+                                    },
+                                )
+                                validation_span.set_attribute(
+                                    "validation_error", str(validation_error)
+                                )
 
                     # Cache write
                     with tracer_obj.start_as_current_span(

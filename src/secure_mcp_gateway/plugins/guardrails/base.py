@@ -101,6 +101,28 @@ class GuardrailRequest:
 
 
 @dataclass
+class ServerRegistrationRequest:
+    """Request for server registration validation."""
+
+    server_name: str
+    server_config: Dict[str, Any]
+    server_description: Optional[str] = None
+    server_command: Optional[str] = None
+    server_metadata: Optional[Dict[str, Any]] = None
+    context: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class ToolRegistrationRequest:
+    """Request for tool registration validation."""
+
+    server_name: str
+    tools: List[Dict[str, Any]]  # List of tool schemas with name, description, etc.
+    validation_mode: str = "filter"  # "filter" or "block_all"
+    context: Optional[Dict[str, Any]] = None
+
+
+@dataclass
 class GuardrailResponse:
     """Result of guardrail evaluation."""
 
@@ -309,6 +331,34 @@ class GuardrailProvider(ABC):
         """
         return []
 
+    def validate_server_registration(
+        self, request: ServerRegistrationRequest
+    ) -> Optional[GuardrailResponse]:
+        """
+        Validate a server during registration/discovery (optional).
+
+        Args:
+            request: Server registration request
+
+        Returns:
+            GuardrailResponse or None if not supported
+        """
+        return None
+
+    def validate_tool_registration(
+        self, request: ToolRegistrationRequest
+    ) -> Optional[GuardrailResponse]:
+        """
+        Validate tools during discovery (optional).
+
+        Args:
+            request: Tool registration request
+
+        Returns:
+            GuardrailResponse or None if not supported
+        """
+        return None
+
     def get_metadata(self) -> Dict[str, Any]:
         """
         Get provider metadata (capabilities, limits, etc.).
@@ -322,6 +372,7 @@ class GuardrailProvider(ABC):
             "supports_input": self.create_input_guardrail({}) is not None,
             "supports_output": self.create_output_guardrail({}) is not None,
             "supports_pii": self.create_pii_handler({}) is not None,
+            "supports_registration": True,  # All providers can override this
         }
 
 
