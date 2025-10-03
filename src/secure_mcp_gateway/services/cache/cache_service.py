@@ -3,10 +3,12 @@
 import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from secure_mcp_gateway.services.telemetry.telemetry_service import (
-    cache_hit_counter,
-    cache_miss_counter,
-)
+from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
+
+# Get metrics from telemetry manager
+telemetry_manager = get_telemetry_config_manager()
+cache_hit_counter = telemetry_manager.cache_hit_counter
+cache_miss_counter = telemetry_manager.cache_miss_counter
 from secure_mcp_gateway.utils import (
     get_common_config,
     mask_key,

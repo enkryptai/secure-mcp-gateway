@@ -21,7 +21,41 @@ from secure_mcp_gateway.consts import (
     EXAMPLE_CONFIG_NAME,
     EXAMPLE_CONFIG_PATH,
 )
-from secure_mcp_gateway.services.telemetry.telemetry_service import logger
+
+# Lazy import to avoid circular imports
+_logger_cache = None
+
+
+def get_logger():
+    """Lazy logger retrieval to avoid circular imports and early initialization."""
+    global _logger_cache
+    if _logger_cache is None:
+        try:
+            from secure_mcp_gateway.plugins.telemetry import (
+                get_telemetry_config_manager,
+            )
+
+            telemetry_manager = get_telemetry_config_manager()
+            _logger_cache = telemetry_manager.get_logger()
+        except Exception:
+            # If telemetry is not available, return None
+            _logger_cache = None
+    return _logger_cache
+
+
+# For backward compatibility, expose logger as a module-level variable
+class LazyLogger:
+    """Lazy logger wrapper for backward compatibility."""
+
+    def __getattr__(self, name):
+        logger = get_logger()
+        if logger:
+            return getattr(logger, name)
+        # No-op if logger not available
+        return lambda *args, **kwargs: None
+
+
+logger = LazyLogger()
 from secure_mcp_gateway.version import __version__
 
 
@@ -266,9 +300,10 @@ def mask_key(key):
 
 
 def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs):
-    from secure_mcp_gateway.services.auth.auth_service import auth_service
+    from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 
-    credentials = auth_service.get_gateway_credentials(ctx)
+    auth_manager = get_auth_config_manager()
+    credentials = auth_manager.get_gateway_credentials(ctx)
     gateway_key = credentials.get("gateway_key")
     project_id = credentials.get("project_id", "not_provided")
     user_id = credentials.get("user_id", "not_provided")
@@ -276,7 +311,7 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
     #     sys_print(f"[build_log_extra] Project ID, User ID or MCP Config ID is not provided", is_error=True)
     #     return {}
 
-    gateway_config = auth_service.get_local_mcp_config(gateway_key, project_id, user_id)
+    gateway_config = auth_manager.get_local_mcp_config(gateway_key, project_id, user_id)
     project_name = gateway_config.get("project_name", "not_provided")
     email = gateway_config.get("email", "not_provided")
     mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")

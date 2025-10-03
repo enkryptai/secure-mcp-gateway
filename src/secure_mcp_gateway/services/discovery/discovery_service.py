@@ -6,17 +6,19 @@ from typing import Any
 from opentelemetry import trace
 
 from secure_mcp_gateway.client import forward_tool_call
-from secure_mcp_gateway.services.auth.auth_service import auth_service
+from secure_mcp_gateway.plugins.auth import get_auth_config_manager
+from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
 from secure_mcp_gateway.services.cache.cache_service import cache_service
-from secure_mcp_gateway.services.telemetry.telemetry_service import (
-    cache_hit_counter,
-    cache_miss_counter,
-    list_servers_call_count,
-    servers_discovered_count,
-    tool_call_counter,
-    tool_call_duration,
-    tracer,
-)
+
+# Get telemetry components from manager
+telemetry_manager = get_telemetry_config_manager()
+cache_hit_counter = telemetry_manager.cache_hit_counter
+cache_miss_counter = telemetry_manager.cache_miss_counter
+list_servers_call_count = telemetry_manager.list_servers_call_count
+servers_discovered_count = telemetry_manager.servers_discovered_count
+tool_call_counter = telemetry_manager.tool_call_counter
+tool_call_duration = telemetry_manager.tool_call_duration
+tracer = telemetry_manager.get_tracer()
 from secure_mcp_gateway.utils import (
     build_log_extra,
     get_server_info_by_name,
@@ -34,7 +36,7 @@ class DiscoveryService:
     """
 
     def __init__(self):
-        self.auth_service = auth_service
+        self.auth_manager = get_auth_config_manager()
         self.cache_service = cache_service
 
     async def discover_tools(
@@ -81,11 +83,11 @@ class DiscoveryService:
             )
 
             # Get credentials and config
-            credentials = auth_service.get_gateway_credentials(ctx)
+            credentials = self.auth_manager.get_gateway_credentials(ctx)
             enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
             enkrypt_project_id = credentials.get("project_id", "not_provided")
             enkrypt_user_id = credentials.get("user_id", "not_provided")
-            gateway_config = auth_service.get_local_mcp_config(
+            gateway_config = self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
             )
 
@@ -186,7 +188,7 @@ class DiscoveryService:
         server_name,
     ):
         """Check authentication and return error if needed."""
-        if not self.auth_service.is_session_authenticated(session_key):
+        if not self.auth_manager.is_session_authenticated(session_key):
             with tracer_obj.start_as_current_span("check_auth") as auth_span:
                 auth_span.set_attribute("custom_id", custom_id)
                 auth_span.set_attribute(
@@ -197,7 +199,7 @@ class DiscoveryService:
                 # Import here to avoid circular imports
                 from secure_mcp_gateway.gateway import enkrypt_authenticate
 
-                result = enkrypt_authenticate(ctx)
+                result = await enkrypt_authenticate(ctx)
                 auth_span.set_attribute("auth_result", result.get("status"))
                 if result.get("status") != "success":
                     auth_span.set_attribute("error", "Authentication failed")
@@ -327,7 +329,7 @@ class DiscoveryService:
             info_span.set_attribute("server_name", server_name)
 
             server_info = get_server_info_by_name(
-                self.auth_service.get_session_gateway_config(session_key), server_name
+                self.auth_manager.get_session_gateway_config(session_key), server_name
             )
             info_span.set_attribute("server_found", server_info is not None)
 
@@ -349,7 +351,7 @@ class DiscoveryService:
                     "error": f"Server '{server_name}' not available.",
                 }
 
-            id = self.auth_service.get_session_gateway_config(session_key)["id"]
+            id = self.auth_manager.get_session_gateway_config(session_key)["id"]
             info_span.set_attribute("gateway_id", id)
 
             # Check if server has configured tools in the gateway config
@@ -417,7 +419,7 @@ class DiscoveryService:
                     server_name,
                     None,
                     None,
-                    self.auth_service.get_session_gateway_config(session_key),
+                    self.auth_manager.get_session_gateway_config(session_key),
                 )
                 end_time = time.time()
                 tool_call_duration.record(

@@ -119,9 +119,7 @@ except ImportError:
     )
 
 from secure_mcp_gateway.dependencies import __dependencies__
-from secure_mcp_gateway.services.auth.auth_service import (
-    auth_service,  # Import the new auth service
-)
+from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 from secure_mcp_gateway.utils import (
     get_common_config,
     sys_print,
@@ -130,14 +128,50 @@ from secure_mcp_gateway.version import __version__
 
 sys_print(f"Successfully imported secure_mcp_gateway v{__version__} in gateway module")
 
+# Initialize telemetry system with plugin-based architecture
+from secure_mcp_gateway.plugins.telemetry import (
+    get_telemetry_config_manager,
+    initialize_telemetry_system,
+)
+
+# Initialize the telemetry system
 try:
-    from secure_mcp_gateway.services.telemetry.telemetry_service import (
-        logger,
-        tracer,
-    )
-except ImportError as e:
-    # Handle the import error, e.g., log it or provide fallback behavior
-    sys_print(f"Import failed: {e}", is_error=True)
+    telemetry_manager = initialize_telemetry_system()
+    logger = telemetry_manager.get_logger()
+    tracer = telemetry_manager.get_tracer()
+except Exception as e:
+    sys_print(f"Telemetry initialization failed: {e}", is_error=True)
+
+    # Fallback to no-op logger/tracer if initialization fails
+    class NoOpLogger:
+        def info(self, *args, **kwargs):
+            pass
+
+        def error(self, *args, **kwargs):
+            pass
+
+        def warning(self, *args, **kwargs):
+            pass
+
+        def debug(self, *args, **kwargs):
+            pass
+
+    class NoOpTracer:
+        def start_as_current_span(self, *args, **kwargs):
+            class NoOpSpan:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    pass
+
+                def set_attribute(self, *args):
+                    pass
+
+            return NoOpSpan()
+
+    logger = NoOpLogger()
+    tracer = NoOpTracer()
 
 try:
     sys_print("Installing dependencies...")
@@ -187,12 +221,7 @@ guardrail_manager = get_guardrail_config_manager()
 # Initialize auth system
 initialize_auth_system(common_config)
 
-# Initialize telemetry system
-from secure_mcp_gateway.plugins.telemetry import (
-    get_telemetry_config_manager,
-    initialize_telemetry_system,
-)
-
+# Initialize telemetry system (already imported at top)
 initialize_telemetry_system(common_config)
 telemetry_manager = get_telemetry_config_manager()
 sys_print(f"Telemetry providers: {telemetry_manager.list_providers()}")
@@ -325,19 +354,29 @@ def mask_key(key):
 # Getting gateway key per request instead of global variable
 # As we can support multuple gateway configs in the same Secure MCP Gateway server
 def get_gateway_credentials(ctx: Context):
-    """Wrapper for getting credentials using the auth service."""
-    return auth_service.get_gateway_credentials(ctx)
+    """Wrapper for getting credentials using the auth manager."""
+    auth_manager = get_auth_config_manager()
+    return auth_manager.get_gateway_credentials(ctx)
 
 
 # Read from local MCP config file
 def get_local_mcp_config(gateway_key, project_id=None, user_id=None):
-    """Wrapper for getting local MCP config using the auth service."""
-    return auth_service.get_local_mcp_config(gateway_key, project_id, user_id)
+    """Wrapper for getting local MCP config using the auth manager."""
+    auth_manager = get_auth_config_manager()
+    return auth_manager.get_local_mcp_config(gateway_key, project_id, user_id)
 
 
-def enkrypt_authenticate(ctx: Context):
-    """Wrapper for authentication using the auth service."""
-    return auth_service.authenticate(ctx)
+async def enkrypt_authenticate(ctx: Context):
+    """Wrapper for authentication using the auth manager."""
+    auth_manager = get_auth_config_manager()
+    auth_result = await auth_manager.authenticate(ctx)
+
+    # Convert to legacy format for backward compatibility
+    from secure_mcp_gateway.plugins.auth.config_manager import (
+        convert_auth_result_to_legacy_format,
+    )
+
+    return convert_auth_result_to_legacy_format(auth_result)
 
 
 # --- MCP Tools ---

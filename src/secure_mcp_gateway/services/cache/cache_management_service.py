@@ -25,9 +25,9 @@ class CacheManagementService:
 
     def __init__(self):
         # Lazy import to avoid circular dependency
-        from secure_mcp_gateway.services.auth.auth_service import auth_service
+        from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 
-        self.auth_service = auth_service
+        self.auth_manager = get_auth_config_manager()
         self.cache_service = cache_service
 
         # Load configuration
@@ -155,12 +155,12 @@ class CacheManagementService:
     async def _authenticate_and_setup(self, ctx, custom_id, main_span, logger):
         """Handle authentication and setup for cache operations."""
         with tracer.start_as_current_span("cache_management.authenticate") as auth_span:
-            credentials = self.auth_service.get_gateway_credentials(ctx)
+            credentials = self.auth_manager.get_gateway_credentials(ctx)
             enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
             enkrypt_project_id = credentials.get("project_id", "not_provided")
             enkrypt_user_id = credentials.get("user_id", "not_provided")
 
-            gateway_config = self.auth_service.get_local_mcp_config(
+            gateway_config = self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
             )
 
@@ -188,11 +188,11 @@ class CacheManagementService:
 
             session_key = f"{credentials.get('gateway_key')}_{credentials.get('project_id')}_{credentials.get('user_id')}_{enkrypt_mcp_config_id}"
 
-            if not self.auth_service.is_session_authenticated(session_key):
+            if not self.auth_manager.is_session_authenticated(session_key):
                 auth_span.set_attribute("requires_auth", True)
                 from secure_mcp_gateway.gateway import enkrypt_authenticate
 
-                result = enkrypt_authenticate(ctx)
+                result = await enkrypt_authenticate(ctx)
                 if result.get("status") != "success":
                     auth_span.set_attribute("error", "Authentication failed")
                     sys_print("[clear_cache] Not authenticated", is_error=True)
@@ -207,7 +207,7 @@ class CacheManagementService:
                 auth_span.set_attribute("requires_auth", False)
 
             # Get default id from session if not provided
-            id = self.auth_service.get_session_gateway_config(session_key)["id"]
+            id = self.auth_manager.get_session_gateway_config(session_key)["id"]
             main_span.set_attribute("id", id)
 
             return {

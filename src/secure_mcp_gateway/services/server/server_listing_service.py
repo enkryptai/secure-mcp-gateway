@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from secure_mcp_gateway.services.auth.auth_service import auth_service
+from secure_mcp_gateway.plugins.auth import get_auth_config_manager
+from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
 from secure_mcp_gateway.services.cache.cache_service import cache_service
-from secure_mcp_gateway.services.telemetry.telemetry_service import (
-    list_servers_call_count,
-    servers_discovered_count,
-)
+
+# Get metrics from telemetry manager
+telemetry_manager = get_telemetry_config_manager()
+list_servers_call_count = telemetry_manager.list_servers_call_count
+servers_discovered_count = telemetry_manager.servers_discovered_count
 from secure_mcp_gateway.utils import (
     build_log_extra,
     mask_key,
@@ -25,7 +27,7 @@ class ServerListingService:
     """
 
     def __init__(self):
-        self.auth_service = auth_service
+        self.auth_manager = get_auth_config_manager()
         self.cache_service = cache_service
 
     async def list_servers(
@@ -64,11 +66,11 @@ class ServerListingService:
             sys_print("[list_available_servers] Request received")
 
             # Get credentials and config
-            credentials = auth_service.get_gateway_credentials(ctx)
+            credentials = self.auth_manager.get_gateway_credentials(ctx)
             enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
             enkrypt_project_id = credentials.get("project_id", "not_provided")
             enkrypt_user_id = credentials.get("user_id", "not_provided")
-            gateway_config = auth_service.get_local_mcp_config(
+            gateway_config = self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
             )
 
@@ -109,7 +111,7 @@ class ServerListingService:
                     return auth_result
 
                 # Get server configuration
-                gateway_config = self.auth_service.get_session_gateway_config(
+                gateway_config = self.auth_manager.get_session_gateway_config(
                     session_key
                 )
                 id = gateway_config["id"]
@@ -203,7 +205,7 @@ class ServerListingService:
             )
             auth_span.set_attribute("gateway_key", mask_key(enkrypt_gateway_key))
             # Get credentials for span attributes
-            credentials = auth_service.get_gateway_credentials(ctx)
+            credentials = self.auth_manager.get_gateway_credentials(ctx)
             auth_span.set_attribute(
                 "project_id", credentials.get("project_id", "not_provided")
             )
@@ -228,14 +230,14 @@ class ServerListingService:
                 )
                 return {"status": "error", "error": "No gateway key provided."}
 
-            is_authenticated = self.auth_service.is_session_authenticated(session_key)
+            is_authenticated = self.auth_manager.is_session_authenticated(session_key)
             auth_span.set_attribute("is_authenticated", is_authenticated)
 
             if not is_authenticated:
                 # Import here to avoid circular imports
                 from secure_mcp_gateway.gateway import enkrypt_authenticate
 
-                result = enkrypt_authenticate(ctx)
+                result = await enkrypt_authenticate(ctx)
                 if result.get("status") != "success":
                     if logger.level <= 10:  # DEBUG level
                         logger.warning(

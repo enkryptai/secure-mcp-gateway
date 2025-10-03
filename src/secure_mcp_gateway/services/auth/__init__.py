@@ -1,6 +1,4 @@
-from secure_mcp_gateway.services.auth.auth_service import AuthService, auth_service
+# Legacy auth_service has been replaced by the plugin-based authentication system
+# Use: from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 
-__all__ = [
-    "AuthService",
-    "auth_service",
-]
+__all__ = []

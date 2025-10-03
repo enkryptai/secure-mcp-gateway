@@ -7,7 +7,7 @@ managing sessions.
 """
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from mcp.server.fastmcp import Context
 
@@ -31,6 +31,11 @@ class AuthConfigManager:
         self.registry = AuthProviderRegistry()
         self.sessions: Dict[str, SessionData] = {}
         self.default_provider = "enkrypt"
+
+        # Import cache service
+        from secure_mcp_gateway.services.cache.cache_service import cache_service
+
+        self.cache_service = cache_service
 
     def register_provider(self, provider: AuthProvider) -> None:
         """
@@ -120,7 +125,7 @@ class AuthConfigManager:
         self, ctx: Context, provider_name: Optional[str] = None
     ) -> AuthResult:
         """
-        Authenticate a request using the specified provider.
+        Authenticate a request using the specified provider with cache integration.
 
         Args:
             ctx: MCP context
@@ -129,10 +134,83 @@ class AuthConfigManager:
         Returns:
             AuthResult: Authentication result
         """
+        sys_print("[AuthConfigManager] Starting authentication")
+
         # Extract credentials
         credentials = self.extract_credentials(ctx)
+        gateway_key = credentials.gateway_key or credentials.api_key
+        project_id = credentials.project_id
+        user_id = credentials.user_id
 
-        # Get provider
+        # Validate credentials
+        if not gateway_key:
+            return AuthResult(
+                status="error",
+                authenticated=False,
+                message="Gateway key is required",
+                error="Missing gateway_key",
+            )
+
+        # Get local config to find mcp_config_id
+        local_config = self.get_local_mcp_config(gateway_key, project_id, user_id)
+        if not local_config:
+            return AuthResult(
+                status="error",
+                authenticated=False,
+                message="No configuration found",
+                error="Configuration not found",
+            )
+
+        mcp_config_id = local_config.get("mcp_config_id")
+        if not mcp_config_id:
+            return AuthResult(
+                status="error",
+                authenticated=False,
+                message="No MCP config ID found",
+                error="Missing mcp_config_id",
+            )
+
+        # Create session key
+        session_key = self.create_session_key(
+            gateway_key, project_id, user_id, mcp_config_id
+        )
+
+        # Check if already authenticated in session
+        if self.is_session_authenticated(session_key):
+            sys_print("[AuthConfigManager] Already authenticated in session")
+            session = self.sessions[session_key]
+            return AuthResult(
+                status="success",
+                authenticated=True,
+                message="Already authenticated (session)",
+                user_id=session.user_id,
+                project_id=session.project_id,
+                session_id=session_key,
+                gateway_config=session.gateway_config,
+                mcp_config=session.gateway_config.get("mcp_config", []),
+                metadata={"source": "session"},
+            )
+
+        # Check cache
+        id = local_config.get("id")
+        if id:
+            cached_config = self.cache_service.get_cached_gateway_config(id)
+            if cached_config:
+                sys_print(f"[AuthConfigManager] Found cached config for ID: {id}")
+                self.create_session(session_key, cached_config)
+                return AuthResult(
+                    status="success",
+                    authenticated=True,
+                    message="Authentication successful (cache)",
+                    user_id=cached_config.get("user_id"),
+                    project_id=cached_config.get("project_id"),
+                    session_id=session_key,
+                    gateway_config=cached_config,
+                    mcp_config=cached_config.get("mcp_config", []),
+                    metadata={"source": "cache"},
+                )
+
+        # Get provider and authenticate
         provider = self.get_provider(provider_name)
         if not provider:
             return AuthResult(
@@ -142,13 +220,22 @@ class AuthConfigManager:
                 error="Provider not registered",
             )
 
-        # Authenticate
+        # Authenticate with provider
         result = await provider.authenticate(credentials)
 
-        # Create session if successful
+        # Cache and create session if successful
         if result.is_success:
-            session_data = self._create_session(result)
-            self.sessions[session_data.session_id] = session_data
+            # Cache gateway config
+            if id and result.gateway_config:
+                self.cache_service.cache_gateway_config(id, result.gateway_config)
+
+            # Create session
+            self.create_session(session_key, result.gateway_config)
+
+            # Update result with session info
+            result.session_id = session_key
+            result.metadata = result.metadata or {}
+            result.metadata["session_created"] = True
 
         return result
 
@@ -252,6 +339,269 @@ class AuthConfigManager:
             "unauthenticated_sessions": total - authenticated,
             "providers": self.list_providers(),
         }
+
+    # ========================================================================
+    # BACKWARD-COMPATIBLE METHODS (matching auth_service API)
+    # ========================================================================
+
+    def get_gateway_credentials(self, ctx: Context) -> Dict[str, str]:
+        """
+        Backward-compatible method matching auth_service.get_gateway_credentials()
+
+        Returns dict with keys: gateway_key, project_id, user_id
+        """
+        creds = self.extract_credentials(ctx)
+        return {
+            "gateway_key": creds.gateway_key or creds.api_key,
+            "project_id": creds.project_id,
+            "user_id": creds.user_id,
+        }
+
+    def get_local_mcp_config(
+        self, gateway_key: str, project_id: str = None, user_id: str = None
+    ) -> Dict[str, Any]:
+        """
+        Backward-compatible method matching auth_service.get_local_mcp_config()
+
+        Delegates to EnkryptAuthProvider._get_local_config()
+        """
+        provider = self.get_provider("enkrypt")
+        if not provider or not hasattr(provider, "_get_local_config"):
+            return {}
+
+        return provider._get_local_config(gateway_key, project_id, user_id)
+
+    def create_session_key(
+        self, gateway_key: str, project_id: str, user_id: str, mcp_config_id: str
+    ) -> str:
+        """
+        Backward-compatible method for creating session keys.
+        """
+        return f"{gateway_key}_{project_id}_{user_id}_{mcp_config_id}"
+
+    def is_session_authenticated(self, session_key: str) -> bool:
+        """
+        Backward-compatible method for checking session authentication.
+        """
+        session = self.sessions.get(session_key)
+        return session is not None and session.authenticated
+
+    def create_session(self, session_key: str, gateway_config: Dict[str, Any]) -> None:
+        """
+        Backward-compatible session creation.
+        """
+        if session_key not in self.sessions:
+            self.sessions[session_key] = SessionData(
+                session_id=session_key,
+                user_id=gateway_config.get("user_id", ""),
+                project_id=gateway_config.get("project_id"),
+                authenticated=True,
+                created_at=time.time(),
+                last_accessed=time.time(),
+                gateway_config=gateway_config,
+                metadata={},
+            )
+        else:
+            # Update existing session
+            self.sessions[session_key].authenticated = True
+            self.sessions[session_key].gateway_config = gateway_config
+            self.sessions[session_key].last_accessed = time.time()
+
+    def is_authenticated(self, ctx: Context) -> bool:
+        """
+        Backward-compatible authentication check.
+        """
+        credentials = self.extract_credentials(ctx)
+        gateway_key = credentials.gateway_key or credentials.api_key
+        project_id = credentials.project_id
+        user_id = credentials.user_id
+
+        if not all([gateway_key, project_id, user_id]):
+            return False
+
+        # Get MCP config to get mcp_config_id
+        local_config = self.get_local_mcp_config(gateway_key, project_id, user_id)
+        if not local_config:
+            return False
+
+        mcp_config_id = local_config.get("mcp_config_id")
+        if not mcp_config_id:
+            return False
+
+        session_key = self.create_session_key(
+            gateway_key, project_id, user_id, mcp_config_id
+        )
+        return self.is_session_authenticated(session_key)
+
+    def require_authentication(self, ctx: Context) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Backward-compatible authentication requirement check.
+
+        Returns:
+            Tuple[bool, Dict]: (is_authenticated, auth_result)
+        """
+        if self.is_authenticated(ctx):
+            return True, {"status": "success", "message": "Already authenticated"}
+
+        # Use async authenticate in sync context
+        import asyncio
+
+        auth_result = asyncio.run(self.authenticate(ctx))
+
+        return auth_result.is_success, {
+            "status": auth_result.status.value,
+            "message": auth_result.message,
+            "error": auth_result.error,
+        }
+
+    def get_authenticated_session(self, ctx: Context) -> Optional[SessionData]:
+        """
+        Backward-compatible authenticated session retrieval.
+        """
+        credentials = self.extract_credentials(ctx)
+        gateway_key = credentials.gateway_key or credentials.api_key
+        project_id = credentials.project_id
+        user_id = credentials.user_id
+
+        if not all([gateway_key, project_id, user_id]):
+            return None
+
+        local_config = self.get_local_mcp_config(gateway_key, project_id, user_id)
+        if not local_config:
+            return None
+
+        mcp_config_id = local_config.get("mcp_config_id")
+        if not mcp_config_id:
+            return None
+
+        session_key = self.create_session_key(
+            gateway_key, project_id, user_id, mcp_config_id
+        )
+        return self.get_session(session_key)
+
+    def clear_session(self, ctx: Context) -> bool:
+        """
+        Backward-compatible session clearing.
+        """
+        credentials = self.extract_credentials(ctx)
+        gateway_key = credentials.gateway_key or credentials.api_key
+        project_id = credentials.project_id
+        user_id = credentials.user_id
+
+        if not all([gateway_key, project_id, user_id]):
+            return False
+
+        local_config = self.get_local_mcp_config(gateway_key, project_id, user_id)
+        if not local_config:
+            return False
+
+        mcp_config_id = local_config.get("mcp_config_id")
+        if not mcp_config_id:
+            return False
+
+        session_key = self.create_session_key(
+            gateway_key, project_id, user_id, mcp_config_id
+        )
+        return self.delete_session(session_key)
+
+    def get_session_gateway_config_key_suffix(self, credentials: Dict[str, Any]) -> str:
+        """
+        Backward-compatible config key suffix extraction.
+        """
+        try:
+            gateway_key = credentials.get("gateway_key")
+            project_id = credentials.get("project_id")
+            user_id = credentials.get("user_id")
+
+            local_cfg = self.get_local_mcp_config(gateway_key, project_id, user_id)
+            if not local_cfg:
+                return "not_provided"
+            return local_cfg.get("mcp_config_id", "not_provided")
+        except Exception:
+            return "not_provided"
+
+    def get_session_gateway_config(self, session_key: str) -> Dict[str, Any]:
+        """
+        Backward-compatible gateway config retrieval from session.
+        """
+        session = self.get_session(session_key)
+        if not session:
+            raise ValueError(f"Session {session_key} not found")
+
+        if not session.authenticated:
+            raise ValueError(f"Session {session_key} not authenticated")
+
+        if not session.gateway_config:
+            raise ValueError(f"Session {session_key} has no gateway configuration")
+
+        return session.gateway_config
+
+
+# ============================================================================
+# Response Format Conversion Utilities
+# ============================================================================
+
+
+def convert_auth_result_to_legacy_format(auth_result: AuthResult) -> Dict[str, Any]:
+    """
+    Convert new AuthResult to legacy dict format for backward compatibility.
+
+    Args:
+        auth_result: New format AuthResult
+
+    Returns:
+        Dict in legacy format
+    """
+    if auth_result.is_success:
+        return {
+            "status": "success",
+            "message": auth_result.message,
+            "id": auth_result.session_id,
+            "mcp_config": auth_result.mcp_config or [],
+            "available_servers": {
+                s["server_name"]: s for s in (auth_result.mcp_config or [])
+            },
+            "gateway_config": auth_result.gateway_config,
+        }
+    else:
+        return {
+            "status": "error",
+            "message": auth_result.message,
+            "error": auth_result.error or auth_result.message,
+        }
+
+
+def convert_legacy_format_to_auth_result(legacy_result: Dict[str, Any]) -> AuthResult:
+    """
+    Convert legacy dict format to new AuthResult format.
+
+    Args:
+        legacy_result: Legacy format dict
+
+    Returns:
+        AuthResult object
+    """
+    from secure_mcp_gateway.plugins.auth.base import AuthStatus
+
+    if legacy_result.get("status") == "success":
+        return AuthResult(
+            status=AuthStatus.SUCCESS,
+            authenticated=True,
+            message=legacy_result.get("message", "Authentication successful"),
+            user_id=legacy_result.get("gateway_config", {}).get("user_id"),
+            project_id=legacy_result.get("gateway_config", {}).get("project_id"),
+            session_id=legacy_result.get("id"),
+            gateway_config=legacy_result.get("gateway_config", {}),
+            mcp_config=legacy_result.get("mcp_config", []),
+            metadata={"source": "legacy_conversion"},
+        )
+    else:
+        return AuthResult(
+            status=AuthStatus.ERROR,
+            authenticated=False,
+            message=legacy_result.get("message", "Authentication failed"),
+            error=legacy_result.get("error"),
+        )
 
 
 # ============================================================================

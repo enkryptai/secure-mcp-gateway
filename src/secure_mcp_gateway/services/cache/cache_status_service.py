@@ -3,14 +3,18 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from secure_mcp_gateway.services.auth.auth_service import auth_service
+from secure_mcp_gateway.plugins.auth import get_auth_config_manager
+from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
 from secure_mcp_gateway.services.cache.cache_service import (
     ENKRYPT_GATEWAY_CACHE_EXPIRATION,
     ENKRYPT_MCP_USE_EXTERNAL_CACHE,
     ENKRYPT_TOOL_CACHE_EXPIRATION,
     cache_service,
 )
-from secure_mcp_gateway.services.telemetry.telemetry_service import tracer
+
+# Get tracer from telemetry manager
+telemetry_manager = get_telemetry_config_manager()
+tracer = telemetry_manager.get_tracer()
 from secure_mcp_gateway.utils import (
     IS_DEBUG_LOG_LEVEL,
     build_log_extra,
@@ -31,7 +35,7 @@ class CacheStatusService:
     """
 
     def __init__(self):
-        self.auth_service = auth_service
+        self.auth_manager = get_auth_config_manager()
         self.cache_service = cache_service
 
     async def get_cache_status(self, ctx, logger=None) -> dict[str, Any]:
@@ -103,12 +107,12 @@ class CacheStatusService:
     async def _authenticate_and_setup(self, ctx, custom_id, main_span, logger):
         """Handle authentication and setup for cache status operations."""
         with tracer.start_as_current_span("cache_status.authenticate") as auth_span:
-            credentials = auth_service.get_gateway_credentials(ctx)
+            credentials = self.auth_manager.get_gateway_credentials(ctx)
             enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
             enkrypt_project_id = credentials.get("project_id", "not_provided")
             enkrypt_user_id = credentials.get("user_id", "not_provided")
 
-            gateway_config = auth_service.get_local_mcp_config(
+            gateway_config = self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
             )
 
@@ -136,11 +140,11 @@ class CacheStatusService:
 
             session_key = f"{credentials.get('gateway_key')}_{credentials.get('project_id')}_{credentials.get('user_id')}_{enkrypt_mcp_config_id}"
 
-            if not self.auth_service.is_session_authenticated(session_key):
+            if not self.auth_manager.is_session_authenticated(session_key):
                 auth_span.set_attribute("requires_auth", True)
                 from secure_mcp_gateway.gateway import enkrypt_authenticate
 
-                result = enkrypt_authenticate(ctx)
+                result = await enkrypt_authenticate(ctx)
                 if result.get("status") != "success":
                     auth_span.set_attribute("error", "Authentication failed")
                     sys_print("[get_cache_status] Not authenticated", is_error=True)
@@ -154,7 +158,7 @@ class CacheStatusService:
             else:
                 auth_span.set_attribute("requires_auth", False)
 
-            id = self.auth_service.get_session_gateway_config(session_key)["id"]
+            id = self.auth_manager.get_session_gateway_config(session_key)["id"]
             main_span.set_attribute("gateway_id", id)
 
             return {
@@ -215,11 +219,14 @@ class CacheStatusService:
 
             cached_result = self.cache_service.get_cached_gateway_config(id)
             if cached_result:
-                from secure_mcp_gateway.services.telemetry.telemetry_service import (
-                    cache_hit_counter,
+                from secure_mcp_gateway.plugins.telemetry import (
+                    get_telemetry_config_manager,
                 )
 
-                cache_hit_counter.add(1, attributes=build_log_extra(ctx, custom_id))
+                telemetry_mgr = get_telemetry_config_manager()
+                telemetry_mgr.cache_hit_counter.add(
+                    1, attributes=build_log_extra(ctx, custom_id)
+                )
 
                 # Handle both tuple (local cache) and non-tuple (external cache) returns
                 if isinstance(cached_result, tuple) and len(cached_result) == 2:
@@ -273,11 +280,12 @@ class CacheStatusService:
                     "is_expired": False,
                 }
             else:
-                from secure_mcp_gateway.services.telemetry.telemetry_service import (
-                    cache_miss_counter,
+                from secure_mcp_gateway.plugins.telemetry import (
+                    get_telemetry_config_manager,
                 )
 
-                cache_miss_counter.add(1, attributes=build_log_extra(ctx))
+                telemetry_mgr = get_telemetry_config_manager()
+                telemetry_mgr.cache_miss_counter.add(1, attributes=build_log_extra(ctx))
                 config_span.set_attribute("cache_hit", False)
 
                 sys_print(
@@ -309,7 +317,7 @@ class CacheStatusService:
                 extra=build_log_extra(ctx, custom_id, id=id),
             )
 
-            mcp_config = self.auth_service.get_session_gateway_config(session_key).get(
+            mcp_config = self.auth_manager.get_session_gateway_config(session_key).get(
                 "mcp_config", []
             )
             servers_span.set_attribute("total_servers", len(mcp_config))
@@ -332,9 +340,9 @@ class CacheStatusService:
                 )
 
             # Get local gateway config for tool definitions
-            credentials = auth_service.get_gateway_credentials(ctx)
+            credentials = self.auth_manager.get_gateway_credentials(ctx)
             enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
-            local_gateway_config = auth_service.get_local_mcp_config(
+            local_gateway_config = self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key
             )
             if not local_gateway_config:

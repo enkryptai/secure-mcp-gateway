@@ -147,21 +147,21 @@ class EnkryptInputGuardrail:
 
                     if value == 1 or (isinstance(value, list) and len(value) > 0):
                         violations_detected = True
-                        violations.append(
-                            GuardrailViolation(
-                                violation_type=self._map_violation_type(policy_type),
-                                severity=0.8,  # Default severity
-                                message=f"Input validation failed: {policy_type}",
-                                action=GuardrailAction.BLOCK,
-                                metadata={
-                                    "policy_type": policy_type,
-                                    "value": value,
-                                    "details": resp_json.get("details", {}).get(
-                                        policy_type, {}
-                                    ),
-                                },
-                            )
-                        )
+                violations.append(
+                    GuardrailViolation(
+                        violation_type=self._map_violation_type(policy_type),
+                        severity=0.8,  # Default severity
+                        message=f"Input validation failed: {policy_type}",
+                        action=GuardrailAction.BLOCK,
+                        metadata={
+                            "policy_type": policy_type,
+                            "value": value,
+                            "details": resp_json.get("details", {}).get(
+                                policy_type, {}
+                            ),
+                        },
+                    )
+                )
 
             # Determine overall safety
             is_safe = not violations_detected

@@ -7,6 +7,8 @@ Handles provider registration, initialization, and switching.
 
 from __future__ import annotations
 
+# Avoid circular import by defining sys_print locally
+import sys
 from typing import Any, Dict
 
 from secure_mcp_gateway.plugins.telemetry.base import (
@@ -14,7 +16,16 @@ from secure_mcp_gateway.plugins.telemetry.base import (
     TelemetryRegistry,
     TelemetryResult,
 )
-from secure_mcp_gateway.utils import sys_print
+
+
+def sys_print(message: str, is_error: bool = False, is_debug: bool = False):
+    """Local sys_print to avoid circular imports."""
+    if is_error:
+        print(f"[ERROR] {message}", file=sys.stderr)
+    elif is_debug:
+        print(f"[DEBUG] {message}", file=sys.stderr)
+    else:
+        print(message, file=sys.stderr)
 
 
 class TelemetryConfigManager:
@@ -259,6 +270,140 @@ class TelemetryConfigManager:
 
         return status
 
+    # ========================================================================
+    # BACKWARD-COMPATIBLE METRIC ACCESSORS
+    # ========================================================================
+
+    def _get_metric_from_provider(self, metric_name: str) -> Any:
+        """
+        Get a metric from the active provider.
+
+        Args:
+            metric_name: Name of the metric attribute
+
+        Returns:
+            Metric object or None
+        """
+        provider = self.get_active_provider()
+        if provider and hasattr(provider, metric_name):
+            return getattr(provider, metric_name)
+        return None
+
+    @property
+    def list_servers_call_count(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("list_servers_call_count")
+
+    @property
+    def servers_discovered_count(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("servers_discovered_count")
+
+    @property
+    def cache_hit_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("cache_hit_counter")
+
+    @property
+    def cache_miss_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("cache_miss_counter")
+
+    @property
+    def tool_call_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("tool_call_counter")
+
+    @property
+    def tool_call_duration(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("tool_call_duration")
+
+    @property
+    def guardrail_api_request_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("guardrail_api_request_counter")
+
+    @property
+    def guardrail_api_request_duration(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("guardrail_api_request_duration")
+
+    @property
+    def guardrail_violation_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("guardrail_violation_counter")
+
+    @property
+    def tool_call_success_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("tool_call_success_counter")
+
+    @property
+    def tool_call_failure_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("tool_call_failure_counter")
+
+    @property
+    def tool_call_error_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("tool_call_error_counter")
+
+    @property
+    def tool_call_blocked_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("tool_call_blocked_counter")
+
+    @property
+    def input_guardrail_violation_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("input_guardrail_violation_counter")
+
+    @property
+    def output_guardrail_violation_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("output_guardrail_violation_counter")
+
+    @property
+    def relevancy_violation_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("relevancy_violation_counter")
+
+    @property
+    def adherence_violation_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("adherence_violation_counter")
+
+    @property
+    def hallucination_violation_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("hallucination_violation_counter")
+
+    @property
+    def auth_success_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("auth_success_counter")
+
+    @property
+    def auth_failure_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("auth_failure_counter")
+
+    @property
+    def active_sessions_gauge(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("active_sessions_gauge")
+
+    @property
+    def active_users_gauge(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("active_users_gauge")
+
+    @property
+    def pii_redactions_counter(self):
+        """Backward-compatible metric accessor"""
+        return self._get_metric_from_provider("pii_redactions_counter")
+
 
 # ============================================================================
 # Global Instance
@@ -271,12 +416,28 @@ def get_telemetry_config_manager() -> TelemetryConfigManager:
     """
     Get or create the global TelemetryConfigManager instance.
 
+    Auto-initializes with OpenTelemetry provider if not already initialized.
+
     Returns:
         TelemetryConfigManager: Global instance
     """
     global _telemetry_config_manager
     if _telemetry_config_manager is None:
         _telemetry_config_manager = TelemetryConfigManager()
+
+        # Auto-initialize with OpenTelemetry provider
+        try:
+            from secure_mcp_gateway.plugins.telemetry.opentelemetry_provider import (
+                OpenTelemetryProvider,
+            )
+
+            provider = OpenTelemetryProvider()
+            _telemetry_config_manager.register_provider(provider)
+            _telemetry_config_manager.initialize_provider("opentelemetry", {})
+        except Exception:
+            # Silently fail - telemetry is optional
+            pass
+
     return _telemetry_config_manager
 
 

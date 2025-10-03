@@ -11,7 +11,7 @@ from secure_mcp_gateway.plugins.guardrails import (
     GuardrailRequest,
     get_guardrail_config_manager,
 )
-from secure_mcp_gateway.services.auth.auth_service import auth_service
+from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 from secure_mcp_gateway.services.execution.execution_utils import (
     extract_input_text_from_args,
@@ -19,7 +19,10 @@ from secure_mcp_gateway.services.execution.execution_utils import (
 from secure_mcp_gateway.services.execution.tool_execution_service import (
     ToolExecutionService,
 )
-from secure_mcp_gateway.services.telemetry.telemetry_service import tracer
+
+# Get tracer from telemetry manager
+telemetry_manager = get_telemetry_config_manager()
+tracer = telemetry_manager.get_tracer()
 from secure_mcp_gateway.utils import (
     build_log_extra,
     generate_custom_id,
@@ -39,7 +42,7 @@ class SecureToolExecutionService:
     """
 
     def __init__(self):
-        self.auth_service = auth_service
+        self.auth_manager = get_auth_config_manager()
         self.cache_service = cache_service
         self.guardrail_manager = get_guardrail_config_manager()
         self.tool_execution_service = ToolExecutionService()
@@ -204,7 +207,7 @@ class SecureToolExecutionService:
             "secure_tool_execution.authenticate"
         ) as auth_span:
             # Gather credentials
-            creds = auth_service.get_gateway_credentials(ctx)
+            creds = self.auth_manager.get_gateway_credentials(ctx)
 
             # Decide whether to use auth plugins
             common_config = get_common_config()
@@ -239,12 +242,25 @@ class SecureToolExecutionService:
                 )
             else:
                 # Fallback to legacy authentication path
-                temp_session_key = f"{creds.get('gateway_key')}_{creds.get('project_id')}_{creds.get('user_id')}_"
-                if not self.auth_service.is_session_authenticated(temp_session_key):
+                # First, get the local config to build the proper session key
+                local_config = self.auth_manager.get_local_mcp_config(
+                    creds.get("gateway_key"),
+                    creds.get("project_id"),
+                    creds.get("user_id"),
+                )
+
+                if not local_config:
+                    auth_span.set_attribute("error", "No local config found")
+                    return {"status": "error", "error": "Configuration not found."}
+
+                mcp_config_id = local_config.get("mcp_config_id", "not_provided")
+                session_key = f"{creds.get('gateway_key')}_{creds.get('project_id')}_{creds.get('user_id')}_{mcp_config_id}"
+
+                if not self.auth_manager.is_session_authenticated(session_key):
                     auth_span.set_attribute("required_new_auth", True)
                     from secure_mcp_gateway.gateway import enkrypt_authenticate
 
-                    result = enkrypt_authenticate(ctx)
+                    result = await enkrypt_authenticate(ctx)
                     if result.get("status") != "success":
                         auth_span.set_attribute("error", "Authentication failed")
                         sys_print("[get_server_info] Not authenticated", is_error=True)
@@ -256,15 +272,8 @@ class SecureToolExecutionService:
                 else:
                     auth_span.set_attribute("required_new_auth", False)
 
-                try:
-                    suffix = self.auth_service.get_session_gateway_config_key_suffix(
-                        creds
-                    )
-                except Exception:
-                    suffix = "not_provided"
-                session_key = f"{creds.get('gateway_key')}_{creds.get('project_id')}_{creds.get('user_id')}_{suffix}"
                 server_info = get_server_info_by_name(
-                    self.auth_service.get_session_gateway_config(session_key),
+                    self.auth_manager.get_session_gateway_config(session_key),
                     server_name,
                 )
 
@@ -366,18 +375,21 @@ class SecureToolExecutionService:
                 )
 
             if not server_config_tools:
-                id = self.auth_service.get_session_gateway_config(session_key)["id"]
+                id = self.auth_manager.get_session_gateway_config(session_key)["id"]
                 server_config_tools = self.cache_service.get_cached_tools(
                     id, server_name
                 )
                 discovery_span.set_attribute("cache_hit", bool(server_config_tools))
 
                 if server_config_tools:
-                    from secure_mcp_gateway.services.telemetry.telemetry_service import (
-                        cache_hit_counter,
+                    from secure_mcp_gateway.plugins.telemetry import (
+                        get_telemetry_config_manager,
                     )
 
-                    cache_hit_counter.add(1, attributes=build_log_extra(ctx))
+                    telemetry_mgr = get_telemetry_config_manager()
+                    telemetry_mgr.cache_hit_counter.add(
+                        1, attributes=build_log_extra(ctx)
+                    )
                     logger.info(
                         "secure_tool_execution.execute_secure_tools.server_config_tools_after_get_cached_tools",
                         extra=build_log_extra(ctx, custom_id, server_name),
@@ -386,18 +398,18 @@ class SecureToolExecutionService:
                         f"[enkrypt_secure_call_tools] Found cached tools for {server_name}"
                     )
                 else:
-                    from secure_mcp_gateway.services.telemetry.telemetry_service import (
-                        cache_miss_counter,
+                    from secure_mcp_gateway.plugins.telemetry import (
+                        get_telemetry_config_manager,
                     )
 
-                    cache_miss_counter.add(1, attributes=build_log_extra(ctx))
+                    telemetry_mgr = get_telemetry_config_manager()
+                    telemetry_mgr.cache_miss_counter.add(
+                        1, attributes=build_log_extra(ctx)
+                    )
                     try:
                         discovery_span.set_attribute("discovery_required", True)
-                        from secure_mcp_gateway.services.telemetry.telemetry_service import (
-                            list_servers_call_count,
-                        )
 
-                        list_servers_call_count.add(
+                        telemetry_mgr.list_servers_call_count.add(
                             1, attributes=build_log_extra(ctx, custom_id)
                         )
 
@@ -428,11 +440,8 @@ class SecureToolExecutionService:
 
                         if discovery_result.get("status") == "success":
                             server_config_tools = discovery_result.get("tools", {})
-                            from secure_mcp_gateway.services.telemetry.telemetry_service import (
-                                servers_discovered_count,
-                            )
 
-                            servers_discovered_count.add(
+                            telemetry_mgr.servers_discovered_count.add(
                                 1, attributes=build_log_extra(ctx)
                             )
 
@@ -480,7 +489,7 @@ class SecureToolExecutionService:
     ):
         """Execute tools with comprehensive guardrail checks."""
         server_config = get_server_info_by_name(
-            self.auth_service.get_session_gateway_config(session_key), server_name
+            self.auth_manager.get_session_gateway_config(session_key), server_name
         )["config"]
 
         server_command = server_config["command"]

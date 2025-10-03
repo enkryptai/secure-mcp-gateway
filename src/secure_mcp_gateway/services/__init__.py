@@ -4,17 +4,32 @@ Enkrypt Secure MCP Gateway Services Module
 This module contains all the service classes and utilities for the Enkrypt Secure MCP Gateway.
 """
 
-# Import logger directly to avoid circular imports
-from secure_mcp_gateway.services.telemetry import logger
+# Import logger from telemetry plugin manager to avoid circular imports
+from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
+
+# Get logger from telemetry manager
+try:
+    _telemetry_manager = get_telemetry_config_manager()
+    logger = _telemetry_manager.get_logger()
+except Exception:
+    # Fallback to no-op logger if telemetry manager is not available
+    class NoOpLogger:
+        def info(self, *args, **kwargs):
+            pass
+
+        def error(self, *args, **kwargs):
+            pass
+
+        def warning(self, *args, **kwargs):
+            pass
+
+        def debug(self, *args, **kwargs):
+            pass
+
+    logger = NoOpLogger()
 
 
 # Use lazy imports for other services to avoid circular dependencies
-def get_auth_service():
-    from secure_mcp_gateway.services.auth import auth_service
-
-    return auth_service
-
-
 def get_cache_service():
     from secure_mcp_gateway.services.cache import cache_service
 
@@ -58,9 +73,14 @@ def get_server_listing_service():
 
 
 def get_telemetry_service():
-    from secure_mcp_gateway.services.telemetry import logger, tracer
+    from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
 
-    return {"logger": logger, "tracer": tracer}
+    telemetry_manager = get_telemetry_config_manager()
+    return {
+        "logger": telemetry_manager.get_logger(),
+        "tracer": telemetry_manager.get_tracer(),
+        "meter": telemetry_manager.get_meter(),
+    }
 
 
 def get_tool_execution_service():
@@ -71,7 +91,6 @@ def get_tool_execution_service():
 
 __all__ = [
     "logger",
-    "get_auth_service",
     "get_cache_service",
     "get_cache_management_service",
     "get_cache_status_service",

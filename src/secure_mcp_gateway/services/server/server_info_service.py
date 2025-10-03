@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from secure_mcp_gateway.services.auth.auth_service import auth_service
+from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 from secure_mcp_gateway.utils import (
     build_log_extra,
     get_server_info_by_name,
@@ -21,7 +21,7 @@ class ServerInfoService:
     """
 
     def __init__(self):
-        self.auth_service = auth_service
+        self.auth_manager = get_auth_config_manager()
 
     async def get_server_info(
         self,
@@ -57,11 +57,11 @@ class ServerInfoService:
         )
 
         # Get credentials and config
-        credentials = auth_service.get_gateway_credentials(ctx)
+        credentials = self.auth_manager.get_gateway_credentials(ctx)
         enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
         enkrypt_project_id = credentials.get("project_id", "not_provided")
         enkrypt_user_id = credentials.get("user_id", "not_provided")
-        gateway_config = auth_service.get_local_mcp_config(
+        gateway_config = self.auth_manager.get_local_mcp_config(
             enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
         )
 
@@ -183,14 +183,14 @@ class ServerInfoService:
             )
 
             # Add authentication status tracking
-            is_authenticated = self.auth_service.is_session_authenticated(session_key)
+            is_authenticated = self.auth_manager.is_session_authenticated(session_key)
             auth_span.set_attribute("is_authenticated", is_authenticated)
 
             if not is_authenticated:
                 # Import here to avoid circular imports
                 from secure_mcp_gateway.gateway import enkrypt_authenticate
 
-                result = enkrypt_authenticate(ctx)
+                result = await enkrypt_authenticate(ctx)
                 auth_span.set_attribute("auth_result", result.get("status"))
                 if result.get("status") != "success":
                     auth_span.set_attribute("error", "Authentication failed")
@@ -213,7 +213,7 @@ class ServerInfoService:
         with tracer.start_as_current_span("check_server_exists") as server_span:
             server_span.set_attribute("server_name", server_name)
             server_info = get_server_info_by_name(
-                self.auth_service.get_session_gateway_config(session_key), server_name
+                self.auth_manager.get_session_gateway_config(session_key), server_name
             )
             server_span.set_attribute("server_found", server_info is not None)
 
@@ -254,7 +254,7 @@ class ServerInfoService:
             )
             info_span.set_attribute(
                 "gateway_id",
-                self.auth_service.get_session_gateway_config(session_key)["id"],
+                self.auth_manager.get_session_gateway_config(session_key)["id"],
             )
             info_span.set_attribute("project_id", enkrypt_project_id)
             info_span.set_attribute("user_id", enkrypt_user_id)
@@ -267,7 +267,7 @@ class ServerInfoService:
             cache_service = CacheService()
             server_info_copy = cache_service.get_latest_server_info(
                 server_info,
-                self.auth_service.get_session_gateway_config(session_key)["id"],
+                self.auth_manager.get_session_gateway_config(session_key)["id"],
                 cache_client,
             )
 
