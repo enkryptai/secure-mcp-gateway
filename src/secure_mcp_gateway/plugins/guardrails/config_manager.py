@@ -84,7 +84,10 @@ class GuardrailConfigManager:
             sys_print(f"[GuardrailConfigManager] {e}", is_error=True)
 
     def register_enkrypt_provider(
-        self, api_key: str, base_url: str = "https://api.enkryptai.com"
+        self,
+        api_key: str,
+        base_url: str = "https://api.enkryptai.com",
+        config: Dict[str, Any] = None,
     ) -> None:
         """
         Register the Enkrypt provider with credentials.
@@ -92,8 +95,9 @@ class GuardrailConfigManager:
         Args:
             api_key: Enkrypt API key
             base_url: Enkrypt API base URL
+            config: Optional provider configuration (e.g., debug flags, custom detectors)
         """
-        enkrypt_provider = EnkryptGuardrailProvider(api_key, base_url)
+        enkrypt_provider = EnkryptGuardrailProvider(api_key, base_url, config)
         self.register_provider(enkrypt_provider)
 
     def get_input_guardrail(
@@ -234,14 +238,12 @@ class GuardrailConfigManager:
         """
         from secure_mcp_gateway.plugins.guardrails.base import ServerRegistrationRequest
 
-        # Try to get Enkrypt provider first, or use any available provider
-        provider = self.registry.get_provider("enkrypt")
-        if not provider:
-            # Fallback to first available provider
-            all_providers = self.registry.get_all_providers()
-            if not all_providers:
-                return None
-            provider = next(iter(all_providers.values()))
+        # Use the registered provider
+        all_providers = self.registry.get_all_providers()
+        if not all_providers:
+            return None
+
+        provider = next(iter(all_providers.values()))
 
         request = ServerRegistrationRequest(
             server_name=server_name,
@@ -269,15 +271,13 @@ class GuardrailConfigManager:
         """
         from secure_mcp_gateway.plugins.guardrails.base import ToolRegistrationRequest
 
-        # Try to get Enkrypt provider first, or use any available provider
-        provider = self.registry.get_provider("enkrypt")
-        if not provider:
-            # Fallback to first available provider
-            all_providers = self.registry.get_all_providers()
-            if not all_providers:
-                return None
-            provider = next(iter(all_providers.values()))
+        # Use the registered provider
+        all_providers = self.registry.get_all_providers()
+        if not all_providers:
+            return None
 
+        provider = next(iter(all_providers.values()))
+        sys_print(f"[GuardrailConfigManager] Using provider: {provider.get_name()}")
         request = ToolRegistrationRequest(
             server_name=server_name, tools=tools, validation_mode=mode
         )
@@ -435,13 +435,28 @@ def initialize_guardrail_system(
     """
     manager = get_guardrail_config_manager()
 
+    # Debug: Print what config we received
+    sys_print(
+        f"[initialize_guardrail_system] Received config type: {type(config_or_api_key)}"
+    )
+    if isinstance(config_or_api_key, dict):
+        sys_print(
+            f"[initialize_guardrail_system] Config keys: {list(config_or_api_key.keys())}"
+        )
+        sys_print(
+            f"[initialize_guardrail_system] enkrypt_log_level: {config_or_api_key.get('enkrypt_log_level')}"
+        )
+
     # Determine if we got a config dict or an API key string
+    provider_config = None
     if isinstance(config_or_api_key, dict):
         # Config dict passed - extract values
         enkrypt_api_key = config_or_api_key.get("enkrypt_api_key")
         enkrypt_base_url = config_or_api_key.get(
             "enkrypt_base_url", "https://api.enkryptai.com"
         )
+        # Pass the entire config dict to the provider for debug, custom detectors, etc.
+        provider_config = config_or_api_key
     elif isinstance(config_or_api_key, str):
         # API key string passed directly
         enkrypt_api_key = config_or_api_key
@@ -453,7 +468,9 @@ def initialize_guardrail_system(
     if enkrypt_api_key and enkrypt_api_key != "YOUR_ENKRYPT_API_KEY":
         # Check if enkrypt provider is already registered
         if "enkrypt" not in manager.list_providers():
-            manager.register_enkrypt_provider(enkrypt_api_key, enkrypt_base_url)
+            manager.register_enkrypt_provider(
+                enkrypt_api_key, enkrypt_base_url, provider_config
+            )
             sys_print("✓ Registered Enkrypt guardrail provider")
         else:
             sys_print("i Enkrypt guardrail provider already registered")

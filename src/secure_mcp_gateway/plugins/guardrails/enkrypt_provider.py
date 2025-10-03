@@ -779,11 +779,26 @@ class EnkryptServerRegistrationGuardrail:
     }
 
     def __init__(self, api_key: str, base_url: str, config: Dict[str, Any] = None):
+        import sys
+
         self.api_key = api_key
         self.base_url = base_url
         self.config = config or {}
         self.batch_url = f"{base_url}/guardrails/batch/detect"
-        self.debug = self.config.get("debug", False)
+        # Check both "debug" field and "enkrypt_log_level" for DEBUG
+        self.debug = (
+            self.config.get("debug", False)
+            or self.config.get("enkrypt_log_level", "").upper() == "DEBUG"
+        )
+        sys_print(
+            f"[EnkryptServerRegistrationGuardrail] Initialized with debug={self.debug}"
+        )
+        sys_print(
+            f"[EnkryptServerRegistrationGuardrail] Config keys: {list(self.config.keys())}"
+        )
+        sys_print(
+            f"[EnkryptServerRegistrationGuardrail] enkrypt_log_level={self.config.get('enkrypt_log_level')}"
+        )
 
         # Get custom detectors from config if provided
         registration_config = self.config.get("registration_validation", {})
@@ -824,10 +839,11 @@ class EnkryptServerRegistrationGuardrail:
                 texts=[server_text], detectors=self.SERVER_DETECTORS
             )
 
-            sys_print(
-                f"[EnkryptServerRegistration] Guardrail Response: {response}",
-                is_debug=True,
-            )
+            if self.debug:
+                sys_print(
+                    f"[EnkryptServerRegistration] Guardrail Response: {response}",
+                    is_debug=True,
+                )
 
             # Analyze response
             result = response[0]
@@ -966,11 +982,16 @@ class EnkryptServerRegistrationGuardrail:
                 texts=texts, detectors=self.TOOL_DETECTORS
             )
 
+            if self.debug:
+                sys_print(
+                    f"[EnkryptToolRegistration] Guardrail Response: {response}",
+                    is_debug=True,
+                )
+
             sys_print(
                 f"[EnkryptToolRegistration] Guardrail Response: {response}",
                 is_debug=True,
             )
-
             # Analyze results
             safe_tools = []
             blocked_tools = []

@@ -272,6 +272,10 @@ def sys_print(*args, **kwargs):
     # Using try/except to avoid any print errors blocking the flow for edge cases
     try:
         if args:
+            # Always print to console
+            print(*args, **kwargs)
+
+            # Also log via telemetry if enabled
             if is_telemetry_enabled():
                 # Format args similar to how print() does it
                 sep = kwargs.get("sep", " ")
@@ -282,8 +286,6 @@ def sys_print(*args, **kwargs):
                     logger.debug(log_message)
                 else:
                     logger.info(log_message)
-            else:
-                print(*args, **kwargs)
     except Exception as e:
         # Ignore any print errors
         print(f"[utils] Error printing using sys_print: {e}", file=sys.stderr)
