@@ -1,5 +1,5 @@
 """
-Dummy MCP server for echoing a message with tool discovery support and proper annotations
+Simple MCP Server for echoing a message with tool discovery support and proper annotations
 """
 import sys
 
@@ -9,9 +9,9 @@ from mcp.server.fastmcp import Context, FastMCP
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
-# Create a dummy MCP server with tool discovery enabled
+# Create a Simple MCP Server with tool discovery enabled
 # https://modelcontextprotocol.io/docs/concepts/tools#python
-mcp = FastMCP("Dummy Echo MCP Server")
+mcp = FastMCP("Simple Echo MCP Server")
 
 # TODO: Fix error and use stdout
 # Get tracer
@@ -55,14 +55,15 @@ async def echo(ctx: Context, message: str) -> list[types.TextContent]:
 
         if not message:
             print(
-                "Dummy Echo Server MCP Server: Error: Message is required",
+                "Simple Echo Server MCP Server: Error: Message is required",
                 file=sys.stderr,
             )
             span.set_status(Status(StatusCode.ERROR, "Message is required"))
             return [types.TextContent(type="text", text="Error: Message is required")]
 
         print(
-            f"Dummy Echo Server MCP Server: Echoing message: {message}", file=sys.stderr
+            f"Simple Echo Server MCP Server: Echoing message: {message}",
+            file=sys.stderr,
         )
         try:
             return [types.TextContent(type="text", text=message)]
@@ -94,7 +95,7 @@ async def echo(ctx: Context, message: str) -> list[types.TextContent]:
 )
 async def list_tools() -> list[types.Tool]:
     """Get a list of all available tools on this server."""
-    print("Dummy Echo Server MCP Server: Listing tools", file=sys.stderr)
+    print("Simple Echo Server MCP Server: Listing tools", file=sys.stderr)
     return [
         types.Tool(
             name=tool_name,
@@ -107,5 +108,5 @@ async def list_tools() -> list[types.Tool]:
 
 
 if __name__ == "__main__":
-    print("Starting Dummy Echo MCP Server", file=sys.stderr)
+    print("Starting Simple Echo MCP Server", file=sys.stderr)
     mcp.run()

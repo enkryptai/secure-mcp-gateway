@@ -72,6 +72,9 @@ class DiscoveryService:
         Returns:
             dict: Discovery result with status, message, tools, source
         """
+        if server_name and server_name.lower() == "null":
+            server_name = None
+
         sys_print(f"[discover_server_tools] Requested for server: {server_name}")
         custom_id = self._generate_custom_id()
         logger.info(
@@ -424,7 +427,7 @@ class DiscoveryService:
                             )
 
                             return {
-                                "status": "error",
+                                "status": "success",
                                 "error": f"Server '{server_name}' blocked by security guardrails: {', '.join(violation_messages)}",
                                 "blocked": True,
                                 "violations": violation_messages,

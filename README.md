@@ -359,7 +359,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
       "mcp_config": [
         {
           "server_name": "echo_server",
-          "description": "Dummy Echo Server",
+          "description": "Simple Echo Server",
           "config": {
             "command": "python",
             "args": [
@@ -457,7 +457,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
       "mcp_config": [
         {
           "server_name": "echo_server",
-          "description": "Dummy Echo Server",
+          "description": "Simple Echo Server",
           "config": {
             "command": "python",
             "args": [
@@ -1046,7 +1046,7 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkryp
       "mcp_config": [
         {
           "server_name": "echo_server",
-          "description": "Dummy Echo Server",
+          "description": "Simple Echo Server",
           "config": {
             "command": "python",
             "args": [
@@ -1549,7 +1549,7 @@ The observability stack includes:
         "mcp_config": [
           {
             "server_name": "echo_server",
-            "description": "Dummy Echo Server",
+            "description": "Simple Echo Server",
             "config": {
               "command": "python",
               "args": [
@@ -1862,7 +1862,7 @@ The observability stack includes:
       "mcp_config": [
         {
           "server_name": "echo_server",
-          "description": "Dummy Echo Server",
+          "description": "Simple Echo Server",
           "config": {...},
           "tools": {},
           "input_guardrails_policy": {...},

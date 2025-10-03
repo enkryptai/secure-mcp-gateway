@@ -28,7 +28,7 @@
       "mcp_config": [
         {
           "server_name": "echo_server",
-          "description": "Dummy Echo Server",
+          "description": "Simple Echo Server",
           "config": {
             "command": "python",
             "args": [

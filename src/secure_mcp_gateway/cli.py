@@ -290,7 +290,7 @@ def generate_default_config():
                 "mcp_config": [
                     {
                         "server_name": "echo_server",
-                        "description": "Dummy Echo Server",
+                        "description": "Simple Echo Server",
                         "config": {"command": "python", "args": [ECHO_SERVER_PATH]},
                         "tools": {},
                         "input_guardrails_policy": {
