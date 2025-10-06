@@ -50,6 +50,7 @@
             ]
           },
           "tools": {},
+          "enable_tool_guardrails": true,
           "input_guardrails_policy": {
             "enabled": false,
             "policy_name": "Sample Airline Guardrail",
