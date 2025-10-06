@@ -2,8 +2,6 @@
   "common_mcp_gateway_config": {
     "enkrypt_log_level": "INFO",
     "enkrypt_guardrails_enabled": false,
-    "enkrypt_base_url": "https://api.enkryptai.com",
-    "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
     "enkrypt_use_remote_mcp_config": false,
     "enkrypt_remote_mcp_gateway_name": "enkrypt-secure-mcp-gateway-1",
     "enkrypt_remote_mcp_gateway_version": "v1",
@@ -16,10 +14,26 @@
     "enkrypt_gateway_cache_expiration": 24,
     "enkrypt_async_input_guardrails_enabled": false,
     "enkrypt_async_output_guardrails_enabled": false,
-    "enkrypt_telemetry": {
-      "enabled": false,
-      "insecure": true,
-      "endpoint": "http://localhost:4317"
+    "enkrypt_telemetry_enabled": false
+  },
+  "plugins": {
+    "auth": {
+      "provider": "local_apikey",
+      "config": {}
+    },
+    "guardrails": {
+      "provider": "enkrypt",
+      "config": {
+        "api_key": "YOUR_ENKRYPT_API_KEY",
+        "base_url": "https://api.enkryptai.com"
+      }
+    },
+    "telemetry": {
+      "provider": "opentelemetry",
+      "config": {
+        "url": "http://localhost:4317",
+        "insecure": true
+      }
     }
   },
   "mcp_configs": {
@@ -28,11 +42,11 @@
       "mcp_config": [
         {
           "server_name": "echo_server",
-          "description": "Simple Echo Server",
+          "description": "Dummy Echo Server",
           "config": {
             "command": "python",
             "args": [
-              "DUMMY_ECHO_MCP_FILE_PATH"
+              "PATH_TO_YOUR_ECHO_MCP_FILE"
             ]
           },
           "tools": {},
@@ -43,7 +57,15 @@
               "pii_redaction": false
             },
             "block": [
-              "policy_violation"
+              "policy_violation",
+              "injection_attack",
+              "topic_detector",
+              "nsfw",
+              "toxicity",
+              "pii",
+              "keyword_detector",
+              "bias",
+              "sponge_attack"
             ]
           },
           "output_guardrails_policy": {
@@ -55,7 +77,15 @@
               "adherence": false
             },
             "block": [
-              "policy_violation"
+              "policy_violation",
+              "injection_attack",
+              "topic_detector",
+              "nsfw",
+              "toxicity",
+              "pii",
+              "keyword_detector",
+              "bias",
+              "sponge_attack"
             ]
           }
         }
