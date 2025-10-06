@@ -298,9 +298,7 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
             if hasattr(server_info, "description"):
                 server_description = server_info.description
             else:
-                server_description = getattr(
-                    server_info, "description", "Unknown Server"
-                )
+                server_description = getattr(server_info, "description", "")
 
             if hasattr(server_info, "name"):
                 server_name_from_server = server_info.name

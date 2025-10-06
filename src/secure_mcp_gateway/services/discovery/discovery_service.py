@@ -472,6 +472,11 @@ class DiscoveryService:
                     extra=build_log_extra(ctx, custom_id, server_name),
                 )
 
+                # Track blocked tools from config validation
+                blocked_tools_list = []
+                blocked_tools_count = 0
+                blocked_reasons_list = []
+
                 # NEW: Validate config tools with guardrails before returning
                 if self.registration_validation_enabled and self.guardrail_manager:
                     with tracer_obj.start_as_current_span(
@@ -537,6 +542,15 @@ class DiscoveryService:
                                     blocked_tools = validation_response.metadata.get(
                                         "blocked_tools", []
                                     )
+                                    # Store for return value
+                                    blocked_tools_list = blocked_tools
+                                    blocked_tools_count = blocked_count
+
+                                    # Extract all reasons from blocked tools
+                                    for blocked_tool in blocked_tools:
+                                        reasons = blocked_tool.get("reasons", [])
+                                        blocked_reasons_list.extend(reasons)
+
                                     sys_print(
                                         f"[discover_server_tools] ⚠️  Blocked {blocked_count} unsafe config tools from {server_name}",
                                         is_error=True,
@@ -606,11 +620,15 @@ class DiscoveryService:
 
                 main_span = trace.get_current_span()
                 main_span.set_attribute("success", True)
+
                 return {
                     "status": "success",
                     "message": f"Tools already defined in config for {server_name}",
                     "tools": config_tools,
                     "source": "config",
+                    "blocked_tools": blocked_tools_list,
+                    "blocked_count": blocked_tools_count,
+                    "blocked_reasons": blocked_reasons_list,
                 }
 
         # Tool discovery
@@ -638,6 +656,9 @@ class DiscoveryService:
                         "message": f"Tools retrieved from cache for {server_name}",
                         "tools": cached_tools,
                         "source": "cache",
+                        "blocked_tools": [],  # Cached tools already passed validation
+                        "blocked_count": 0,
+                        "blocked_reasons": [],
                     }
                 else:
                     cache_miss_counter.add(1, attributes=build_log_extra(ctx))
@@ -665,6 +686,9 @@ class DiscoveryService:
                     attributes=build_log_extra(ctx, custom_id),
                 )
                 tool_span.set_attribute("duration", end_time - start_time)
+
+                # Print result
+                # sys_print(f"[discover_server_tools] Result: {result}")
 
                 # Handle new return format with server metadata
                 if isinstance(result, dict) and "tools" in result:
@@ -716,7 +740,7 @@ class DiscoveryService:
                         try:
                             # Create a mock tool object with the dynamic description for validation
                             dynamic_description_tool = {
-                                "name": f"{server_name}_dynamic_description",
+                                "name": f"{server_name}",
                                 "description": dynamic_description,
                                 "inputSchema": {},
                                 "outputSchema": None,
@@ -822,9 +846,7 @@ class DiscoveryService:
                         static_desc_span.set_attribute("server_name", server_name)
 
                         # Get server description from config (static)
-                        static_server_description = server_info.get(
-                            "description", "Unknown Server"
-                        )
+                        static_server_description = server_info.get("description", "")
                         static_desc_span.set_attribute("description_source", "static")
 
                         sys_print(
@@ -834,7 +856,7 @@ class DiscoveryService:
                         try:
                             # Create a mock tool object with the static description for validation
                             static_description_tool = {
-                                "name": f"{server_name}_static_description",
+                                "name": f"{server_name}",
                                 "description": static_server_description,
                                 "inputSchema": {},
                                 "outputSchema": None,
@@ -932,6 +954,11 @@ class DiscoveryService:
                                 "validation_error", str(static_desc_validation_error)
                             )
 
+                # Track blocked tools information
+                blocked_tools_list = []
+                blocked_tools_count = 0
+                blocked_reasons_list = []
+
                 if tools:
                     if IS_DEBUG_LOG_LEVEL:
                         sys_print(
@@ -994,6 +1021,15 @@ class DiscoveryService:
                                                 "blocked_tools", []
                                             )
                                         )
+                                        # Store for return value
+                                        blocked_tools_list = blocked_tools
+                                        blocked_tools_count = blocked_count
+
+                                        # Extract all reasons from blocked tools
+                                        for blocked_tool in blocked_tools:
+                                            reasons = blocked_tool.get("reasons", [])
+                                            blocked_reasons_list.extend(reasons)
+
                                         sys_print(
                                             f"[discover_server_tools] ⚠️  Blocked {blocked_count} unsafe tools from {server_name}",
                                             is_error=True,
@@ -1087,4 +1123,7 @@ class DiscoveryService:
                     "message": f"Tools discovered for {server_name}",
                     "tools": tools,
                     "source": "discovery",
+                    "blocked_tools": blocked_tools_list,
+                    "blocked_count": blocked_tools_count,
+                    "blocked_reasons": blocked_reasons_list,
                 }

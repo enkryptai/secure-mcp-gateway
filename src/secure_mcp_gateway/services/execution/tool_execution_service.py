@@ -122,9 +122,7 @@ class ToolExecutionService:
                 if hasattr(server_info, "description"):
                     server_description = server_info.description
                 else:
-                    server_description = getattr(
-                        server_info, "description", "Unknown Server"
-                    )
+                    server_description = getattr(server_info, "description", "")
 
                 if hasattr(server_info, "name"):
                     server_name = server_info.name
