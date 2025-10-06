@@ -43,6 +43,7 @@ class ToolExecutionService:
         - ListToolsResult.tools: list with objects having .name
         - {"tools": list|dict}
         - flat dict { name: description }
+        - plain list of tool dicts (from cache)
         Returns (valid, names)
         """
         names: set = set()
@@ -84,6 +85,22 @@ class ToolExecutionService:
                         if isinstance(key, str):
                             names.add(key)
                     return True, names
+
+            # Handle plain list of tool dicts (e.g., from cache)
+            if isinstance(server_tools, list):
+                for item in server_tools:
+                    if isinstance(item, dict) and "name" in item:
+                        name = item["name"]
+                        if isinstance(name, str) and name:
+                            names.add(name)
+                    elif hasattr(item, "name"):
+                        # Handle tool objects with .name attribute
+                        name = getattr(item, "name", None)
+                        if isinstance(name, str) and name:
+                            names.add(name)
+                if names:  # Only return True if we found at least one tool
+                    return True, names
+
         except Exception:
             return False, set()
 
@@ -200,6 +217,10 @@ class ToolExecutionService:
                 args = (
                     tool_call.get("args")
                     or tool_call.get("arguments")
+                    or tool_call.get("tool_arguments")
+                    or tool_call.get("tool_input_arguments")
+                    or tool_call.get("tool_args")
+                    or tool_call.get("tool_input_args")
                     or tool_call.get("parameters")
                     or tool_call.get("input")
                     or tool_call.get("params")
