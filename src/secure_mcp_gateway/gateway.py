@@ -226,44 +226,7 @@ initialize_telemetry_system(common_config)
 telemetry_manager = get_telemetry_config_manager()
 sys_print(f"Telemetry providers: {telemetry_manager.list_providers()}")
 
-# Register additional providers from config
-plugin_config = common_config.get("guardrail_plugins", {})
-if plugin_config.get("enabled", False):
-    sys_print("Loading guardrail plugins from config...")
-
-    from secure_mcp_gateway.plugins.provider_loader import (
-        create_provider_from_config,
-    )
-
-    for provider_config in plugin_config.get("providers", []):
-        provider_name = provider_config.get("name")
-        provider_class = provider_config.get("class")
-        provider_cfg = provider_config.get("config", {})
-
-        sys_print(f"Loading provider: {provider_name}")
-
-        try:
-            if not provider_class:
-                sys_print(
-                    f"Provider '{provider_name}' must have 'class' field",
-                    is_error=True,
-                )
-                continue
-
-            provider = create_provider_from_config(
-                {
-                    "name": provider_name,
-                    "class": provider_class,
-                    "config": provider_cfg,
-                },
-                plugin_type="guardrail",
-            )
-            guardrail_manager.register_provider(provider)
-            sys_print(f"✓ Registered provider: {provider_name}")
-
-        except Exception as e:
-            sys_print(f"Error registering provider {provider_name}: {e}", is_error=True)
-
+# Plugin loading is now handled by the initialization functions above
 sys_print(f"Registered guardrail providers: {guardrail_manager.list_providers()}")
 
 

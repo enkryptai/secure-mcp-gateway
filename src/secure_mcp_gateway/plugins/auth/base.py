@@ -381,7 +381,7 @@ class AuthProviderRegistry:
 
     def __init__(self):
         """Initialize the registry."""
-        self._providers: Dict[str, AuthProvider] = {}
+        self._provider: Optional[AuthProvider] = None
 
     def register(self, provider: AuthProvider) -> None:
         """
@@ -390,50 +390,50 @@ class AuthProviderRegistry:
         Args:
             provider: Provider to register
         """
-        name = provider.get_name()
-        if name in self._providers:
-            raise ValueError(f"Provider '{name}' is already registered")
-        self._providers[name] = provider
+        self._provider = provider
 
-    def unregister(self, name: str) -> None:
+    def unregister(self, name: str = None) -> None:
         """
-        Unregister a provider.
+        Unregister the authentication provider.
 
         Args:
-            name: Provider name to unregister
+            name: Provider name (for compatibility, but ignored since only one provider)
         """
-        if name in self._providers:
-            del self._providers[name]
+        self._provider = None
 
-    def get_provider(self, name: str) -> Optional[AuthProvider]:
+    def get_provider(self, name: str = None) -> Optional[AuthProvider]:
         """
-        Get a provider by name.
+        Get the registered provider.
 
         Args:
-            name: Provider name
+            name: Provider name (for compatibility, but ignored since only one provider)
 
         Returns:
-            Optional[AuthProvider]: Provider if found, None otherwise
+            Optional[AuthProvider]: Provider instance or None if not registered
         """
-        return self._providers.get(name)
+        return self._provider
 
     def list_providers(self) -> List[str]:
         """
-        List all registered provider names.
+        Get list of registered provider names.
 
         Returns:
-            List[str]: List of provider names
+            List containing the provider name if registered, empty list otherwise
         """
-        return list(self._providers.keys())
+        if self._provider:
+            return [self._provider.get_name()]
+        return []
 
     def get_all_providers(self) -> Dict[str, AuthProvider]:
         """
         Get all registered providers.
 
         Returns:
-            Dict[str, AuthProvider]: Dictionary of all providers
+            Dict[str, AuthProvider]: Dictionary containing the single provider if registered
         """
-        return self._providers.copy()
+        if self._provider:
+            return {self._provider.get_name(): self._provider}
+        return {}
 
 
 class AuthProviderFactory:

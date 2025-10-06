@@ -59,16 +59,14 @@ class AuthConfigManager:
 
     def get_provider(self, name: Optional[str] = None) -> Optional[AuthProvider]:
         """
-        Get a provider by name.
+        Get the registered provider.
 
         Args:
-            name: Provider name (None for default)
+            name: Provider name (for compatibility, but ignored since only one provider)
 
         Returns:
             Optional[AuthProvider]: Provider if found
         """
-        if name is None:
-            name = self.default_provider
         return self.registry.get_provider(name)
 
     def list_providers(self) -> List[str]:
@@ -639,72 +637,9 @@ def initialize_auth_system(config: Dict[str, Any] = None) -> AuthConfigManager:
     if config is None:
         return manager
 
-    # Register Enkrypt provider by default
-    enkrypt_api_key = config.get("enkrypt_api_key")
-    enkrypt_base_url = config.get("enkrypt_base_url", "https://api.enkryptai.com")
-    enkrypt_use_remote = config.get("enkrypt_use_remote_mcp_config", False)
+    # Use the new centralized plugin loader with fallback mechanism
+    from secure_mcp_gateway.plugins.plugin_loader import PluginLoader
 
-    if enkrypt_api_key or not enkrypt_use_remote:
-        # Check if enkrypt provider is already registered
-        if "enkrypt" not in manager.list_providers():
-            from secure_mcp_gateway.plugins.auth.enkrypt_provider import (
-                EnkryptAuthProvider,
-            )
-
-            provider = EnkryptAuthProvider(
-                api_key=enkrypt_api_key,
-                base_url=enkrypt_base_url,
-                use_remote_config=enkrypt_use_remote,
-            )
-            manager.register_provider(provider)
-            sys_print("✓ Registered Enkrypt auth provider")
-        else:
-            sys_print("i Enkrypt auth provider already registered")
-
-    # Register additional providers from config
-    auth_plugins = config.get("auth_plugins", {})
-
-    if auth_plugins.get("enabled", False):
-        sys_print("Loading auth plugins from config...")
-
-        from secure_mcp_gateway.plugins.provider_loader import (
-            create_provider_from_config,
-        )
-
-        for provider_config in auth_plugins.get("providers", []):
-            provider_name = provider_config.get("name")
-            provider_class = provider_config.get("class")
-            provider_cfg = provider_config.get("config", {})
-
-            sys_print(f"Loading provider: {provider_name}")
-
-            try:
-                # Skip if already registered
-                if provider_name in manager.list_providers():
-                    sys_print(f"[i] Provider {provider_name} already registered")
-                    continue
-
-                if not provider_class:
-                    sys_print(
-                        f"Provider '{provider_name}' must have 'class' field",
-                        is_error=True,
-                    )
-                    continue
-
-                provider = create_provider_from_config(
-                    {
-                        "name": provider_name,
-                        "class": provider_class,
-                        "config": provider_cfg,
-                    },
-                    plugin_type="auth",
-                )
-                manager.register_provider(provider)
-                sys_print(f"✓ Registered provider: {provider_name}")
-
-            except Exception as e:
-                sys_print(
-                    f"Error registering provider {provider_name}: {e}", is_error=True
-                )
+    PluginLoader.load_plugin_providers(config, "auth", manager)
 
     return manager

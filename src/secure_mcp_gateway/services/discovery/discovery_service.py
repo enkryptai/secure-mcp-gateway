@@ -456,6 +456,9 @@ class DiscoveryService:
                             "validation_error", str(server_validation_error)
                         )
 
+            # NOTE: Static description validation moved to after dynamic description capture
+            # to ensure we can validate both static and dynamic descriptions together
+
             # Check if server has configured tools in the gateway config
             config_tools = server_info.get("tools", {})
             info_span.set_attribute("has_config_tools", bool(config_tools))
@@ -468,6 +471,139 @@ class DiscoveryService:
                     "enkrypt_discover_all_tools.tools_already_defined_in_config",
                     extra=build_log_extra(ctx, custom_id, server_name),
                 )
+
+                # NEW: Validate config tools with guardrails before returning
+                if self.registration_validation_enabled and self.guardrail_manager:
+                    with tracer_obj.start_as_current_span(
+                        "validate_config_tool_registration"
+                    ) as validation_span:
+                        validation_span.set_attribute("server_name", server_name)
+
+                        # Convert config tools to list format for validation
+                        tool_list = []
+                        for tool_name, tool_data in config_tools.items():
+                            if isinstance(tool_data, dict):
+                                tool_list.append(tool_data)
+                            else:
+                                # Convert to dict format if needed
+                                tool_list.append(
+                                    {
+                                        "name": tool_name,
+                                        "description": getattr(
+                                            tool_data, "description", ""
+                                        ),
+                                        "inputSchema": getattr(
+                                            tool_data, "inputSchema", {}
+                                        ),
+                                        "outputSchema": getattr(
+                                            tool_data, "outputSchema", None
+                                        ),
+                                        "annotations": getattr(
+                                            tool_data, "annotations", {}
+                                        ),
+                                    }
+                                )
+
+                        tool_count = len(tool_list)
+                        validation_span.set_attribute("tool_count", tool_count)
+
+                        sys_print(
+                            f"[discover_server_tools] Validating {tool_count} config tools for {server_name}"
+                        )
+
+                        try:
+                            validation_response = await self.guardrail_manager.validate_tool_registration(
+                                server_name=server_name,
+                                tools=tool_list,
+                                mode="filter",  # Filter unsafe tools but allow safe ones
+                            )
+
+                            if validation_response and validation_response.metadata:
+                                blocked_count = validation_response.metadata.get(
+                                    "blocked_tools_count", 0
+                                )
+                                safe_count = validation_response.metadata.get(
+                                    "safe_tools_count", 0
+                                )
+
+                                validation_span.set_attribute(
+                                    "blocked_tools_count", blocked_count
+                                )
+                                validation_span.set_attribute(
+                                    "safe_tools_count", safe_count
+                                )
+
+                                if blocked_count > 0:
+                                    blocked_tools = validation_response.metadata.get(
+                                        "blocked_tools", []
+                                    )
+                                    sys_print(
+                                        f"[discover_server_tools] ⚠️  Blocked {blocked_count} unsafe config tools from {server_name}",
+                                        is_error=True,
+                                    )
+                                    sys_print(
+                                        "[discover_server_tools] === BLOCKED CONFIG TOOLS DETAILS ===",
+                                        is_error=True,
+                                    )
+                                    for blocked_tool in blocked_tools:
+                                        tool_name = blocked_tool.get("name", "unknown")
+                                        reasons = blocked_tool.get("reasons", [])
+                                        sys_print(
+                                            f"[discover_server_tools]   ❌ {tool_name}:",
+                                            is_error=True,
+                                        )
+                                        for reason in reasons:
+                                            sys_print(
+                                                f"[discover_server_tools]      → {reason}",
+                                                is_error=True,
+                                            )
+                                    sys_print(
+                                        "[discover_server_tools] ==================================",
+                                        is_error=True,
+                                    )
+                                    logger.warning(
+                                        "enkrypt_discover_all_tools.config_tools_blocked_by_guardrails",
+                                        extra={
+                                            **build_log_extra(
+                                                ctx, custom_id, server_name
+                                            ),
+                                            "blocked_count": blocked_count,
+                                            "blocked_tools": blocked_tools,
+                                        },
+                                    )
+
+                                # Filter out blocked tools from config_tools
+                                if blocked_count > 0:
+                                    blocked_tool_names = {
+                                        tool.get("name") for tool in blocked_tools
+                                    }
+                                    config_tools = {
+                                        name: tool
+                                        for name, tool in config_tools.items()
+                                        if name not in blocked_tool_names
+                                    }
+
+                                sys_print(
+                                    f"[discover_server_tools] ✓ {safe_count} safe config tools approved for {server_name}"
+                                )
+
+                        except Exception as validation_error:
+                            # Fail open: if validation fails, allow the tools
+                            sys_print(
+                                f"[discover_server_tools] Config tool validation error: {validation_error}",
+                                is_error=True,
+                            )
+                            logger.error(
+                                "enkrypt_discover_all_tools.config_tool_validation_error",
+                                extra={
+                                    **build_log_extra(ctx, custom_id, server_name),
+                                    "error": str(validation_error),
+                                },
+                            )
+                            validation_span.set_attribute(
+                                "validation_error", str(validation_error)
+                            )
+
                 main_span = trace.get_current_span()
                 main_span.set_attribute("success", True)
                 return {
@@ -529,12 +665,272 @@ class DiscoveryService:
                     attributes=build_log_extra(ctx, custom_id),
                 )
                 tool_span.set_attribute("duration", end_time - start_time)
-                tools = (
-                    result["tools"]
-                    if isinstance(result, dict) and "tools" in result
-                    else result
-                )
+
+                # Handle new return format with server metadata
+                if isinstance(result, dict) and "tools" in result:
+                    tools = result["tools"]
+                    server_metadata = result.get("server_metadata", {})
+                    dynamic_description = server_metadata.get("description")
+                    dynamic_name = server_metadata.get("name")
+                    dynamic_version = server_metadata.get("version")
+
+                    # Print dynamic server information
+                    sys_print(
+                        f"[discover_server_tools] 🔍 Dynamic Server Info for {server_name}:"
+                    )
+                    sys_print(
+                        f"[discover_server_tools]   📝 Description: '{dynamic_description}'"
+                    )
+                    sys_print(f"[discover_server_tools]   🏷️  Name: '{dynamic_name}'")
+                    sys_print(
+                        f"[discover_server_tools]   📦 Version: '{dynamic_version}'"
+                    )
+                else:
+                    tools = result
+                    server_metadata = {}
+                    dynamic_description = None
+                    dynamic_name = None
+                    dynamic_version = None
+                    sys_print(
+                        f"[discover_server_tools] ⚠️  No dynamic metadata available for {server_name}"
+                    )
+
                 tool_span.set_attribute("tools_found", bool(tools))
+
+                # NEW: Validate dynamic server description if available
+                if (
+                    dynamic_description
+                    and self.registration_validation_enabled
+                    and self.guardrail_manager
+                ):
+                    with tracer_obj.start_as_current_span(
+                        "validate_dynamic_server_description"
+                    ) as dynamic_desc_span:
+                        dynamic_desc_span.set_attribute("server_name", server_name)
+                        dynamic_desc_span.set_attribute("description_source", "dynamic")
+
+                        sys_print(
+                            f"[discover_server_tools] Validating dynamic server description: '{dynamic_description}'"
+                        )
+
+                        try:
+                            # Create a mock tool object with the dynamic description for validation
+                            dynamic_description_tool = {
+                                "name": f"{server_name}_dynamic_description",
+                                "description": dynamic_description,
+                                "inputSchema": {},
+                                "outputSchema": None,
+                                "annotations": {},
+                            }
+
+                            validation_response = (
+                                await self.guardrail_manager.validate_tool_registration(
+                                    server_name=server_name,
+                                    tools=[dynamic_description_tool],
+                                    mode="block",  # Block if description is harmful
+                                )
+                            )
+
+                            if validation_response and validation_response.metadata:
+                                blocked_count = validation_response.metadata.get(
+                                    "blocked_tools_count", 0
+                                )
+
+                                if blocked_count > 0:
+                                    blocked_tools = validation_response.metadata.get(
+                                        "blocked_tools", []
+                                    )
+                                    violation_messages = []
+
+                                    for blocked_tool in blocked_tools:
+                                        reasons = blocked_tool.get("reasons", [])
+                                        violation_messages.extend(reasons)
+
+                                    dynamic_desc_span.set_attribute(
+                                        "description_blocked", True
+                                    )
+                                    dynamic_desc_span.set_attribute(
+                                        "violation_count", len(violation_messages)
+                                    )
+
+                                    sys_print(
+                                        f"[discover_server_tools] ⚠️  BLOCKED UNSAFE DYNAMIC SERVER DESCRIPTION: {server_name}",
+                                        is_error=True,
+                                    )
+                                    sys_print(
+                                        "[discover_server_tools] === DYNAMIC SERVER DESCRIPTION BLOCKED ===",
+                                        is_error=True,
+                                    )
+                                    for violation in violation_messages:
+                                        sys_print(
+                                            f"[discover_server_tools]   ❌ {violation}",
+                                            is_error=True,
+                                        )
+                                    sys_print(
+                                        "[discover_server_tools] ========================================",
+                                        is_error=True,
+                                    )
+
+                                    logger.error(
+                                        "enkrypt_discover_all_tools.dynamic_server_description_blocked_by_guardrails",
+                                        extra={
+                                            **build_log_extra(
+                                                ctx, custom_id, server_name
+                                            ),
+                                            "violations": violation_messages,
+                                            "description": dynamic_description,
+                                        },
+                                    )
+
+                                    return {
+                                        "status": "success",
+                                        "error": f"Server '{server_name}' blocked by security guardrails: Harmful content detected in dynamic server description",
+                                        "blocked": True,
+                                        "violations": violation_messages,
+                                    }
+                                else:
+                                    # Dynamic description is safe
+                                    sys_print(
+                                        f"[discover_server_tools] ✓ Dynamic server description for {server_name} passed validation"
+                                    )
+                                    dynamic_desc_span.set_attribute(
+                                        "description_safe", True
+                                    )
+
+                        except Exception as dynamic_desc_validation_error:
+                            # Fail open: if validation fails, allow the server
+                            sys_print(
+                                f"[discover_server_tools] Dynamic server description validation error: {dynamic_desc_validation_error}",
+                                is_error=True,
+                            )
+                            logger.error(
+                                "enkrypt_discover_all_tools.dynamic_server_description_validation_error",
+                                extra={
+                                    **build_log_extra(ctx, custom_id, server_name),
+                                    "error": str(dynamic_desc_validation_error),
+                                },
+                            )
+                            dynamic_desc_span.set_attribute(
+                                "validation_error", str(dynamic_desc_validation_error)
+                            )
+
+                # NEW: Validate static server description with guardrails (after dynamic capture)
+                if self.registration_validation_enabled and self.guardrail_manager:
+                    with tracer_obj.start_as_current_span(
+                        "validate_static_server_description"
+                    ) as static_desc_span:
+                        static_desc_span.set_attribute("server_name", server_name)
+
+                        # Get server description from config (static)
+                        static_server_description = server_info.get(
+                            "description", "Unknown Server"
+                        )
+                        static_desc_span.set_attribute("description_source", "static")
+
+                        sys_print(
+                            f"[discover_server_tools] Validating static server description: '{static_server_description}'"
+                        )
+
+                        try:
+                            # Create a mock tool object with the static description for validation
+                            static_description_tool = {
+                                "name": f"{server_name}_static_description",
+                                "description": static_server_description,
+                                "inputSchema": {},
+                                "outputSchema": None,
+                                "annotations": {},
+                            }
+
+                            validation_response = (
+                                await self.guardrail_manager.validate_tool_registration(
+                                    server_name=server_name,
+                                    tools=[static_description_tool],
+                                    mode="block",  # Block if description is harmful
+                                )
+                            )
+
+                            if validation_response and validation_response.metadata:
+                                blocked_count = validation_response.metadata.get(
+                                    "blocked_tools_count", 0
+                                )
+
+                                if blocked_count > 0:
+                                    blocked_tools = validation_response.metadata.get(
+                                        "blocked_tools", []
+                                    )
+                                    violation_messages = []
+
+                                    for blocked_tool in blocked_tools:
+                                        reasons = blocked_tool.get("reasons", [])
+                                        violation_messages.extend(reasons)
+
+                                    static_desc_span.set_attribute(
+                                        "description_blocked", True
+                                    )
+                                    static_desc_span.set_attribute(
+                                        "violation_count", len(violation_messages)
+                                    )
+
+                                    sys_print(
+                                        f"[discover_server_tools] ⚠️  BLOCKED UNSAFE STATIC SERVER DESCRIPTION: {server_name}",
+                                        is_error=True,
+                                    )
+                                    sys_print(
+                                        "[discover_server_tools] === STATIC SERVER DESCRIPTION BLOCKED ===",
+                                        is_error=True,
+                                    )
+                                    for violation in violation_messages:
+                                        sys_print(
+                                            f"[discover_server_tools]   ❌ {violation}",
+                                            is_error=True,
+                                        )
+                                    sys_print(
+                                        "[discover_server_tools] ======================================",
+                                        is_error=True,
+                                    )
+
+                                    logger.error(
+                                        "enkrypt_discover_all_tools.static_server_description_blocked_by_guardrails",
+                                        extra={
+                                            **build_log_extra(
+                                                ctx, custom_id, server_name
+                                            ),
+                                            "violations": violation_messages,
+                                            "description": static_server_description,
+                                        },
+                                    )
+
+                                    return {
+                                        "status": "success",
+                                        "error": f"Server '{server_name}' blocked by security guardrails: Harmful content detected in static server description",
+                                        "blocked": True,
+                                        "violations": violation_messages,
+                                    }
+                                else:
+                                    # Static description is safe
+                                    sys_print(
+                                        f"[discover_server_tools] ✓ Static server description for {server_name} passed validation"
+                                    )
+                                    static_desc_span.set_attribute(
+                                        "description_safe", True
+                                    )
+
+                        except Exception as static_desc_validation_error:
+                            # Fail open: if validation fails, allow the server
+                            sys_print(
+                                f"[discover_server_tools] Static server description validation error: {static_desc_validation_error}",
+                                is_error=True,
+                            )
+                            logger.error(
+                                "enkrypt_discover_all_tools.static_server_description_validation_error",
+                                extra={
+                                    **build_log_extra(ctx, custom_id, server_name),
+                                    "error": str(static_desc_validation_error),
+                                },
+                            )
+                            static_desc_span.set_attribute(
+                                "validation_error", str(static_desc_validation_error)
+                            )
 
                 if tools:
                     if IS_DEBUG_LOG_LEVEL:

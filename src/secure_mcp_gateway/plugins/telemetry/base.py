@@ -86,27 +86,25 @@ class TelemetryRegistry:
     """Registry for managing telemetry providers"""
 
     def __init__(self):
-        self._providers: dict[str, TelemetryProvider] = {}
-        self._default_provider: str | None = None
+        self._provider: TelemetryProvider | None = None
 
     def register(self, provider: TelemetryProvider) -> None:
         """Register a telemetry provider"""
-        name = provider.name
-        if name in self._providers:
-            raise ValueError(f"Provider '{name}' is already registered")
-        self._providers[name] = provider
-        if self._default_provider is None:
-            self._default_provider = name
+        self._provider = provider
+
+    def unregister(self, name: str = None) -> None:
+        """Unregister the telemetry provider"""
+        self._provider = None
 
     def get(self, name: str | None = None) -> TelemetryProvider | None:
-        """Get a provider by name"""
-        if name is None:
-            name = self._default_provider
-        return self._providers.get(name) if name else None
+        """Get the registered provider"""
+        return self._provider
 
     def list_providers(self) -> list[str]:
         """Get list of registered provider names"""
-        return list(self._providers.keys())
+        if self._provider:
+            return [self._provider.name]
+        return []
 
 
 __all__ = [

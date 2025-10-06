@@ -289,8 +289,40 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
         StdioServerParameters(command=command, args=command_args, env=env)
     ) as (read, write):
         async with ClientSession(read, write) as session:
-            await session.initialize()
+            # Initialize and capture server metadata
+            init_result = await session.initialize()
+
+            # Extract server description from initialization response
+            # InitializeResult is a Pydantic model, so we access attributes directly
+            server_info = getattr(init_result, "serverInfo", {})
+            if hasattr(server_info, "description"):
+                server_description = server_info.description
+            else:
+                server_description = getattr(
+                    server_info, "description", "Unknown Server"
+                )
+
+            if hasattr(server_info, "name"):
+                server_name_from_server = server_info.name
+            else:
+                server_name_from_server = getattr(server_info, "name", "unknown")
+
+            if hasattr(server_info, "version"):
+                server_version = server_info.version
+            else:
+                server_version = getattr(server_info, "version", "unknown")
+
+            # Store the dynamic server metadata for later use
+            session._server_description = server_description
+            session._server_name = server_name_from_server
+            session._server_version = server_version
+            session._server_info = server_info
+
             sys_print(f"[forward_tool_call] Connected successfully to {server_name}")
+            sys_print("[forward_tool_call] 🔍 Dynamic Server Metadata:")
+            sys_print(f"[forward_tool_call]   📝 Description: '{server_description}'")
+            sys_print(f"[forward_tool_call]   🏷️  Name: '{server_name_from_server}'")
+            sys_print(f"[forward_tool_call]   📦 Version: '{server_version}'")
 
             # If tool_name is None, this is a discovery request
             if tool_name is None:
@@ -313,7 +345,17 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
                         f"[forward_tool_call] Tools discovered for {server_name}, but encountered error when printing details: {e}",
                         is_error=True,
                     )
-                return tools_result
+
+                # Return tools result with dynamic server metadata
+                return {
+                    "tools": tools_result,
+                    "server_metadata": {
+                        "description": server_description,
+                        "name": server_name_from_server,
+                        "version": server_version,
+                        "server_info": server_info,
+                    },
+                }
 
             # Normal tool call
             sys_print(f"[forward_tool_call] Calling specific tool: {tool_name}")

@@ -59,7 +59,7 @@ class TelemetryConfigManager:
         """Initialize the config manager"""
         self.registry = TelemetryRegistry()
         self._active_provider: str | None = None
-        self._initialized_providers: dict[str, bool] = {}
+        self._provider_initialized: bool = False
 
     def register_provider(self, provider: TelemetryProvider) -> TelemetryResult:
         """
@@ -73,7 +73,7 @@ class TelemetryConfigManager:
         """
         try:
             self.registry.register(provider)
-            self._initialized_providers[provider.name] = False
+            self._provider_initialized = False
 
             sys_print(
                 f"[TelemetryConfigManager] Registered provider: {provider.name} v{provider.version}"
@@ -111,20 +111,20 @@ class TelemetryConfigManager:
         Returns:
             TelemetryResult: Initialization result
         """
-        provider = self.registry.get(provider_name)
+        provider = self.registry.get()
 
         if not provider:
             return TelemetryResult(
                 success=False,
                 provider_name=provider_name,
-                error=f"Provider '{provider_name}' not found",
+                error="No provider registered",
             )
 
         # Initialize the provider
         result = provider.initialize(config)
 
         if result.success:
-            self._initialized_providers[provider_name] = True
+            self._provider_initialized = True
 
             # Set as active if no active provider
             if self._active_provider is None:
@@ -142,14 +142,15 @@ class TelemetryConfigManager:
         Returns:
             TelemetryResult: Activation result
         """
-        if provider_name not in self._initialized_providers:
+        provider = self.registry.get()
+        if not provider:
             return TelemetryResult(
                 success=False,
                 provider_name=provider_name,
-                error=f"Provider '{provider_name}' not registered",
+                error="No provider registered",
             )
 
-        if not self._initialized_providers[provider_name]:
+        if not self._provider_initialized:
             return TelemetryResult(
                 success=False,
                 provider_name=provider_name,
@@ -173,9 +174,7 @@ class TelemetryConfigManager:
         Returns:
             Optional[TelemetryProvider]: Active provider or None
         """
-        if self._active_provider:
-            return self.registry.get(self._active_provider)
-        return None
+        return self.registry.get()
 
     def get_logger(self, name: str = "enkrypt-mcp-gateway") -> Any:
         """
@@ -253,18 +252,19 @@ class TelemetryConfigManager:
 
     def get_provider_status(self) -> dict[str, dict[str, Any]]:
         """
-        Get status of all providers.
+        Get status of the registered provider.
 
         Returns:
-            Dict with provider statuses
+            Dict with provider status
         """
         status = {}
+        provider = self.registry.get()
 
-        for provider_name in self.list_providers():
-            provider = self.registry.get(provider_name)
+        if provider:
+            provider_name = provider.name
             status[provider_name] = {
-                "version": provider.version if provider else "unknown",
-                "initialized": self._initialized_providers.get(provider_name, False),
+                "version": provider.version,
+                "initialized": self._provider_initialized,
                 "active": provider_name == self._active_provider,
             }
 
@@ -458,78 +458,10 @@ def initialize_telemetry_system(
     if config is None:
         return manager
 
-    # Register OpenTelemetry provider by default
-    telemetry_config = config.get("enkrypt_telemetry", {})
+    # Use the new centralized plugin loader with fallback mechanism
+    from secure_mcp_gateway.plugins.plugin_loader import PluginLoader
 
-    if telemetry_config.get("enabled", True):
-        # Check if opentelemetry provider is already registered
-        if "opentelemetry" not in manager.list_providers():
-            from secure_mcp_gateway.plugins.telemetry.opentelemetry_provider import (
-                OpenTelemetryProvider,
-            )
-
-            provider = OpenTelemetryProvider()
-            manager.register_provider(provider)
-
-            # Initialize it
-            result = manager.initialize_provider("opentelemetry", telemetry_config)
-
-            if result.success:
-                sys_print("✓ Registered OpenTelemetry telemetry provider")
-            else:
-                sys_print(
-                    f"✗ Failed to initialize OpenTelemetry: {result.error}",
-                    is_error=True,
-                )
-        else:
-            sys_print("[i] OpenTelemetry telemetry provider already registered")
-
-    # Register additional providers from config
-    telemetry_plugins = config.get("telemetry_plugins", {})
-
-    if telemetry_plugins.get("enabled", False):
-        sys_print("Loading telemetry plugins from config...")
-
-        from secure_mcp_gateway.plugins.provider_loader import (
-            create_provider_from_config,
-        )
-
-        for provider_config in telemetry_plugins.get("providers", []):
-            provider_name = provider_config.get("name")
-            provider_class = provider_config.get("class")
-            provider_cfg = provider_config.get("config", {})
-
-            sys_print(f"Loading provider: {provider_name}")
-
-            try:
-                # Skip if already registered
-                if provider_name in manager.list_providers():
-                    sys_print(f"[i] Provider {provider_name} already registered")
-                    continue
-
-                if not provider_class:
-                    sys_print(
-                        f"Provider '{provider_name}' must have 'class' field",
-                        is_error=True,
-                    )
-                    continue
-
-                provider = create_provider_from_config(
-                    {
-                        "name": provider_name,
-                        "class": provider_class,
-                        "config": provider_cfg,
-                    },
-                    plugin_type="telemetry",
-                )
-                manager.register_provider(provider)
-                manager.initialize_provider(provider_name, provider_cfg)
-                sys_print(f"✓ Registered provider: {provider_name}")
-
-            except Exception as e:
-                sys_print(
-                    f"Error registering provider {provider_name}: {e}", is_error=True
-                )
+    PluginLoader.load_plugin_providers(config, "telemetry", manager)
 
     return manager
 

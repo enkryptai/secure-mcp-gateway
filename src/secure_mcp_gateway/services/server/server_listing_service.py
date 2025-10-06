@@ -306,8 +306,10 @@ class ServerListingService:
                         server_info, id, cache_client
                     )
 
-                    if server_info_copy.get("tools_source") == "needs_discovery":
-                        servers_needing_discovery.append(server_name)
+                    # Always send servers to discovery for guardrail validation
+                    # regardless of whether tools are from config or need discovery or cached
+                    # It then dynamically checks if the tools are needed and discovers them if needed
+                    servers_needing_discovery.append(server_name)
 
                     servers_with_tools[server_name] = server_info_copy
 

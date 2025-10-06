@@ -113,7 +113,35 @@ class ToolExecutionService:
             StdioServerParameters(command=command, args=args, env=env)
         ) as (read, write):
             async with ClientSession(read, write) as session:
-                await session.initialize()
+                # Initialize and capture server metadata
+                init_result = await session.initialize()
+
+                # Extract server description from initialization response
+                # InitializeResult is a Pydantic model, so we access attributes directly
+                server_info = getattr(init_result, "serverInfo", {})
+                if hasattr(server_info, "description"):
+                    server_description = server_info.description
+                else:
+                    server_description = getattr(
+                        server_info, "description", "Unknown Server"
+                    )
+
+                if hasattr(server_info, "name"):
+                    server_name = server_info.name
+                else:
+                    server_name = getattr(server_info, "name", "unknown")
+
+                if hasattr(server_info, "version"):
+                    server_version = server_info.version
+                else:
+                    server_version = getattr(server_info, "version", "unknown")
+
+                # Store the dynamic server metadata for later use
+                session._server_description = server_description
+                session._server_name = server_name
+                session._server_version = server_version
+                session._server_info = server_info
+
                 self._session = session
                 try:
                     yield session
@@ -161,6 +189,14 @@ class ToolExecutionService:
         results: list[dict[str, Any]] = []
 
         async with self.open_session(server_config) as session:
+            # Capture server metadata for potential return
+            server_metadata = {
+                "description": getattr(session, "_server_description", None),
+                "name": getattr(session, "_server_name", None),
+                "version": getattr(session, "_server_version", None),
+                "server_info": getattr(session, "_server_info", None),
+            }
+
             for index, tool_call in enumerate(tool_calls):
                 name = self._normalize_tool_name(tool_call)
                 args = (

@@ -390,7 +390,7 @@ class GuardrailRegistry:
     """
 
     def __init__(self):
-        self._providers: Dict[str, GuardrailProvider] = {}
+        self._provider: Optional[GuardrailProvider] = None
 
     def register(self, provider: GuardrailProvider) -> None:
         """
@@ -398,53 +398,40 @@ class GuardrailRegistry:
 
         Args:
             provider: The provider to register
-
-        Raises:
-            ValueError: If provider name already registered
         """
-        name = provider.get_name()
-        if name in self._providers:
-            raise ValueError(f"Provider '{name}' is already registered")
-        self._providers[name] = provider
+        self._provider = provider
 
-    def unregister(self, name: str) -> None:
+    def unregister(self, name: str = None) -> None:
         """
-        Unregister a guardrail provider.
+        Unregister the guardrail provider.
 
         Args:
-            name: Name of the provider to unregister
+            name: Provider name (for compatibility, but ignored since only one provider)
         """
-        self._providers.pop(name, None)
+        self._provider = None
 
-    def get_provider(self, name: str) -> Optional[GuardrailProvider]:
+    def get_provider(self, name: str = None) -> Optional[GuardrailProvider]:
         """
-        Get a registered provider by name.
+        Get the registered provider.
 
         Args:
-            name: Provider name
+            name: Provider name (for compatibility, but ignored since only one provider)
 
         Returns:
-            GuardrailProvider instance or None if not found
+            GuardrailProvider instance or None if not registered
         """
-        return self._providers.get(name)
+        return self._provider
 
     def list_providers(self) -> List[str]:
         """
-        Get list of all registered provider names.
+        Get list of registered provider names.
 
         Returns:
-            List of provider names
+            List containing the provider name if registered, empty list otherwise
         """
-        return list(self._providers.keys())
-
-    def get_all_providers(self) -> Dict[str, GuardrailProvider]:
-        """
-        Get all registered providers.
-
-        Returns:
-            Dictionary mapping provider names to instances
-        """
-        return self._providers.copy()
+        if self._provider:
+            return [self._provider.get_name()]
+        return []
 
 
 # ============================================================================

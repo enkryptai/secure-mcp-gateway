@@ -217,10 +217,11 @@ class GuardrailConfigManager:
             Dictionary mapping provider names to their metadata
         """
         metadata = {}
-        for name in self.list_providers():
-            provider_metadata = self.get_provider_metadata(name)
+        provider = self.registry.get_provider()
+        if provider:
+            provider_metadata = self.get_provider_metadata(provider.get_name())
             if provider_metadata:
-                metadata[name] = provider_metadata
+                metadata[provider.get_name()] = provider_metadata
         return metadata
 
     async def validate_server_registration(
@@ -239,11 +240,9 @@ class GuardrailConfigManager:
         from secure_mcp_gateway.plugins.guardrails.base import ServerRegistrationRequest
 
         # Use the registered provider
-        all_providers = self.registry.get_all_providers()
-        if not all_providers:
+        provider = self.registry.get_provider()
+        if not provider:
             return None
-
-        provider = next(iter(all_providers.values()))
 
         request = ServerRegistrationRequest(
             server_name=server_name,
@@ -272,11 +271,10 @@ class GuardrailConfigManager:
         from secure_mcp_gateway.plugins.guardrails.base import ToolRegistrationRequest
 
         # Use the registered provider
-        all_providers = self.registry.get_all_providers()
-        if not all_providers:
+        provider = self.registry.get_provider()
+        if not provider:
             return None
 
-        provider = next(iter(all_providers.values()))
         sys_print(f"[GuardrailConfigManager] Using provider: {provider.get_name()}")
         request = ToolRegistrationRequest(
             server_name=server_name, tools=tools, validation_mode=mode
@@ -435,48 +433,20 @@ def initialize_guardrail_system(
     """
     manager = get_guardrail_config_manager()
 
-    # Debug: Print what config we received
-    sys_print(
-        f"[initialize_guardrail_system] Received config type: {type(config_or_api_key)}"
-    )
-    if isinstance(config_or_api_key, dict):
-        sys_print(
-            f"[initialize_guardrail_system] Config keys: {list(config_or_api_key.keys())}"
-        )
-        sys_print(
-            f"[initialize_guardrail_system] enkrypt_log_level: {config_or_api_key.get('enkrypt_log_level')}"
-        )
-
-    # Determine if we got a config dict or an API key string
-    provider_config = None
-    if isinstance(config_or_api_key, dict):
-        # Config dict passed - extract values
-        enkrypt_api_key = config_or_api_key.get("enkrypt_api_key")
-        enkrypt_base_url = config_or_api_key.get(
-            "enkrypt_base_url", "https://api.enkryptai.com"
-        )
-        # Pass the entire config dict to the provider for debug, custom detectors, etc.
-        provider_config = config_or_api_key
-    elif isinstance(config_or_api_key, str):
-        # API key string passed directly
-        enkrypt_api_key = config_or_api_key
+    # Convert API key string to config dict for consistency
+    if isinstance(config_or_api_key, str):
+        config = {
+            "enkrypt_api_key": config_or_api_key,
+            "enkrypt_base_url": enkrypt_base_url,
+        }
+    elif isinstance(config_or_api_key, dict):
+        config = config_or_api_key
     else:
-        # None or invalid type
-        enkrypt_api_key = None
+        config = {}
 
-    # Register Enkrypt provider if API key is available AND not already registered
-    if enkrypt_api_key and enkrypt_api_key != "YOUR_ENKRYPT_API_KEY":
-        # Check if enkrypt provider is already registered
-        if "enkrypt" not in manager.list_providers():
-            manager.register_enkrypt_provider(
-                enkrypt_api_key, enkrypt_base_url, provider_config
-            )
-            sys_print("✓ Registered Enkrypt guardrail provider")
-        else:
-            sys_print("i Enkrypt guardrail provider already registered")
-    else:
-        sys_print(
-            "⚠ No valid Enkrypt API key - Enkrypt guardrail provider not registered"
-        )
+    # Use the new centralized plugin loader with fallback mechanism
+    from secure_mcp_gateway.plugins.plugin_loader import PluginLoader
+
+    PluginLoader.load_plugin_providers(config, "guardrails", manager)
 
     return manager
