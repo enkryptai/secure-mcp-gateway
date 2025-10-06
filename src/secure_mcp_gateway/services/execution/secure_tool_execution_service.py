@@ -594,6 +594,10 @@ class SecureToolExecutionService:
                 args = (
                     tool_call.get("args", {})
                     or tool_call.get("arguments", {})
+                    or tool_call.get("tool_arguments", {})
+                    or tool_call.get("tool_input_arguments", {})
+                    or tool_call.get("tool_args", {})
+                    or tool_call.get("tool_input_args", {})
                     or tool_call.get("parameters", {})
                     or tool_call.get("input", {})
                     or tool_call.get("params", {})
