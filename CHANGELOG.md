@@ -2,16 +2,22 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
-## [2.0.4] - 2025-09-22
+## [2.1.0] - 2025-10-07
 
-### New Features in v2.0.4
+### New Features in v2.1.0
 
 - Added API support for all `cli` commands
 - Added API documentation
 - Added support for async output guardrails
+- Added concept of `plugins` to the gateway
+  - Added support for `guardrails plugin` in the gateway
+  - Added support for `telemetry plugin` in the gateway
+  - Added support for `local apikey plugin` in the gateway
 
-### Updates in v2.0.4
+### Updates in v2.1.0
 
+- Refactored the codebase to make it more modular and easier to maintain
+- Updated the `enkrypt_mcp_config.json` schema to include `plugins` section and other changes
 - Fixed external cache server issues
 - Using single detect call for PII redaction on input side instead of 2 like before
 - Pre-commit hooks for linting, formatting, security checks and type checking
