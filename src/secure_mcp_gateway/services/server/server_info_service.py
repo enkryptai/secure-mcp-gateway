@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from secure_mcp_gateway.error_handling import create_error_response
+from secure_mcp_gateway.exceptions import (
+    ErrorCode,
+    ErrorContext,
+    create_discovery_error,
+)
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 from secure_mcp_gateway.utils import (
     build_log_extra,
@@ -70,10 +76,16 @@ class ServerInfoService:
                 f"[get_server_info] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}",
                 is_error=True,
             )
-            return {
-                "status": "error",
-                "error": "No MCP config found. Please check your credentials.",
-            }
+            context = ErrorContext(
+                operation="server_info.init",
+                request_id=getattr(ctx, "request_id", None),
+            )
+            err = create_discovery_error(
+                code=ErrorCode.CONFIG_MISSING_REQUIRED,
+                message="No MCP config found. Please check your credentials.",
+                context=context,
+            )
+            return create_error_response(err)
 
         enkrypt_project_name = gateway_config.get("project_name", "not_provided")
         enkrypt_email = gateway_config.get("email", "not_provided")
@@ -113,10 +125,17 @@ class ServerInfoService:
                     session_key, server_name, tracer, custom_id, logger
                 )
                 if not server_info:
-                    return {
-                        "status": "error",
-                        "error": f"Server '{server_name}' not available.",
-                    }
+                    context = ErrorContext(
+                        operation="server_info.lookup",
+                        request_id=getattr(ctx, "request_id", None),
+                        server_name=server_name,
+                    )
+                    err = create_discovery_error(
+                        code=ErrorCode.DISCOVERY_SERVER_UNAVAILABLE,
+                        message=f"Server '{server_name}' not available.",
+                        context=context,
+                    )
+                    return create_error_response(err)
 
                 # Get latest server info
                 latest_server_info = await self._get_latest_server_info(
@@ -157,7 +176,18 @@ class ServerInfoService:
                     "get_server_info.exception",
                     extra=build_log_extra(ctx, custom_id, error=str(e)),
                 )
-                return {"status": "error", "error": f"Tool discovery failed: {e}"}
+                context = ErrorContext(
+                    operation="server_info.exception",
+                    request_id=getattr(ctx, "request_id", None),
+                    server_name=server_name,
+                )
+                err = create_discovery_error(
+                    code=ErrorCode.DISCOVERY_FAILED,
+                    message=f"Tool discovery failed: {e}",
+                    context=context,
+                    cause=e,
+                )
+                return create_error_response(err)
 
     def _generate_custom_id(self) -> str:
         """Generate a custom ID for tracking."""
@@ -203,7 +233,17 @@ class ServerInfoService:
                             server_name=server_name,
                         ),
                     )
-                    return {"status": "error", "error": "Not authenticated."}
+                    context = ErrorContext(
+                        operation="server_info.auth",
+                        request_id=getattr(ctx, "request_id", None),
+                        server_name=server_name,
+                    )
+                    err = create_discovery_error(
+                        code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+                        message="Not authenticated.",
+                        context=context,
+                    )
+                    return create_error_response(err)
         return None
 
     async def _get_server_info(

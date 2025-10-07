@@ -10,6 +10,13 @@ from secure_mcp_gateway.services.cache.cache_service import cache_service
 # Get tracer from telemetry manager
 telemetry_manager = get_telemetry_config_manager()
 tracer = telemetry_manager.get_tracer()
+from secure_mcp_gateway.error_handling import create_error_response
+from secure_mcp_gateway.exceptions import (
+    ErrorCode,
+    ErrorContext,
+    create_auth_error,
+    create_configuration_error,
+)
 from secure_mcp_gateway.utils import (
     build_log_extra,
     generate_custom_id,
@@ -178,10 +185,16 @@ class CacheManagementService:
                     f"[clear_cache] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}",
                     is_error=True,
                 )
-                return {
-                    "status": "error",
-                    "error": "No MCP config found. Please check your credentials.",
-                }
+                context = ErrorContext(
+                    operation="cache_management.init",
+                    request_id=getattr(ctx, "request_id", None),
+                )
+                err = create_configuration_error(
+                    code=ErrorCode.CONFIG_MISSING_REQUIRED,
+                    message="No MCP config found. Please check your credentials.",
+                    context=context,
+                )
+                return create_error_response(err)
 
             enkrypt_project_name = gateway_config.get("project_name", "not_provided")
             enkrypt_email = gateway_config.get("email", "not_provided")
@@ -211,7 +224,16 @@ class CacheManagementService:
                             ctx, custom_id, error="Not authenticated."
                         ),
                     )
-                    return {"status": "error", "error": "Not authenticated."}
+                    context = ErrorContext(
+                        operation="cache_management.auth",
+                        request_id=getattr(ctx, "request_id", None),
+                    )
+                    err = create_auth_error(
+                        code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+                        message="Not authenticated.",
+                        context=context,
+                    )
+                    return create_error_response(err)
             else:
                 auth_span.set_attribute("requires_auth", False)
 

@@ -184,22 +184,45 @@ class ToolExecutionService:
         tool_calls = tool_calls or []
         valid, available = self._normalize_tools_available(server_tools)
         if not valid:
-            return {
-                "status": "error",
-                "message": "Unknown server tools format",
-                "server_name": server_name,
-                "results": [],
-            }
+            from secure_mcp_gateway.error_handling import create_error_response
+            from secure_mcp_gateway.exceptions import (
+                ErrorCode,
+                ErrorContext,
+                create_tool_execution_error,
+            )
+
+            context = ErrorContext(
+                operation="tool_execution.validate_tools_format",
+                server_name=server_name,
+            )
+            err = create_tool_execution_error(
+                code=ErrorCode.TOOL_INVALID_ARGS,
+                message="Unknown server tools format",
+                context=context,
+            )
+            return create_error_response(err)
 
         for tool_call in tool_calls:
             name = self._normalize_tool_name(tool_call)
             if not name or name not in available:
-                return {
-                    "status": "error",
-                    "message": f"Tool '{name or 'unknown'}' not found for this server",
-                    "server_name": server_name,
-                    "results": [],
-                }
+                from secure_mcp_gateway.error_handling import create_error_response
+                from secure_mcp_gateway.exceptions import (
+                    ErrorCode,
+                    ErrorContext,
+                    create_tool_execution_error,
+                )
+
+                context = ErrorContext(
+                    operation="tool_execution.validate_tool_exists",
+                    server_name=server_name,
+                    tool_name=name or "unknown",
+                )
+                err = create_tool_execution_error(
+                    code=ErrorCode.TOOL_NOT_FOUND,
+                    message=f"Tool '{name or 'unknown'}' not found for this server.",
+                    context=context,
+                )
+                return create_error_response(err)
 
         results: list[dict[str, Any]] = []
 
@@ -248,19 +271,25 @@ class ToolExecutionService:
                         }
                     )
                 except Exception as exc:
-                    results.append(
-                        {
-                            "status": "error",
-                            "error": str(exc),
-                            "message": "Error while processing tool call",
-                            "enkrypt_mcp_data": {
-                                "call_index": index,
-                                "server_name": server_name,
-                                "tool_name": name,
-                                "args": args,
-                            },
-                        }
+                    from secure_mcp_gateway.error_handling import create_error_response
+                    from secure_mcp_gateway.exceptions import (
+                        ErrorCode,
+                        ErrorContext,
+                        create_tool_execution_error,
                     )
+
+                    context = ErrorContext(
+                        operation="tool_execution.call_tool",
+                        server_name=server_name,
+                        tool_name=name,
+                    )
+                    err = create_tool_execution_error(
+                        code=ErrorCode.TOOL_EXECUTION_FAILED,
+                        message=f"Error while processing tool call: {exc}",
+                        context=context,
+                        cause=exc,
+                    )
+                    results.append(create_error_response(err))
                     break
 
         successful_calls = len([r for r in results if r["status"] == "success"])

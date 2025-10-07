@@ -47,6 +47,14 @@ from typing import Any, ClassVar, Dict, List, Optional
 
 import aiohttp
 
+from secure_mcp_gateway.error_handling import error_handling_context, error_logger
+from secure_mcp_gateway.exceptions import (
+    ErrorCode,
+    ErrorContext,
+    ErrorSeverity,
+    GuardrailError,
+    create_guardrail_error,
+)
 from secure_mcp_gateway.plugins.guardrails.base import (
     GuardrailAction,
     GuardrailProvider,
@@ -88,40 +96,132 @@ class EnkryptInputGuardrail:
         """Validate input using Enkrypt guardrails."""
         start_time = time.time()
 
-        try:
-            # Prepare payload
-            payload = {"text": request.content}
-            headers = {
-                "X-Enkrypt-Policy": self.policy_name,
-                "apikey": self.api_key,
-                "Content-Type": "application/json",
-            }
+        # Create error context for correlation tracking
+        context = ErrorContext(
+            operation="input_guardrail_validation",
+            server_name=getattr(request, "server_name", None),
+            tool_name=request.tool_name,
+            additional_context={
+                "policy_name": self.policy_name,
+                "content_length": len(request.content),
+            },
+        )
 
-            if self.debug:
-                sys_print(
-                    f"[EnkryptInputGuardrail] Validating with policy: {self.policy_name}",
-                    is_debug=True,
+        async with error_handling_context("input_guardrail_validation", context):
+            try:
+                # Prepare payload
+                payload = {"text": request.content}
+                headers = {
+                    "X-Enkrypt-Policy": self.policy_name,
+                    "apikey": self.api_key,
+                    "Content-Type": "application/json",
+                }
+
+                if self.debug:
+                    sys_print(
+                        f"[EnkryptInputGuardrail] Validating with policy: {self.policy_name}",
+                        is_debug=True,
+                    )
+                    sys_print(
+                        f"[EnkryptInputGuardrail] Payload: {payload}", is_debug=True
+                    )
+
+                # Make API call
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        self.guardrail_url, json=payload, headers=headers
+                    ) as response:
+                        resp_json = await response.json()
+
+                if self.debug:
+                    sys_print(
+                        f"[EnkryptInputGuardrail] Response: {resp_json}", is_debug=True
+                    )
+
+                # Check for API errors
+                if resp_json.get("error"):
+                    error = create_guardrail_error(
+                        code=ErrorCode.GUARDRAIL_API_ERROR,
+                        message=f"Enkrypt API error: {resp_json.get('error')}",
+                        context=context,
+                    )
+                    error_logger.log_error(error)
+
+                    return GuardrailResponse(
+                        is_safe=False,
+                        action=GuardrailAction.BLOCK,
+                        violations=[
+                            GuardrailViolation(
+                                violation_type=ViolationType.CUSTOM,
+                                severity=1.0,
+                                message=f"API Error: {resp_json.get('error')}",
+                                action=GuardrailAction.BLOCK,
+                                metadata={"error": resp_json.get("error")},
+                            )
+                        ],
+                        metadata={
+                            "api_error": True,
+                            "correlation_id": context.correlation_id,
+                        },
+                        processing_time_ms=(time.time() - start_time) * 1000,
+                    )
+
+                # Parse violations from Enkrypt response
+                violations = []
+                violations_detected = False
+
+                if "summary" in resp_json:
+                    summary = resp_json["summary"]
+                    for policy_type in self.block_list:
+                        value = summary.get(policy_type)
+
+                        if value == 1 or (isinstance(value, list) and len(value) > 0):
+                            violations_detected = True
+                        violations.append(
+                            GuardrailViolation(
+                                violation_type=self._map_violation_type(policy_type),
+                                severity=0.8,  # Default severity
+                                message=f"Input validation failed: {policy_type}",
+                                action=GuardrailAction.BLOCK,
+                                metadata={
+                                    "policy_type": policy_type,
+                                    "value": value,
+                                    "details": resp_json.get("details", {}).get(
+                                        policy_type, {}
+                                    ),
+                                },
+                            )
+                        )
+
+                # Determine overall safety
+                is_safe = not violations_detected
+                action = GuardrailAction.ALLOW if is_safe else GuardrailAction.BLOCK
+
+                processing_time_ms = (time.time() - start_time) * 1000
+
+                return GuardrailResponse(
+                    is_safe=is_safe,
+                    action=action,
+                    violations=violations,
+                    modified_content=None,
+                    metadata={
+                        "policy_name": self.policy_name,
+                        "enkrypt_response": resp_json,
+                    },
+                    processing_time_ms=processing_time_ms,
                 )
-                sys_print(f"[EnkryptInputGuardrail] Payload: {payload}", is_debug=True)
 
-            # Make API call
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.guardrail_url, json=payload, headers=headers
-                ) as response:
-                    resp_json = await response.json()
-
-            if self.debug:
-                sys_print(
-                    f"[EnkryptInputGuardrail] Response: {resp_json}", is_debug=True
+            except Exception as e:
+                error = create_guardrail_error(
+                    code=ErrorCode.GUARDRAIL_VALIDATION_FAILED,
+                    message=f"Input guardrail validation failed: {e!s}",
+                    context=context,
+                    cause=e,
                 )
+                error_logger.log_error(error)
 
-            # Check for API errors
-            if resp_json.get("error"):
-                sys_print(
-                    f"[EnkryptInputGuardrail] API error: {resp_json.get('error')}",
-                    is_error=True,
-                )
+                processing_time_ms = (time.time() - start_time) * 1000
+
                 return GuardrailResponse(
                     is_safe=False,
                     action=GuardrailAction.BLOCK,
@@ -129,79 +229,21 @@ class EnkryptInputGuardrail:
                         GuardrailViolation(
                             violation_type=ViolationType.CUSTOM,
                             severity=1.0,
-                            message=f"API Error: {resp_json.get('error')}",
+                            message=f"Validation error: {e!s}",
                             action=GuardrailAction.BLOCK,
-                            metadata={"error": resp_json.get("error")},
+                            metadata={
+                                "exception": str(e),
+                                "correlation_id": context.correlation_id,
+                            },
                         )
                     ],
-                    metadata={"api_error": True},
-                    processing_time_ms=(time.time() - start_time) * 1000,
+                    metadata={
+                        "exception": str(e),
+                        "correlation_id": context.correlation_id,
+                        "error_code": error.code.value,
+                    },
+                    processing_time_ms=processing_time_ms,
                 )
-
-            # Parse violations from Enkrypt response
-            violations = []
-            violations_detected = False
-
-            if "summary" in resp_json:
-                summary = resp_json["summary"]
-                for policy_type in self.block_list:
-                    value = summary.get(policy_type)
-
-                    if value == 1 or (isinstance(value, list) and len(value) > 0):
-                        violations_detected = True
-                violations.append(
-                    GuardrailViolation(
-                        violation_type=self._map_violation_type(policy_type),
-                        severity=0.8,  # Default severity
-                        message=f"Input validation failed: {policy_type}",
-                        action=GuardrailAction.BLOCK,
-                        metadata={
-                            "policy_type": policy_type,
-                            "value": value,
-                            "details": resp_json.get("details", {}).get(
-                                policy_type, {}
-                            ),
-                        },
-                    )
-                )
-
-            # Determine overall safety
-            is_safe = not violations_detected
-            action = GuardrailAction.ALLOW if is_safe else GuardrailAction.BLOCK
-
-            processing_time_ms = (time.time() - start_time) * 1000
-
-            return GuardrailResponse(
-                is_safe=is_safe,
-                action=action,
-                violations=violations,
-                modified_content=None,
-                metadata={
-                    "policy_name": self.policy_name,
-                    "enkrypt_response": resp_json,
-                },
-                processing_time_ms=processing_time_ms,
-            )
-
-        except Exception as e:
-            sys_print(f"[EnkryptInputGuardrail] Exception: {e}", is_error=True)
-            processing_time_ms = (time.time() - start_time) * 1000
-
-            return GuardrailResponse(
-                is_safe=False,
-                action=GuardrailAction.BLOCK,
-                violations=[
-                    GuardrailViolation(
-                        violation_type=ViolationType.CUSTOM,
-                        severity=1.0,
-                        message=f"Validation error: {e!s}",
-                        action=GuardrailAction.BLOCK,
-                        metadata={"exception": str(e)},
-                    )
-                ],
-                metadata={"exception": str(e)},
-                processing_time_ms=processing_time_ms,
-            )
 
     def get_supported_detectors(self) -> List[ViolationType]:
         """Get supported violation types for input."""
@@ -980,7 +1022,24 @@ class EnkryptServerRegistrationGuardrail:
                 f"[EnkryptServerRegistration] Error validating server: {e}",
                 is_error=True,
             )
-            # Fail open: allow on error to avoid blocking legitimate servers
+            # If guardrails enabled and auth failed, fail-closed to avoid approving unsafe
+            cfg_enabled = bool(self.config.get("enkrypt_guardrails_enabled", True))
+            if cfg_enabled and ("UNAUTHORIZED:" in str(e)):
+                return GuardrailResponse(
+                    is_safe=False,
+                    action=GuardrailAction.BLOCK,
+                    violations=[
+                        GuardrailViolation(
+                            violation_type=ViolationType.POLICY_VIOLATION,
+                            severity=1.0,
+                            message="Guardrail authorization failed",
+                            action=GuardrailAction.BLOCK,
+                            metadata={"error": str(e)},
+                        )
+                    ],
+                    metadata={"error": str(e)},
+                )
+            # Otherwise fail-open
             return GuardrailResponse(
                 is_safe=True,
                 action=GuardrailAction.ALLOW,
@@ -1148,14 +1207,31 @@ class EnkryptServerRegistrationGuardrail:
             sys_print(
                 f"[EnkryptToolRegistration] Error validating tools: {e}", is_error=True
             )
-            # Fail open: allow all tools on error
+            cfg_enabled = bool(self.config.get("enkrypt_guardrails_enabled", True))
+            if cfg_enabled and ("UNAUTHORIZED:" in str(e)):
+                # Fail closed: do not approve tools when guardrails enabled but unauthorized
+                return GuardrailResponse(
+                    is_safe=False,
+                    action=GuardrailAction.BLOCK,
+                    violations=[
+                        GuardrailViolation(
+                            violation_type=ViolationType.POLICY_VIOLATION,
+                            severity=1.0,
+                            message="Guardrail authorization failed",
+                            action=GuardrailAction.BLOCK,
+                            metadata={"error": str(e)},
+                        )
+                    ],
+                    metadata={"error": str(e)},
+                )
+            # Fail open for other errors
             return GuardrailResponse(
                 is_safe=True,
                 action=GuardrailAction.ALLOW,
                 violations=[],
                 metadata={
                     "error": str(e),
-                    "filtered_tools": request.tools,  # Return all tools on error
+                    "filtered_tools": request.tools,
                 },
             )
 
@@ -1164,10 +1240,34 @@ class EnkryptServerRegistrationGuardrail:
     ) -> List[Dict[str, Any]]:
         """Call Enkrypt batch detection API."""
         try:
-            payload = {"texts": texts, "detectors": detectors}
+
+            def _sanitize_for_json(value):
+                """Recursively sanitize values so they can be JSON-serialized.
+                - Ensure dict keys are strings (drop None keys)
+                - Convert non-serializable simple types to strings
+                """
+                if isinstance(value, dict):
+                    clean = {}
+                    for k, v in value.items():
+                        if k is None:
+                            continue
+                        sk = str(k)
+                        clean[sk] = _sanitize_for_json(v)
+                    return clean
+                if isinstance(value, list):
+                    return [_sanitize_for_json(v) for v in value]
+                if isinstance(value, (str, int, float, bool)) or value is None:
+                    return value
+                # Fallback to string
+                return str(value)
+
+            safe_texts = ["" if t is None else str(t) for t in (texts or [])]
+            safe_detectors = _sanitize_for_json(detectors or {})
+
+            payload = {"texts": safe_texts, "detectors": safe_detectors}
 
             headers = {
-                "apikey": self.api_key,
+                "apikey": str(self.api_key or ""),
                 "Content-Type": "application/json",
             }
 
@@ -1186,6 +1286,11 @@ class EnkryptServerRegistrationGuardrail:
                 ) as response:
                     if response.status != 200:
                         error_text = await response.text()
+                        if response.status in (401, 403):
+                            # Mark explicitly as unauthorized so callers can fail-closed
+                            raise Exception(
+                                f"UNAUTHORIZED: API error {response.status}: {error_text}"
+                            )
                         raise Exception(f"API error {response.status}: {error_text}")
 
                     result = await response.json()
@@ -1199,7 +1304,10 @@ class EnkryptServerRegistrationGuardrail:
 
         except Exception as e:
             sys_print(f"[EnkryptBatchAPI] Batch API call failed: {e}", is_error=True)
-            # Return safe default (fail open)
+            # Propagate unauthorized marker via exception so upper layers can block
+            if "UNAUTHORIZED:" in str(e):
+                raise
+            # Return safe default (fail open) for other transient errors
             return [{"text": text, "summary": {}, "details": {}} for text in texts]
 
 
@@ -1217,13 +1325,22 @@ class EnkryptGuardrailProvider(GuardrailProvider):
         base_url: str = "https://api.enkryptai.com",
         config: Dict[str, Any] = None,
     ):
+        # Use provided credentials; if missing, fetch from full config as fallback
         self.api_key = api_key
         self.base_url = base_url
         self.config = config or {}
 
         # Initialize registration guardrail
+        # If api_key not set or is literal 'null', fallback to config values
+        if not self.api_key or str(self.api_key).lower() == "null":
+            fetched_key, fetched_base = self._get_api_credentials()
+            if fetched_key:
+                self.api_key = fetched_key
+            if fetched_base:
+                self.base_url = fetched_base
+
         self.registration_guardrail = EnkryptServerRegistrationGuardrail(
-            api_key=api_key, base_url=base_url, config=self.config
+            api_key=self.api_key, base_url=self.base_url, config=self.config
         )
 
     def get_name(self) -> str:

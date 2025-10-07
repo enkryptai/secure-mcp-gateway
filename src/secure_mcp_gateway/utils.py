@@ -302,26 +302,45 @@ def mask_key(key):
 
 
 def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs):
-    from secure_mcp_gateway.plugins.auth import get_auth_config_manager
+    """Build structured log extras. Tolerates missing/invalid ctx.
 
-    auth_manager = get_auth_config_manager()
-    credentials = auth_manager.get_gateway_credentials(ctx)
-    gateway_key = credentials.get("gateway_key")
-    project_id = credentials.get("project_id", "not_provided")
-    user_id = credentials.get("user_id", "not_provided")
-    # if project_id == "not_provided" or user_id == "not_provided" or mcp_config_id == "not_provided":
-    #     sys_print(f"[build_log_extra] Project ID, User ID or MCP Config ID is not provided", is_error=True)
-    #     return {}
+    Falls back to 'not_provided' values if ctx is not an MCP Context or
+    if credentials/config cannot be resolved.
+    """
+    project_id = "not_provided"
+    user_id = "not_provided"
+    project_name = "not_provided"
+    email = "not_provided"
+    mcp_config_id = "not_provided"
 
-    gateway_config = auth_manager.get_local_mcp_config(gateway_key, project_id, user_id)
-    project_name = gateway_config.get("project_name", "not_provided")
-    email = gateway_config.get("email", "not_provided")
-    mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
+    try:
+        # Only attempt auth lookups when ctx looks like an MCP Context
+        has_ctx_attrs = hasattr(ctx, "request_context") or hasattr(ctx, "__dict__")
+        if has_ctx_attrs:
+            from secure_mcp_gateway.plugins.auth import get_auth_config_manager
+
+            auth_manager = get_auth_config_manager()
+            credentials = auth_manager.get_gateway_credentials(ctx)
+            gateway_key = credentials.get("gateway_key")
+            project_id = credentials.get("project_id", project_id)
+            user_id = credentials.get("user_id", user_id)
+
+            if gateway_key:
+                gateway_config = (
+                    auth_manager.get_local_mcp_config(gateway_key, project_id, user_id)
+                    or {}
+                )
+                project_name = gateway_config.get("project_name", project_name)
+                email = gateway_config.get("email", email)
+                mcp_config_id = gateway_config.get("mcp_config_id", mcp_config_id)
+    except Exception:
+        # Swallow errors and use defaults to avoid breaking logging
+        pass
+
     # Filter out None values from kwargs
     filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
 
     return {
-        # "request_id": getattr(ctx, 'request_id', None),
         "custom_id": custom_id or "",
         "server_name": server_name or "",
         "project_id": project_id or "",

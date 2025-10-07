@@ -19,6 +19,12 @@ servers_discovered_count = telemetry_manager.servers_discovered_count
 tool_call_counter = telemetry_manager.tool_call_counter
 tool_call_duration = telemetry_manager.tool_call_duration
 tracer = telemetry_manager.get_tracer()
+from secure_mcp_gateway.error_handling import create_error_response
+from secure_mcp_gateway.exceptions import (
+    ErrorCode,
+    ErrorContext,
+    create_discovery_error,
+)
 from secure_mcp_gateway.utils import (
     build_log_extra,
     get_server_info_by_name,
@@ -111,10 +117,16 @@ class DiscoveryService:
                     f"[enkrypt_discover_all_tools] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}",
                     is_error=True,
                 )
-                return {
-                    "status": "error",
-                    "error": "No MCP config found. Please check your credentials.",
-                }
+                context = ErrorContext(
+                    operation="discover.init",
+                    request_id=getattr(ctx, "request_id", None),
+                )
+                error = create_discovery_error(
+                    code=ErrorCode.CONFIG_MISSING_REQUIRED,
+                    message="No MCP config found. Please check your credentials.",
+                    context=context,
+                )
+                return create_error_response(error)
 
             enkrypt_project_name = gateway_config.get("project_name", "not_provided")
             enkrypt_email = gateway_config.get("email", "not_provided")
@@ -184,7 +196,18 @@ class DiscoveryService:
                 import traceback
 
                 traceback.print_exc()
-                return {"status": "error", "error": f"Tool discovery failed: {e}"}
+                context = ErrorContext(
+                    operation="discover.exception",
+                    request_id=getattr(ctx, "request_id", None),
+                    server_name=server_name,
+                )
+                error = create_discovery_error(
+                    code=ErrorCode.DISCOVERY_FAILED,
+                    message=f"Tool discovery failed: {e}",
+                    context=context,
+                    cause=e,
+                )
+                return create_error_response(error)
 
     def _generate_custom_id(self) -> str:
         """Generate a custom ID for tracking."""
@@ -227,7 +250,17 @@ class DiscoveryService:
                             "[discover_server_tools] Not authenticated",
                             is_error=True,
                         )
-                    return {"status": "error", "error": "Not authenticated."}
+                    context = ErrorContext(
+                        operation="discover.auth",
+                        request_id=getattr(ctx, "request_id", None),
+                        server_name=server_name,
+                    )
+                    error = create_discovery_error(
+                        code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+                        message="Not authenticated.",
+                        context=context,
+                    )
+                    return create_error_response(error)
         return None
 
     async def _discover_all_servers(
@@ -361,10 +394,17 @@ class DiscoveryService:
                         "enkrypt_discover_all_tools.server_not_available",
                         extra=build_log_extra(ctx, custom_id, server_name),
                     )
-                return {
-                    "status": "error",
-                    "error": f"Server '{server_name}' not available.",
-                }
+                context = ErrorContext(
+                    operation="discover.server_info",
+                    request_id=getattr(ctx, "request_id", None),
+                    server_name=server_name,
+                )
+                error = create_discovery_error(
+                    code=ErrorCode.DISCOVERY_SERVER_UNAVAILABLE,
+                    message=f"Server '{server_name}' not available.",
+                    context=context,
+                )
+                return create_error_response(error)
 
             id = self.auth_manager.get_session_gateway_config(session_key)["id"]
             info_span.set_attribute("gateway_id", id)

@@ -251,7 +251,24 @@ class SecureToolExecutionService:
 
                 if not local_config:
                     auth_span.set_attribute("error", "No local config found")
-                    return {"status": "error", "error": "Configuration not found."}
+                    from secure_mcp_gateway.error_handling import create_error_response
+                    from secure_mcp_gateway.exceptions import (
+                        ErrorCode,
+                        ErrorContext,
+                        create_configuration_error,
+                    )
+
+                    context = ErrorContext(
+                        operation="secure_call_tools.auth.local_config",
+                        request_id=getattr(ctx, "request_id", None),
+                        server_name=server_name,
+                    )
+                    err = create_configuration_error(
+                        code=ErrorCode.CONFIG_MISSING_REQUIRED,
+                        message="Configuration not found.",
+                        context=context,
+                    )
+                    return create_error_response(err)
 
                 mcp_config_id = local_config.get("mcp_config_id", "not_provided")
                 session_key = f"{creds.get('gateway_key')}_{creds.get('project_id')}_{creds.get('user_id')}_{mcp_config_id}"
@@ -268,7 +285,26 @@ class SecureToolExecutionService:
                             "secure_tool_execution.execute_secure_tools.not_authenticated",
                             extra=build_log_extra(ctx, custom_id, server_name),
                         )
-                        return {"status": "error", "error": "Not authenticated."}
+                        from secure_mcp_gateway.error_handling import (
+                            create_error_response,
+                        )
+                        from secure_mcp_gateway.exceptions import (
+                            ErrorCode,
+                            ErrorContext,
+                            create_auth_error,
+                        )
+
+                        context = ErrorContext(
+                            operation="secure_call_tools.auth",
+                            request_id=getattr(ctx, "request_id", None),
+                            server_name=server_name,
+                        )
+                        err = create_auth_error(
+                            code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+                            message="Not authenticated.",
+                            context=context,
+                        )
+                        return create_error_response(err)
                 else:
                     auth_span.set_attribute("required_new_auth", False)
 
@@ -290,10 +326,24 @@ class SecureToolExecutionService:
                     "secure_tool_execution.execute_secure_tools.server_not_available",
                     extra=build_log_extra(ctx, custom_id, server_name),
                 )
-                return {
-                    "status": "error",
-                    "error": f"Server '{server_name}' not available.",
-                }
+                from secure_mcp_gateway.error_handling import create_error_response
+                from secure_mcp_gateway.exceptions import (
+                    ErrorCode,
+                    ErrorContext,
+                    create_discovery_error,
+                )
+
+                context = ErrorContext(
+                    operation="secure_call_tools.server_lookup",
+                    request_id=getattr(ctx, "request_id", None),
+                    server_name=server_name,
+                )
+                err = create_discovery_error(
+                    code=ErrorCode.DISCOVERY_SERVER_UNAVAILABLE,
+                    message=f"Server '{server_name}' not available.",
+                    context=context,
+                )
+                return create_error_response(err)
 
             return {
                 "status": "success",
@@ -739,8 +789,43 @@ class SecureToolExecutionService:
                 )
 
             except Exception as tool_error:
+                from secure_mcp_gateway.error_handling import (
+                    create_error_response,
+                    error_logger,
+                )
+                from secure_mcp_gateway.exceptions import (
+                    ErrorCode,
+                    ErrorContext,
+                    ToolExecutionError,
+                    create_tool_execution_error,
+                )
+
+                # Create error context
+                context = ErrorContext(
+                    operation="tool_execution",
+                    request_id=custom_id,
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    additional_context={
+                        "call_index": i,
+                        "args": args,
+                    },
+                )
+
+                # Create standardized error
+                error = create_tool_execution_error(
+                    code=ErrorCode.TOOL_EXECUTION_FAILED,
+                    message=f"Tool execution failed for {tool_name}: {tool_error!s}",
+                    context=context,
+                    cause=tool_error,
+                )
+
+                # Log the error
+                error_logger.log_error(error)
+
                 tool_span.record_exception(tool_error)
                 tool_span.set_attribute("error", str(tool_error))
+                tool_span.set_attribute("correlation_id", context.correlation_id)
                 sys_print(
                     f"[secure_call_tools] Error in call {i} ({tool_name}): {tool_error}",
                     is_error=True,
@@ -754,19 +839,19 @@ class SecureToolExecutionService:
                         server_name,
                         tool_name=tool_name,
                         error=str(tool_error),
+                        correlation_id=context.correlation_id,
                     ),
                 )
-                return {
-                    "status": "error",
-                    "error": str(tool_error),
-                    "message": "Error while processing tool call",
-                    "enkrypt_mcp_data": {
-                        "call_index": i,
-                        "server_name": server_name,
-                        "tool_name": tool_name,
-                        "args": args,
-                    },
+
+                # Return standardized error response
+                error_response = create_error_response(error)
+                error_response["enkrypt_mcp_data"] = {
+                    "call_index": i,
+                    "server_name": server_name,
+                    "tool_name": tool_name,
+                    "args": args,
                 }
+                return error_response
 
     def _validate_tool(self, tool_name, server_config_tools, tool_span):
         """Validate that the tool exists and is available."""
@@ -788,10 +873,23 @@ class SecureToolExecutionService:
                     f"[secure_call_tools] Unknown tool format: {type(server_config_tools)}",
                     is_error=True,
                 )
-                return {
-                    "status": "error",
-                    "error": "Unknown tool format for server tools.",
-                }
+                from secure_mcp_gateway.error_handling import create_error_response
+                from secure_mcp_gateway.exceptions import (
+                    ErrorCode,
+                    ErrorContext,
+                    create_tool_execution_error,
+                )
+
+                context = ErrorContext(
+                    operation="secure_call_tools.validate_tool_format",
+                    tool_name=tool_name,
+                )
+                err = create_tool_execution_error(
+                    code=ErrorCode.TOOL_INVALID_ARGS,
+                    message="Unknown tool format for server tools.",
+                    context=context,
+                )
+                return create_error_response(err)
 
             tool_found = tool_name in names
             validate_span.set_attribute("tool_found", tool_found)
@@ -801,10 +899,23 @@ class SecureToolExecutionService:
                     f"[enkrypt_secure_call_tools] Tool '{tool_name}' not found for this server.",
                     is_error=True,
                 )
-                return {
-                    "status": "error",
-                    "error": f"Tool '{tool_name}' not found for this server.",
-                }
+                from secure_mcp_gateway.error_handling import create_error_response
+                from secure_mcp_gateway.exceptions import (
+                    ErrorCode,
+                    ErrorContext,
+                    create_tool_execution_error,
+                )
+
+                context = ErrorContext(
+                    operation="secure_call_tools.validate_tool",
+                    tool_name=tool_name,
+                )
+                err = create_tool_execution_error(
+                    code=ErrorCode.TOOL_NOT_FOUND,
+                    message=f"Tool '{tool_name}' not found for this server.",
+                    context=context,
+                )
+                return create_error_response(err)
 
         return None
 

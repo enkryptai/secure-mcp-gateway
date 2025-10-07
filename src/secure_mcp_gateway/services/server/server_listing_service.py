@@ -10,6 +10,12 @@ from secure_mcp_gateway.services.cache.cache_service import cache_service
 telemetry_manager = get_telemetry_config_manager()
 list_servers_call_count = telemetry_manager.list_servers_call_count
 servers_discovered_count = telemetry_manager.servers_discovered_count
+from secure_mcp_gateway.error_handling import create_error_response
+from secure_mcp_gateway.exceptions import (
+    ErrorCode,
+    ErrorContext,
+    create_discovery_error,
+)
 from secure_mcp_gateway.utils import (
     build_log_extra,
     mask_key,
@@ -79,10 +85,16 @@ class ServerListingService:
                     f"[list_available_servers] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}",
                     is_error=True,
                 )
-                return {
-                    "status": "error",
-                    "error": "No MCP config found. Please check your credentials.",
-                }
+                context = ErrorContext(
+                    operation="list_servers.init",
+                    request_id=getattr(ctx, "request_id", None),
+                )
+                err = create_discovery_error(
+                    code=ErrorCode.CONFIG_MISSING_REQUIRED,
+                    message="No MCP config found. Please check your credentials.",
+                    context=context,
+                )
+                return create_error_response(err)
 
             enkrypt_project_name = gateway_config.get("project_name", "not_provided")
             enkrypt_email = gateway_config.get("email", "not_provided")
@@ -162,7 +174,17 @@ class ServerListingService:
                 import traceback
 
                 traceback.print_exc()
-                return {"status": "error", "error": f"Tool discovery failed: {e}"}
+                context = ErrorContext(
+                    operation="list_servers.exception",
+                    request_id=getattr(ctx, "request_id", None),
+                )
+                err = create_discovery_error(
+                    code=ErrorCode.DISCOVERY_FAILED,
+                    message=f"Tool discovery failed: {e}",
+                    context=context,
+                    cause=e,
+                )
+                return create_error_response(err)
 
     def _generate_custom_id(self) -> str:
         """Generate a custom ID for tracking."""
@@ -228,7 +250,16 @@ class ServerListingService:
                     "list_all_servers.no_gateway_key",
                     extra=build_log_extra(ctx, custom_id),
                 )
-                return {"status": "error", "error": "No gateway key provided."}
+                context = ErrorContext(
+                    operation="list_servers.auth",
+                    request_id=getattr(ctx, "request_id", None),
+                )
+                err = create_discovery_error(
+                    code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+                    message="No gateway key provided.",
+                    context=context,
+                )
+                return create_error_response(err)
 
             is_authenticated = self.auth_manager.is_session_authenticated(session_key)
             auth_span.set_attribute("is_authenticated", is_authenticated)
@@ -248,7 +279,16 @@ class ServerListingService:
                             "[list_available_servers] Not authenticated",
                             is_error=True,
                         )
-                    return {"status": "error", "error": "Not authenticated."}
+                    context = ErrorContext(
+                        operation="list_servers.auth",
+                        request_id=getattr(ctx, "request_id", None),
+                    )
+                    err = create_discovery_error(
+                        code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+                        message="Not authenticated.",
+                        context=context,
+                    )
+                    return create_error_response(err)
         return None
 
     async def _process_servers(
