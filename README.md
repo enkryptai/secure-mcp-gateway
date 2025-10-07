@@ -332,7 +332,6 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
 {
   "common_mcp_gateway_config": {
     "enkrypt_log_level": "INFO",
-    "enkrypt_guardrails_enabled": false,
     "enkrypt_base_url": "https://api.enkryptai.com",
     "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
     "enkrypt_use_remote_mcp_config": false,
@@ -359,7 +358,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
       "mcp_config": [
         {
           "server_name": "echo_server",
-          "description": "Dummy Echo Server",
+          "description": "Simple Echo Server",
           "config": {
             "command": "python",
             "args": [
@@ -430,7 +429,6 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
 {
   "common_mcp_gateway_config": {
     "enkrypt_log_level": "INFO",
-    "enkrypt_guardrails_enabled": false,
     "enkrypt_base_url": "https://api.enkryptai.com",
     "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
     "enkrypt_use_remote_mcp_config": false,
@@ -457,7 +455,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
       "mcp_config": [
         {
           "server_name": "echo_server",
-          "description": "Dummy Echo Server",
+          "description": "Simple Echo Server",
           "config": {
             "command": "python",
             "args": [
@@ -1019,7 +1017,6 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkryp
 {
   "common_mcp_gateway_config": {
     "enkrypt_log_level": "INFO",
-    "enkrypt_guardrails_enabled": false,
     "enkrypt_base_url": "https://api.enkryptai.com",
     "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
     "enkrypt_use_remote_mcp_config": false,
@@ -1046,7 +1043,7 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkryp
       "mcp_config": [
         {
           "server_name": "echo_server",
-          "description": "Dummy Echo Server",
+          "description": "Simple Echo Server",
           "config": {
             "command": "python",
             "args": [
@@ -1187,7 +1184,7 @@ python gateway.py
 ```
 
 - Or run in k8s using our docker image `enkryptai/secure-mcp-gateway:vx.x.x`
-- Example: `enkryptai/secure-mcp-gateway:v2.0.4`
+- Example: `enkryptai/secure-mcp-gateway:v2.1.0`
 - Use the latest version from Docker Hub: <https://hub.docker.com/r/enkryptai/secure-mcp-gateway/tags>
 - You can either mount the config file locally or download the json file from a remote place like `S3` using an `initContainer` and mount the volume
 - See `docs/secure-mcp-gateway-manifest-example.yaml` for the complete manifest file reference
@@ -1522,7 +1519,6 @@ The observability stack includes:
   {
     "common_mcp_gateway_config": {
       "enkrypt_log_level": "INFO",
-      "enkrypt_guardrails_enabled": false,
       "enkrypt_base_url": "https://api.enkryptai.com",
       "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
       "enkrypt_use_remote_mcp_config": false,
@@ -1549,7 +1545,7 @@ The observability stack includes:
         "mcp_config": [
           {
             "server_name": "echo_server",
-            "description": "Dummy Echo Server",
+            "description": "Simple Echo Server",
             "config": {
               "command": "python",
               "args": [
@@ -1750,8 +1746,6 @@ The observability stack includes:
 <details>
 <summary><strong>🔒 Optional Guardrails Schema</strong></summary>
 
-- Set `enkrypt_guardrails_enabled` to `true` in your `common_mcp_gateway_config`
-
 - Get your `enkrypt_api_key` from [Enkrypt Dashboard](https://app.enkryptai.com/settings) and add it to `common_mcp_gateway_config` section of the config file
 
 - `enkrypt_use_remote_mcp_config` is used to fetch MCP server config from Enkrypt server remotely *(Coming soon)*
@@ -1862,7 +1856,7 @@ The observability stack includes:
       "mcp_config": [
         {
           "server_name": "echo_server",
-          "description": "Dummy Echo Server",
+          "description": "Simple Echo Server",
           "config": {...},
           "tools": {},
           "input_guardrails_policy": {...},

@@ -26,7 +26,6 @@ EXAMPLE_CONFIG_PATH = os.path.join(BASE_DIR, EXAMPLE_CONFIG_NAME)
 
 DEFAULT_COMMON_CONFIG = {
     "enkrypt_log_level": "INFO",
-    "enkrypt_guardrails_enabled": False,
     "enkrypt_base_url": "https://api.enkryptai.com",
     "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
     "enkrypt_use_remote_mcp_config": False,
