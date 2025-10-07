@@ -695,7 +695,8 @@ class EnkryptServerRegistrationGuardrail:
         "injection_attack": {"enabled": True},
         "policy_violation": {
             "enabled": True,
-            "coc_policy_name": "Safe Server Registration Policy",
+            # "coc_policy_name": "Safe Server Registration Policy",
+            "policy_text": "Allow only safe servers to be registered for this MCP server and find any malicious servers to be blocked",
             "need_explanation": True,
         },
         "keyword_detector": {
@@ -704,23 +705,24 @@ class EnkryptServerRegistrationGuardrail:
                 "exec",
                 "shell",
                 "eval",
-                "system",
-                "command",
-                "root",
-                "admin",
                 "sudo",
                 "rm -rf",
                 "delete_all",
+                # Secret files
+                "mcp.json",
+                "claude_desktop_config.json",
+                "enkrypt_mcp_config.json",
+                ".env",
             ],
         },
         "toxicity": {"enabled": True},
         "nsfw": {"enabled": True},
         "topic_detector": {"enabled": False, "topic": []},
         "pii": {"enabled": False, "entities": []},
-        "system_prompt": {"enabled": False},
-        "copyright_ip": {"enabled": False},
-        "bias": {"enabled": False},
-        "sponge_attack": {"enabled": False},
+        # "system_prompt": {"enabled": False},
+        # "copyright_ip": {"enabled": False},
+        "bias": {"enabled": True},
+        "sponge_attack": {"enabled": True},
     }
 
     # Tool validation detector config
@@ -763,18 +765,23 @@ class EnkryptServerRegistrationGuardrail:
                 "sudo",
                 "chmod",
                 "chown",
+                # Secret files
+                "mcp.json",
+                "claude_desktop_config.json",
+                "enkrypt_mcp_config.json",
+                ".env",
             ],
         },
         "toxicity": {"enabled": True},
         "nsfw": {"enabled": True},
         "topic_detector": {
             "enabled": False,
-            # "topic": [],
+            "topic": [],
         },
         "pii": {"enabled": False, "entities": []},
         # "system_prompt": {"enabled": True},
         # "copyright_ip": {"enabled": False},
-        "bias": {"enabled": False},
+        "bias": {"enabled": True},
         "sponge_attack": {"enabled": True},
     }
 
@@ -898,6 +905,51 @@ class EnkryptServerRegistrationGuardrail:
                     )
                 )
 
+            if result["summary"].get("bias", 0) == 1:
+                violations.append(
+                    GuardrailViolation(
+                        violation_type=ViolationType.BIAS,
+                        severity=0.8,
+                        message="Bias detected in server description",
+                    )
+                )
+
+            if result["summary"].get("sponge_attack", 0) == 1:
+                violations.append(
+                    GuardrailViolation(
+                        violation_type=ViolationType.SPONGE_ATTACK,
+                        severity=0.8,
+                        message="Sponge attack detected in server description",
+                    )
+                )
+
+            if result["summary"].get("keyword_detector", 0) == 1:
+                violations.append(
+                    GuardrailViolation(
+                        violation_type=ViolationType.KEYWORD_VIOLATION,
+                        severity=0.8,
+                        message="Keyword violation detected in server description",
+                    )
+                )
+
+            if result["summary"].get("pii", 0) == 1:
+                violations.append(
+                    GuardrailViolation(
+                        violation_type=ViolationType.PII,
+                        severity=0.8,
+                        message="PII detected in server description",
+                    )
+                )
+
+            if result["summary"].get("topic_detector", 0) == 1:
+                violations.append(
+                    GuardrailViolation(
+                        violation_type=ViolationType.TOPIC_DETECTOR,
+                        severity=0.8,
+                        message="Topic detector detected in server description",
+                    )
+                )
+
             is_safe = len(violations) == 0
             processing_time = (time.time() - start_time) * 1000
 
@@ -1016,6 +1068,14 @@ class EnkryptServerRegistrationGuardrail:
                     tool_violations.append("NSFW content")
                 if result["summary"].get("topic_detector", 0) == 1:
                     tool_violations.append("dangerous topic detected")
+                if result["summary"].get("bias", 0) == 1:
+                    tool_violations.append("bias detected")
+                if result["summary"].get("sponge_attack", 0) == 1:
+                    tool_violations.append("sponge attack detected")
+                if result["summary"].get("keyword_detector", 0) == 1:
+                    tool_violations.append("keyword violation detected")
+                if result["summary"].get("pii", 0) == 1:
+                    tool_violations.append("PII detected")
 
                 # Get tool name for reporting
                 if isinstance(tool, dict):
