@@ -49,5 +49,114 @@ secure-mcp-gateway = "secure_mcp_gateway.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["secure_mcp_gateway", "secure_mcp_gateway.test_mcps"]
+packages = {find = {where = ["src"]}}
 package-data = { "secure_mcp_gateway" = ["example_*.json"] }
+
+# Ruff configuration
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    ".secure-mcp-gateway-venv",
+    ".venv",
+    "venv",
+    "docs",
+    "tests",
+]
+
+# Same as Black.
+line-length = 88
+indent-width = 4
+
+# Assume Python 3.8+
+target-version = "py38"
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
+# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
+# McCabe complexity (`C901`) by default.
+select = [
+    "E4",      # pycodestyle errors
+    "E7",      # pycodestyle errors
+    "E9",      # pycodestyle errors
+    "F",       # pyflakes
+    "I",       # isort
+    "B",       # flake8-bugbear
+    "C4",      # flake8-comprehensions
+    "UP",      # pyupgrade
+    # "ARG001",  # unused-function-args
+    "SIM",     # flake8-simplify
+    "TCH",     # flake8-type-checking
+    "TID",     # flake8-tidy-imports
+    "Q",       # flake8-quotes
+    "RUF",     # Ruff-specific rules
+]
+
+ignore = [
+    "E501",    # line too long, handled by ruff-format
+    "B008",    # do not perform function calls in argument defaults
+    "C901",    # too complex
+    # "ARG002",  # unused-method-argument
+    # "ARG001",  # unused-function-argument
+    "B904",    # Within an `except` clause, raise exceptions with `raise ... from err`
+    "E402",    # Module level import not at top of file
+    "F403",    # `from .module import *` used; unable to detect undefined names
+    "F401",    # imported but unused
+    "B007",    # Loop control variable not used within loop body
+    "SIM102",  # Use a single `if` statement instead of nested `if` statements
+    "F841",    # Local variable assigned to but never used
+    "SIM117",  # Use a single `with` statement with multiple contexts
+    "RUF013",  # PEP 484 prohibits implicit `Optional`
+    "B006",    # Do not use mutable data structures for argument defaults
+    "SIM114",  # Combine `if` branches using logical `or` operator
+    "SIM210",  # Remove unnecessary `True if ... else False`
+    # "S104",    # Possible binding to all interfaces (for development)
+    # "S603",    # subprocess call: check for execution of untrusted input
+    # "S324",    # Probable use of insecure hash functions in hashlib: md5
+    # "S113",    # Probable use of requests call without timeout
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.isort]
+known-first-party = ["secure_mcp_gateway"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"

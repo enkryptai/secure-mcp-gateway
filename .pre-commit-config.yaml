@@ -1,0 +1,137 @@
+# Pre-commit configuration for secure-mcp-gateway
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+repos:
+  # Standard Python hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        name: Remove trailing whitespace
+        description: This hook trims whitespace.
+        types: [text]
+        exclude: ^(docs/|README\.md|CHANGELOG\.md|API-Reference\.md)
+      - id: end-of-file-fixer
+        name: Fix end of files
+        description: Ensures that a file is either empty or ends with one newline.
+        types: [text]
+        exclude: ^(docs/|README\.md|CHANGELOG\.md|API-Reference\.md)
+      - id: check-yaml
+        name: Check YAML syntax
+        description: This hook checks yaml files for parseable syntax.
+        types: [yaml]
+        exclude: ^docs/secure-mcp-gateway-manifest-example\.yaml$
+      - id: check-json
+        name: Check JSON syntax
+        description: This hook checks json files for parseable syntax.
+        types: [json]
+      - id: check-toml
+        name: Check TOML syntax
+        description: This hook checks toml files for parseable syntax.
+        types: [toml]
+      - id: check-merge-conflict
+        name: Check for merge conflicts
+        description: Check for files that contain merge conflict strings.
+      - id: check-added-large-files
+        name: Check for large files
+        description: Prevent giant files from being committed.
+        args: ['--maxkb=1000']
+      - id: check-case-conflict
+        name: Check for case conflicts
+        description: Check for files that would conflict in case-insensitive filesystems
+      - id: check-ast
+        name: Check Python AST
+        description: Simply check whether files parse as valid python.
+        types: [python]
+      - id: debug-statements
+        name: Check for debugger imports and breakpoints
+        description: Check for debugger imports and breakpoints.
+        types: [python]
+      - id: name-tests-test
+        name: Check that tests are named correctly
+        description: Ensure test files are named correctly.
+        files: ^tests/.*\.py$
+        args: [--pytest-test-first]
+
+  # Python linting, import sorting, and formatting with Ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.9
+    hooks:
+      - id: ruff
+        name: Lint Python code with Ruff
+        description: An extremely fast Python linter with auto-fix.
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^src/.*\.py$
+      - id: ruff-format
+        name: Format Python code with Ruff
+        description: An extremely fast Python code formatter.
+        files: ^src/.*\.py$
+
+  # TODO
+  # Security checks (using ruff with security rules) - disabled for now
+  # - repo: https://github.com/astral-sh/ruff-pre-commit
+  #   rev: v0.1.9
+  #   hooks:
+  #     - id: ruff
+  #       name: Security check with Ruff
+  #       description: Security-focused linting with Ruff.
+  #       args: [--select, S, --fix, --exit-non-zero-on-fix]
+  #       files: ^src/.*\.py$
+  #       exclude: ^src/secure_mcp_gateway/test_mcps/.*\.py$
+
+  # TODO
+  # Type checking (optional - uncomment if you want to add type hints)
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.8.0
+  #   hooks:
+  #     - id: mypy
+  #       name: Type check with mypy
+  #       description: Static type checker for Python.
+  #       additional_dependencies: [types-requests, types-PyYAML]
+  #       files: ^src/.*\.py$
+
+  # Custom local hooks for this project
+  - repo: local
+    hooks:
+      - id: clean-blank-lines
+        name: Clean blank lines (custom)
+        description: Remove unnecessary blank lines using custom script.
+        entry: python scripts/flake8/clean_blank_lines.py
+        language: system
+        files: ^src/secure_mcp_gateway/.*\.py$
+        pass_filenames: true
+
+      - id: remove-trailing-whitespace
+        name: Remove trailing whitespace (custom)
+        description: Remove trailing whitespace using custom script.
+        entry: python scripts/flake8/remove_trailing_whitespace.py
+        language: system
+        files: ^src/secure_mcp_gateway/.*\.py$
+        pass_filenames: true
+
+      - id: remove-useless-fstrings
+        name: Remove useless f-strings (custom)
+        description: Remove unnecessary f-string formatting using custom script.
+        entry: python scripts/flake8/remove_useless_fstrings.py
+        language: system
+        files: ^src/secure_mcp_gateway/.*\.py$
+        pass_filenames: true
+
+# Global configuration
+default_stages: [pre-commit]
+fail_fast: false
+minimum_pre_commit_version: '3.0.0'
+
+# CI configuration
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit.com hooks
+
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ''
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: weekly
+  skip: []
+  submodules: false

@@ -66,4 +66,3 @@ services:
       - loki
       - otel-collector
       - prometheus
- 

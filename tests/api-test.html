@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enkrypt MCP Gateway API Tester</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .api-key-input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .endpoint {
+            margin: 15px 0;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+        }
+        .endpoint h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔑 Enkrypt MCP Gateway API Tester</h1>
+
+        <div>
+            <label for="apiKey">API Key:</label>
+            <input type="text" id="apiKey" class="api-key-input"
+                   value="22k284hQITwrb3EaOOP3Pyzqon4-QiAWLLOVZFTriwgpCmnw"
+                   placeholder="Enter your API key">
+        </div>
+
+        <div>
+            <label for="baseUrl">Base URL:</label>
+            <input type="text" id="baseUrl" class="api-key-input"
+                   value="http://localhost:8001"
+                   placeholder="Enter base URL">
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📋 Configuration Management</h2>
+
+        <div class="endpoint">
+            <h3>GET /api/v1/configs - List All Configurations</h3>
+            <button onclick="testEndpoint('GET', '/api/v1/configs')">Test</button>
+            <div id="response-configs" class="response" style="display: none;"></div>
+        </div>
+
+        <div class="endpoint">
+            <h3>POST /api/v1/configs - Create Configuration</h3>
+            <button onclick="testCreateConfig()">Test Create Config</button>
+            <div id="response-create-config" class="response" style="display: none;"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>👥 Project Management</h2>
+
+        <div class="endpoint">
+            <h3>GET /api/v1/projects - List All Projects</h3>
+            <button onclick="testEndpoint('GET', '/api/v1/projects')">Test</button>
+            <div id="response-projects" class="response" style="display: none;"></div>
+        </div>
+
+        <div class="endpoint">
+            <h3>POST /api/v1/projects - Create Project</h3>
+            <button onclick="testCreateProject()">Test Create Project</button>
+            <div id="response-create-project" class="response" style="display: none;"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>👤 User Management</h2>
+
+        <div class="endpoint">
+            <h3>GET /api/v1/users - List All Users</h3>
+            <button onclick="testEndpoint('GET', '/api/v1/users')">Test</button>
+            <div id="response-users" class="response" style="display: none;"></div>
+        </div>
+
+        <div class="endpoint">
+            <h3>GET /api/v1/api-keys - List All API Keys</h3>
+            <button onclick="testEndpoint('GET', '/api/v1/api-keys')">Test</button>
+            <div id="response-api-keys" class="response" style="display: none;"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>🔧 System Operations</h2>
+
+        <div class="endpoint">
+            <h3>GET /health - Health Check</h3>
+            <button onclick="testHealth()">Test Health</button>
+            <div id="response-health" class="response" style="display: none;"></div>
+        </div>
+
+        <div class="endpoint">
+            <h3>GET /api/v1/system/health - System Health</h3>
+            <button onclick="testEndpoint('GET', '/api/v1/system/health')">Test</button>
+            <div id="response-system-health" class="response" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        function getApiKey() {
+            return document.getElementById('apiKey').value;
+        }
+
+        function getBaseUrl() {
+            return document.getElementById('baseUrl').value;
+        }
+
+        function showResponse(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.className = `response ${isError ? 'error' : 'success'}`;
+            element.textContent = JSON.stringify(data, null, 2);
+        }
+
+        async function testEndpoint(method, endpoint) {
+            const apiKey = getApiKey();
+            const baseUrl = getBaseUrl();
+            const responseId = `response-${endpoint.replace(/[^a-zA-Z0-9]/g, '-')}`;
+
+            try {
+                const response = await fetch(`${baseUrl}${endpoint}`, {
+                    method: method,
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showResponse(responseId, data);
+                } else {
+                    showResponse(responseId, data, true);
+                }
+            } catch (error) {
+                showResponse(responseId, { error: error.message }, true);
+            }
+        }
+
+        async function testCreateConfig() {
+            const apiKey = getApiKey();
+            const baseUrl = getBaseUrl();
+            const responseId = 'response-create-config';
+
+            try {
+                const response = await fetch(`${baseUrl}/api/v1/configs`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        config_name: `test-config-${Date.now()}`
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showResponse(responseId, data);
+                } else {
+                    showResponse(responseId, data, true);
+                }
+            } catch (error) {
+                showResponse(responseId, { error: error.message }, true);
+            }
+        }
+
+        async function testCreateProject() {
+            const apiKey = getApiKey();
+            const baseUrl = getBaseUrl();
+            const responseId = 'response-create-project';
+
+            try {
+                const response = await fetch(`${baseUrl}/api/v1/projects`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        project_name: `test-project-${Date.now()}`
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showResponse(responseId, data);
+                } else {
+                    showResponse(responseId, data, true);
+                }
+            } catch (error) {
+                showResponse(responseId, { error: error.message }, true);
+            }
+        }
+
+        async function testHealth() {
+            const baseUrl = getBaseUrl();
+            const responseId = 'response-health';
+
+            try {
+                const response = await fetch(`${baseUrl}/health`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    showResponse(responseId, data);
+                } else {
+                    showResponse(responseId, data, true);
+                }
+            } catch (error) {
+                showResponse(responseId, { error: error.message }, true);
+            }
+        }
+    </script>
+</body>
+</html>
