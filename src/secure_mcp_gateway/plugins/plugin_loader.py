@@ -144,21 +144,36 @@ class PluginLoader:
         provider_config = {}
 
         if plugin_type == "auth":
+            # Get from plugins.auth.config, fallback to common config for use_remote_config
+            auth_plugin_cfg = (
+                config.get("plugins", {}).get("auth", {}).get("config", {})
+            )
             provider_config = {
-                "api_key": config.get("enkrypt_api_key"),
-                "base_url": config.get("enkrypt_base_url", "https://api.enkryptai.com"),
+                "api_key": auth_plugin_cfg.get("api_key"),
+                "base_url": auth_plugin_cfg.get(
+                    "base_url", "https://api.enkryptai.com"
+                ),
                 "use_remote_config": config.get("enkrypt_use_remote_mcp_config", False),
             }
         elif plugin_type == "guardrails":
+            # Get from plugins.guardrails.config
+            guardrails_plugin_cfg = (
+                config.get("plugins", {}).get("guardrails", {}).get("config", {})
+            )
             provider_config = {
-                "api_key": config.get("enkrypt_api_key"),
-                "base_url": config.get("enkrypt_base_url", "https://api.enkryptai.com"),
+                "api_key": guardrails_plugin_cfg.get("api_key"),
+                "base_url": guardrails_plugin_cfg.get(
+                    "base_url", "https://api.enkryptai.com"
+                ),
             }
         elif plugin_type == "telemetry":
-            telemetry_config = config.get("enkrypt_telemetry", {})
+            # Prefer plugins.telemetry.config; fall back to safe defaults
+            telemetry_plugin_cfg = (
+                config.get("plugins", {}).get("telemetry", {}).get("config", {})
+            )
             provider_config = {
-                "url": telemetry_config.get("endpoint", "http://localhost:4317"),
-                "insecure": telemetry_config.get("insecure", True),
+                "url": telemetry_plugin_cfg.get("url", "http://localhost:4317"),
+                "insecure": telemetry_plugin_cfg.get("insecure", True),
             }
 
         try:

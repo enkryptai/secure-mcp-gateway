@@ -36,9 +36,16 @@ class CacheManagementService:
 
         # Load configuration
         common_config = get_common_config()
-        self.ENKRYPT_API_KEY = common_config.get("enkrypt_api_key", "null")
-        self.ENKRYPT_BASE_URL = common_config.get(
-            "enkrypt_base_url", "https://api.enkryptai.com"
+        # Get API key and base URL from plugin configurations
+        plugins_config = common_config.get("plugins", {})
+        guardrails_config = plugins_config.get("guardrails", {}).get("config", {})
+        auth_config = plugins_config.get("auth", {}).get("config", {})
+
+        self.GUARDRAIL_API_KEY = guardrails_config.get(
+            "api_key", auth_config.get("api_key", "null")
+        )
+        self.GUARDRAIL_URL = guardrails_config.get(
+            "base_url", auth_config.get("base_url", "https://api.enkryptai.com")
         )
         self.ENKRYPT_USE_REMOTE_MCP_CONFIG = common_config.get(
             "enkrypt_use_remote_mcp_config", False
@@ -49,9 +56,7 @@ class CacheManagementService:
         self.ENKRYPT_REMOTE_MCP_GATEWAY_VERSION = common_config.get(
             "enkrypt_remote_mcp_gateway_version", "v1"
         )
-        self.AUTH_SERVER_VALIDATE_URL = (
-            f"{self.ENKRYPT_BASE_URL}/mcp-gateway/get-gateway"
-        )
+        self.AUTH_SERVER_VALIDATE_URL = f"{self.GUARDRAIL_URL}/mcp-gateway/get-gateway"
         self.IS_DEBUG_LOG_LEVEL = (
             common_config.get("enkrypt_log_level", "INFO").lower() == "debug"
         )
@@ -489,7 +494,7 @@ class CacheManagementService:
             refresh_response = requests.get(
                 self.AUTH_SERVER_VALIDATE_URL,
                 headers={
-                    "apikey": self.ENKRYPT_API_KEY,
+                    "apikey": self.GUARDRAIL_API_KEY,
                     "X-Enkrypt-MCP-Gateway": self.ENKRYPT_REMOTE_MCP_GATEWAY_NAME,
                     "X-Enkrypt-MCP-Gateway-Version": self.ENKRYPT_REMOTE_MCP_GATEWAY_VERSION,
                     "X-Enkrypt-Refresh-Cache": "true",

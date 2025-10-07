@@ -1234,6 +1234,41 @@ class EnkryptGuardrailProvider(GuardrailProvider):
         """Get provider version."""
         return "2.0.0"
 
+    def _get_api_credentials(self) -> tuple[str, str]:
+        """Get API key and base URL from plugin configuration."""
+        import json
+
+        from secure_mcp_gateway.utils import (
+            CONFIG_PATH,
+            DOCKER_CONFIG_PATH,
+            does_file_exist,
+            is_docker,
+        )
+
+        # Load the full configuration file directly
+        is_running_in_docker = is_docker()
+        picked_config_path = DOCKER_CONFIG_PATH if is_running_in_docker else CONFIG_PATH
+
+        if does_file_exist(picked_config_path):
+            with open(picked_config_path, encoding="utf-8") as f:
+                full_config = json.load(f)
+        else:
+            # Fallback to self values if config file not found
+            return self.api_key, self.base_url
+
+        plugins_config = full_config.get("plugins", {})
+        guardrails_config = plugins_config.get("guardrails", {}).get("config", {})
+        auth_config = plugins_config.get("auth", {}).get("config", {})
+
+        api_key = guardrails_config.get(
+            "api_key", auth_config.get("api_key", self.api_key)
+        )
+        base_url = guardrails_config.get(
+            "base_url", auth_config.get("base_url", self.base_url)
+        )
+
+        return api_key, base_url
+
     def create_input_guardrail(
         self, config: Dict[str, Any]
     ) -> Optional[InputGuardrail]:
@@ -1241,7 +1276,8 @@ class EnkryptGuardrailProvider(GuardrailProvider):
         if not config.get("enabled", False):
             return None
 
-        return EnkryptInputGuardrail(config, self.api_key, self.base_url)
+        api_key, base_url = self._get_api_credentials()
+        return EnkryptInputGuardrail(config, api_key, base_url)
 
     def create_output_guardrail(
         self, config: Dict[str, Any]
@@ -1250,12 +1286,14 @@ class EnkryptGuardrailProvider(GuardrailProvider):
         if not config.get("enabled", False):
             return None
 
-        return EnkryptOutputGuardrail(config, self.api_key, self.base_url)
+        api_key, base_url = self._get_api_credentials()
+        return EnkryptOutputGuardrail(config, api_key, base_url)
 
     def create_pii_handler(self, config: Dict[str, Any]) -> Optional[PIIHandler]:
         """Create Enkrypt PII handler."""
         if config.get("pii_redaction", False):
-            return EnkryptPIIHandler(self.api_key, self.base_url)
+            api_key, base_url = self._get_api_credentials()
+            return EnkryptPIIHandler(api_key, base_url)
         return None
 
     def validate_config(self, config: Dict[str, Any]) -> bool:

@@ -263,7 +263,6 @@ def generate_default_config():
     config = {
         "common_mcp_gateway_config": {
             "enkrypt_log_level": "INFO",
-            "enkrypt_guardrails_enabled": False,
             "enkrypt_base_url": "https://api.enkryptai.com",
             "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
             "enkrypt_use_remote_mcp_config": False,

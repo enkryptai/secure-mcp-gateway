@@ -1,7 +1,6 @@
 {
   "common_mcp_gateway_config": {
     "enkrypt_log_level": "INFO",
-    "enkrypt_guardrails_enabled": false,
     "enkrypt_use_remote_mcp_config": false,
     "enkrypt_remote_mcp_gateway_name": "enkrypt-secure-mcp-gateway-1",
     "enkrypt_remote_mcp_gateway_version": "v1",

@@ -478,7 +478,19 @@ class DiscoveryService:
                 blocked_reasons_list = []
 
                 # NEW: Validate config tools with guardrails before returning
-                if self.registration_validation_enabled and self.guardrail_manager:
+                enable_tool_guardrails = server_info.get("enable_tool_guardrails", True)
+                sys_print(
+                    f"[discover_server_tools] enable_tool_guardrails={enable_tool_guardrails} for {server_name}"
+                )
+
+                if (
+                    self.registration_validation_enabled
+                    and self.guardrail_manager
+                    and enable_tool_guardrails
+                ):
+                    sys_print(
+                        f"[discover_server_tools] Validating config tools for {server_name}"
+                    )
                     with tracer_obj.start_as_current_span(
                         "validate_config_tool_registration"
                     ) as validation_span:
@@ -617,6 +629,10 @@ class DiscoveryService:
                             validation_span.set_attribute(
                                 "validation_error", str(validation_error)
                             )
+                else:
+                    sys_print(
+                        f"[discover_server_tools] Skipping config tool validation for {server_name} (enable_tool_guardrails={enable_tool_guardrails})"
+                    )
 
                 main_span = trace.get_current_span()
                 main_span.set_attribute("success", True)
@@ -971,7 +987,21 @@ class DiscoveryService:
                         )
 
                     # NEW: Validate tools with guardrails before caching
-                    if self.registration_validation_enabled and self.guardrail_manager:
+                    enable_tool_guardrails = server_info.get(
+                        "enable_tool_guardrails", True
+                    )
+                    sys_print(
+                        f"[discover_server_tools] enable_tool_guardrails={enable_tool_guardrails} for {server_name}"
+                    )
+
+                    if (
+                        self.registration_validation_enabled
+                        and self.guardrail_manager
+                        and enable_tool_guardrails
+                    ):
+                        sys_print(
+                            f"[discover_server_tools] Validating discovered tools for {server_name}"
+                        )
                         with tracer_obj.start_as_current_span(
                             "validate_tool_registration"
                         ) as validation_span:
@@ -1099,6 +1129,10 @@ class DiscoveryService:
                                 validation_span.set_attribute(
                                     "validation_error", str(validation_error)
                                 )
+                    else:
+                        sys_print(
+                            f"[discover_server_tools] Skipping discovered tool validation for {server_name} (enable_tool_guardrails={enable_tool_guardrails})"
+                        )
 
                     # Cache write
                     with tracer_obj.start_as_current_span(

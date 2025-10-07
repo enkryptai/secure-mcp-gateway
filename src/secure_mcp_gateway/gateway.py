@@ -221,10 +221,14 @@ guardrail_manager = get_guardrail_config_manager()
 # Initialize auth system
 initialize_auth_system(common_config)
 
-# Initialize telemetry system (already imported at top)
-initialize_telemetry_system(common_config)
-telemetry_manager = get_telemetry_config_manager()
-sys_print(f"Telemetry providers: {telemetry_manager.list_providers()}")
+# Initialize telemetry system (already imported at top) based on new flag
+if common_config.get("enkrypt_telemetry_enabled", False):
+    initialize_telemetry_system(common_config)
+    telemetry_manager = get_telemetry_config_manager()
+    sys_print(f"Telemetry providers: {telemetry_manager.list_providers()}")
+else:
+    telemetry_manager = get_telemetry_config_manager()
+    sys_print("Telemetry disabled by configuration (enkrypt_telemetry_enabled=false)")
 
 # Plugin loading is now handled by the initialization functions above
 sys_print(f"Registered guardrail providers: {guardrail_manager.list_providers()}")
@@ -234,7 +238,14 @@ ENKRYPT_LOG_LEVEL = common_config.get("enkrypt_log_level", "INFO").lower()
 IS_DEBUG_LOG_LEVEL = ENKRYPT_LOG_LEVEL == "debug"
 FASTMCP_LOG_LEVEL = ENKRYPT_LOG_LEVEL.upper()
 
-ENKRYPT_BASE_URL = common_config.get("enkrypt_base_url", "https://api.enkryptai.com")
+# Get API key and base URL from plugin configurations
+plugins_config = common_config.get("plugins", {})
+guardrails_config = plugins_config.get("guardrails", {}).get("config", {})
+auth_config = plugins_config.get("auth", {}).get("config", {})
+
+GUARDRAIL_URL = guardrails_config.get(
+    "base_url", auth_config.get("base_url", "https://api.enkryptai.com")
+)
 ENKRYPT_USE_REMOTE_MCP_CONFIG = common_config.get(
     "enkrypt_use_remote_mcp_config", False
 )
@@ -250,27 +261,25 @@ ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED = common_config.get(
 ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED = common_config.get(
     "enkrypt_async_output_guardrails_enabled", False
 )
-ENKRYPT_TELEMETRY_ENABLED = common_config.get("enkrypt_telemetry", {}).get(
-    "enabled", False
-)
+ENKRYPT_TELEMETRY_ENABLED = common_config.get("enkrypt_telemetry_enabled", False)
 ENKRYPT_TELEMETRY_ENDPOINT = common_config.get("enkrypt_telemetry", {}).get(
     "endpoint", "http://localhost:4317"
 )
 
-ENKRYPT_API_KEY = common_config.get("enkrypt_api_key", "null")
+GUARDRAIL_API_KEY = guardrails_config.get("api_key", auth_config.get("api_key", "null"))
 
 
 sys_print("--------------------------------")
 sys_print(f"enkrypt_log_level: {ENKRYPT_LOG_LEVEL}")
 sys_print(f"is_debug_log_level: {IS_DEBUG_LOG_LEVEL}")
-sys_print(f"enkrypt_base_url: {ENKRYPT_BASE_URL}")
+sys_print(f"guardrail_url: {GUARDRAIL_URL}")
 sys_print(f"enkrypt_use_remote_mcp_config: {ENKRYPT_USE_REMOTE_MCP_CONFIG}")
 if ENKRYPT_USE_REMOTE_MCP_CONFIG:
     sys_print(f"enkrypt_remote_mcp_gateway_name: {ENKRYPT_REMOTE_MCP_GATEWAY_NAME}")
     sys_print(
         f"enkrypt_remote_mcp_gateway_version: {ENKRYPT_REMOTE_MCP_GATEWAY_VERSION}"
     )
-sys_print(f'enkrypt_api_key: {"****" + ENKRYPT_API_KEY[-4:]}')
+sys_print(f'guardrail_api_key: {"****" + GUARDRAIL_API_KEY[-4:]}')
 sys_print(f"enkrypt_tool_cache_expiration: {ENKRYPT_TOOL_CACHE_EXPIRATION}")
 sys_print(f"enkrypt_gateway_cache_expiration: {ENKRYPT_GATEWAY_CACHE_EXPIRATION}")
 sys_print(f"enkrypt_mcp_use_external_cache: {ENKRYPT_MCP_USE_EXTERNAL_CACHE}")
@@ -287,7 +296,7 @@ sys_print(f"enkrypt_telemetry_endpoint: {ENKRYPT_TELEMETRY_ENDPOINT}")
 sys_print("--------------------------------")
 
 # TODO
-AUTH_SERVER_VALIDATE_URL = f"{ENKRYPT_BASE_URL}/mcp-gateway/get-gateway"
+AUTH_SERVER_VALIDATE_URL = f"{GUARDRAIL_URL}/mcp-gateway/get-gateway"
 
 # For Output Checks if they are enabled in output_guardrails_policy['additional_config']
 RELEVANCY_THRESHOLD = 0.75

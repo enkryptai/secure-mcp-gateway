@@ -332,7 +332,6 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
 {
   "common_mcp_gateway_config": {
     "enkrypt_log_level": "INFO",
-    "enkrypt_guardrails_enabled": false,
     "enkrypt_base_url": "https://api.enkryptai.com",
     "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
     "enkrypt_use_remote_mcp_config": false,
@@ -430,7 +429,6 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
 {
   "common_mcp_gateway_config": {
     "enkrypt_log_level": "INFO",
-    "enkrypt_guardrails_enabled": false,
     "enkrypt_base_url": "https://api.enkryptai.com",
     "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
     "enkrypt_use_remote_mcp_config": false,
@@ -1019,7 +1017,6 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkryp
 {
   "common_mcp_gateway_config": {
     "enkrypt_log_level": "INFO",
-    "enkrypt_guardrails_enabled": false,
     "enkrypt_base_url": "https://api.enkryptai.com",
     "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
     "enkrypt_use_remote_mcp_config": false,
@@ -1522,7 +1519,6 @@ The observability stack includes:
   {
     "common_mcp_gateway_config": {
       "enkrypt_log_level": "INFO",
-      "enkrypt_guardrails_enabled": false,
       "enkrypt_base_url": "https://api.enkryptai.com",
       "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
       "enkrypt_use_remote_mcp_config": false,
@@ -1749,8 +1745,6 @@ The observability stack includes:
 </details>
 <details>
 <summary><strong>🔒 Optional Guardrails Schema</strong></summary>
-
-- Set `enkrypt_guardrails_enabled` to `true` in your `common_mcp_gateway_config`
 
 - Get your `enkrypt_api_key` from [Enkrypt Dashboard](https://app.enkryptai.com/settings) and add it to `common_mcp_gateway_config` section of the config file
 
