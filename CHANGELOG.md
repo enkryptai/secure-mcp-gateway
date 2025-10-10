@@ -8,6 +8,10 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 
 - Updated telemetry plugin to use the new telemetry conf
 - Tool guardrails
+- Standardized error handling
+- Added request timeout settings
+- Added support for parallel processing
+- Standardized sync async usage
 - Bug fixes and improvements
 
 ## [2.1.0] - 2025-10-07
