@@ -243,7 +243,7 @@ class SecureToolExecutionService:
             else:
                 # Fallback to legacy authentication path
                 # First, get the local config to build the proper session key
-                local_config = self.auth_manager.get_local_mcp_config(
+                local_config = await self.auth_manager.get_local_mcp_config(
                     creds.get("gateway_key"),
                     creds.get("project_id"),
                     creds.get("user_id"),
@@ -984,25 +984,92 @@ class SecureToolExecutionService:
                 context={"call_index": i},
             )
 
+            # Get timeout manager for configurable timeouts
+            from secure_mcp_gateway.services.timeout import get_timeout_manager
+
+            timeout_manager = get_timeout_manager()
+
             # Validate with plugin
             if self.ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED:
                 input_span.set_attribute("async_guardrails", True)
-                # Start both guardrail and tool call tasks concurrently
-                guardrail_task = asyncio.create_task(input_guardrail.validate(request))
+                # Start both guardrail and tool call tasks concurrently with timeouts
+                guardrail_task = asyncio.create_task(
+                    timeout_manager.execute_with_timeout(
+                        input_guardrail.validate, "guardrail", f"guardrail_{i}", request
+                    )
+                )
                 tool_call_task = asyncio.create_task(
-                    self.tool_execution_service.call_tool(session, tool_name, args)
+                    timeout_manager.execute_with_timeout(
+                        self.tool_execution_service.call_tool,
+                        "tool_execution",
+                        f"tool_call_{i}",
+                        session,
+                        tool_name,
+                        args,
+                    )
                 )
                 guardrail_response, result = await asyncio.gather(
                     guardrail_task, tool_call_task
                 )
+
+                # Extract results from timeout results
+                if hasattr(guardrail_response, "result"):
+                    guardrail_response = guardrail_response.result
+                if hasattr(result, "result"):
+                    result = result.result
             else:
                 input_span.set_attribute("async_guardrails", False)
-                guardrail_response = await input_guardrail.validate(request)
-                result = await self.tool_execution_service.call_tool(
-                    session, tool_name, args
+                guardrail_response = await timeout_manager.execute_with_timeout(
+                    input_guardrail.validate, "guardrail", f"guardrail_{i}", request
+                )
+                result = await timeout_manager.execute_with_timeout(
+                    self.tool_execution_service.call_tool,
+                    "tool_execution",
+                    f"tool_call_{i}",
+                    session,
+                    tool_name,
+                    args,
                 )
 
+                # Extract results from timeout results
+                if hasattr(guardrail_response, "result"):
+                    guardrail_response = guardrail_response.result
+                if hasattr(result, "result"):
+                    result = result.result
+
             # Check if blocked
+            if guardrail_response is None:
+                sys_print(
+                    f"[secure_call_tools] Call {i}: Guardrail validation failed (None response) for {tool_name} of server {server_name}",
+                    is_error=True,
+                )
+                # Create standardized error for guardrail validation failure
+                from secure_mcp_gateway.error_handling import error_logger
+                from secure_mcp_gateway.exceptions import (
+                    ErrorCode,
+                    ErrorContext,
+                    create_guardrail_error,
+                )
+
+                context = ErrorContext(
+                    operation="guardrail.validation_failed",
+                    request_id=custom_id,
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    additional_context={
+                        "call_index": i,
+                        "args": args,
+                    },
+                )
+
+                error = create_guardrail_error(
+                    code=ErrorCode.GUARDRAIL_VALIDATION_FAILED,
+                    message="Guardrail validation failed - no response received",
+                    context=context,
+                )
+                error_logger.log_error(error)
+                raise error
+
             if not guardrail_response.is_safe:
                 violation_types = [
                     v.violation_type.value for v in guardrail_response.violations

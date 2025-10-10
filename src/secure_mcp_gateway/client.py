@@ -1,69 +1,4 @@
-"""
-Enkrypt Secure MCP Gateway Client Module
-
-This module provides client-side functionality for the Enkrypt Secure MCP Gateway, handling:
-1. Cache Management:
-   - External Redis cache integration
-   - Local in-memory cache fallback
-   - Cache expiration and invalidation
-   - Cache statistics and monitoring
-
-2. Tool Management:
-   - Tool discovery and caching
-   - Tool invocation forwarding
-   - Server configuration management
-
-3. Gateway Configuration:
-   - Gateway config caching
-   - API key to gateway/user ID mapping
-   - Server access control
-
-The module supports both external Redis cache and local in-memory cache, with configurable
-expiration times and automatic cache invalidation.
-
-Configuration Variables:
-    enkrypt_mcp_use_external_cache: Enable/disable external Redis cache
-    enkrypt_cache_host: Redis host address
-    enkrypt_cache_port: Redis port number
-    enkrypt_cache_db: Redis database number
-    enkrypt_cache_password: Redis password
-    enkrypt_tool_cache_expiration: Tool cache expiration in hours
-    enkrypt_gateway_cache_expiration: Gateway config cache expiration in hours
-
-Cache Types:
-    1. Tool Cache:
-       - Stores discovered tools for each server
-       - Key format: <id>-<server_name>-tools
-       - Configurable expiration time
-
-    2. Gateway Config Cache:
-       - Stores gateway configuration and permissions
-       - Key format: <id>-mcp-config
-       - Configurable expiration time
-
-    3. Gateway Key Cache:
-       - Maps gateway keys to gateway/user IDs
-       - Key format: gatewaykey-<gateway_key>
-       - Expires with gateway config
-
-Example Usage:
-    ```python
-    # Initialize cache
-    cache_client = initialize_cache()
-
-    # Cache tools for a server
-    cache_tools(cache_client, "id123", "server1", tools_data)
-
-    # Get cached tools
-    tools = get_cached_tools(cache_client, "id123", "server1")
-
-    # Forward tool call
-    result = await forward_tool_call("server1", "tool1", args, gateway_config)
-
-    # Get cache statistics
-    stats = get_cache_statistics(cache_client)
-    ```
-"""
+"""MCP Gateway client module."""
 
 import hashlib
 import json
@@ -239,6 +174,98 @@ def get_gateway_registry_hashed_key():
 
 # --- Tool forwarding function ---
 # This discovers tools and also invokes a specific tool if tool_name is provided
+async def get_server_metadata_only(server_name, gateway_config=None):
+    """
+    Gets only server metadata (description, name, version) without discovering tools.
+
+    This function is used for config servers that already have tools defined,
+    but we need to get their dynamic description for validation.
+
+    Args:
+        server_name (str): Name of the server
+        gateway_config (dict): Gateway/user's configuration containing server details
+
+    Returns:
+        dict: Server metadata including description, name, and version
+    """
+    if not gateway_config:
+        sys_print(
+            "[get_server_metadata_only] Error: No gateway_config provided",
+            is_error=True,
+        )
+        raise ValueError("No gateway configuration provided")
+
+    mcp_config = gateway_config.get("mcp_config", [])
+    server_entry = next(
+        (s for s in mcp_config if s.get("server_name") == server_name), None
+    )
+    if not server_entry:
+        raise ValueError(f"No config found for server: {server_name}")
+
+    config = server_entry["config"]
+    command = config["command"]
+    command_args = config["args"]
+    env = config.get("env", None)
+
+    sys_print(f"[get_server_metadata_only] Getting metadata for server: {server_name}")
+
+    if IS_DEBUG_LOG_LEVEL:
+        sys_print(f"[get_server_metadata_only] Command: {command}", is_debug=True)
+        sys_print(
+            f"[get_server_metadata_only] Command args: {command_args}", is_debug=True
+        )
+        # Mask sensitive environment variables
+        from secure_mcp_gateway.utils import mask_sensitive_data
+
+        masked_env = mask_sensitive_data(env or {}) if env else None
+        sys_print(f"[get_server_metadata_only] Env: {masked_env}", is_debug=True)
+
+    async with stdio_client(
+        StdioServerParameters(command=command, args=command_args, env=env)
+    ) as (read, write):
+        async with ClientSession(read, write) as session:
+            # Initialize and capture server metadata ONLY
+            init_result = await session.initialize()
+
+            # Extract server description from initialization response
+            server_info = getattr(init_result, "serverInfo", {})
+            if hasattr(server_info, "description"):
+                server_description = server_info.description
+            else:
+                server_description = getattr(server_info, "description", "")
+
+            if hasattr(server_info, "name"):
+                server_name_from_server = server_info.name
+            else:
+                server_name_from_server = getattr(server_info, "name", "unknown")
+
+            if hasattr(server_info, "version"):
+                server_version = server_info.version
+            else:
+                server_version = getattr(server_info, "version", "unknown")
+
+            sys_print(
+                f"[get_server_metadata_only] Connected successfully to {server_name}"
+            )
+            sys_print("[get_server_metadata_only] 🔍 Dynamic Server Metadata:")
+            sys_print(
+                f"[get_server_metadata_only]   📝 Description: '{server_description}'"
+            )
+            sys_print(
+                f"[get_server_metadata_only]   🏷️  Name: '{server_name_from_server}'"
+            )
+            sys_print(f"[get_server_metadata_only]   📦 Version: '{server_version}'")
+
+            # Return only metadata, NO tool discovery
+            return {
+                "server_metadata": {
+                    "description": server_description,
+                    "name": server_name_from_server,
+                    "version": server_version,
+                }
+            }
+
+
 async def forward_tool_call(server_name, tool_name, args=None, gateway_config=None):
     """
     Forwards tool calls to the appropriate MCP server.
@@ -283,7 +310,11 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
     if IS_DEBUG_LOG_LEVEL:
         sys_print(f"[forward_tool_call] Command: {command}", is_debug=True)
         sys_print(f"[forward_tool_call] Command args: {command_args}", is_debug=True)
-        sys_print(f"[forward_tool_call] Env: {env}", is_debug=True)
+        # Mask sensitive environment variables
+        from secure_mcp_gateway.utils import mask_sensitive_data
+
+        masked_env = mask_sensitive_data(env or {}) if env else None
+        sys_print(f"[forward_tool_call] Env: {masked_env}", is_debug=True)
 
     async with stdio_client(
         StdioServerParameters(command=command, args=command_args, env=env)

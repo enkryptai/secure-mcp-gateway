@@ -1,12 +1,4 @@
-"""
-Error Handling and Recovery System
-
-This module provides comprehensive error handling utilities including:
-- Error logging with correlation IDs
-- Recovery strategies for different failure scenarios
-- Structured error responses
-- Error monitoring and alerting
-"""
+"""Error handling and recovery system."""
 
 import asyncio
 import logging

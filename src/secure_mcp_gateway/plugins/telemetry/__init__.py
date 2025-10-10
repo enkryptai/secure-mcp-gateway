@@ -27,20 +27,15 @@ Quick Start:
 Example Config:
     ```json
     {
-      "enkrypt_telemetry": {
-        "enabled": true,
-        "endpoint": "http://localhost:4317",
-        "insecure": true
-      },
-      "telemetry_plugins": {
-        "enabled": false,
-        "providers": [
-          {
-            "name": "console-logger",
-            "type": "console",
-            "config": {"level": "INFO"}
+      "plugins": {
+        "telemetry": {
+          "provider": "opentelemetry",
+          "config": {
+            "enabled": true,
+            "url": "http://localhost:4317",
+            "insecure": true
           }
-        ]
+        }
       }
     }
     ```

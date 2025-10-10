@@ -501,7 +501,7 @@ Each server can be run standalone for manual testing:
 
 ```bash
 # Run a specific test server
-python -m src.secure_mcp_gateway.test_mcps.prompt_injection_mcp
+python -m src.secure_mcp_gateway.bad_mcps.prompt_injection_mcp
 
 # Connect via MCP client and invoke tools
 # Observe whether attacks are blocked or pass through

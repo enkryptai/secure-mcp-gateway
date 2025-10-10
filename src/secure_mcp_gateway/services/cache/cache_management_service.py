@@ -176,7 +176,7 @@ class CacheManagementService:
             enkrypt_project_id = credentials.get("project_id", "not_provided")
             enkrypt_user_id = credentials.get("user_id", "not_provided")
 
-            gateway_config = self.auth_manager.get_local_mcp_config(
+            gateway_config = await self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
             )
 
@@ -513,31 +513,40 @@ class CacheManagementService:
                     ),
                 )
 
-            refresh_response = requests.get(
-                self.AUTH_SERVER_VALIDATE_URL,
-                headers={
-                    "apikey": self.GUARDRAIL_API_KEY,
-                    "X-Enkrypt-MCP-Gateway": self.ENKRYPT_REMOTE_MCP_GATEWAY_NAME,
-                    "X-Enkrypt-MCP-Gateway-Version": self.ENKRYPT_REMOTE_MCP_GATEWAY_VERSION,
-                    "X-Enkrypt-Refresh-Cache": "true",
-                },
-            )
+            # Use aiohttp for async HTTP request with timeout management
+            import aiohttp
 
-            refresh_span.set_attribute("status_code", refresh_response.status_code)
-            refresh_span.set_attribute("success", refresh_response.ok)
+            from secure_mcp_gateway.services.timeout import get_timeout_manager
 
-            if self.IS_DEBUG_LOG_LEVEL:
-                sys_print(
-                    f"[clear_cache] Refresh response: {refresh_response}",
-                    is_debug=True,
-                )
-                logger.info(
-                    "cache_management.clear_cache.refresh_response",
-                    extra=build_log_extra(
-                        ctx,
-                        custom_id,
-                        id=None,
-                        server_name=None,
-                        cache_type=None,
-                    ),
-                )
+            timeout_manager = get_timeout_manager()
+            timeout_value = timeout_manager.get_timeout("cache")
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    self.AUTH_SERVER_VALIDATE_URL,
+                    headers={
+                        "apikey": self.GUARDRAIL_API_KEY,
+                        "X-Enkrypt-MCP-Gateway": self.ENKRYPT_REMOTE_MCP_GATEWAY_NAME,
+                        "X-Enkrypt-MCP-Gateway-Version": self.ENKRYPT_REMOTE_MCP_GATEWAY_VERSION,
+                        "X-Enkrypt-Refresh-Cache": "true",
+                    },
+                    timeout=aiohttp.ClientTimeout(total=timeout_value),
+                ) as refresh_response:
+                    refresh_span.set_attribute("status_code", refresh_response.status)
+                    refresh_span.set_attribute("success", refresh_response.ok)
+
+                    if self.IS_DEBUG_LOG_LEVEL:
+                        sys_print(
+                            f"[clear_cache] Refresh response: {refresh_response}",
+                            is_debug=True,
+                        )
+                        logger.info(
+                            "cache_management.clear_cache.refresh_response",
+                            extra=build_log_extra(
+                                ctx,
+                                custom_id,
+                                id=None,
+                                server_name=None,
+                                cache_type=None,
+                            ),
+                        )

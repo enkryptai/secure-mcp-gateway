@@ -67,7 +67,7 @@ class ServerInfoService:
         enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
         enkrypt_project_id = credentials.get("project_id", "not_provided")
         enkrypt_user_id = credentials.get("user_id", "not_provided")
-        gateway_config = self.auth_manager.get_local_mcp_config(
+        gateway_config = await self.auth_manager.get_local_mcp_config(
             enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
         )
 
@@ -213,7 +213,7 @@ class ServerInfoService:
             )
 
             # Add authentication status tracking
-            is_authenticated = self.auth_manager.is_session_authenticated(session_key)
+            is_authenticated = await self.auth_manager.is_authenticated(ctx)
             auth_span.set_attribute("is_authenticated", is_authenticated)
 
             if not is_authenticated:

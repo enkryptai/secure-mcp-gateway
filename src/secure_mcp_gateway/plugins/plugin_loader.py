@@ -1,9 +1,4 @@
-"""
-Centralized Plugin Loader with Fallback Mechanism
-
-This module provides a centralized way to load plugin providers with automatic
-fallback to default Enkrypt providers when no custom provider is specified.
-"""
+"""Plugin loader with fallback mechanism."""
 
 from typing import Any, ClassVar, Dict, Optional
 

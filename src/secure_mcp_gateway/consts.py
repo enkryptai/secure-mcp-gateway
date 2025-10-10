@@ -1,8 +1,4 @@
-"""
-Enkrypt Secure MCP Gateway Common Constants Module
-
-This module provides common constants for the Enkrypt Secure MCP Gateway
-"""
+"""Common constants for MCP Gateway."""
 
 import os
 import sys
@@ -40,9 +36,19 @@ DEFAULT_COMMON_CONFIG = {
     "enkrypt_gateway_cache_expiration": 24,
     "enkrypt_async_input_guardrails_enabled": False,
     "enkrypt_async_output_guardrails_enabled": False,
-    "enkrypt_telemetry": {
-        "enabled": False,
-        "insecure": True,
-        "endpoint": "http://localhost:4317",
+    # Timeout Management Configuration
+    "timeout_settings": {
+        "default_timeout": 30,
+        "guardrail_timeout": 15,
+        "auth_timeout": 10,
+        "tool_execution_timeout": 60,
+        "discovery_timeout": 20,
+        "cache_timeout": 5,
+        "connectivity_timeout": 2,
+        "escalation_policies": {
+            "warn_threshold": 0.8,
+            "timeout_threshold": 1.0,
+            "fail_threshold": 1.2,
+        },
     },
 }

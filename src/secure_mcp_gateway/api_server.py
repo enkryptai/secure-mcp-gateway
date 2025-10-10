@@ -1,18 +1,4 @@
-"""
-Enkrypt Secure MCP Gateway REST API Server
-
-This module provides a REST API interface for all CLI commands, allowing programmatic
-access to configuration management, project management, user management, and system operations.
-
-The API server uses FastAPI and provides comprehensive endpoints for:
-- MCP Configuration Management
-- Project Management
-- User Management
-- System Operations
-- API Key Management
-
-Authentication is handled via API keys in the Authorization header.
-"""
+"""REST API server for MCP Gateway."""
 
 import json
 import os
@@ -426,6 +412,9 @@ def run_cli_function_with_error_handling(func, *args, **kwargs):
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     """Global exception handler for unhandled errors."""
+    # Import here to avoid circular imports
+    from secure_mcp_gateway.utils import mask_sensitive_headers
+
     # Create error context
     context = ErrorContext(
         operation="api_request",
@@ -433,7 +422,7 @@ async def global_exception_handler(request, exc):
         additional_context={
             "method": request.method,
             "url": str(request.url),
-            "headers": dict(request.headers),
+            "headers": mask_sensitive_headers(dict(request.headers)),
         },
     )
 

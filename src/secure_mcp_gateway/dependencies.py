@@ -1,6 +1,4 @@
-"""
-Dependencies for the Enkrypt Secure MCP Gateway package
-"""
+"""Package dependencies."""
 
 __dependencies__ = [
     "flask>=2.0.0",

@@ -13,7 +13,20 @@
     "enkrypt_gateway_cache_expiration": 24,
     "enkrypt_async_input_guardrails_enabled": false,
     "enkrypt_async_output_guardrails_enabled": false,
-    "enkrypt_telemetry_enabled": false
+    "timeout_settings": {
+      "default_timeout": 30,
+      "guardrail_timeout": 15,
+      "auth_timeout": 10,
+      "tool_execution_timeout": 60,
+      "discovery_timeout": 20,
+      "cache_timeout": 5,
+      "connectivity_timeout": 2,
+      "escalation_policies": {
+        "warn_threshold": 0.8,
+        "timeout_threshold": 1.0,
+        "fail_threshold": 1.2
+      }
+    }
   },
   "plugins": {
     "auth": {

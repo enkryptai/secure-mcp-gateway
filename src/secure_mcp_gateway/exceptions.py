@@ -1,12 +1,4 @@
-"""
-Standardized Error Handling System
-
-This module provides a comprehensive error handling system with:
-- Custom exception classes with error codes and structured details
-- Consistent error response format across all endpoints
-- Proper error logging with correlation IDs for tracing
-- Error recovery strategies for different failure scenarios
-"""
+"""Standardized error handling system."""
 
 import uuid
 from dataclasses import dataclass, field
@@ -24,6 +16,10 @@ class ErrorCode(Enum):
     AUTH_INSUFFICIENT_PERMISSIONS = "AUTH_003"
     AUTH_RATE_LIMITED = "AUTH_004"
     AUTH_PROVIDER_ERROR = "AUTH_005"
+    AUTH_TIMEOUT = "AUTH_006"
+    AUTH_NETWORK_ERROR = "AUTH_007"
+    AUTH_CONFIG_ERROR = "AUTH_008"
+    AUTH_UNAUTHORIZED = "AUTH_009"
 
     # Guardrail Errors (1100-1199)
     GUARDRAIL_API_ERROR = "GUARD_001"
@@ -32,6 +28,9 @@ class ErrorCode(Enum):
     GUARDRAIL_POLICY_VIOLATION = "GUARD_004"
     GUARDRAIL_TIMEOUT = "GUARD_005"
     GUARDRAIL_PROVIDER_ERROR = "GUARD_006"
+    GUARDRAIL_VALIDATION_ERROR = "GUARD_007"
+    GUARDRAIL_UNAUTHORIZED = "GUARD_008"
+    GUARDRAIL_NETWORK_ERROR = "GUARD_009"
 
     # Tool Execution Errors (1200-1299)
     TOOL_EXECUTION_FAILED = "TOOL_001"
@@ -46,6 +45,9 @@ class ErrorCode(Enum):
     DISCOVERY_SERVER_UNAVAILABLE = "DISC_002"
     DISCOVERY_TOOL_VALIDATION_FAILED = "DISC_003"
     DISCOVERY_CONFIG_ERROR = "DISC_004"
+    DISCOVERY_TIMEOUT = "DISC_005"
+    DISCOVERY_NETWORK_ERROR = "DISC_006"
+    DISCOVERY_AUTH_FAILED = "DISC_007"
 
     # Configuration Errors (1400-1499)
     CONFIG_INVALID = "CONFIG_001"
@@ -58,12 +60,15 @@ class ErrorCode(Enum):
     NETWORK_CONNECTION_FAILED = "NET_002"
     NETWORK_SSL_ERROR = "NET_003"
     NETWORK_DNS_ERROR = "NET_004"
+    NETWORK_UNREACHABLE = "NET_005"
+    NETWORK_PROTOCOL_ERROR = "NET_006"
 
     # System Errors (1600-1699)
     SYSTEM_INTERNAL_ERROR = "SYS_001"
     SYSTEM_RESOURCE_EXHAUSTED = "SYS_002"
     SYSTEM_MAINTENANCE = "SYS_003"
     SYSTEM_UNAVAILABLE = "SYS_004"
+    SYSTEM_OPERATION_FAILED = "SYS_005"
 
     # Telemetry Errors (1700-1799)
     TELEMETRY_PROVIDER_ERROR = "TELEM_001"
@@ -344,6 +349,74 @@ class SystemError(MCPGatewayError):
         )
 
 
+class TimeoutError(MCPGatewayError):
+    """Timeout-related errors with specific timeout handling."""
+
+    def __init__(
+        self,
+        code: ErrorCode,
+        message: str,
+        timeout_duration: float,
+        timeout_type: str,
+        severity: ErrorSeverity = ErrorSeverity.MEDIUM,
+        context: Optional[ErrorContext] = None,
+        cause: Optional[Exception] = None,
+    ):
+        self.timeout_duration = timeout_duration
+        self.timeout_type = timeout_type
+
+        # Build timeout-specific details
+        details = ErrorDetails(
+            code=code,
+            message=message,
+            severity=severity,
+            recovery_strategy=RecoveryStrategy.FAIL_CLOSED,
+            user_message=f"Operation timed out after {timeout_duration}s",
+            technical_details={
+                "timeout_duration": timeout_duration,
+                "timeout_type": timeout_type,
+                "escalation_level": self._get_escalation_level(
+                    timeout_duration, timeout_type
+                ),
+            },
+            suggested_actions=[
+                f"Check if the {timeout_type} service is responding",
+                f"Consider increasing the timeout value (current: {timeout_duration}s)",
+                "Verify network connectivity and service availability",
+            ],
+        )
+
+        super().__init__(
+            code=code,
+            message=message,
+            severity=severity,
+            recovery_strategy=RecoveryStrategy.FAIL_CLOSED,
+            context=context,
+            details=details,
+            cause=cause,
+        )
+
+    def _get_escalation_level(self, duration: float, timeout_type: str) -> str:
+        """Determine escalation level based on timeout duration and type."""
+        # Define escalation thresholds by timeout type
+        thresholds = {
+            "guardrail": {"warn": 5.0, "critical": 10.0},
+            "tool_execution": {"warn": 30.0, "critical": 60.0},
+            "network": {"warn": 10.0, "critical": 30.0},
+            "auth": {"warn": 5.0, "critical": 15.0},
+            "discovery": {"warn": 15.0, "critical": 30.0},
+        }
+
+        type_thresholds = thresholds.get(timeout_type, {"warn": 10.0, "critical": 30.0})
+
+        if duration >= type_thresholds["critical"]:
+            return "critical"
+        elif duration >= type_thresholds["warn"]:
+            return "warning"
+        else:
+            return "normal"
+
+
 # Error Factory Functions
 def create_auth_error(
     code: ErrorCode,
@@ -413,3 +486,139 @@ def create_system_error(
 ) -> SystemError:
     """Create a system error."""
     return SystemError(code, message, context=context, cause=cause)
+
+
+def create_timeout_error(
+    code: ErrorCode,
+    message: str,
+    timeout_duration: float,
+    timeout_type: str,
+    context: Optional[ErrorContext] = None,
+    cause: Optional[Exception] = None,
+) -> TimeoutError:
+    """Create a timeout error with specific timeout details."""
+    return TimeoutError(
+        code=code,
+        message=message,
+        timeout_duration=timeout_duration,
+        timeout_type=timeout_type,
+        context=context,
+        cause=cause,
+    )
+
+
+def create_guardrail_timeout_error(
+    timeout_duration: float,
+    context: Optional[ErrorContext] = None,
+    cause: Optional[Exception] = None,
+) -> TimeoutError:
+    """Create a guardrail timeout error."""
+    return create_timeout_error(
+        code=ErrorCode.GUARDRAIL_TIMEOUT,
+        message=f"Guardrail validation timed out after {timeout_duration}s",
+        timeout_duration=timeout_duration,
+        timeout_type="guardrail",
+        context=context,
+        cause=cause,
+    )
+
+
+def create_tool_timeout_error(
+    timeout_duration: float,
+    tool_name: Optional[str] = None,
+    context: Optional[ErrorContext] = None,
+    cause: Optional[Exception] = None,
+) -> TimeoutError:
+    """Create a tool execution timeout error."""
+    message = f"Tool execution timed out after {timeout_duration}s"
+    if tool_name:
+        message += f" for tool '{tool_name}'"
+
+    return create_timeout_error(
+        code=ErrorCode.TOOL_TIMEOUT,
+        message=message,
+        timeout_duration=timeout_duration,
+        timeout_type="tool_execution",
+        context=context,
+        cause=cause,
+    )
+
+
+def create_network_timeout_error(
+    timeout_duration: float,
+    endpoint: Optional[str] = None,
+    context: Optional[ErrorContext] = None,
+    cause: Optional[Exception] = None,
+) -> TimeoutError:
+    """Create a network timeout error."""
+    message = f"Network request timed out after {timeout_duration}s"
+    if endpoint:
+        message += f" to endpoint '{endpoint}'"
+
+    return create_timeout_error(
+        code=ErrorCode.NETWORK_TIMEOUT,
+        message=message,
+        timeout_duration=timeout_duration,
+        timeout_type="network",
+        context=context,
+        cause=cause,
+    )
+
+
+# Auth-specific error helpers
+def create_auth_timeout_error(
+    timeout_duration: float,
+    context: Optional[ErrorContext] = None,
+    cause: Optional[Exception] = None,
+) -> TimeoutError:
+    """Create an authentication timeout error."""
+    return create_timeout_error(
+        code=ErrorCode.AUTH_TIMEOUT,
+        message=f"Authentication timed out after {timeout_duration}s",
+        timeout_duration=timeout_duration,
+        timeout_type="auth",
+        context=context,
+        cause=cause,
+    )
+
+
+def create_auth_network_error(
+    message: str,
+    context: Optional[ErrorContext] = None,
+    cause: Optional[Exception] = None,
+) -> AuthenticationError:
+    """Create an authentication network error."""
+    return create_auth_error(
+        code=ErrorCode.AUTH_NETWORK_ERROR,
+        message=message,
+        context=context,
+        cause=cause,
+    )
+
+
+def create_auth_unauthorized_error(
+    message: str = "Unauthorized access",
+    context: Optional[ErrorContext] = None,
+    cause: Optional[Exception] = None,
+) -> AuthenticationError:
+    """Create an authentication unauthorized error."""
+    return create_auth_error(
+        code=ErrorCode.AUTH_UNAUTHORIZED,
+        message=message,
+        context=context,
+        cause=cause,
+    )
+
+
+def create_auth_config_error(
+    message: str,
+    context: Optional[ErrorContext] = None,
+    cause: Optional[Exception] = None,
+) -> AuthenticationError:
+    """Create an authentication configuration error."""
+    return create_auth_error(
+        code=ErrorCode.AUTH_CONFIG_ERROR,
+        message=message,
+        context=context,
+        cause=cause,
+    )

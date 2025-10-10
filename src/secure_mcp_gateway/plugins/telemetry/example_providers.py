@@ -1,9 +1,4 @@
-"""
-Example Telemetry Providers
-
-This module contains example implementations of telemetry providers that can be used as
-templates for creating custom providers.
-"""
+"""Example telemetry providers."""
 
 from __future__ import annotations
 

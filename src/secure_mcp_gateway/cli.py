@@ -1,3 +1,5 @@
+"""Command-line interface for MCP Gateway."""
+
 import argparse
 import base64
 import json
@@ -51,7 +53,7 @@ else:
     HOST_ENKRYPT_HOME = None
 
 GATEWAY_PY_PATH = os.path.join(BASE_DIR, "gateway.py")
-ECHO_SERVER_PATH = os.path.join(BASE_DIR, "test_mcps", "echo_mcp.py")
+ECHO_SERVER_PATH = os.path.join(BASE_DIR, "bad_mcps", "echo_mcp.py")
 PICKED_CONFIG_PATH = DOCKER_CONFIG_PATH if is_docker_running else CONFIG_PATH
 sys_print("GATEWAY_PY_PATH: ", GATEWAY_PY_PATH)
 sys_print("ECHO_SERVER_PATH: ", ECHO_SERVER_PATH)
@@ -277,10 +279,44 @@ def generate_default_config():
             "enkrypt_gateway_cache_expiration": 24,
             "enkrypt_async_input_guardrails_enabled": False,
             "enkrypt_async_output_guardrails_enabled": False,
-            "enkrypt_telemetry": {
-                "enabled": False,
-                "insecure": True,
-                "endpoint": "http://localhost:4317",
+            # Timeout Management Configuration
+            "timeout_settings": {
+                "default_timeout": 30,
+                "guardrail_timeout": 15,
+                "auth_timeout": 10,
+                "tool_execution_timeout": 60,
+                "discovery_timeout": 20,
+                "cache_timeout": 5,
+                "connectivity_timeout": 2,
+                "escalation_policies": {
+                    "warn_threshold": 0.8,
+                    "timeout_threshold": 1.0,
+                    "fail_threshold": 1.2,
+                },
+            },
+        },
+        "plugins": {
+            "auth": {
+                "provider": "enkrypt",
+                "config": {
+                    "api_key": "YOUR_ENKRYPT_API_KEY",
+                    "base_url": "https://api.enkryptai.com",
+                },
+            },
+            "guardrails": {
+                "provider": "enkrypt",
+                "config": {
+                    "api_key": "YOUR_ENKRYPT_API_KEY",
+                    "base_url": "https://api.enkryptai.com",
+                },
+            },
+            "telemetry": {
+                "provider": "opentelemetry",
+                "config": {
+                    "enabled": False,
+                    "url": "http://localhost:4317",
+                    "insecure": True,
+                },
             },
         },
         "mcp_configs": {

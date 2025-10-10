@@ -1,9 +1,4 @@
-"""
-Dynamic Provider Loader
-
-This module provides dynamic provider loading capabilities for all plugin systems.
-Allows loading providers by class path without modifying core code.
-"""
+"""Dynamic provider loader."""
 
 from __future__ import annotations
 

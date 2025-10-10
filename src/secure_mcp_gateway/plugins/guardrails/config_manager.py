@@ -1,15 +1,4 @@
-"""
-Guardrail Configuration Manager
-
-This module provides utilities for managing guardrail configurations and
-integrating the plugin system with the existing MCP gateway configuration.
-
-It handles:
-- Loading guardrail provider configurations
-- Creating and managing provider instances
-- Integrating with the existing enkrypt_mcp_config.json structure
-- Providing backward compatibility with existing Enkrypt guardrails
-"""
+"""Guardrail configuration manager."""
 
 from typing import Any, Dict, List, Optional
 

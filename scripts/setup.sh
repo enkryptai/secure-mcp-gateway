@@ -108,7 +108,7 @@ echo "✅ Generated unique uuid: $unique_uuid"
 # Replace UNIQUE_UUID in enkrypt_mcp_config.json with the unique uuid
 perl -pi -e "s/UNIQUE_UUID/$unique_uuid/g" $enkrypt_mcp_config_file
 
-cd $SCRIPT_DIR/../src/secure_mcp_gateway/test_mcps
+cd $SCRIPT_DIR/../src/secure_mcp_gateway/bad_mcps
 export DUMMY_MCP_DIR=$(pwd)
 export DUMMY_MCP_FILE_PATH="$DUMMY_MCP_DIR/echo_mcp.py"
 

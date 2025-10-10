@@ -78,7 +78,7 @@ repos:
   #       description: Security-focused linting with Ruff.
   #       args: [--select, S, --fix, --exit-non-zero-on-fix]
   #       files: ^src/.*\.py$
-  #       exclude: ^src/secure_mcp_gateway/test_mcps/.*\.py$
+  #       exclude: ^src/secure_mcp_gateway/bad_mcps/.*\.py$
 
   # TODO
   # Type checking (optional - uncomment if you want to add type hints)

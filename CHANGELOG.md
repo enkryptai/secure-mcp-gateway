@@ -2,6 +2,14 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [2.1.1] - 2025-10-10
+
+### Updates in v2.1.1
+
+- Updated telemetry plugin to use the new telemetry conf
+- Tool guardrails
+- Bug fixes and improvements
+
 ## [2.1.0] - 2025-10-07
 
 ### New Features in v2.1.0

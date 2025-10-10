@@ -7,8 +7,7 @@ from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
 
 # Get metrics from telemetry manager
 telemetry_manager = get_telemetry_config_manager()
-cache_hit_counter = telemetry_manager.cache_hit_counter
-cache_miss_counter = telemetry_manager.cache_miss_counter
+# Telemetry metrics will be obtained lazily when needed
 from secure_mcp_gateway.utils import (
     get_common_config,
     mask_key,
@@ -66,6 +65,30 @@ class CacheService:
                 self.cache_client = initialize_cache()
                 sys_print("[external_cache] Successfully connected to External Cache")
             except Exception as e:
+                # Use standardized error handling
+                from secure_mcp_gateway.error_handling import error_logger
+                from secure_mcp_gateway.exceptions import (
+                    ErrorCode,
+                    ErrorContext,
+                    create_system_error,
+                )
+
+                context = ErrorContext(
+                    operation="cache.external_connection",
+                    additional_context={
+                        "cache_host": self.cache_host,
+                        "cache_port": self.cache_port,
+                    },
+                )
+
+                error = create_system_error(
+                    code=ErrorCode.CACHE_CONNECTION_FAILED,
+                    message=f"Failed to connect to External Cache: {e}",
+                    context=context,
+                    cause=e,
+                )
+                error_logger.log_error(error)
+
                 sys_print(
                     f"[external_cache] Failed to connect to External Cache: {e}",
                     is_error=True,
@@ -101,6 +124,27 @@ class CacheService:
                 expires_at = time.time() + ttl_seconds
                 return ttl_seconds, expires_at
         except Exception as e:
+            # Use standardized error handling
+            from secure_mcp_gateway.error_handling import error_logger
+            from secure_mcp_gateway.exceptions import (
+                ErrorCode,
+                ErrorContext,
+                create_system_error,
+            )
+
+            context = ErrorContext(
+                operation="cache.get_ttl",
+                additional_context={"cache_key": key},
+            )
+
+            error = create_system_error(
+                code=ErrorCode.CACHE_OPERATION_FAILED,
+                message=f"Error getting TTL for key {key}: {e}",
+                context=context,
+                cause=e,
+            )
+            error_logger.log_error(error)
+
             sys_print(
                 f"[get_redis_ttl] Error getting TTL for key {key}: {e}", is_error=True
             )
@@ -433,7 +477,12 @@ class CacheService:
             )
             cached_tools = self.get_cached_tools(id, server_name)
             if cached_tools:
-                cache_hit_counter.add(1)
+                # Update metrics lazily
+                if (
+                    hasattr(telemetry_manager, "cache_hit_counter")
+                    and telemetry_manager.cache_hit_counter
+                ):
+                    telemetry_manager.cache_hit_counter.add(1)
                 if IS_DEBUG_LOG_LEVEL:
                     sys_print(
                         f"[get_latest_server_info] Found cached tools for {server_name}",
@@ -443,7 +492,12 @@ class CacheService:
                 server_info_copy["has_cached_tools"] = True
                 server_info_copy["tools_source"] = "cache"
             else:
-                cache_miss_counter.add(1)
+                # Update metrics lazily
+                if (
+                    hasattr(telemetry_manager, "cache_miss_counter")
+                    and telemetry_manager.cache_miss_counter
+                ):
+                    telemetry_manager.cache_miss_counter.add(1)
                 if IS_DEBUG_LOG_LEVEL:
                     sys_print(
                         f"[get_latest_server_info] No cached tools found for {server_name}. Need to discover them",

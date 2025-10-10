@@ -124,7 +124,7 @@ REM Replace UNIQUE_UUID in enkrypt_mcp_config.json
 powershell -Command "(Get-Content '%enkrypt_mcp_config_file%') -replace 'UNIQUE_UUID', '%unique_uuid%' | Set-Content '%enkrypt_mcp_config_file%'"
 
 :: Get dummy MCP path inside src/secure_mcp_gateway
-pushd "%SCRIPT_DIR%\..\src\secure_mcp_gateway\test_mcps"
+pushd "%SCRIPT_DIR%\..\src\secure_mcp_gateway\bad_mcps"
 set "DUMMY_MCP_DIR=%CD%"
 set "DUMMY_MCP_FILE_PATH=%DUMMY_MCP_DIR%\echo_mcp.py"
 popd

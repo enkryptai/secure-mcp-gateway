@@ -362,7 +362,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
           "config": {
             "command": "python",
             "args": [
-              "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/secure_mcp_gateway/test_mcps/echo_mcp.py"
+              "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/secure_mcp_gateway/bad_mcps/echo_mcp.py"
             ]
           },
           "tools": {},
@@ -459,7 +459,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
           "config": {
             "command": "python",
             "args": [
-              "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\test_mcps\\echo_mcp.py"
+              "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\bad_mcps\\echo_mcp.py"
             ]
           },
           "tools": {},
@@ -800,7 +800,7 @@ MCP version 1.9.2
 
 - This script creates the config file at `~/.enkrypt/enkrypt_mcp_config.json` on macOS and `%USERPROFILE%\.enkrypt\enkrypt_mcp_config.json` on Windows based on `src/secure_mcp_gateway/example_enkrypt_mcp_config.json` file
 
-- It replaces `UNIQUE_GATEWAY_KEY` and other `UUIDs` with auto generated values and also replaces `DUMMY_MCP_FILE_PATH` with the actual path to the test MCP file `test_mcps/echo_mcp.py`
+- It replaces `UNIQUE_GATEWAY_KEY` and other `UUIDs` with auto generated values and also replaces `DUMMY_MCP_FILE_PATH` with the actual path to the test MCP file `bad_mcps/echo_mcp.py`
 
 - It also installs the MCP client in Claude Desktop
 
@@ -831,7 +831,7 @@ Setting up Enkrypt Secure MCP Gateway enkrypt_mcp_config.json config file
         1 file(s) copied.
 Generated unique gateway key: WTZOpoU1mXJz8b_ZJQ42DuSXlQCSCtWOn3FX0jG8sO_FKYNJetjYEgSluvhtBN8_
 Generated unique uuid: 7920749a-228e-47fe-a6a9-cd2d64a2283b
-DUMMY_MCP_FILE_PATH: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\src\secure_mcp_gateway\test_mcps\echo_mcp.py
+DUMMY_MCP_FILE_PATH: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\src\secure_mcp_gateway\bad_mcps\echo_mcp.py
 -------------------------------
 Setup complete. Please check the enkrypt_mcp_config.json file in the ~\.enkrypt directory and update with your MCP server configs as needed.
 -------------------------------
@@ -1047,7 +1047,7 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkryp
           "config": {
             "command": "python",
             "args": [
-              "/usr/local/lib/python3.11/site-packages/secure_mcp_gateway/test_mcps/echo_mcp.py"
+              "/usr/local/lib/python3.11/site-packages/secure_mcp_gateway/bad_mcps/echo_mcp.py"
             ]
           },
           "tools": {},
@@ -1184,7 +1184,7 @@ python gateway.py
 ```
 
 - Or run in k8s using our docker image `enkryptai/secure-mcp-gateway:vx.x.x`
-- Example: `enkryptai/secure-mcp-gateway:v2.1.0`
+- Example: `enkryptai/secure-mcp-gateway:v2.1.1`
 - Use the latest version from Docker Hub: <https://hub.docker.com/r/enkryptai/secure-mcp-gateway/tags>
 - You can either mount the config file locally or download the json file from a remote place like `S3` using an `initContainer` and mount the volume
 - See `docs/secure-mcp-gateway-manifest-example.yaml` for the complete manifest file reference
@@ -1486,7 +1486,7 @@ The observability stack includes:
 ### 6.4 Example prompts
 
 - `list all servers, get all tools available and echo test`
-  - This uses a test MCP server `echo_server` which is in `test_mcps/echo_mcp.py`
+  - This uses a test MCP server `echo_server` which is in `bad_mcps/echo_mcp.py`
 
 ![claude-mcp-chat-1](./docs/images/claude-mcp-chat-1.png)
 
@@ -1549,7 +1549,7 @@ The observability stack includes:
             "config": {
               "command": "python",
               "args": [
-                "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\secure_mcp_gateway\\test_mcps\\echo_mcp.py"
+                "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\secure_mcp_gateway\\bad_mcps\\echo_mcp.py"
               ]
             },
             "tools": {},
@@ -1620,7 +1620,7 @@ The observability stack includes:
     - *(Click `Run Tool` when Cursor asks you to)*
 
     - `list all servers, get all tools available and echo test`
-      - This uses a test MCP server `echo_server` which is in `test_mcps/echo_mcp.py`
+      - This uses a test MCP server `echo_server` which is in `bad_mcps/echo_mcp.py`
 
     ![cursor-mcp-chat](./docs/images/cursor-mcp-chat.png)
 

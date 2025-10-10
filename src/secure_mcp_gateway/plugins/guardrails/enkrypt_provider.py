@@ -1,47 +1,6 @@
-"""
-Enkrypt Guardrail Provider Implementation
+"""Enkrypt guardrail provider."""
 
-This module implements the GuardrailProvider interface for Enkrypt AI guardrails.
-It is now fully self-contained with NO dependency on guardrail_service.
-
-All Enkrypt API calls are made directly from this module.
-
-Example Usage:
-    ```python
-    # Register Enkrypt provider
-    from secure_mcp_gateway.plugins.guardrails import (
-        EnkryptGuardrailProvider,
-        GuardrailRequest,
-    )
-
-    provider = EnkryptGuardrailProvider(
-        api_key="your-api-key",
-        base_url="https://api.enkryptai.com"
-    )
-
-    # Create input guardrail
-    input_guardrail = provider.create_input_guardrail({
-        "enabled": True,
-        "policy_name": "My Policy",
-        "block": ["policy_violation", "pii"],
-        "additional_config": {
-            "pii_redaction": True
-        }
-    })
-
-    # Validate input
-    request = GuardrailRequest(
-        content="Some text to validate",
-        tool_name="my_tool",
-        tool_args={"param": "value"}
-    )
-
-    response = await input_guardrail.validate(request)
-    if not response.is_safe:
-        print(f"Violations: {response.violations}")
-    ```
-"""
-
+import asyncio
 import time
 from typing import Any, ClassVar, Dict, List, Optional
 
@@ -1208,6 +1167,49 @@ class EnkryptServerRegistrationGuardrail:
                 f"[EnkryptToolRegistration] Error validating tools: {e}", is_error=True
             )
             cfg_enabled = bool(self.config.get("enkrypt_guardrails_enabled", True))
+
+            # Handle timeout errors - fail closed to prevent tool registration
+            from secure_mcp_gateway.exceptions import TimeoutError
+
+            if (
+                isinstance(e, TimeoutError)
+                or "GUARDRAIL_TIMEOUT:" in str(e)
+                or "timed out" in str(e).lower()
+            ):
+                sys_print(
+                    f"[EnkryptToolRegistration] Guardrail timeout - blocking tool registration: {e}",
+                    is_error=True,
+                )
+
+                # Extract timeout details if available
+                timeout_duration = getattr(e, "timeout_duration", "unknown")
+                timeout_type = getattr(e, "timeout_type", "guardrail")
+
+                return GuardrailResponse(
+                    is_safe=False,
+                    action=GuardrailAction.BLOCK,
+                    violations=[
+                        GuardrailViolation(
+                            violation_type=ViolationType.CUSTOM,
+                            severity=1.0,
+                            message=f"Guardrail validation timed out after {timeout_duration}s",
+                            action=GuardrailAction.BLOCK,
+                            metadata={
+                                "error": str(e),
+                                "timeout": True,
+                                "timeout_duration": timeout_duration,
+                                "timeout_type": timeout_type,
+                            },
+                        )
+                    ],
+                    metadata={
+                        "error": str(e),
+                        "timeout": True,
+                        "timeout_duration": timeout_duration,
+                        "timeout_type": timeout_type,
+                    },
+                )
+
             if cfg_enabled and ("UNAUTHORIZED:" in str(e)):
                 # Fail closed: do not approve tools when guardrails enabled but unauthorized
                 return GuardrailResponse(
@@ -1224,14 +1226,45 @@ class EnkryptServerRegistrationGuardrail:
                     ],
                     metadata={"error": str(e)},
                 )
-            # Fail open for other errors
+            # FAIL CLOSED for other errors
+            # Log with standardized error handling
+            from secure_mcp_gateway.error_handling import error_logger
+            from secure_mcp_gateway.exceptions import (
+                ErrorCode,
+                ErrorContext,
+                create_guardrail_error,
+            )
+
+            context = ErrorContext(
+                operation="guardrail.tool_validation_error",
+                request_id=getattr(self, "request_id", None),
+                server_name=getattr(self, "server_name", None),
+            )
+
+            error = create_guardrail_error(
+                code=ErrorCode.GUARDRAIL_VALIDATION_ERROR,
+                message=f"Tool validation failed (fail-closed): {e}",
+                context=context,
+                cause=e,
+            )
+            error_logger.log_error(error)
+
+            # Block all tools on validation error
             return GuardrailResponse(
-                is_safe=True,
-                action=GuardrailAction.ALLOW,
-                violations=[],
+                is_safe=False,
+                action=GuardrailAction.BLOCK,
+                violations=[
+                    GuardrailViolation(
+                        violation_type=ViolationType.CUSTOM,
+                        severity=1.0,
+                        message=f"Guardrail validation error: {e}",
+                        action=GuardrailAction.BLOCK,
+                        metadata={"error": str(e)},
+                    )
+                ],
                 metadata={
                     "error": str(e),
-                    "filtered_tools": request.tools,
+                    "filtered_tools": [],  # Block all tools
                 },
             )
 
@@ -1277,23 +1310,47 @@ class EnkryptServerRegistrationGuardrail:
                     is_debug=True,
                 )
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.batch_url,
-                    json=payload,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=30),
-                ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        if response.status in (401, 403):
-                            # Mark explicitly as unauthorized so callers can fail-closed
-                            raise Exception(
-                                f"UNAUTHORIZED: API error {response.status}: {error_text}"
-                            )
-                        raise Exception(f"API error {response.status}: {error_text}")
+            # Get configurable timeout from TimeoutManager
+            from secure_mcp_gateway.services.timeout import get_timeout_manager
 
-                    result = await response.json()
+            timeout_manager = get_timeout_manager()
+            timeout_value = timeout_manager.get_timeout("guardrail")
+
+            # Use TimeoutManager to execute the API call with proper timeout handling
+            async def _make_api_call():
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        self.batch_url,
+                        json=payload,
+                        headers=headers,
+                        # Remove aiohttp.ClientTimeout - let TimeoutManager handle timeout
+                    ) as response:
+                        if response.status != 200:
+                            error_text = await response.text()
+                            if response.status in (401, 403):
+                                # Mark explicitly as unauthorized so callers can fail-closed
+                                raise Exception(
+                                    f"UNAUTHORIZED: API error {response.status}: {error_text}"
+                                )
+                            raise Exception(
+                                f"API error {response.status}: {error_text}"
+                            )
+
+                        result = await response.json()
+                        return result
+
+            # Execute with TimeoutManager for proper metrics and escalation
+            timeout_result = await timeout_manager.execute_with_timeout(
+                _make_api_call, "guardrail", f"batch_api_{len(texts)}_texts"
+            )
+
+            if not timeout_result.success:
+                if timeout_result.error:
+                    raise timeout_result.error
+                else:
+                    raise Exception("API call failed")
+
+            result = timeout_result.result
 
             if self.debug:
                 sys_print(
@@ -1304,11 +1361,47 @@ class EnkryptServerRegistrationGuardrail:
 
         except Exception as e:
             sys_print(f"[EnkryptBatchAPI] Batch API call failed: {e}", is_error=True)
-            # Propagate unauthorized marker via exception so upper layers can block
+
+            # Use standardized error handling
+            from secure_mcp_gateway.error_handling import error_logger
+            from secure_mcp_gateway.exceptions import (
+                ErrorCode,
+                ErrorContext,
+                create_guardrail_error,
+            )
+
+            # Create error context for proper tracing
+            context = ErrorContext(
+                operation="guardrail_batch_api",
+                request_id=getattr(self, "request_id", None),
+                server_name=getattr(self, "server_name", None),
+            )
+
+            # Handle different error types with proper error codes
             if "UNAUTHORIZED:" in str(e):
+                # Propagate unauthorized marker via exception so upper layers can block
                 raise
-            # Return safe default (fail open) for other transient errors
-            return [{"text": text, "summary": {}, "details": {}} for text in texts]
+            elif "timeout" in str(e).lower() or "timed out" in str(e).lower():
+                # Create standardized timeout error
+                error = create_guardrail_error(
+                    code=ErrorCode.GUARDRAIL_TIMEOUT,
+                    message=f"Guardrail API call timed out: {e}",
+                    context=context,
+                    cause=e,
+                )
+                error_logger.log_error(error)
+                raise error
+            else:
+                # Create standardized API error
+                error = create_guardrail_error(
+                    code=ErrorCode.GUARDRAIL_API_ERROR,
+                    message=f"Guardrail API call failed: {e}",
+                    context=context,
+                    cause=e,
+                )
+                error_logger.log_error(error)
+                # FAIL CLOSED: Raise error instead of returning safe default
+                raise error
 
 
 class EnkryptGuardrailProvider(GuardrailProvider):

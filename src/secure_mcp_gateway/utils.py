@@ -1,8 +1,4 @@
-"""
-Enkrypt Secure MCP Gateway Common Utilities Module
-
-This module provides common utilities for the Enkrypt Secure MCP Gateway
-"""
+"""Common utilities for MCP Gateway."""
 
 import json
 import os
@@ -12,6 +8,7 @@ import string
 import sys
 import time
 from functools import lru_cache
+from typing import Any, Dict, Union
 from urllib.parse import urlparse
 
 from secure_mcp_gateway.consts import (
@@ -183,8 +180,9 @@ def get_common_config(print_debug=False):
         print(f"[utils] config: {config}", file=sys.stderr)
 
     common_config = config.get("common_mcp_gateway_config", {})
+    plugins_config = config.get("plugins", {})
     # Merge with defaults to ensure all required fields exist
-    return {**DEFAULT_COMMON_CONFIG, **common_config}
+    return {**DEFAULT_COMMON_CONFIG, **common_config, "plugins": plugins_config}
 
 
 def is_telemetry_enabled():
@@ -198,12 +196,13 @@ def is_telemetry_enabled():
         return False
 
     config = get_common_config()
-    telemetry_config = config.get("enkrypt_telemetry", {})
+    telemetry_plugin_config = config.get("plugins", {}).get("telemetry", {})
+    telemetry_config = telemetry_plugin_config.get("config", {})
     if not telemetry_config.get("enabled", False):
         IS_TELEMETRY_ENABLED = False
         return False
 
-    endpoint = telemetry_config.get("endpoint", "http://localhost:4317")
+    endpoint = telemetry_config.get("url", "http://localhost:4317")
 
     try:
         parsed_url = urlparse(endpoint)
@@ -214,7 +213,13 @@ def is_telemetry_enabled():
             IS_TELEMETRY_ENABLED = False
             return False
 
-        with socket.create_connection((hostname, port), timeout=1):
+        # Get configurable timeout from TimeoutManager
+        from secure_mcp_gateway.services.timeout import get_timeout_manager
+
+        timeout_manager = get_timeout_manager()
+        timeout_value = timeout_manager.get_timeout("connectivity")
+
+        with socket.create_connection((hostname, port), timeout=timeout_value):
             IS_TELEMETRY_ENABLED = True
             return True
     except (OSError, AttributeError, TypeError, ValueError) as e:
@@ -250,13 +255,13 @@ def generate_custom_id():
 
 def sys_print(*args, **kwargs):
     """
-    Print a message to the console and optionally log it via telemetry.
+    Print a message to the console only (no logging to avoid duplication).
 
     Args:
         *args: Arguments to print
         **kwargs: Keyword arguments including:
-            - is_error (bool): If True, print to stderr and log as error
-            - is_debug (bool): If True, log as debug instead of info
+            - is_error (bool): If True, print to stderr
+            - is_debug (bool): If True, print with [DEBUG] prefix
     """
     is_error = kwargs.pop("is_error", False)
     is_debug = kwargs.pop("is_debug", False)
@@ -272,20 +277,11 @@ def sys_print(*args, **kwargs):
     # Using try/except to avoid any print errors blocking the flow for edge cases
     try:
         if args:
-            # Always print to console
-            print(*args, **kwargs)
-
-            # Also log via telemetry if enabled
-            if is_telemetry_enabled():
-                # Format args similar to how print() does it
-                sep = kwargs.get("sep", " ")
-                log_message = sep.join(str(arg) for arg in args)
-                if is_error:
-                    logger.error(log_message)
-                elif is_debug:
-                    logger.debug(log_message)
-                else:
-                    logger.info(log_message)
+            # Add debug prefix if needed
+            if is_debug:
+                print("[DEBUG]", *args, **kwargs)
+            else:
+                print(*args, **kwargs)
     except Exception as e:
         # Ignore any print errors
         print(f"[utils] Error printing using sys_print: {e}", file=sys.stderr)
@@ -326,13 +322,40 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
             user_id = credentials.get("user_id", user_id)
 
             if gateway_key:
-                gateway_config = (
-                    auth_manager.get_local_mcp_config(gateway_key, project_id, user_id)
-                    or {}
-                )
-                project_name = gateway_config.get("project_name", project_name)
-                email = gateway_config.get("email", email)
-                mcp_config_id = gateway_config.get("mcp_config_id", mcp_config_id)
+                try:
+                    import asyncio
+
+                    # Check if we're already in an async context
+                    try:
+                        # Try to get the current event loop
+                        loop = asyncio.get_running_loop()
+                        # If we get here, we're in an async context, skip the call
+                        # to avoid creating unawaited coroutines
+                        pass
+                    except RuntimeError:
+                        # No event loop running, safe to use asyncio.run()
+                        try:
+                            gateway_config = (
+                                asyncio.run(
+                                    auth_manager.get_local_mcp_config(
+                                        gateway_key, project_id, user_id
+                                    )
+                                )
+                                or {}
+                            )
+                            project_name = gateway_config.get(
+                                "project_name", project_name
+                            )
+                            email = gateway_config.get("email", email)
+                            mcp_config_id = gateway_config.get(
+                                "mcp_config_id", mcp_config_id
+                            )
+                        except Exception:
+                            # If anything fails, just use defaults
+                            pass
+                except Exception:
+                    # If anything fails, just use defaults
+                    pass
     except Exception:
         # Swallow errors and use defaults to avoid breaking logging
         pass
@@ -471,3 +494,184 @@ def get_server_info_by_name(gateway_config, server_name):
             f"[get_server_info_by_name] mcp_config: {masked_mcp_config}", is_debug=True
         )
     return next((s for s in mcp_config if s.get("server_name") == server_name), None)
+
+
+def mask_sensitive_headers(
+    headers: Union[Dict[str, str], Dict[str, Any]],
+) -> Dict[str, str]:
+    """
+    Mask sensitive information in HTTP headers for logging purposes.
+
+    Args:
+        headers: Dictionary of HTTP headers
+
+    Returns:
+        Dictionary with sensitive headers masked
+    """
+    if not headers:
+        return {}
+
+    # Define sensitive header patterns (case-insensitive)
+    sensitive_patterns = [
+        # Authentication headers
+        "authorization",
+        "auth",
+        "bearer",
+        "token",
+        "apikey",
+        "api-key",
+        "api_key",
+        "x-api-key",
+        "x-auth-token",
+        "x-access-token",
+        "x-auth",
+        "x-token",
+        "x-enkrypt-api-key",
+        "x-enkrypt-gateway-key",
+        # Security headers
+        "cookie",
+        "set-cookie",
+        "x-csrf-token",
+        "x-csrf",
+        "csrf-token",
+        "x-requested-with",
+        "x-forwarded-for",
+        "x-real-ip",
+        # Sensitive data headers
+        "password",
+        "passwd",
+        "pwd",
+        "secret",
+        "private",
+        "key",
+        "session",
+        "sessionid",
+        "session-id",
+        "sess",
+        # Custom sensitive headers
+        "x-session",
+        "x-user",
+        "x-tenant",
+        "x-org",
+        "x-organization",
+        "x-client",
+        "x-device",
+        "x-device-id",
+        "x-deviceid",
+        # OAuth and JWT
+        "oauth",
+        "jwt",
+        "access-token",
+        "refresh-token",
+        "id-token",
+        "x-oauth",
+        "x-jwt",
+        "x-access",
+        "x-refresh",
+    ]
+
+    masked_headers = {}
+
+    for key, value in headers.items():
+        key_lower = key.lower()
+
+        # Check if this header should be masked
+        should_mask = any(pattern in key_lower for pattern in sensitive_patterns)
+
+        if should_mask:
+            # Mask the value but preserve the structure
+            if isinstance(value, str) and len(value) > 0:
+                if len(value) <= 4:
+                    masked_headers[key] = "***"
+                else:
+                    # Show first 2 and last 2 characters for longer values
+                    masked_headers[key] = f"{value[:2]}***{value[-2:]}"
+            else:
+                masked_headers[key] = "***"
+        else:
+            # Keep non-sensitive headers as-is
+            masked_headers[key] = value
+
+    return masked_headers
+
+
+def mask_sensitive_data(
+    data: Dict[str, Any], sensitive_keys: list = None
+) -> Dict[str, Any]:
+    """
+    Recursively mask sensitive information in a dictionary.
+
+    Args:
+        data: Dictionary to mask
+        sensitive_keys: List of keys to mask (defaults to common sensitive keys)
+
+    Returns:
+        Dictionary with sensitive values masked
+    """
+    if sensitive_keys is None:
+        sensitive_keys = [
+            "password",
+            "passwd",
+            "pwd",
+            "secret",
+            "private",
+            "key",
+            "token",
+            "apikey",
+            "api_key",
+            "api-key",
+            "auth",
+            "authorization",
+            "bearer",
+            "session",
+            "sessionid",
+            "session-id",
+            "cookie",
+            "csrf",
+            "oauth",
+            "jwt",
+            "access-token",
+            "refresh-token",
+            "id-token",
+            "x-api-key",
+            "x-auth-token",
+            "x-access-token",
+            "x-csrf-token",
+            "x-enkrypt-api-key",
+            "x-enkrypt-gateway-key",
+        ]
+
+    if not isinstance(data, dict):
+        return data
+
+    masked_data = {}
+
+    for key, value in data.items():
+        key_lower = key.lower()
+
+        # Check if this key should be masked
+        should_mask = any(pattern in key_lower for pattern in sensitive_keys)
+
+        if should_mask:
+            if isinstance(value, str) and len(value) > 0:
+                if len(value) <= 4:
+                    masked_data[key] = "***"
+                else:
+                    masked_data[key] = f"{value[:2]}***{value[-2:]}"
+            else:
+                masked_data[key] = "***"
+        elif isinstance(value, dict):
+            # Recursively mask nested dictionaries
+            masked_data[key] = mask_sensitive_data(value, sensitive_keys)
+        elif isinstance(value, list):
+            # Mask items in lists
+            masked_data[key] = [
+                mask_sensitive_data(item, sensitive_keys)
+                if isinstance(item, dict)
+                else item
+                for item in value
+            ]
+        else:
+            masked_data[key] = value
+
+    return masked_data

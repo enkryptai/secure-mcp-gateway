@@ -119,7 +119,7 @@ class CacheStatusService:
             enkrypt_project_id = credentials.get("project_id", "not_provided")
             enkrypt_user_id = credentials.get("user_id", "not_provided")
 
-            gateway_config = self.auth_manager.get_local_mcp_config(
+            gateway_config = await self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
             )
 
@@ -364,7 +364,7 @@ class CacheStatusService:
             # Get local gateway config for tool definitions
             credentials = self.auth_manager.get_gateway_credentials(ctx)
             enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
-            local_gateway_config = self.auth_manager.get_local_mcp_config(
+            local_gateway_config = await self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key
             )
             if not local_gateway_config:
@@ -495,12 +495,17 @@ class CacheStatusService:
                 server_span.set_attribute("cache_hit", False)
                 needs_discovery = True
                 are_tools_explicitly_defined = False
+                explicit_tool_count = 0
 
                 if local_gateway_config:
                     local_server_info = get_server_info_by_name(
                         local_gateway_config, server_name
                     )
-                    if local_server_info and "tools" in local_server_info:
+                    if (
+                        local_server_info
+                        and isinstance(local_server_info.get("tools"), dict)
+                        and len(local_server_info.get("tools")) > 0
+                    ):
                         if IS_DEBUG_LOG_LEVEL:
                             sys_print(
                                 f"[get_cache_status] Server {server_name} tools are defined in the local gateway config",
@@ -508,6 +513,7 @@ class CacheStatusService:
                             )
                         are_tools_explicitly_defined = True
                         needs_discovery = False
+                        explicit_tool_count = len(local_server_info.get("tools", {}))
 
                 server_span.set_attribute(
                     "explicitly_defined", are_tools_explicitly_defined
@@ -515,7 +521,9 @@ class CacheStatusService:
                 server_span.set_attribute("needs_discovery", needs_discovery)
 
                 return {
-                    "tool_count": 0,
+                    "tool_count": explicit_tool_count
+                    if are_tools_explicitly_defined
+                    else 0,
                     "error": None,
                     "are_tools_explicitly_defined": are_tools_explicitly_defined,
                     "needs_discovery": needs_discovery,
@@ -543,6 +551,9 @@ class CacheStatusService:
             and isinstance(tools["tools"], list)
         ):
             return len(tools["tools"])
+        # Handle raw list of runtime Tool objects or dicts
+        elif isinstance(tools, list):
+            return len(tools)
         # Handle flat dictionary format
         elif isinstance(tools, dict):
             return len(tools)
