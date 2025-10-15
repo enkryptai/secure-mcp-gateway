@@ -1,0 +1,70 @@
+title Enkrypt Secure MCP Gateway Flow
+
+participant User
+participant "MCP Client" as Client
+participant LLM
+participant "MCP Gateway" as Gateway
+participant "EAI Guardrails" as Guardrails
+participant "MCP Server" as Server
+participant Tools
+
+parallel
+note over Client, LLM: === Client Layer ===
+note over Gateway, Guardrails: === EAI Layer ===
+note over Server, Tools: === Server Layer ===
+parallel off
+
+note over LLM: LLM operates in two main phases:\n1. Discovery - Finds available safe servers and tools.\n2. Execution - Executes the chosen tool through Gateway.
+
+# Discovery -------------------------
+
+User->Client: Discovery query
+Client->LLM: Discovery request
+
+LLM->Gateway: Discover all servers and tools
+Gateway->Server: Get server and tools info
+Server->Gateway: Return info
+Gateway->Guardrails: Validate servers and tools safety
+Guardrails->Gateway: Return validation result
+Gateway->LLM: Return list of safe servers and tools
+
+LLM->Client: Process list of servers and tools
+Client->User: Display list
+
+# Tool Query -------------------------
+
+User->Client: Send query
+Client->LLM: Send request
+
+LLM->LLM: Identify tool and server if required
+
+alt No tool required or no matching tool found
+    LLM->Client: Generate and return direct response
+    Client->User: Display LLM-only response
+else Tool required
+    LLM->Gateway: Request to execute tool
+
+    Gateway->Guardrails: Validate request safety
+    Guardrails->Gateway: Return validation result
+
+    alt Request blocked
+        Gateway->LLM: Return blocked request
+    else Request safe
+        Gateway->Server: Forward tool call
+        Server->Tools: Execute tool
+        Tools->Server: Return tool output
+        Server->Gateway: Send response
+        Gateway->Guardrails: Validate response safety
+        Guardrails->Gateway: Return validation result
+
+        alt Response blocked
+            Gateway->LLM: Return blocked response
+        else Response safe
+            Gateway->LLM: Return server response
+        end
+    end
+
+    LLM->Client: Process and send final output
+    Client->User: Display result
+end
+ 
