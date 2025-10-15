@@ -13,6 +13,11 @@ from mcp import ClientSession, StdioServerParameters
 # https://github.com/modelcontextprotocol/python-sdk/blob/main/src/mcp/client/stdio/__init__.py
 from mcp.client.stdio import stdio_client
 
+from secure_mcp_gateway.services.oauth.integration import (
+    inject_oauth_into_args,
+    inject_oauth_into_env,
+    prepare_oauth_for_server,
+)
 from secure_mcp_gateway.utils import get_common_config, logger
 from secure_mcp_gateway.version import __version__
 
@@ -205,6 +210,32 @@ async def get_server_metadata_only(server_name, gateway_config=None):
         f"[get_server_metadata_only] Getting metadata for server: {server_name}"
     )
 
+    # Prepare OAuth for this server if configured
+    # Extract project_id and mcp_config_id from gateway_config
+    project_id = gateway_config.get("project_id")
+    mcp_config_id = gateway_config.get("mcp_config_id")
+
+    oauth_data, oauth_error = await prepare_oauth_for_server(
+        server_name=server_name,
+        server_entry=server_entry,
+        config_id=mcp_config_id,
+        project_id=project_id,
+    )
+
+    if oauth_error:
+        logger.error(
+            f"[get_server_metadata_only] OAuth preparation failed for {server_name}: {oauth_error}"
+        )
+        # Continue without OAuth - let the server handle authentication failure
+    elif oauth_data:
+        logger.info(
+            f"[get_server_metadata_only] OAuth configured for {server_name}, injecting credentials"
+        )
+        # Inject OAuth environment variables
+        env = inject_oauth_into_env(env, oauth_data)
+        # Inject OAuth header arguments for remote servers
+        command_args = inject_oauth_into_args(command_args, oauth_data)
+
     if IS_DEBUG_LOG_LEVEL:
         logger.debug(f"[get_server_metadata_only] Command: {command}")
         logger.debug(f"[get_server_metadata_only] Command args: {command_args}")
@@ -298,6 +329,32 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
     logger.info(
         f"[forward_tool_call] Starting tool call for server: {server_name} and tool: {tool_name}"
     )
+
+    # Prepare OAuth for this server if configured
+    # Extract project_id and mcp_config_id from gateway_config
+    project_id = gateway_config.get("project_id")
+    mcp_config_id = gateway_config.get("mcp_config_id")
+
+    oauth_data, oauth_error = await prepare_oauth_for_server(
+        server_name=server_name,
+        server_entry=server_entry,
+        config_id=mcp_config_id,
+        project_id=project_id,
+    )
+
+    if oauth_error:
+        logger.error(
+            f"[forward_tool_call] OAuth preparation failed for {server_name}: {oauth_error}"
+        )
+        # Continue without OAuth - let the server handle authentication failure
+    elif oauth_data:
+        logger.info(
+            f"[forward_tool_call] OAuth configured for {server_name}, injecting credentials"
+        )
+        # Inject OAuth environment variables
+        env = inject_oauth_into_env(env, oauth_data)
+        # Inject OAuth header arguments for remote servers
+        command_args = inject_oauth_into_args(command_args, oauth_data)
 
     if IS_DEBUG_LOG_LEVEL:
         logger.debug(f"[forward_tool_call] Command: {command}")

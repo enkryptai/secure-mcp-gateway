@@ -528,13 +528,45 @@ class SecureToolExecutionService:
         logger,
     ):
         """Execute tools with comprehensive guardrail checks."""
-        server_config = get_server_info_by_name(
-            self.auth_manager.get_session_gateway_config(session_key), server_name
-        )["config"]
+        gateway_config = self.auth_manager.get_session_gateway_config(session_key)
+        server_info = get_server_info_by_name(gateway_config, server_name)
+        server_config = server_info["config"]
 
         server_command = server_config["command"]
         server_args = server_config["args"]
         server_env = server_config.get("env", None)
+
+        # OAuth Integration: Inject OAuth headers for remote servers
+        from secure_mcp_gateway.services.oauth.integration import (
+            inject_oauth_into_args,
+            inject_oauth_into_env,
+            prepare_oauth_for_server,
+        )
+
+        # Extract project_id and mcp_config_id from gateway_config
+        project_id = gateway_config.get("project_id")
+        mcp_config_id = gateway_config.get("mcp_config_id")
+
+        oauth_data, oauth_error = await prepare_oauth_for_server(
+            server_name=server_name,
+            server_entry=server_info,
+            config_id=mcp_config_id,
+            project_id=project_id,
+        )
+
+        if oauth_error:
+            logger.error(
+                f"[_execute_tools_with_guardrails] OAuth preparation failed for {server_name}: {oauth_error}"
+            )
+            # Continue without OAuth - let the server handle authentication failure
+        elif oauth_data:
+            logger.info(
+                f"[_execute_tools_with_guardrails] OAuth configured for {server_name}, injecting credentials"
+            )
+            # Inject OAuth environment variables
+            server_env = inject_oauth_into_env(server_env, oauth_data)
+            # Inject OAuth header arguments for remote servers
+            server_args = inject_oauth_into_args(server_args, oauth_data)
 
         logger.info(
             f"[secure_call_tools] Starting secure batch call for {len(tool_calls)} tools for server: {server_name}"
@@ -1250,23 +1282,6 @@ class SecureToolExecutionService:
         output_relevancy_response = {}
         output_adherence_response = {}
         output_hallucination_response = {}
-
-        # Debug: Check if output policy is enabled
-        logger.debug(
-            f"[DEBUG] output_policy_enabled: {guardrails_config.get('output_policy_enabled', 'NOT_SET')}"
-        )
-        logger.debug(
-            f"[DEBUG] guardrails_config keys: {list(guardrails_config.keys())}"
-        )
-        logger.debug(
-            f"[DEBUG] relevancy: {guardrails_config.get('relevancy', 'NOT_SET')}"
-        )
-        logger.debug(
-            f"[DEBUG] adherence: {guardrails_config.get('adherence', 'NOT_SET')}"
-        )
-        logger.debug(
-            f"[DEBUG] hallucination: {guardrails_config.get('hallucination', 'NOT_SET')}"
-        )
 
         # Get output guardrail from manager
         output_guardrail = self.guardrail_manager.get_output_guardrail(

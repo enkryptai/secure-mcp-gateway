@@ -94,10 +94,10 @@ def save_config(config_path, config):
     try:
         # Create backup before saving
         if os.path.exists(config_path):
-            backup_path = (
-                f"{config_path}.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            )
+            backup_filename = f"{os.path.basename(config_path)}.bkp.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            backup_path = os.path.join(os.path.dirname(config_path), backup_filename)
             shutil.copy2(config_path, backup_path)
+            logger.info(f"Backup created at {backup_path}")
 
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
         with open(config_path, "w") as f:
@@ -252,8 +252,6 @@ def generate_default_config():
     config = {
         "common_mcp_gateway_config": {
             "enkrypt_log_level": "INFO",
-            "enkrypt_base_url": "https://api.enkryptai.com",
-            "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
             "enkrypt_use_remote_mcp_config": False,
             "enkrypt_remote_mcp_gateway_name": "enkrypt-secure-mcp-gateway-1",
             "enkrypt_remote_mcp_gateway_version": "v1",
@@ -283,13 +281,7 @@ def generate_default_config():
             },
         },
         "plugins": {
-            "auth": {
-                "provider": "enkrypt",
-                "config": {
-                    "api_key": "YOUR_ENKRYPT_API_KEY",
-                    "base_url": "https://api.enkryptai.com",
-                },
-            },
+            "auth": {"provider": "local_apikey", "config": {}},
             "guardrails": {
                 "provider": "enkrypt",
                 "config": {
@@ -300,7 +292,6 @@ def generate_default_config():
             "telemetry": {
                 "provider": "opentelemetry",
                 "config": {
-                    "enabled": False,
                     "url": "http://localhost:4317",
                     "insecure": True,
                 },
@@ -314,12 +305,48 @@ def generate_default_config():
                         "server_name": "echo_server",
                         "description": "Simple Echo Server",
                         "config": {"command": "python", "args": [ECHO_SERVER_PATH]},
+                        "oauth_config": {
+                            "enabled": False,
+                            "is_remote": False,
+                            "OAUTH_VERSION": "2.1",
+                            "OAUTH_GRANT_TYPE": "client_credentials",
+                            "OAUTH_CLIENT_ID": "your-client-id",
+                            "OAUTH_CLIENT_SECRET": "your-client-secret",
+                            "OAUTH_TOKEN_URL": "https://auth.example.com/oauth/token",
+                            "OAUTH_AUDIENCE": "https://api.example.com",
+                            "OAUTH_ORGANIZATION": "your-org-id",
+                            "OAUTH_SCOPE": "read write",
+                            "OAUTH_RESOURCE": "https://resource.example.com",
+                            "OAUTH_TOKEN_EXPIRY_BUFFER": 300,
+                            "OAUTH_USE_BASIC_AUTH": True,
+                            "OAUTH_ENFORCE_HTTPS": True,
+                            "OAUTH_TOKEN_IN_HEADER_ONLY": True,
+                            "OAUTH_VALIDATE_SCOPES": True,
+                            "OAUTH_USE_MTLS": False,
+                            "OAUTH_CLIENT_CERT_PATH": None,
+                            "OAUTH_CLIENT_KEY_PATH": None,
+                            "OAUTH_CA_BUNDLE_PATH": None,
+                            "OAUTH_REVOCATION_URL": None,
+                            "OAUTH_ADDITIONAL_PARAMS": {},
+                            "OAUTH_CUSTOM_HEADERS": {},
+                        },
                         "tools": {},
+                        "enable_tool_guardrails": True,
                         "input_guardrails_policy": {
                             "enabled": False,
                             "policy_name": "Sample Airline Guardrail",
                             "additional_config": {"pii_redaction": False},
-                            "block": ["policy_violation"],
+                            "block": [
+                                "policy_violation",
+                                "injection_attack",
+                                "topic_detector",
+                                "nsfw",
+                                "toxicity",
+                                "pii",
+                                "keyword_detector",
+                                "bias",
+                                "sponge_attack",
+                            ],
                         },
                         "output_guardrails_policy": {
                             "enabled": False,
@@ -329,7 +356,17 @@ def generate_default_config():
                                 "hallucination": False,
                                 "adherence": False,
                             },
-                            "block": ["policy_violation"],
+                            "block": [
+                                "policy_violation",
+                                "injection_attack",
+                                "topic_detector",
+                                "nsfw",
+                                "toxicity",
+                                "pii",
+                                "keyword_detector",
+                                "bias",
+                                "sponge_attack",
+                            ],
                         },
                     }
                 ],
@@ -2232,9 +2269,8 @@ def system_reset(config_path, confirm=False):
         sys.exit(1)
 
     # Create backup before reset
-    backup_file = (
-        f"{config_path}.backup.before_reset.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    )
+    backup_filename = f"{os.path.basename(config_path)}.bkp.before_reset.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    backup_file = os.path.join(os.path.dirname(config_path), backup_filename)
     if os.path.exists(config_path):
         shutil.copy2(config_path, backup_file)
         logger.info(f"Backup created: {backup_file}")
@@ -2378,6 +2414,11 @@ def main():
     # generate-config subcommand
     gen_config_parser = subparsers.add_parser(
         "generate-config", help="Generate a new default config file"
+    )
+    gen_config_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing config file if it exists",
     )
 
     # install subcommand
@@ -3296,15 +3337,31 @@ def main():
     # ORIGINAL COMMAND HANDLING
     # =========================================================================
     elif args.command == "generate-config":
-        if os.path.exists(PICKED_CONFIG_PATH):
+        if os.path.exists(PICKED_CONFIG_PATH) and not args.overwrite:
             logger.error(f"Config file already exists at {PICKED_CONFIG_PATH}.")
             logger.error(
                 "Not overwriting. Please run install to install on Claude Desktop or Cursor.",
             )
             logger.info(
-                "If you want to start fresh, delete the config file and run again.",
+                "If you want to start fresh, delete the config file and run again, or use --overwrite flag.",
             )
             sys.exit(1)
+
+        if os.path.exists(PICKED_CONFIG_PATH) and args.overwrite:
+            # Create backup before overwriting
+            backup_filename = f"{os.path.basename(PICKED_CONFIG_PATH)}.bkp.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            backup_path = os.path.join(
+                os.path.dirname(PICKED_CONFIG_PATH), backup_filename
+            )
+            try:
+                shutil.copy2(PICKED_CONFIG_PATH, backup_path)
+                logger.info(f"Backup created at {backup_path}")
+                logger.info(
+                    f"Overwriting existing config file at {PICKED_CONFIG_PATH}..."
+                )
+            except Exception as e:
+                logger.error(f"Error creating backup: {e}")
+                sys.exit(1)
 
         os.makedirs(os.path.dirname(PICKED_CONFIG_PATH), exist_ok=True)
         if os.name == "posix":

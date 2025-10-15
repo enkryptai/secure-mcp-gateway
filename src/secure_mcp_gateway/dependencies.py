@@ -18,4 +18,5 @@ __dependencies__ = [
     "opentelemetry-instrumentation>=0.55b1",
     "opentelemetry-instrumentation-requests>=0.55b1",
     "structlog>=25.4.0",
+    "tenacity>=8.2.0",  # Retry logic with exponential backoff
 ]

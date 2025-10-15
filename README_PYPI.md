@@ -4,9 +4,11 @@ A secure gateway for Model Control Protocol (MCP) that enables safe and controll
 
 ```bash
 pip install secure-mcp-gateway
+
 ```
 
 For documentation and usage instructions, please visit our GitHub repository:
+
 **[https://github.com/enkryptai/secure-mcp-gateway](https://github.com/enkryptai/secure-mcp-gateway)**
 
 ## License
@@ -18,7 +20,9 @@ This project's core functionality is licensed under the MIT License.
 <!-- In addition to the MIT License, the following additional terms apply:
 
 - You can freely use, modify, and distribute this software as part of your commercial product
+
 - You can use this as part of your commercial product if your product is not an MCP gateway or gateway-based service
+
 - You cannot sell this gateway as a standalone product -->
 
 For the full license text, see the `LICENSE.txt` file in the repository.

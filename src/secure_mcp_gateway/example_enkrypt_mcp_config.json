@@ -57,9 +57,32 @@
           "description": "Dummy Echo Server",
           "config": {
             "command": "python",
-            "args": [
-              "PATH_TO_YOUR_ECHO_MCP_FILE"
-            ]
+            "args": ["PATH_TO_YOUR_ECHO_MCP_FILE"]
+          },
+          "oauth_config": {
+            "enabled": false,
+            "is_remote": false,
+            "OAUTH_VERSION": "2.1",
+            "OAUTH_GRANT_TYPE": "client_credentials",
+            "OAUTH_CLIENT_ID": "your-client-id",
+            "OAUTH_CLIENT_SECRET": "your-client-secret",
+            "OAUTH_TOKEN_URL": "https://auth.example.com/oauth/token",
+            "OAUTH_AUDIENCE": "https://api.example.com",
+            "OAUTH_ORGANIZATION": "your-org-id",
+            "OAUTH_SCOPE": "read write",
+            "OAUTH_RESOURCE": "https://resource.example.com",
+            "OAUTH_TOKEN_EXPIRY_BUFFER": 300,
+            "OAUTH_USE_BASIC_AUTH": true,
+            "OAUTH_ENFORCE_HTTPS": true,
+            "OAUTH_TOKEN_IN_HEADER_ONLY": true,
+            "OAUTH_VALIDATE_SCOPES": true,
+            "OAUTH_USE_MTLS": false,
+            "OAUTH_CLIENT_CERT_PATH": null,
+            "OAUTH_CLIENT_KEY_PATH": null,
+            "OAUTH_CA_BUNDLE_PATH": null,
+            "OAUTH_REVOCATION_URL": null,
+            "OAUTH_ADDITIONAL_PARAMS": {},
+            "OAUTH_CUSTOM_HEADERS": {}
           },
           "tools": {},
           "enable_tool_guardrails": true,
@@ -109,9 +132,7 @@
     "UNIQUE_PROJECT_ID": {
       "project_name": "default_project",
       "mcp_config_id": "UNIQUE_MCP_CONFIG_ID",
-      "users": [
-        "UNIQUE_USER_ID"
-      ],
+      "users": ["UNIQUE_USER_ID"],
       "created_at": "2025-01-01T00:00:00.000000"
     }
   },

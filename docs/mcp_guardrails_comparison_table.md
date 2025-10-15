@@ -4,8 +4,8 @@
 
 AI security requires multiple complementary layers. This comparison shows the progression from basic LLM safety to comprehensive MCP tool-level protection:
 
-**Layer 1:** Basic LLM Model Safety (no external guardrails)  
-**Layer 2:** LLM Endpoint Security (Enkrypt AI Deployments + Secure AI Proxy)  
+**Layer 1:** Basic LLM Model Safety (no external guardrails)
+**Layer 2:** LLM Endpoint Security (Enkrypt AI Deployments + Secure AI Proxy)
 **Layer 3:** MCP Tool Execution Security (Enkrypt Secure MCP Gateway)
 
 ---
@@ -62,13 +62,19 @@ AI security requires multiple complementary layers. This comparison shows the pr
 ## Real-World Scenarios Requiring Each Layer
 
 ### When LLM Endpoint Guardrails (Enkrypt Deployments) Are Essential:
+
 - Need to secure LLM API calls with authentication, PII redaction, and prompt injection detection
+
 - Want unified guardrails across multiple LLM providers (OpenAI, Azure, AWS Bedrock)
+
 - Require monitoring and audit trails for LLM usage
+
 - Need to enforce organizational policies on LLM inputs/outputs
+
 - Want to detect hallucinations, ensure adherence, and validate relevancy
 
 ### When MCP Gateway Guardrails Are Essential (Additional Requirements):
+
 | Scenario | Why MCP Gateway Required |
 |----------|-------------------------|
 | **Cursor Subscription Users** | Keep included models (GPT-4, Claude) without adding custom API keys. Use native models + MCP Gateway for tool-level security. |
@@ -86,6 +92,7 @@ AI security requires multiple complementary layers. This comparison shows the pr
 ## The Complete Security Architecture
 
 ```
+
 ┌─────────────────────────────────────────────────────┐
 │ User Query (potentially malicious)                  │
 └────────────────────┬────────────────────────────────┘
@@ -130,6 +137,7 @@ AI security requires multiple complementary layers. This comparison shows the pr
 │ MCP Server → Tool Execution                         │
 │ (Protected by both LLM and MCP layers)             │
 └─────────────────────────────────────────────────────┘
+
 ```
 
 ---
@@ -137,30 +145,49 @@ AI security requires multiple complementary layers. This comparison shows the pr
 ## Key Takeaways
 
 ### ✓ LLM Endpoint Guardrails (Enkrypt Deployments) Provide:
+
 - **Detection and prevention** at the LLM API level
+
 - Authentication, PII redaction, prompt injection detection
+
 - Monitoring and policy enforcement for LLM inputs/outputs
+
 - Protection against LLM-specific threats (hallucination, toxicity, bias)
+
 - **Essential first layer** of defense
 
 ### ✓✓ MCP Gateway Guardrails (Enkrypt MCP Gateway) Add:
+
 - **Enforcement at the tool execution point** - blocks malicious actions
+
 - Tool-level authorization and allowlisting per user/project
+
 - Parameter validation preventing command injection, path traversal
+
 - Tool integrity verification through cryptographic signing
+
 - Protection against MCP-specific threats (tool poisoning, OAuth bypass)
+
 - **The only security layer that can actually prevent tools from executing**
 
 ### Bottom Line:
+
 **Both layers are essential and complementary:**
+
 - **LLM Endpoint Guardrails** secure what the LLM generates and processes
+
 - **MCP Gateway Guardrails** secure what tools actually execute
+
 - You need **both** because they protect different attack surfaces
+
 - **LLM guardrails detect threats; MCP guardrails enforce prevention**
 
 **In locked/subscription environments (Cursor with included models):**
+
 - Cannot add custom LLM endpoints → LLM endpoint guardrails may not be an option
+
 - **MCP Gateway becomes the ONLY way to add security without losing subscription benefits**
+
 - Works transparently with native models while adding comprehensive tool-level protection
 
 **Research shows:** 86% of LLM apps compromised despite guardrails, 43% of MCP servers vulnerable to RCE. Defense-in-depth with both layers is not optional—it's mandatory for production security.
