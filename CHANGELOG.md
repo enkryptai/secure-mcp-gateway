@@ -8,7 +8,7 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 
 - Updated telemetry plugin to use the new telemetry conf
 - Tool guardrails
-- Standardized error handling
+- Standardized logging and error handling
 - Added request timeout settings
 - Added support for parallel processing
 - Standardized sync async usage
