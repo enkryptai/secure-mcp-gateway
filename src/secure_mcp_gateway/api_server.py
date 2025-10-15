@@ -58,11 +58,11 @@ from secure_mcp_gateway.utils import (
     CONFIG_PATH,
     DOCKER_CONFIG_PATH,
     is_docker,
-    sys_print,
+    logger,
 )
 from secure_mcp_gateway.version import __version__
 
-sys_print(f"Initializing Enkrypt Secure MCP Gateway REST API Server v{__version__}")
+logger.info(f"Initializing Enkrypt Secure MCP Gateway REST API Server v{__version__}")
 
 # Configuration
 is_docker_running = is_docker()
@@ -437,8 +437,8 @@ async def global_exception_handler(request, exc):
     # Log the error
     error_logger.log_error(error)
 
-    sys_print(f"Unhandled exception: {exc}", is_error=True)
-    sys_print(f"Traceback: {traceback.format_exc()}", is_error=True)
+    logger.error(f"Unhandled exception: {exc}")
+    logger.error(f"Traceback: {traceback.format_exc()}")
 
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1022,10 +1022,7 @@ try:
 
     app.include_router(additional_routes)
 except Exception as e:
-    sys_print(
-        f"[api_server] Skipping additional routes due to import error: {e}",
-        is_error=True,
-    )
+    logger.error(f"[api_server] Skipping additional routes due to import error: {e}")
 
 # =============================================================================
 # MAIN FUNCTION
@@ -1034,9 +1031,9 @@ except Exception as e:
 
 def main():
     """Run the API server."""
-    sys_print("Starting Enkrypt Secure MCP Gateway REST API Server")
-    sys_print(f"Config path: {PICKED_CONFIG_PATH}")
-    sys_print("API documentation available at: http://localhost:8001/docs")
+    logger.info("Starting Enkrypt Secure MCP Gateway REST API Server")
+    logger.info(f"Config path: {PICKED_CONFIG_PATH}")
+    logger.info("API documentation available at: http://localhost:8001/docs")
 
     uvicorn.run(
         "secure_mcp_gateway.api_server:app",

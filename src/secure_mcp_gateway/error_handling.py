@@ -14,7 +14,7 @@ from .exceptions import (
     MCPGatewayError,
     RecoveryStrategy,
 )
-from .utils import sys_print
+from .utils import logger
 
 
 class ErrorRecoveryManager:
@@ -110,10 +110,8 @@ class ErrorRecoveryManager:
                 else:
                     delay = base_delay
 
-                sys_print(
-                    f"[ErrorRecovery] Retry attempt {attempt + 1}/{max_attempts} "
-                    f"after {delay}s delay. Error: {e}",
-                    is_error=True,
+                logger.error(
+                    f"[ErrorRecovery] Retry attempt {attempt + 1}/{max_attempts} after {delay}s delay. Error: {e}"
                 )
 
                 await asyncio.sleep(delay)
@@ -133,10 +131,7 @@ class ErrorRecoveryManager:
             return await operation(**kwargs)
         except Exception as e:
             if any(isinstance(e, error_type) for error_type in error_types):
-                sys_print(
-                    f"[ErrorRecovery] Operation failed, using fallback: {e}",
-                    is_error=True,
-                )
+                logger.error(f"[ErrorRecovery] Operation failed, using fallback: {e}")
                 # Return fallback result (this would need to be configured per operation)
                 return None
             else:
@@ -154,10 +149,7 @@ class ErrorRecoveryManager:
             return await operation(**kwargs)
         except Exception as e:
             if any(isinstance(e, error_type) for error_type in error_types):
-                sys_print(
-                    f"[ErrorRecovery] Operation failed, failing open: {e}",
-                    is_error=True,
-                )
+                logger.error(f"[ErrorRecovery] Operation failed, failing open: {e}")
                 # Return safe default (allow operation to continue)
                 return True
             else:
@@ -175,10 +167,7 @@ class ErrorRecoveryManager:
             return await operation(**kwargs)
         except Exception as e:
             if any(isinstance(e, error_type) for error_type in error_types):
-                sys_print(
-                    f"[ErrorRecovery] Operation failed, failing closed: {e}",
-                    is_error=True,
-                )
+                logger.error(f"[ErrorRecovery] Operation failed, failing closed: {e}")
                 # Block operation
                 return False
             else:
@@ -308,7 +297,7 @@ class ErrorMonitor:
             f"Recovery Strategy: {error.recovery_strategy.value}"
         )
 
-        sys_print(alert_message, is_error=True)
+        logger.critical(alert_message)
 
         # In a production system, this would send to monitoring service
         # For now, we just log it

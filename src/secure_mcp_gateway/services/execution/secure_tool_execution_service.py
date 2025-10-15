@@ -28,8 +28,8 @@ from secure_mcp_gateway.utils import (
     generate_custom_id,
     get_common_config,
     get_server_info_by_name,
+    logger,
     mask_key,
-    sys_print,
 )
 
 
@@ -93,7 +93,7 @@ class SecureToolExecutionService:
             main_span.set_attribute("request_id", ctx.request_id)
             main_span.set_attribute("custom_id", custom_id)
 
-            sys_print(
+            logger.info(
                 f"[secure_call_tools] Starting secure batch execution for {num_tool_calls} tools for server: {server_name}"
             )
             logger.info(
@@ -106,7 +106,7 @@ class SecureToolExecutionService:
             )
 
             if num_tool_calls == 0:
-                sys_print(
+                logger.info(
                     "[secure_call_tools] No tools provided. Treating this as a discovery call"
                 )
                 logger.info(
@@ -185,9 +185,8 @@ class SecureToolExecutionService:
             except Exception as e:
                 main_span.record_exception(e)
                 main_span.set_attribute("error", str(e))
-                sys_print(
-                    f"[secure_call_tools] Critical error during batch execution: {e}",
-                    is_error=True,
+                logger.error(
+                    f"[secure_call_tools] Critical error during batch execution: {e}"
                 )
                 traceback.print_exc(file=sys.stderr)
                 logger.error(
@@ -280,7 +279,7 @@ class SecureToolExecutionService:
                     result = await enkrypt_authenticate(ctx)
                     if result.get("status") != "success":
                         auth_span.set_attribute("error", "Authentication failed")
-                        sys_print("[get_server_info] Not authenticated", is_error=True)
+                        logger.error("[get_server_info] Not authenticated")
                         logger.error(
                             "secure_tool_execution.execute_secure_tools.not_authenticated",
                             extra=build_log_extra(ctx, custom_id, server_name),
@@ -318,9 +317,8 @@ class SecureToolExecutionService:
                 auth_span.set_attribute(
                     "error", f"Server '{server_name}' not available"
                 )
-                sys_print(
+                logger.warning(
                     f"[secure_call_tools] Server '{server_name}' not available",
-                    is_error=True,
                 )
                 logger.warning(
                     "secure_tool_execution.execute_secure_tools.server_not_available",
@@ -357,12 +355,8 @@ class SecureToolExecutionService:
         output_guardrails_policy = server_info["output_guardrails_policy"]
 
         if self.IS_DEBUG_LOG_LEVEL:
-            sys_print(
-                f"Input Guardrails Policy: {input_guardrails_policy}", is_debug=True
-            )
-            sys_print(
-                f"Output Guardrails Policy: {output_guardrails_policy}", is_debug=True
-            )
+            logger.debug(f"Input Guardrails Policy: {input_guardrails_policy}")
+            logger.debug(f"Output Guardrails Policy: {output_guardrails_policy}")
 
         input_policy_enabled = input_guardrails_policy["enabled"]
         output_policy_enabled = output_guardrails_policy["enabled"]
@@ -419,9 +413,8 @@ class SecureToolExecutionService:
             discovery_span.set_attribute("has_cached_tools", bool(server_config_tools))
 
             if self.IS_DEBUG_LOG_LEVEL:
-                sys_print(
-                    f"[secure_call_tools] Server config tools before discovery: {server_config_tools}",
-                    is_debug=True,
+                logger.debug(
+                    f"[secure_call_tools] Server config tools before discovery: {server_config_tools}"
                 )
 
             if not server_config_tools:
@@ -444,7 +437,7 @@ class SecureToolExecutionService:
                         "secure_tool_execution.execute_secure_tools.server_config_tools_after_get_cached_tools",
                         extra=build_log_extra(ctx, custom_id, server_name),
                     )
-                    sys_print(
+                    logger.info(
                         f"[enkrypt_secure_call_tools] Found cached tools for {server_name}"
                     )
                 else:
@@ -496,9 +489,8 @@ class SecureToolExecutionService:
                             )
 
                         if self.IS_DEBUG_LOG_LEVEL:
-                            sys_print(
-                                f"[enkrypt_secure_call_tools] Discovered tools: {server_config_tools}",
-                                is_debug=True,
+                            logger.debug(
+                                f"[enkrypt_secure_call_tools] Discovered tools: {server_config_tools}"
                             )
                             logger.info(
                                 "secure_tool_execution.execute_secure_tools.discovered_tools",
@@ -517,9 +509,7 @@ class SecureToolExecutionService:
                                 ctx, custom_id, server_name, error=str(e)
                             ),
                         )
-                        sys_print(
-                            f"[enkrypt_secure_call_tools] Exception: {e}", is_error=True
-                        )
+                        logger.error(f"[enkrypt_secure_call_tools] Exception: {e}")
                         traceback.print_exc(file=sys.stderr)
                         return None
 
@@ -546,7 +536,7 @@ class SecureToolExecutionService:
         server_args = server_config["args"]
         server_env = server_config.get("env", None)
 
-        sys_print(
+        logger.info(
             f"[secure_call_tools] Starting secure batch call for {len(tool_calls)} tools for server: {server_name}"
         )
         logger.info(
@@ -557,9 +547,8 @@ class SecureToolExecutionService:
         )
 
         if self.IS_DEBUG_LOG_LEVEL:
-            sys_print(
-                f"[secure_call_tools] Using command: {server_command} with args: {server_args}",
-                is_debug=True,
+            logger.debug(
+                f"[secure_call_tools] Using command: {server_command} with args: {server_args}"
             )
             logger.info(
                 "secure_tool_execution.execute_secure_tools.using_command",
@@ -574,7 +563,7 @@ class SecureToolExecutionService:
         async with self.tool_execution_service.open_session(
             {"command": server_command, "args": server_args, "env": server_env}
         ) as session:
-            sys_print(
+            logger.info(
                 f"[secure_call_tools] Session initialized successfully for {server_name}"
             )
             logger.info(
@@ -667,7 +656,7 @@ class SecureToolExecutionService:
                         },
                     }
 
-                sys_print(
+                logger.info(
                     f"[secure_call_tools] Processing call {i}: {tool_name} with args: {args}"
                 )
                 logger.info(
@@ -826,9 +815,8 @@ class SecureToolExecutionService:
                 tool_span.record_exception(tool_error)
                 tool_span.set_attribute("error", str(tool_error))
                 tool_span.set_attribute("correlation_id", context.correlation_id)
-                sys_print(
-                    f"[secure_call_tools] Error in call {i} ({tool_name}): {tool_error}",
-                    is_error=True,
+                logger.error(
+                    f"[secure_call_tools] Error in call {i} ({tool_name}): {tool_error}"
                 )
                 traceback.print_exc(file=sys.stderr)
                 logger.error(
@@ -869,9 +857,8 @@ class SecureToolExecutionService:
             )
             if not valid_format:
                 validate_span.set_attribute("error", "Unknown tool format")
-                sys_print(
-                    f"[secure_call_tools] Unknown tool format: {type(server_config_tools)}",
-                    is_error=True,
+                logger.error(
+                    f"[secure_call_tools] Unknown tool format: {type(server_config_tools)}"
                 )
                 from secure_mcp_gateway.error_handling import create_error_response
                 from secure_mcp_gateway.exceptions import (
@@ -895,9 +882,8 @@ class SecureToolExecutionService:
             validate_span.set_attribute("tool_found", tool_found)
             if not tool_found:
                 validate_span.set_attribute("error", "Tool not found")
-                sys_print(
-                    f"[enkrypt_secure_call_tools] Tool '{tool_name}' not found for this server.",
-                    is_error=True,
+                logger.error(
+                    f"[enkrypt_secure_call_tools] Tool '{tool_name}' not found for this server."
                 )
                 from secure_mcp_gateway.error_handling import create_error_response
                 from secure_mcp_gateway.exceptions import (
@@ -946,7 +932,7 @@ class SecureToolExecutionService:
             )
             input_span.set_attribute("tool_name", tool_name)
 
-            sys_print(
+            logger.info(
                 f"[secure_call_tools] Call {i} : Input guardrails enabled for {tool_name} of server {server_name}"
             )
             logger.info(
@@ -1039,9 +1025,8 @@ class SecureToolExecutionService:
 
             # Check if blocked
             if guardrail_response is None:
-                sys_print(
-                    f"[secure_call_tools] Call {i}: Guardrail validation failed (None response) for {tool_name} of server {server_name}",
-                    is_error=True,
+                logger.error(
+                    f"[secure_call_tools] Call {i}: Guardrail validation failed (None response) for {tool_name} of server {server_name}"
                 )
                 # Create standardized error for guardrail validation failure
                 from secure_mcp_gateway.error_handling import error_logger
@@ -1077,7 +1062,7 @@ class SecureToolExecutionService:
                 input_span.set_attribute(
                     "error", f"Input violations: {violation_types}"
                 )
-                sys_print(
+                logger.info(
                     f"[secure_call_tools] Call {i}: Blocked due to input guardrail violations: {violation_types} for {tool_name} of server {server_name}"
                 )
                 logger.info(
@@ -1149,7 +1134,7 @@ class SecureToolExecutionService:
             exec_span.set_attribute("tool_name", tool_name)
             exec_span.set_attribute("async_guardrails", False)
 
-            sys_print(
+            logger.info(
                 f"[secure_call_tools] Call {i}: Input guardrails not enabled for {tool_name} of server {server_name}"
             )
             logger.info(
@@ -1252,7 +1237,7 @@ class SecureToolExecutionService:
         logger,
     ):
         """Process output guardrails synchronously."""
-        sys_print(
+        logger.info(
             f"[secure_call_tools] Call {i}: Starting sync output guardrails for {tool_name} of server {server_name}"
         )
         logger.info(
@@ -1267,25 +1252,20 @@ class SecureToolExecutionService:
         output_hallucination_response = {}
 
         # Debug: Check if output policy is enabled
-        sys_print(
-            f"[DEBUG] output_policy_enabled: {guardrails_config.get('output_policy_enabled', 'NOT_SET')}",
-            is_debug=True,
+        logger.debug(
+            f"[DEBUG] output_policy_enabled: {guardrails_config.get('output_policy_enabled', 'NOT_SET')}"
         )
-        sys_print(
-            f"[DEBUG] guardrails_config keys: {list(guardrails_config.keys())}",
-            is_debug=True,
+        logger.debug(
+            f"[DEBUG] guardrails_config keys: {list(guardrails_config.keys())}"
         )
-        sys_print(
-            f"[DEBUG] relevancy: {guardrails_config.get('relevancy', 'NOT_SET')}",
-            is_debug=True,
+        logger.debug(
+            f"[DEBUG] relevancy: {guardrails_config.get('relevancy', 'NOT_SET')}"
         )
-        sys_print(
-            f"[DEBUG] adherence: {guardrails_config.get('adherence', 'NOT_SET')}",
-            is_debug=True,
+        logger.debug(
+            f"[DEBUG] adherence: {guardrails_config.get('adherence', 'NOT_SET')}"
         )
-        sys_print(
-            f"[DEBUG] hallucination: {guardrails_config.get('hallucination', 'NOT_SET')}",
-            is_debug=True,
+        logger.debug(
+            f"[DEBUG] hallucination: {guardrails_config.get('hallucination', 'NOT_SET')}"
         )
 
         # Get output guardrail from manager
@@ -1334,7 +1314,7 @@ class SecureToolExecutionService:
                 output_span.set_attribute(
                     "error", f"Output violations: {violation_types}"
                 )
-                sys_print(
+                logger.info(
                     f"[secure_call_tools] Call {i}: Blocked due to output violations: {violation_types}"
                 )
                 logger.info(
@@ -1419,7 +1399,7 @@ class SecureToolExecutionService:
         logger,
     ):
         """Process output guardrails asynchronously."""
-        sys_print(
+        logger.info(
             f"[secure_call_tools] Call {i}: Starting async output guardrails for {tool_name} of server {server_name}"
         )
         logger.info(
@@ -1590,7 +1570,7 @@ class SecureToolExecutionService:
         logger,
     ):
         """Build a successful result."""
-        sys_print(
+        logger.info(
             f"[secure_call_tools] Call {i}: Completed successfully for {tool_name} of server {server_name}"
         )
         logger.info(
@@ -1636,7 +1616,7 @@ class SecureToolExecutionService:
         blocked_calls = len([r for r in results if r["status"].startswith("blocked")])
         failed_calls = len([r for r in results if r["status"] == "error"])
 
-        sys_print(
+        logger.info(
             f"[secure_call_tools] Batch execution completed: {successful_calls} successful, {blocked_calls} blocked, {failed_calls} failed"
         )
         logger.info(

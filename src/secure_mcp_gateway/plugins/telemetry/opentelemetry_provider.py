@@ -8,8 +8,10 @@ import os
 import socket
 import sys
 
-# Avoid circular import by defining sys_print locally
+# Avoid circular import; we'll use a module-local logger
 import sys as python_sys
+
+logger = logging.getLogger("enkrypt.telemetry")
 from typing import Any
 from urllib.parse import urlparse
 
@@ -34,16 +36,6 @@ from secure_mcp_gateway.consts import (
 )
 from secure_mcp_gateway.plugins.telemetry.base import TelemetryProvider, TelemetryResult
 from secure_mcp_gateway.version import __version__
-
-
-def sys_print(message: str, is_error: bool = False, is_debug: bool = False):
-    """Local sys_print to avoid circular imports."""
-    if is_error:
-        print(f"[ERROR] {message}", file=python_sys.stderr)
-    elif is_debug:
-        print(f"[DEBUG] {message}", file=python_sys.stderr)
-    else:
-        print(message, file=python_sys.stderr)
 
 
 class OpenTelemetryProvider(TelemetryProvider):
@@ -134,34 +126,23 @@ class OpenTelemetryProvider(TelemetryProvider):
         config = {}
 
         is_running_in_docker = self._check_docker()
-        sys_print(
-            f"[{self.name}] is_running_in_docker: {is_running_in_docker}", is_debug=True
-        )
+        logger.debug(f"[{self.name}] is_running_in_docker: {is_running_in_docker}")
 
         picked_config_path = DOCKER_CONFIG_PATH if is_running_in_docker else CONFIG_PATH
 
         if os.path.exists(picked_config_path):
-            sys_print(
-                f"[{self.name}] Loading {picked_config_path} file...", is_debug=True
-            )
+            logger.debug(f"[{self.name}] Loading {picked_config_path} file...")
             with open(picked_config_path, encoding="utf-8") as f:
                 config = json.load(f)
         else:
-            sys_print(
-                f"[{self.name}] No config file found. Loading example config.",
-                is_debug=True,
-            )
+            logger.debug(f"[{self.name}] No config file found. Loading example config.")
             if os.path.exists(EXAMPLE_CONFIG_PATH):
-                sys_print(
-                    f"[{self.name}] Loading {EXAMPLE_CONFIG_NAME} file...",
-                    is_debug=True,
-                )
+                logger.debug(f"[{self.name}] Loading {EXAMPLE_CONFIG_NAME} file...")
                 with open(EXAMPLE_CONFIG_PATH, encoding="utf-8") as f:
                     config = json.load(f)
             else:
-                sys_print(
-                    f"[{self.name}] Example config file not found. Using default common config.",
-                    is_debug=True,
+                logger.debug(
+                    f"[{self.name}] Example config file not found. Using default common config."
                 )
 
         common_config = config.get("common_mcp_gateway_config", {})
@@ -184,19 +165,13 @@ class OpenTelemetryProvider(TelemetryProvider):
             hostname = parsed_url.hostname
             port = parsed_url.port
             if not hostname or not port:
-                sys_print(
-                    f"[{self.name}] Invalid OTLP endpoint URL: {endpoint}",
-                    is_error=True,
-                )
+                logger.error(f"[{self.name}] Invalid OTLP endpoint URL: {endpoint}")
                 self._is_telemetry_enabled = False
                 return False
 
             # For gRPC endpoints (port 4317), use socket connection test
             if parsed_url.port == 4317:
-                sys_print(
-                    f"[{self.name}] Testing gRPC connectivity to {endpoint}",
-                    is_debug=True,
-                )
+                logger.debug(f"[{self.name}] Testing gRPC connectivity to {endpoint}")
                 # Get configurable timeout from TimeoutManager
                 from secure_mcp_gateway.services.timeout import get_timeout_manager
 
@@ -204,10 +179,7 @@ class OpenTelemetryProvider(TelemetryProvider):
                 timeout_value = timeout_manager.get_timeout("connectivity")
 
                 with socket.create_connection((hostname, port), timeout=timeout_value):
-                    sys_print(
-                        f"[{self.name}] gRPC endpoint {endpoint} is reachable",
-                        is_debug=True,
-                    )
+                    logger.debug(f"[{self.name}] gRPC endpoint {endpoint} is reachable")
                     self._is_telemetry_enabled = True
                     return True
             # For HTTP endpoints, test HTTP connectivity instead of just TCP
@@ -216,42 +188,37 @@ class OpenTelemetryProvider(TelemetryProvider):
                 import urllib.request
 
                 try:
-                    sys_print(
-                        f"[{self.name}] Testing HTTP connectivity to {endpoint}",
-                        is_debug=True,
+                    logger.debug(
+                        f"[{self.name}] Testing HTTP connectivity to {endpoint}"
                     )
                     # Test HTTP connectivity with a simple HEAD request
                     req = urllib.request.Request(endpoint, method="HEAD")
                     with urllib.request.urlopen(req, timeout=timeout_value) as response:
                         # Any HTTP response (even 404, 405) means the endpoint is reachable
-                        sys_print(
-                            f"[{self.name}] HTTP endpoint {endpoint} is reachable (status: {response.status})",
-                            is_debug=True,
+                        logger.debug(
+                            f"[{self.name}] HTTP endpoint {endpoint} is reachable (status: {response.status})"
                         )
                         self._is_telemetry_enabled = True
                         return True
                 except urllib.error.HTTPError as e:
                     # HTTP errors (404, 405, etc.) mean the service is running
                     if e.code in [404, 405, 400, 500]:
-                        sys_print(
-                            f"[{self.name}] HTTP endpoint {endpoint} is reachable (status: {e.code})",
-                            is_debug=True,
+                        logger.debug(
+                            f"[{self.name}] HTTP endpoint {endpoint} is reachable (status: {e.code})"
                         )
                         self._is_telemetry_enabled = True
                         return True
                     else:
-                        sys_print(
+                        logger.error(
                             f"[{self.name}] Telemetry enabled in config, but HTTP endpoint {endpoint} returned error {e.code}. "
-                            "Disabling telemetry.",
-                            is_error=True,
+                            "Disabling telemetry."
                         )
                         self._is_telemetry_enabled = False
                         return False
                 except urllib.error.URLError as e:
-                    sys_print(
+                    logger.error(
                         f"[{self.name}] Telemetry enabled in config, but HTTP endpoint {endpoint} is not accessible. "
-                        f"Disabling telemetry. Error: {e}",
-                        is_error=True,
+                        f"Disabling telemetry. Error: {e}"
                     )
                     self._is_telemetry_enabled = False
                     return False
@@ -261,10 +228,9 @@ class OpenTelemetryProvider(TelemetryProvider):
                     self._is_telemetry_enabled = True
                     return True
         except (OSError, AttributeError, TypeError, ValueError) as e:
-            sys_print(
+            logger.error(
                 f"[{self.name}] Telemetry enabled in config, but endpoint {endpoint} is not accessible. "
-                f"Disabling telemetry. Error: {e}",
-                is_error=True,
+                f"Disabling telemetry. Error: {e}"
             )
             self._is_telemetry_enabled = False
             return False
@@ -285,7 +251,7 @@ class OpenTelemetryProvider(TelemetryProvider):
             TelemetryResult: Initialization result
         """
         try:
-            sys_print(
+            logger.info(
                 f"[{self.name}] Initializing OpenTelemetry provider v{__version__}..."
             )
 
@@ -296,10 +262,7 @@ class OpenTelemetryProvider(TelemetryProvider):
                     "telemetry", {}
                 )
                 config = telemetry_plugin_config.get("config", {})
-                sys_print(
-                    f"[{self.name}] Loaded telemetry config: {config}",
-                    is_debug=True,
-                )
+                logger.debug(f"[{self.name}] Loaded telemetry config: {config}")
 
             # Extract configuration
             enabled = self._check_telemetry_enabled(config)
@@ -309,21 +272,21 @@ class OpenTelemetryProvider(TelemetryProvider):
             job_name = config.get("job_name", "enkryptai")
 
             if enabled:
-                sys_print(
+                logger.info(
                     f"[{self.name}] OpenTelemetry enabled - initializing components"
                 )
                 self._setup_enabled_telemetry(
                     endpoint, insecure, service_name, job_name
                 )
             else:
-                sys_print(
+                logger.info(
                     f"[{self.name}] OpenTelemetry disabled - using no-op components"
                 )
                 self._setup_disabled_telemetry()
 
             self._initialized = True
 
-            sys_print(f"[{self.name}] ✓ Initialized OpenTelemetry provider")
+            logger.info(f"[{self.name}] ✓ Initialized OpenTelemetry provider")
 
             return TelemetryResult(
                 success=True,
@@ -337,7 +300,7 @@ class OpenTelemetryProvider(TelemetryProvider):
             )
 
         except Exception as e:
-            sys_print(f"[{self.name}] ✗ Failed to initialize: {e}", is_error=True)
+            logger.error(f"[{self.name}] ✗ Failed to initialize: {e}")
             return TelemetryResult(
                 success=False,
                 provider_name=self.name,

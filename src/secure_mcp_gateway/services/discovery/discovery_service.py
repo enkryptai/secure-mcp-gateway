@@ -20,8 +20,8 @@ from secure_mcp_gateway.services.cache.cache_service import cache_service
 from secure_mcp_gateway.utils import (
     build_log_extra,
     get_server_info_by_name,
+    logger,
     mask_key,
-    sys_print,
 )
 
 
@@ -54,7 +54,7 @@ class DiscoveryService:
         ctx,
         server_name: str | None = None,
         tracer_obj=None,
-        logger=None,
+        logger_instance=None,
         IS_DEBUG_LOG_LEVEL: bool = False,
         session_key: str = None,
     ) -> dict[str, Any]:
@@ -74,7 +74,7 @@ class DiscoveryService:
         if server_name and server_name.lower() == "null":
             server_name = None
 
-        sys_print(f"[discover_server_tools] Requested for server: {server_name}")
+        logger.info(f"[discover_server_tools] Requested for server: {server_name}")
         custom_id = self._generate_custom_id()
         logger.info(
             "enkrypt_discover_all_tools.started",
@@ -115,9 +115,8 @@ class DiscoveryService:
                 session_key = f"{enkrypt_gateway_key}_{enkrypt_project_id}_{enkrypt_user_id}_{mcp_config_id}"
 
             if not gateway_config:
-                sys_print(
-                    f"[enkrypt_discover_all_tools] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}",
-                    is_error=True,
+                logger.error(
+                    f"[enkrypt_discover_all_tools] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}"
                 )
                 context = ErrorContext(
                     operation="discover.init",
@@ -154,7 +153,7 @@ class DiscoveryService:
                     enkrypt_gateway_key,
                     tracer_obj,
                     custom_id,
-                    logger,
+                    logger_instance,
                     server_name,
                 )
                 if auth_result:
@@ -167,7 +166,7 @@ class DiscoveryService:
                         session_key,
                         tracer_obj,
                         custom_id,
-                        logger,
+                        logger_instance,
                         IS_DEBUG_LOG_LEVEL,
                         enkrypt_project_id,
                         enkrypt_user_id,
@@ -183,7 +182,7 @@ class DiscoveryService:
                     session_key,
                     tracer_obj,
                     custom_id,
-                    logger,
+                    logger_instance,
                     IS_DEBUG_LOG_LEVEL,
                 )
 
@@ -208,7 +207,7 @@ class DiscoveryService:
                 )
                 error_logger.log_error(error)
 
-                sys_print(f"[discover_server_tools] Exception: {e}", is_error=True)
+                logger.error(f"[discover_server_tools] Exception: {e}")
                 logger.error(
                     "enkrypt_discover_all_tools.exception",
                     extra=build_log_extra(ctx, custom_id, error=str(e)),
@@ -242,7 +241,7 @@ class DiscoveryService:
         enkrypt_gateway_key,
         tracer_obj,
         custom_id,
-        logger,
+        logger_instance,
         server_name,
     ):
         """Check authentication and return error if needed."""
@@ -265,10 +264,9 @@ class DiscoveryService:
                         "enkrypt_discover_all_tools.not_authenticated",
                         extra=build_log_extra(ctx, custom_id, server_name),
                     )
-                    if logger.level <= 10:  # DEBUG level
-                        sys_print(
-                            "[discover_server_tools] Not authenticated",
-                            is_error=True,
+                    if logger_instance and logger_instance.level <= 10:  # DEBUG level
+                        logger_instance.error(
+                            "[discover_server_tools] Not authenticated"
                         )
                     context = ErrorContext(
                         operation="discover.auth",
@@ -289,7 +287,7 @@ class DiscoveryService:
         session_key,
         tracer_obj,
         custom_id,
-        logger,
+        logger_instance,
         IS_DEBUG_LOG_LEVEL,
         enkrypt_project_id,
         enkrypt_user_id,
@@ -307,7 +305,7 @@ class DiscoveryService:
             all_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
             all_span.set_attribute("enkrypt_email", enkrypt_email)
 
-            sys_print(
+            logger.info(
                 "[discover_server_tools] Discovering tools for all servers using three-phase parallel approach"
             )
             logger.info(
@@ -341,7 +339,7 @@ class DiscoveryService:
             import asyncio
 
             # PHASE 1: Validate all servers in parallel
-            sys_print(
+            logger.info(
                 "[discover_server_tools] 🔄 Phase 1: Validating all servers in parallel"
             )
             server_validation_results = await self._validate_all_servers_parallel(
@@ -349,12 +347,12 @@ class DiscoveryService:
                 servers_needing_discovery,
                 tracer_obj,
                 custom_id,
-                logger,
+                logger_instance,
                 session_key,
             )
 
             # PHASE 2: Separate servers by config tool availability
-            sys_print(
+            logger.info(
                 "[discover_server_tools] 🔄 Phase 2: Separating servers by config tool availability"
             )
             servers_with_config_tools = []
@@ -370,12 +368,12 @@ class DiscoveryService:
 
                     if config_tools:
                         servers_with_config_tools.append(server_name)
-                        sys_print(
+                        logger.info(
                             f"[discover_server_tools]   📋 {server_name} has config tools"
                         )
                     else:
                         servers_needing_discovery_phase3.append(server_name)
-                        sys_print(
+                        logger.info(
                             f"[discover_server_tools]   🔍 {server_name} needs discovery"
                         )
                 else:
@@ -383,7 +381,7 @@ class DiscoveryService:
                     all_servers_with_tools[server_name] = validation_result
 
             # PHASE 3: Parallel execution of config tool validation and discovery+validation
-            sys_print(
+            logger.info(
                 "[discover_server_tools] 🔄 Phase 3: Parallel config tool validation and discovery+validation"
             )
 
@@ -408,7 +406,7 @@ class DiscoveryService:
                         session_key,
                         tracer_obj,
                         custom_id,
-                        logger,
+                        logger_instance,
                         IS_DEBUG_LOG_LEVEL,
                     )
                 )
@@ -484,7 +482,7 @@ class DiscoveryService:
         servers,
         tracer_obj,
         custom_id,
-        logger,
+        logger_instance,
         session_key,
     ):
         """Phase 1: Validate all servers in parallel."""
@@ -531,9 +529,8 @@ class DiscoveryService:
                                 "violation_count", len(violations)
                             )
 
-                            sys_print(
-                                f"[discover_server_tools] ⚠️  BLOCKED UNSAFE SERVER: {server_name}",
-                                is_error=True,
+                            logger.error(
+                                f"[discover_server_tools] ⚠️  BLOCKED UNSAFE SERVER: {server_name}"
                             )
 
                             return {
@@ -544,7 +541,7 @@ class DiscoveryService:
                                 "violations": violation_messages,
                             }
                         else:
-                            sys_print(
+                            logger.info(
                                 f"[discover_server_tools] ✓ Server {server_name} passed validation"
                             )
                             server_span.set_attribute("server_safe", True)
@@ -619,7 +616,7 @@ class DiscoveryService:
         session_key,
         tracer_obj,
         custom_id,
-        logger,
+        logger_instance,
     ):
         """Phase 3a: Validate config tools for a single server."""
         with tracer_obj.start_as_current_span(
@@ -643,7 +640,7 @@ class DiscoveryService:
                         "message": f"No config tools found for {server_name}",
                     }
 
-                sys_print(
+                logger.info(
                     f"[discover_server_tools] Validating config tools for {server_name}"
                 )
 
@@ -711,7 +708,7 @@ class DiscoveryService:
                                 reasons = blocked_tool.get("reasons", [])
                                 blocked_reasons_list.extend(reasons)
 
-                            sys_print(
+                            logger.info(
                                 f"[discover_server_tools] ⚠️  Blocked {blocked_count} unsafe config tools from {server_name}"
                             )
 
@@ -726,7 +723,7 @@ class DiscoveryService:
                                 if name not in blocked_tool_names
                             }
 
-                        sys_print(
+                        logger.info(
                             f"[discover_server_tools] ✓ {safe_count} safe config tools approved for {server_name}"
                         )
 
@@ -776,7 +773,7 @@ class DiscoveryService:
         session_key,
         tracer_obj,
         custom_id,
-        logger,
+        logger_instance,
         IS_DEBUG_LOG_LEVEL,
     ):
         """Phase 3b: Discover and validate tools for a single server."""
@@ -805,7 +802,7 @@ class DiscoveryService:
                 cached_tools = self.cache_service.get_cached_tools(id, server_name)
 
                 if cached_tools:
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] Tools already cached for {server_name}"
                     )
                     return {
@@ -820,7 +817,7 @@ class DiscoveryService:
                     }
 
                 # Forward tool call to discover tools
-                sys_print(
+                logger.info(
                     f"[discover_server_tools] Discovering tools for {server_name}"
                 )
                 result = await forward_tool_call(
@@ -892,7 +889,7 @@ class DiscoveryService:
                                 reasons = blocked_tool.get("reasons", [])
                                 blocked_reasons_list.extend(reasons)
 
-                            sys_print(
+                            logger.info(
                                 f"[discover_server_tools] ⚠️  Blocked {blocked_count} unsafe tools from {server_name}"
                             )
 
@@ -905,7 +902,7 @@ class DiscoveryService:
                         else:
                             tools = filtered_tools
 
-                        sys_print(
+                        logger.info(
                             f"[discover_server_tools] ✓ {safe_count} safe tools approved for {server_name}"
                         )
 
@@ -958,7 +955,7 @@ class DiscoveryService:
         session_key,
         tracer_obj,
         custom_id,
-        logger,
+        logger_instance,
         IS_DEBUG_LOG_LEVEL,
     ):
         """Discover tools for a single server."""
@@ -976,9 +973,8 @@ class DiscoveryService:
                     "error", f"Server '{server_name}' not available"
                 )
                 if IS_DEBUG_LOG_LEVEL:
-                    sys_print(
-                        f"[discover_server_tools] Server '{server_name}' not available",
-                        is_error=True,
+                    logger.error(
+                        f"[discover_server_tools] Server '{server_name}' not available"
                     )
                     logger.warning(
                         "enkrypt_discover_all_tools.server_not_available",
@@ -1006,7 +1002,7 @@ class DiscoveryService:
                 ) as server_validation_span:
                     server_validation_span.set_attribute("server_name", server_name)
 
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] Validating server registration for {server_name}"
                     )
 
@@ -1030,22 +1026,18 @@ class DiscoveryService:
                                 "violation_count", len(violations)
                             )
 
-                            sys_print(
-                                f"[discover_server_tools] ⚠️  BLOCKED UNSAFE SERVER: {server_name}",
-                                is_error=True,
+                            logger.error(
+                                f"[discover_server_tools] ⚠️  BLOCKED UNSAFE SERVER: {server_name}"
                             )
-                            sys_print(
-                                "[discover_server_tools] === SERVER BLOCKED ===",
-                                is_error=True,
+                            logger.error(
+                                "[discover_server_tools] === SERVER BLOCKED ==="
                             )
                             for violation in violations:
-                                sys_print(
-                                    f"[discover_server_tools]   ❌ {violation.message}",
-                                    is_error=True,
+                                logger.error(
+                                    f"[discover_server_tools]   ❌ {violation.message}"
                                 )
-                            sys_print(
-                                "[discover_server_tools] ========================",
-                                is_error=True,
+                            logger.error(
+                                "[discover_server_tools] ========================"
                             )
 
                             logger.error(
@@ -1089,7 +1081,7 @@ class DiscoveryService:
                             return error_response
                         else:
                             # Server is safe
-                            sys_print(
+                            logger.info(
                                 f"[discover_server_tools] ✓ Server {server_name} passed validation"
                             )
                             server_validation_span.set_attribute("server_safe", True)
@@ -1108,9 +1100,8 @@ class DiscoveryService:
 
                         if is_timeout_error:
                             # Timeout occurred - block the server (fail closed)
-                            sys_print(
-                                f"[discover_server_tools] ⚠️  Timeout occurred during server validation for {server_name} - blocking server",
-                                is_error=True,
+                            logger.error(
+                                f"[discover_server_tools] ⚠️  Timeout occurred during server validation for {server_name} - blocking server"
                             )
 
                             # Log timeout error with proper error handling
@@ -1148,9 +1139,8 @@ class DiscoveryService:
                             return error_response
                         else:
                             # Other errors - FAIL CLOSED: if validation fails, block the server
-                            sys_print(
-                                f"[discover_server_tools] ⚠️  Server validation error for {server_name} - blocking server (fail-closed)",
-                                is_error=True,
+                            logger.error(
+                                f"[discover_server_tools] ⚠️  Server validation error for {server_name} - blocking server (fail-closed)"
                             )
 
                             # Log with standardized error handling
@@ -1211,22 +1201,22 @@ class DiscoveryService:
             # PHASE 2: Server description validation for ALL servers (parallel)
             # This happens regardless of whether server has config tools or not
             if self.registration_validation_enabled and self.guardrail_manager:
-                sys_print(
+                logger.info(
                     f"[discover_server_tools] 🔄 Starting server description validation for {server_name}"
                 )
 
                 # Get static description from config
                 static_desc = server_info.get("description", "")
-                sys_print(
+                logger.info(
                     f"[discover_server_tools]   Static description: '{static_desc}'"
                 )
 
                 # ALL servers get both static and dynamic description validation
                 # This happens regardless of whether server has config tools or not
-                sys_print(
+                logger.info(
                     f"[discover_server_tools] 🔄 Starting server description validation for {server_name}"
                 )
-                sys_print(
+                logger.info(
                     f"[discover_server_tools]   Static description: '{static_desc}'"
                 )
 
@@ -1235,7 +1225,7 @@ class DiscoveryService:
                 # Both will be validated in the discovery path below
 
             if config_tools:
-                sys_print(
+                logger.info(
                     f"[discover_server_tools] Tools already defined in config for {server_name}"
                 )
                 logger.info(
@@ -1245,7 +1235,7 @@ class DiscoveryService:
 
                 # For config servers, we still need to get dynamic description for validation
                 # This ensures ALL servers get both static and dynamic description validation
-                sys_print(
+                logger.info(
                     f"[discover_server_tools] 🔄 Getting dynamic description for config server {server_name}"
                 )
 
@@ -1265,28 +1255,27 @@ class DiscoveryService:
                         dynamic_name = server_metadata.get("name", "")
                         dynamic_version = server_metadata.get("version", "")
 
-                        sys_print(
+                        logger.info(
                             f"[discover_server_tools] 🔍 Dynamic Server Info for {server_name}:"
                         )
-                        sys_print(
+                        logger.info(
                             f"[discover_server_tools]   📝 Description: '{dynamic_description}'"
                         )
-                        sys_print(
+                        logger.info(
                             f"[discover_server_tools]   🏷️  Name: '{dynamic_name}'"
                         )
-                        sys_print(
+                        logger.info(
                             f"[discover_server_tools]   📦 Version: '{dynamic_version}'"
                         )
                     else:
                         dynamic_description = ""
-                        sys_print(
+                        logger.info(
                             f"[discover_server_tools] ⚠️  No dynamic metadata available for {server_name}"
                         )
 
                 except Exception as e:
-                    sys_print(
-                        f"[discover_server_tools] Error getting dynamic description for {server_name}: {e}",
-                        is_error=True,
+                    logger.error(
+                        f"[discover_server_tools] Error getting dynamic description for {server_name}: {e}"
                     )
                     dynamic_description = ""
 
@@ -1297,7 +1286,7 @@ class DiscoveryService:
 
                 # NEW: Validate config tools with guardrails before returning
                 enable_tool_guardrails = server_info.get("enable_tool_guardrails", True)
-                sys_print(
+                logger.info(
                     f"[discover_server_tools] enable_tool_guardrails={enable_tool_guardrails} for {server_name}"
                 )
 
@@ -1306,7 +1295,7 @@ class DiscoveryService:
                     and self.guardrail_manager
                     and enable_tool_guardrails
                 ):
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] Validating config tools for {server_name}"
                     )
                     with tracer_obj.start_as_current_span(
@@ -1342,7 +1331,7 @@ class DiscoveryService:
                         tool_count = len(tool_list)
                         validation_span.set_attribute("tool_count", tool_count)
 
-                        sys_print(
+                        logger.info(
                             f"[discover_server_tools] Validating {tool_count} config tools for {server_name}"
                         )
 
@@ -1383,9 +1372,8 @@ class DiscoveryService:
                                         "error", "Config tool validation failed"
                                     )
 
-                                    sys_print(
-                                        f"[discover_server_tools] ⚠️  Config tool validation failed for {server_name}: {error_msg}",
-                                        is_error=True,
+                                    logger.error(
+                                        f"[discover_server_tools] ⚠️  Config tool validation failed for {server_name}: {error_msg}"
                                     )
 
                                     # Log with standardized error handling
@@ -1435,29 +1423,24 @@ class DiscoveryService:
                                         reasons = blocked_tool.get("reasons", [])
                                         blocked_reasons_list.extend(reasons)
 
-                                    sys_print(
-                                        f"[discover_server_tools] ⚠️  Blocked {blocked_count} unsafe config tools from {server_name}",
-                                        is_error=True,
+                                    logger.error(
+                                        f"[discover_server_tools] ⚠️  Blocked {blocked_count} unsafe config tools from {server_name}"
                                     )
-                                    sys_print(
-                                        "[discover_server_tools] === BLOCKED CONFIG TOOLS DETAILS ===",
-                                        is_error=True,
+                                    logger.error(
+                                        "[discover_server_tools] === BLOCKED CONFIG TOOLS DETAILS ==="
                                     )
                                     for blocked_tool in blocked_tools:
                                         tool_name = blocked_tool.get("name", "unknown")
                                         reasons = blocked_tool.get("reasons", [])
-                                        sys_print(
-                                            f"[discover_server_tools]   ❌ {tool_name}:",
-                                            is_error=True,
+                                        logger.error(
+                                            f"[discover_server_tools]   ❌ {tool_name}:"
                                         )
                                         for reason in reasons:
-                                            sys_print(
-                                                f"[discover_server_tools]      → {reason}",
-                                                is_error=True,
+                                            logger.error(
+                                                f"[discover_server_tools]      → {reason}"
                                             )
-                                    sys_print(
-                                        "[discover_server_tools] ==================================",
-                                        is_error=True,
+                                    logger.error(
+                                        "[discover_server_tools] =================================="
                                     )
                                     logger.warning(
                                         "enkrypt_discover_all_tools.config_tools_blocked_by_guardrails",
@@ -1478,9 +1461,8 @@ class DiscoveryService:
 
                                 if is_timeout_error:
                                     # Timeout occurred - block all tools and return error response
-                                    sys_print(
-                                        f"[discover_server_tools] ⚠️  Timeout occurred during config tool validation for {server_name} - blocking all tools",
-                                        is_error=True,
+                                    logger.error(
+                                        f"[discover_server_tools] ⚠️  Timeout occurred during config tool validation for {server_name} - blocking all tools"
                                     )
 
                                     # Log timeout error with proper error handling
@@ -1535,7 +1517,7 @@ class DiscoveryService:
                                         if name not in blocked_tool_names
                                     }
 
-                                sys_print(
+                                logger.info(
                                     f"[discover_server_tools] ✓ {safe_count} safe config tools approved for {server_name}"
                                 )
 
@@ -1545,9 +1527,8 @@ class DiscoveryService:
                                 "timeout" in str(validation_error).lower()
                                 or "timed out" in str(validation_error).lower()
                             ):
-                                sys_print(
-                                    f"[discover_server_tools] Config tool validation timeout - blocking all tools: {validation_error}",
-                                    is_error=True,
+                                logger.error(
+                                    f"[discover_server_tools] Config tool validation timeout - blocking all tools: {validation_error}"
                                 )
                                 logger.error(
                                     "enkrypt_discover_all_tools.config_tool_validation_timeout",
@@ -1599,9 +1580,8 @@ class DiscoveryService:
                                 return error_response
                             else:
                                 # FAIL CLOSED: if validation fails for other reasons, block all tools
-                                sys_print(
-                                    f"[discover_server_tools] ⚠️  Config tool validation error for {server_name} - blocking all tools (fail-closed)",
-                                    is_error=True,
+                                logger.error(
+                                    f"[discover_server_tools] ⚠️  Config tool validation error for {server_name} - blocking all tools (fail-closed)"
                                 )
 
                                 # Log with standardized error handling
@@ -1656,25 +1636,25 @@ class DiscoveryService:
                             )
                             return error_response
                 else:
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] Skipping config tool validation for {server_name} (enable_tool_guardrails={enable_tool_guardrails})"
                     )
 
                 # NEW: Parallel validation for config servers (static + dynamic descriptions)
                 if self.registration_validation_enabled and self.guardrail_manager:
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] 🔄 Starting parallel validation for config server {server_name}"
                     )
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools]   Dynamic description: '{dynamic_description}'"
                     )
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools]   Static description: '{static_desc}'"
                     )
 
                     async def _validate_dynamic_config():
                         if not dynamic_description:
-                            sys_print(
+                            logger.info(
                                 "[discover_server_tools] ⏭️  Skipping dynamic validation (empty description)"
                             )
                             return {"status": "skip"}
@@ -1685,7 +1665,7 @@ class DiscoveryService:
                             dynamic_desc_span.set_attribute(
                                 "description_source", "dynamic"
                             )
-                            sys_print(
+                            logger.info(
                                 f"[discover_server_tools] Validating dynamic server description: '{dynamic_description}'"
                             )
                             try:
@@ -1739,7 +1719,7 @@ class DiscoveryService:
                             static_desc_span.set_attribute(
                                 "description_source", "static"
                             )
-                            sys_print(
+                            logger.info(
                                 f"[discover_server_tools] Validating static server description: '{static_desc}'"
                             )
                             try:
@@ -1795,7 +1775,7 @@ class DiscoveryService:
                                     "source": "static",
                                 }
 
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] 🚀 Executing parallel validation for config server {server_name}"
                     )
                     import asyncio
@@ -1823,7 +1803,7 @@ class DiscoveryService:
                         dyn_result, stat_result = results.result
                     else:
                         dyn_result, stat_result = results
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] ✅ Parallel validation completed for config server {server_name}"
                     )
 
@@ -1948,7 +1928,7 @@ class DiscoveryService:
                         telemetry_manager.cache_hit_counter.add(
                             1, attributes=build_log_extra(ctx)
                         )
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] Tools already cached for {server_name}"
                     )
                     logger.info(
@@ -1976,7 +1956,7 @@ class DiscoveryService:
                         telemetry_manager.cache_miss_counter.add(
                             1, attributes=build_log_extra(ctx)
                         )
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] No cached tools found for {server_name}"
                     )
                     logger.info(
@@ -2016,7 +1996,7 @@ class DiscoveryService:
                 tool_span.set_attribute("duration", end_time - start_time)
 
                 # Print result
-                # sys_print(f"[discover_server_tools] Result: {result}")
+                # logger.info(f"[discover_server_tools] Result: {result}")
 
                 # Handle new return format with server metadata
                 if isinstance(result, dict) and "tools" in result:
@@ -2027,14 +2007,14 @@ class DiscoveryService:
                     dynamic_version = server_metadata.get("version")
 
                     # Print dynamic server information
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] 🔍 Dynamic Server Info for {server_name}:"
                     )
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools]   📝 Description: '{dynamic_description}'"
                     )
-                    sys_print(f"[discover_server_tools]   🏷️  Name: '{dynamic_name}'")
-                    sys_print(
+                    logger.info(f"[discover_server_tools]   🏷️  Name: '{dynamic_name}'")
+                    logger.info(
                         f"[discover_server_tools]   📦 Version: '{dynamic_version}'"
                     )
                 else:
@@ -2043,7 +2023,7 @@ class DiscoveryService:
                     dynamic_description = None
                     dynamic_name = None
                     dynamic_version = None
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] ⚠️  No dynamic metadata available for {server_name}"
                     )
 
@@ -2053,19 +2033,19 @@ class DiscoveryService:
                 if self.registration_validation_enabled and self.guardrail_manager:
                     import asyncio
 
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] 🔄 Starting parallel validation for {server_name}"
                     )
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools]   Dynamic description: '{dynamic_description}'"
                     )
-                    sys_print(
+                    logger.error(
                         f"[discover_server_tools]   Static description: '{server_info.get('description', '')}'"
                     )
 
                     async def _validate_dynamic():
                         if not dynamic_description:
-                            sys_print(
+                            logger.info(
                                 "[discover_server_tools] ⏭️  Skipping dynamic validation (empty description)"
                             )
                             return {"status": "skip"}
@@ -2073,7 +2053,7 @@ class DiscoveryService:
                             "validate_dynamic_server_description"
                         ) as dynamic_desc_span:
                             dynamic_desc_span.set_attribute("server_name", server_name)
-                            sys_print(
+                            logger.info(
                                 f"[discover_server_tools] Validating dynamic server description: '{dynamic_description}'"
                             )
                             try:
@@ -2128,7 +2108,7 @@ class DiscoveryService:
                             static_desc_span.set_attribute(
                                 "description_source", "static"
                             )
-                            sys_print(
+                            logger.info(
                                 f"[discover_server_tools] Validating static server description: '{static_desc}'"
                             )
                             try:
@@ -2184,7 +2164,7 @@ class DiscoveryService:
                                     "source": "static",
                                 }
 
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] 🚀 Executing parallel validation for {server_name}"
                     )
                     # Use timeout management for parallel validation
@@ -2210,7 +2190,7 @@ class DiscoveryService:
                         dyn_result, stat_result = results.result
                     else:
                         dyn_result, stat_result = results
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] ✅ Parallel validation completed for {server_name}"
                     )
 
@@ -2310,9 +2290,8 @@ class DiscoveryService:
 
                 if tools:
                     if IS_DEBUG_LOG_LEVEL:
-                        sys_print(
-                            f"[discover_server_tools] Success: {server_name} tools discovered: {tools}",
-                            is_debug=True,
+                        logger.debug(
+                            f"[discover_server_tools] Success: {server_name} tools discovered: {tools}"
                         )
                         logger.info(
                             "enkrypt_discover_all_tools.tools_discovered",
@@ -2323,7 +2302,7 @@ class DiscoveryService:
                     enable_tool_guardrails = server_info.get(
                         "enable_tool_guardrails", True
                     )
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] enable_tool_guardrails={enable_tool_guardrails} for {server_name}"
                     )
 
@@ -2332,7 +2311,7 @@ class DiscoveryService:
                         and self.guardrail_manager
                         and enable_tool_guardrails
                     ):
-                        sys_print(
+                        logger.info(
                             f"[discover_server_tools] Validating discovered tools for {server_name}"
                         )
                         with tracer_obj.start_as_current_span(
@@ -2352,7 +2331,7 @@ class DiscoveryService:
                             tool_count = len(tool_list)
                             validation_span.set_attribute("tool_count", tool_count)
 
-                            sys_print(
+                            logger.info(
                                 f"[discover_server_tools] Validating {tool_count} tools for {server_name}"
                             )
 
@@ -2393,9 +2372,8 @@ class DiscoveryService:
                                             "error", "Tool validation failed"
                                         )
 
-                                        sys_print(
-                                            f"[discover_server_tools] ⚠️  Tool validation failed for {server_name}: {error_msg}",
-                                            is_error=True,
+                                        logger.info(
+                                            f"[discover_server_tools] ⚠️  Tool validation failed for {server_name}: {error_msg}"
                                         )
 
                                         # Log with standardized error handling
@@ -2447,31 +2425,26 @@ class DiscoveryService:
                                             reasons = blocked_tool.get("reasons", [])
                                             blocked_reasons_list.extend(reasons)
 
-                                        sys_print(
-                                            f"[discover_server_tools] ⚠️  Blocked {blocked_count} unsafe tools from {server_name}",
-                                            is_error=True,
+                                        logger.error(
+                                            f"[discover_server_tools] ⚠️  Blocked {blocked_count} unsafe tools from {server_name}"
                                         )
-                                        sys_print(
-                                            "[discover_server_tools] === BLOCKED TOOLS DETAILS ===",
-                                            is_error=True,
+                                        logger.error(
+                                            "[discover_server_tools] === BLOCKED TOOLS DETAILS ==="
                                         )
                                         for blocked_tool in blocked_tools:
                                             tool_name = blocked_tool.get(
                                                 "name", "unknown"
                                             )
                                             reasons = blocked_tool.get("reasons", [])
-                                            sys_print(
-                                                f"[discover_server_tools]   ❌ {tool_name}:",
-                                                is_error=True,
+                                            logger.error(
+                                                f"[discover_server_tools]   ❌ {tool_name}:"
                                             )
                                             for reason in reasons:
-                                                sys_print(
-                                                    f"[discover_server_tools]      → {reason}",
-                                                    is_error=True,
+                                                logger.error(
+                                                    f"[discover_server_tools]      → {reason}"
                                                 )
-                                        sys_print(
-                                            "[discover_server_tools] ==============================",
-                                            is_error=True,
+                                        logger.error(
+                                            "[discover_server_tools] =============================="
                                         )
                                         logger.warning(
                                             "enkrypt_discover_all_tools.tools_blocked_by_guardrails",
@@ -2492,9 +2465,8 @@ class DiscoveryService:
 
                                     if is_timeout_error:
                                         # Timeout occurred - block all tools and return error response
-                                        sys_print(
-                                            f"[discover_server_tools] ⚠️  Timeout occurred during tool validation for {server_name} - blocking all tools",
-                                            is_error=True,
+                                        logger.error(
+                                            f"[discover_server_tools] ⚠️  Timeout occurred during tool validation for {server_name} - blocking all tools"
                                         )
 
                                         # Log timeout error with proper error handling
@@ -2554,7 +2526,7 @@ class DiscoveryService:
                                     else:
                                         tools = filtered_tools
 
-                                    sys_print(
+                                    logger.info(
                                         f"[discover_server_tools] ✓ {safe_count} safe tools approved for {server_name}"
                                     )
                                     validation_span.set_attribute(
@@ -2563,9 +2535,8 @@ class DiscoveryService:
 
                             except Exception as validation_error:
                                 # FAIL CLOSED: if validation fails, block all tools
-                                sys_print(
-                                    f"[discover_server_tools] ⚠️  Tool validation error for {server_name} - blocking all tools (fail-closed)",
-                                    is_error=True,
+                                logger.error(
+                                    f"[discover_server_tools] ⚠️  Tool validation error for {server_name} - blocking all tools (fail-closed)"
                                 )
 
                                 # Log with standardized error handling
@@ -2617,7 +2588,7 @@ class DiscoveryService:
                                 )
                                 return error_response
                     else:
-                        sys_print(
+                        logger.info(
                             f"[discover_server_tools] Skipping discovered tool validation for {server_name} (enable_tool_guardrails={enable_tool_guardrails})"
                         )
 
@@ -2629,7 +2600,7 @@ class DiscoveryService:
                         self.cache_service.cache_tools(id, server_name, tools)
                         cache_write_span.set_attribute("cache_write_success", True)
                 else:
-                    sys_print(
+                    logger.info(
                         f"[discover_server_tools] No tools discovered for {server_name}"
                     )
                     logger.warning(

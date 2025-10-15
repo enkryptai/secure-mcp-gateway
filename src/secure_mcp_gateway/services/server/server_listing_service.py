@@ -17,9 +17,9 @@ from secure_mcp_gateway.exceptions import (
 )
 from secure_mcp_gateway.utils import (
     build_log_extra,
+    logger,
     mask_key,
     mask_server_config_sensitive_data,
-    sys_print,
 )
 
 
@@ -74,7 +74,7 @@ class ServerListingService:
                 telemetry_manager.list_servers_call_count.add(
                     1, attributes=build_log_extra(ctx, custom_id)
                 )
-            sys_print("[list_available_servers] Request received")
+            logger.info("[list_available_servers] Request received")
 
             # Get credentials and config
             credentials = self.auth_manager.get_gateway_credentials(ctx)
@@ -86,9 +86,8 @@ class ServerListingService:
             )
 
             if not gateway_config:
-                sys_print(
-                    f"[list_available_servers] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}",
-                    is_error=True,
+                logger.error(
+                    f"[list_available_servers] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}"
                 )
                 context = ErrorContext(
                     operation="list_servers.init",
@@ -145,7 +144,6 @@ class ServerListingService:
                     ctx,
                     custom_id,
                     tracer,
-                    logger,
                     IS_DEBUG_LOG_LEVEL,
                 )
 
@@ -176,7 +174,7 @@ class ServerListingService:
                 main_span.set_attribute("error", "true")
                 main_span.record_exception(e)
                 main_span.set_attribute("error_message", str(e))
-                sys_print(f"[list_available_servers] Exception: {e}", is_error=True)
+                logger.error(f"[list_available_servers] Exception: {e}")
                 logger.error(
                     "list_all_servers.exception",
                     extra=build_log_extra(ctx, custom_id, error=str(e)),
@@ -255,7 +253,7 @@ class ServerListingService:
             )
 
             if not enkrypt_gateway_key:
-                sys_print("[list_available_servers] No gateway key provided")
+                logger.warning("[list_available_servers] No gateway key provided")
                 logger.warning(
                     "list_all_servers.no_gateway_key",
                     extra=build_log_extra(ctx, custom_id),
@@ -285,10 +283,7 @@ class ServerListingService:
                             "list_all_servers.auth_failed",
                             extra=build_log_extra(ctx, custom_id),
                         )
-                        sys_print(
-                            "[list_available_servers] Not authenticated",
-                            is_error=True,
-                        )
+                        logger.error("[list_available_servers] Not authenticated")
                     context = ErrorContext(
                         operation="list_servers.auth",
                         request_id=getattr(ctx, "request_id", None),
@@ -309,7 +304,6 @@ class ServerListingService:
         ctx,
         custom_id,
         tracer,
-        logger,
         IS_DEBUG_LOG_LEVEL,
     ):
         """Process servers and return servers with tools and those needing discovery."""
@@ -330,7 +324,7 @@ class ServerListingService:
                             masked_server["config"]["env"]
                         )
                     masked_mcp_config.append(masked_server)
-                sys_print(f"mcp_config: {masked_mcp_config}", is_debug=True)
+                logger.debug(f"mcp_config: {masked_mcp_config}")
 
             servers_with_tools = {}
             servers_needing_discovery = []
@@ -347,9 +341,8 @@ class ServerListingService:
                             "list_all_servers.processing_server",
                             extra=build_log_extra(ctx, custom_id, server_name),
                         )
-                        sys_print(
-                            f"[list_available_servers] Processing server: {server_name}",
-                            is_debug=True,
+                        logger.debug(
+                            f"[list_available_servers] Processing server: {server_name}"
                         )
 
                     server_info_copy = cache_service.get_latest_server_info(

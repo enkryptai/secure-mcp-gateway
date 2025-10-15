@@ -12,7 +12,7 @@ from secure_mcp_gateway.plugins.auth.base import (
     AuthResult,
     SessionData,
 )
-from secure_mcp_gateway.utils import sys_print
+from secure_mcp_gateway.utils import logger
 
 
 class AuthConfigManager:
@@ -39,7 +39,7 @@ class AuthConfigManager:
             provider: Provider to register
         """
         self.registry.register(provider)
-        sys_print(f"Registered auth provider: {provider.get_name()}")
+        logger.info(f"Registered auth provider: {provider.get_name()}")
 
     def unregister_provider(self, name: str) -> None:
         """
@@ -49,7 +49,7 @@ class AuthConfigManager:
             name: Provider name
         """
         self.registry.unregister(name)
-        sys_print(f"Unregistered auth provider: {name}")
+        logger.info(f"Unregistered auth provider: {name}")
 
     def get_provider(self, name: Optional[str] = None) -> Optional[AuthProvider]:
         """
@@ -129,7 +129,7 @@ class AuthConfigManager:
         Returns:
             AuthResult: Authentication result
         """
-        sys_print("[AuthConfigManager] Starting authentication")
+        logger.info("[AuthConfigManager] Starting authentication")
 
         # Extract credentials
         credentials = self.extract_credentials(ctx)
@@ -172,7 +172,7 @@ class AuthConfigManager:
 
         # Check if already authenticated in session
         if self.is_session_authenticated(session_key):
-            sys_print("[AuthConfigManager] Already authenticated in session")
+            logger.info("[AuthConfigManager] Already authenticated in session")
             session = self.sessions[session_key]
             return AuthResult(
                 status="success",
@@ -191,7 +191,7 @@ class AuthConfigManager:
         if id:
             cached_config = self.cache_service.get_cached_gateway_config(id)
             if cached_config:
-                sys_print(f"[AuthConfigManager] Found cached config for ID: {id}")
+                logger.info(f"[AuthConfigManager] Found cached config for ID: {id}")
                 self.create_session(session_key, cached_config)
                 return AuthResult(
                     status="success",

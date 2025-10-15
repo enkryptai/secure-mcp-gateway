@@ -27,7 +27,7 @@ from secure_mcp_gateway.plugins.guardrails.base import (
     ToolRegistrationRequest,
     ViolationType,
 )
-from secure_mcp_gateway.utils import sys_print
+from secure_mcp_gateway.utils import logger
 
 
 class EnkryptInputGuardrail:
@@ -77,13 +77,10 @@ class EnkryptInputGuardrail:
                 }
 
                 if self.debug:
-                    sys_print(
-                        f"[EnkryptInputGuardrail] Validating with policy: {self.policy_name}",
-                        is_debug=True,
+                    logger.debug(
+                        f"[EnkryptInputGuardrail] Validating with policy: {self.policy_name}"
                     )
-                    sys_print(
-                        f"[EnkryptInputGuardrail] Payload: {payload}", is_debug=True
-                    )
+                    logger.debug(f"[EnkryptInputGuardrail] Payload: {payload}")
 
                 # Make API call
                 async with aiohttp.ClientSession() as session:
@@ -93,9 +90,7 @@ class EnkryptInputGuardrail:
                         resp_json = await response.json()
 
                 if self.debug:
-                    sys_print(
-                        f"[EnkryptInputGuardrail] Response: {resp_json}", is_debug=True
-                    )
+                    logger.debug(f"[EnkryptInputGuardrail] Response: {resp_json}")
 
                 # Check for API errors
                 if resp_json.get("error"):
@@ -397,7 +392,7 @@ class EnkryptOutputGuardrail:
             )
 
         except Exception as e:
-            sys_print(f"[EnkryptOutputGuardrail] Exception: {e}", is_error=True)
+            logger.error(f"[EnkryptOutputGuardrail] Exception: {e}")
             processing_time_ms = (time.time() - start_time) * 1000
 
             return GuardrailResponse(
@@ -427,9 +422,8 @@ class EnkryptOutputGuardrail:
             }
 
             if self.debug:
-                sys_print(
-                    f"[EnkryptOutputGuardrail] Policy check for: {self.policy_name}",
-                    is_debug=True,
+                logger.debug(
+                    f"[EnkryptOutputGuardrail] Policy check for: {self.policy_name}"
                 )
 
             async with aiohttp.ClientSession() as session:
@@ -439,16 +433,12 @@ class EnkryptOutputGuardrail:
                     result = await response.json()
 
             if self.debug:
-                sys_print(
-                    f"[EnkryptOutputGuardrail] Policy result: {result}", is_debug=True
-                )
+                logger.debug(f"[EnkryptOutputGuardrail] Policy result: {result}")
 
             return result
 
         except Exception as e:
-            sys_print(
-                f"[EnkryptOutputGuardrail] Policy check error: {e}", is_error=True
-            )
+            logger.error(f"[EnkryptOutputGuardrail] Policy check error: {e}")
             return {"error": str(e)}
 
     async def _check_relevancy(self, question: str, answer: str) -> Dict[str, Any]:
@@ -461,7 +451,7 @@ class EnkryptOutputGuardrail:
             }
 
             if self.debug:
-                sys_print("[EnkryptOutputGuardrail] Checking relevancy", is_debug=True)
+                logger.debug("[EnkryptOutputGuardrail] Checking relevancy")
 
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -470,17 +460,12 @@ class EnkryptOutputGuardrail:
                     result = await response.json()
 
             if self.debug:
-                sys_print(
-                    f"[EnkryptOutputGuardrail] Relevancy result: {result}",
-                    is_debug=True,
-                )
+                logger.debug(f"[EnkryptOutputGuardrail] Relevancy result: {result}")
 
             return result
 
         except Exception as e:
-            sys_print(
-                f"[EnkryptOutputGuardrail] Relevancy check error: {e}", is_error=True
-            )
+            logger.error(f"[EnkryptOutputGuardrail] Relevancy check error: {e}")
             return {"error": str(e), "score": 1.0}  # Default to passing
 
     async def _check_adherence(self, context: str, answer: str) -> Dict[str, Any]:
@@ -493,7 +478,7 @@ class EnkryptOutputGuardrail:
             }
 
             if self.debug:
-                sys_print("[EnkryptOutputGuardrail] Checking adherence", is_debug=True)
+                logger.debug("[EnkryptOutputGuardrail] Checking adherence")
 
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -502,17 +487,12 @@ class EnkryptOutputGuardrail:
                     result = await response.json()
 
             if self.debug:
-                sys_print(
-                    f"[EnkryptOutputGuardrail] Adherence result: {result}",
-                    is_debug=True,
-                )
+                logger.debug(f"[EnkryptOutputGuardrail] Adherence result: {result}")
 
             return result
 
         except Exception as e:
-            sys_print(
-                f"[EnkryptOutputGuardrail] Adherence check error: {e}", is_error=True
-            )
+            logger.error(f"[EnkryptOutputGuardrail] Adherence check error: {e}")
             return {"error": str(e), "score": 1.0}  # Default to passing
 
     async def _check_hallucination(
@@ -531,9 +511,7 @@ class EnkryptOutputGuardrail:
             }
 
             if self.debug:
-                sys_print(
-                    "[EnkryptOutputGuardrail] Checking hallucination", is_debug=True
-                )
+                logger.debug("[EnkryptOutputGuardrail] Checking hallucination")
 
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -542,18 +520,12 @@ class EnkryptOutputGuardrail:
                     result = await response.json()
 
             if self.debug:
-                sys_print(
-                    f"[EnkryptOutputGuardrail] Hallucination result: {result}",
-                    is_debug=True,
-                )
+                logger.debug(f"[EnkryptOutputGuardrail] Hallucination result: {result}")
 
             return result
 
         except Exception as e:
-            sys_print(
-                f"[EnkryptOutputGuardrail] Hallucination check error: {e}",
-                is_error=True,
-            )
+            logger.error(f"[EnkryptOutputGuardrail] Hallucination check error: {e}")
             return {"error": str(e), "has_hallucination": False}  # Default to passing
 
     def get_supported_detectors(self) -> List[ViolationType]:
@@ -630,7 +602,7 @@ class EnkryptPIIHandler:
             return violations
 
         except Exception as e:
-            sys_print(f"[EnkryptPIIHandler] PII detection error: {e}", is_error=True)
+            logger.error(f"[EnkryptPIIHandler] PII detection error: {e}")
             return []
 
     async def redact_pii(self, content: str) -> tuple[str, Dict[str, Any]]:
@@ -654,7 +626,7 @@ class EnkryptPIIHandler:
             return redacted_text, {"key": pii_key}
 
         except Exception as e:
-            sys_print(f"[EnkryptPIIHandler] PII redaction error: {e}", is_error=True)
+            logger.error(f"[EnkryptPIIHandler] PII redaction error: {e}")
             return content, {}
 
     async def restore_pii(self, content: str, pii_mapping: Dict[str, Any]) -> str:
@@ -679,7 +651,7 @@ class EnkryptPIIHandler:
             return result.get("text", content)
 
         except Exception as e:
-            sys_print(f"[EnkryptPIIHandler] PII restoration error: {e}", is_error=True)
+            logger.error(f"[EnkryptPIIHandler] PII restoration error: {e}")
             return content
 
 
@@ -798,13 +770,13 @@ class EnkryptServerRegistrationGuardrail:
             self.config.get("debug", False)
             or self.config.get("enkrypt_log_level", "").upper() == "DEBUG"
         )
-        sys_print(
+        logger.info(
             f"[EnkryptServerRegistrationGuardrail] Initialized with debug={self.debug}"
         )
-        sys_print(
+        logger.info(
             f"[EnkryptServerRegistrationGuardrail] Config keys: {list(self.config.keys())}"
         )
-        sys_print(
+        logger.info(
             f"[EnkryptServerRegistrationGuardrail] enkrypt_log_level={self.config.get('enkrypt_log_level')}"
         )
 
@@ -834,13 +806,10 @@ class EnkryptServerRegistrationGuardrail:
             #     server_text += f" | Command: {request.server_command}"
 
             if self.debug:
-                sys_print(
-                    f"[EnkryptServerRegistration] Validating server: {request.server_name}",
-                    is_debug=True,
+                logger.debug(
+                    f"[EnkryptServerRegistration] Validating server: {request.server_name}"
                 )
-                sys_print(
-                    f"[EnkryptServerRegistration] Text: {server_text}", is_debug=True
-                )
+                logger.debug(f"[EnkryptServerRegistration] Text: {server_text}")
 
             # Call Enkrypt batch API
             response = await self._call_batch_api(
@@ -848,9 +817,8 @@ class EnkryptServerRegistrationGuardrail:
             )
 
             if self.debug:
-                sys_print(
-                    f"[EnkryptServerRegistration] Guardrail Response: {response}",
-                    is_debug=True,
+                logger.debug(
+                    f"[EnkryptServerRegistration] Guardrail Response: {response}"
                 )
 
             # Analyze response
@@ -955,14 +923,12 @@ class EnkryptServerRegistrationGuardrail:
             processing_time = (time.time() - start_time) * 1000
 
             if self.debug:
-                sys_print(
-                    f"[EnkryptServerRegistration] Server validation result: {'SAFE' if is_safe else 'BLOCKED'}",
-                    is_debug=True,
+                logger.debug(
+                    f"[EnkryptServerRegistration] Server validation result: {'SAFE' if is_safe else 'BLOCKED'}"
                 )
                 if not is_safe:
-                    sys_print(
-                        f"[EnkryptServerRegistration] Violations: {[v.message for v in violations]}",
-                        is_debug=True,
+                    logger.debug(
+                        f"[EnkryptServerRegistration] Violations: {[v.message for v in violations]}"
                     )
 
             return GuardrailResponse(
@@ -977,10 +943,7 @@ class EnkryptServerRegistrationGuardrail:
             )
 
         except Exception as e:
-            sys_print(
-                f"[EnkryptServerRegistration] Error validating server: {e}",
-                is_error=True,
-            )
+            logger.error(f"[EnkryptServerRegistration] Error validating server: {e}")
             # If guardrails enabled and auth failed, fail-closed to avoid approving unsafe
             cfg_enabled = bool(self.config.get("enkrypt_guardrails_enabled", True))
             if cfg_enabled and ("UNAUTHORIZED:" in str(e)):
@@ -1042,9 +1005,8 @@ class EnkryptServerRegistrationGuardrail:
                 texts.append(tool_text)
 
             if self.debug:
-                sys_print(
-                    f"[EnkryptToolRegistration] Validating {len(texts)} tools for {request.server_name}",
-                    is_debug=True,
+                logger.debug(
+                    f"[EnkryptToolRegistration] Validating {len(texts)} tools for {request.server_name}"
                 )
 
             # Call Enkrypt batch API
@@ -1053,15 +1015,11 @@ class EnkryptServerRegistrationGuardrail:
             )
 
             if self.debug:
-                sys_print(
-                    f"[EnkryptToolRegistration] Guardrail Response: {response}",
-                    is_debug=True,
+                logger.debug(
+                    f"[EnkryptToolRegistration] Guardrail Response: {response}"
                 )
 
-            sys_print(
-                f"[EnkryptToolRegistration] Guardrail Response: {response}",
-                is_debug=True,
-            )
+            logger.debug(f"[EnkryptToolRegistration] Guardrail Response: {response}")
             # Analyze results
             safe_tools = []
             blocked_tools = []
@@ -1134,17 +1092,12 @@ class EnkryptServerRegistrationGuardrail:
             processing_time = (time.time() - start_time) * 1000
 
             if self.debug:
-                sys_print(
-                    "[EnkryptToolRegistration] Validation complete:", is_debug=True
-                )
-                sys_print(f"  - Total tools: {len(request.tools)}", is_debug=True)
-                sys_print(f"  - Safe tools: {len(safe_tools)}", is_debug=True)
-                sys_print(f"  - Blocked tools: {len(blocked_tools)}", is_debug=True)
+                logger.debug("[EnkryptToolRegistration] Validation complete:")
+                logger.debug(f"  - Total tools: {len(request.tools)}")
+                logger.debug(f"  - Safe tools: {len(safe_tools)}")
+                logger.debug(f"  - Blocked tools: {len(blocked_tools)}")
                 if blocked_tools:
-                    sys_print(
-                        f"  - Blocked: {[t['name'] for t in blocked_tools]}",
-                        is_debug=True,
-                    )
+                    logger.debug(f"  - Blocked: {[t['name'] for t in blocked_tools]}")
 
             return GuardrailResponse(
                 is_safe=is_safe,
@@ -1163,9 +1116,7 @@ class EnkryptServerRegistrationGuardrail:
             )
 
         except Exception as e:
-            sys_print(
-                f"[EnkryptToolRegistration] Error validating tools: {e}", is_error=True
-            )
+            logger.error(f"[EnkryptToolRegistration] Error validating tools: {e}")
             cfg_enabled = bool(self.config.get("enkrypt_guardrails_enabled", True))
 
             # Handle timeout errors - fail closed to prevent tool registration
@@ -1176,9 +1127,8 @@ class EnkryptServerRegistrationGuardrail:
                 or "GUARDRAIL_TIMEOUT:" in str(e)
                 or "timed out" in str(e).lower()
             ):
-                sys_print(
-                    f"[EnkryptToolRegistration] Guardrail timeout - blocking tool registration: {e}",
-                    is_error=True,
+                logger.error(
+                    f"[EnkryptToolRegistration] Guardrail timeout - blocking tool registration: {e}"
                 )
 
                 # Extract timeout details if available
@@ -1305,9 +1255,8 @@ class EnkryptServerRegistrationGuardrail:
             }
 
             if self.debug:
-                sys_print(
-                    f"[EnkryptBatchAPI] Calling batch API with {len(texts)} texts",
-                    is_debug=True,
+                logger.debug(
+                    f"[EnkryptBatchAPI] Calling batch API with {len(texts)} texts"
                 )
 
             # Get configurable timeout from TimeoutManager
@@ -1353,14 +1302,12 @@ class EnkryptServerRegistrationGuardrail:
             result = timeout_result.result
 
             if self.debug:
-                sys_print(
-                    "[EnkryptBatchAPI] Batch API response received", is_debug=True
-                )
+                logger.debug("[EnkryptBatchAPI] Batch API response received")
 
             return result
 
         except Exception as e:
-            sys_print(f"[EnkryptBatchAPI] Batch API call failed: {e}", is_error=True)
+            logger.error(f"[EnkryptBatchAPI] Batch API call failed: {e}")
 
             # Use standardized error handling
             from secure_mcp_gateway.error_handling import error_logger

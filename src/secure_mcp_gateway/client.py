@@ -13,10 +13,10 @@ from mcp import ClientSession, StdioServerParameters
 # https://github.com/modelcontextprotocol/python-sdk/blob/main/src/mcp/client/stdio/__init__.py
 from mcp.client.stdio import stdio_client
 
-from secure_mcp_gateway.utils import get_common_config, sys_print
+from secure_mcp_gateway.utils import get_common_config, logger
 from secure_mcp_gateway.version import __version__
 
-sys_print(f"Initializing Enkrypt Secure MCP Gateway Client Module v{__version__}")
+logger.info(f"Initializing Enkrypt Secure MCP Gateway Client Module v{__version__}")
 
 common_config = get_common_config()
 
@@ -76,16 +76,13 @@ def initialize_cache():
     # Test Cache connection
     try:
         cache_client.ping()
-        sys_print(
+        logger.info(
             f"[external_cache] Successfully connected to External Cache at {ENKRYPT_CACHE_HOST}:{ENKRYPT_CACHE_PORT}"
         )
     except external_cache_server.ConnectionError as e:
-        sys_print(
-            f"[external_cache] Failed to connect to External Cache: {e}", is_error=True
-        )
-        sys_print(
-            "[external_cache] Exiting as External Cache is required for this gateway",
-            is_error=True,
+        logger.error(f"[external_cache] Failed to connect to External Cache: {e}")
+        logger.error(
+            "[external_cache] Exiting as External Cache is required for this gateway"
         )
         sys.exit(1)  # Exit if External Cache is unavailable
 
@@ -189,10 +186,7 @@ async def get_server_metadata_only(server_name, gateway_config=None):
         dict: Server metadata including description, name, and version
     """
     if not gateway_config:
-        sys_print(
-            "[get_server_metadata_only] Error: No gateway_config provided",
-            is_error=True,
-        )
+        logger.error("[get_server_metadata_only] Error: No gateway_config provided")
         raise ValueError("No gateway configuration provided")
 
     mcp_config = gateway_config.get("mcp_config", [])
@@ -207,18 +201,18 @@ async def get_server_metadata_only(server_name, gateway_config=None):
     command_args = config["args"]
     env = config.get("env", None)
 
-    sys_print(f"[get_server_metadata_only] Getting metadata for server: {server_name}")
+    logger.info(
+        f"[get_server_metadata_only] Getting metadata for server: {server_name}"
+    )
 
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"[get_server_metadata_only] Command: {command}", is_debug=True)
-        sys_print(
-            f"[get_server_metadata_only] Command args: {command_args}", is_debug=True
-        )
+        logger.debug(f"[get_server_metadata_only] Command: {command}")
+        logger.debug(f"[get_server_metadata_only] Command args: {command_args}")
         # Mask sensitive environment variables
         from secure_mcp_gateway.utils import mask_sensitive_data
 
         masked_env = mask_sensitive_data(env or {}) if env else None
-        sys_print(f"[get_server_metadata_only] Env: {masked_env}", is_debug=True)
+        logger.debug(f"[get_server_metadata_only] Env: {masked_env}")
 
     async with stdio_client(
         StdioServerParameters(command=command, args=command_args, env=env)
@@ -244,17 +238,17 @@ async def get_server_metadata_only(server_name, gateway_config=None):
             else:
                 server_version = getattr(server_info, "version", "unknown")
 
-            sys_print(
+            logger.info(
                 f"[get_server_metadata_only] Connected successfully to {server_name}"
             )
-            sys_print("[get_server_metadata_only] 🔍 Dynamic Server Metadata:")
-            sys_print(
+            logger.info("[get_server_metadata_only] 🔍 Dynamic Server Metadata:")
+            logger.info(
                 f"[get_server_metadata_only]   📝 Description: '{server_description}'"
             )
-            sys_print(
+            logger.info(
                 f"[get_server_metadata_only]   🏷️  Name: '{server_name_from_server}'"
             )
-            sys_print(f"[get_server_metadata_only]   📦 Version: '{server_version}'")
+            logger.info(f"[get_server_metadata_only]   📦 Version: '{server_version}'")
 
             # Return only metadata, NO tool discovery
             return {
@@ -286,9 +280,7 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
         ValueError: If gateway_config is missing or server not found
     """
     if not gateway_config:
-        sys_print(
-            "[forward_tool_call] Error: No gateway_config provided", is_error=True
-        )
+        logger.error("[forward_tool_call] Error: No gateway_config provided")
         raise ValueError("No gateway configuration provided")
 
     mcp_config = gateway_config.get("mcp_config", [])
@@ -303,18 +295,18 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
     command_args = config["args"]
     env = config.get("env", None)
 
-    sys_print(
+    logger.info(
         f"[forward_tool_call] Starting tool call for server: {server_name} and tool: {tool_name}"
     )
 
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(f"[forward_tool_call] Command: {command}", is_debug=True)
-        sys_print(f"[forward_tool_call] Command args: {command_args}", is_debug=True)
+        logger.debug(f"[forward_tool_call] Command: {command}")
+        logger.debug(f"[forward_tool_call] Command args: {command_args}")
         # Mask sensitive environment variables
         from secure_mcp_gateway.utils import mask_sensitive_data
 
         masked_env = mask_sensitive_data(env or {}) if env else None
-        sys_print(f"[forward_tool_call] Env: {masked_env}", is_debug=True)
+        logger.debug(f"[forward_tool_call] Env: {masked_env}")
 
     async with stdio_client(
         StdioServerParameters(command=command, args=command_args, env=env)
@@ -347,15 +339,15 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
             session._server_version = server_version
             session._server_info = server_info
 
-            sys_print(f"[forward_tool_call] Connected successfully to {server_name}")
-            sys_print("[forward_tool_call] 🔍 Dynamic Server Metadata:")
-            sys_print(f"[forward_tool_call]   📝 Description: '{server_description}'")
-            sys_print(f"[forward_tool_call]   🏷️  Name: '{server_name_from_server}'")
-            sys_print(f"[forward_tool_call]   📦 Version: '{server_version}'")
+            logger.info(f"[forward_tool_call] Connected successfully to {server_name}")
+            logger.info("[forward_tool_call] 🔍 Dynamic Server Metadata:")
+            logger.info(f"[forward_tool_call]   📝 Description: '{server_description}'")
+            logger.info(f"[forward_tool_call]   🏷️  Name: '{server_name_from_server}'")
+            logger.info(f"[forward_tool_call]   📦 Version: '{server_version}'")
 
             # If tool_name is None, this is a discovery request
             if tool_name is None:
-                sys_print(
+                logger.info(
                     "[forward_tool_call] Starting tool discovery as tool_name is None"
                 )
                 # Request tool listing from the MCP server
@@ -363,16 +355,14 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
                 try:
                     # Safely print the tools result to avoid async context issues
                     tools_summary = f"[forward_tool_call] Discovered {len(getattr(tools_result or {}, 'tools', []))} tools for {server_name}"
-                    sys_print(tools_summary)
+                    logger.info(tools_summary)
                     if IS_DEBUG_LOG_LEVEL and tools_result is not None:
-                        sys_print(
-                            f"[forward_tool_call] Tool details for {server_name}: {tools_result}",
-                            is_debug=True,
+                        logger.debug(
+                            f"[forward_tool_call] Tool details for {server_name}: {tools_result}"
                         )
                 except Exception as e:
-                    sys_print(
-                        f"[forward_tool_call] Tools discovered for {server_name}, but encountered error when printing details: {e}",
-                        is_error=True,
+                    logger.error(
+                        f"[forward_tool_call] Tools discovered for {server_name}, but encountered error when printing details: {e}"
                     )
 
                 # Return tools result with dynamic server metadata
@@ -387,7 +377,7 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
                 }
 
             # Normal tool call
-            sys_print(f"[forward_tool_call] Calling specific tool: {tool_name}")
+            logger.info(f"[forward_tool_call] Calling specific tool: {tool_name}")
             return await session.call_tool(tool_name, arguments=args)
 
 
@@ -454,15 +444,13 @@ def get_cached_tools(cache_client, id, server_name):
     try:
         tool_data = json.loads(cached_data)
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(
-                f"[external_cache] Using cached tools for id '{id}', server '{server_name}' with key hash: {key}",
-                is_debug=True,
+            logger.debug(
+                f"[external_cache] Using cached tools for id '{id}', server '{server_name}' with key hash: {key}"
             )
         return tool_data
     except json.JSONDecodeError:
-        sys_print(
-            f"[external_cache] Error deserializing tools cache for hash key: {key}",
-            is_error=True,
+        logger.error(
+            f"[external_cache] Error deserializing tools cache for hash key: {key}"
         )
         return None
 
@@ -512,12 +500,8 @@ def cache_tools(cache_client, id, server_name, tools):
         try:
             serialized_data = json.dumps(tools)
         except TypeError as e:
-            sys_print(
-                f"[external_cache] Warning: Cannot serialize tools - {e}", is_error=True
-            )
-            sys_print(
-                "[external_cache] Using simplified tool representation", is_error=True
-            )
+            logger.error(f"[external_cache] Warning: Cannot serialize tools - {e}")
+            logger.error("[external_cache] Using simplified tool representation")
 
             # Fall back to a simplified format if serialization fails
             # This handles cases where tools has complex objects inside
@@ -574,9 +558,8 @@ def cache_tools(cache_client, id, server_name, tools):
         expiration_time = datetime.fromtimestamp(
             time.time() + expires_in_seconds
         ).strftime("%Y-%m-%d %H:%M:%S")
-        sys_print(
-            f"[external_cache] Cached tools for gateway/user '{id}', server '{server_name}' with key '{raw_key}' (hash: {key}) until {expiration_time}",
-            is_debug=True,
+        logger.debug(
+            f"[external_cache] Cached tools for gateway/user '{id}', server '{server_name}' with key '{raw_key}' (hash: {key}) until {expiration_time}"
         )
 
     # Maintain a registry of servers for this gateway/user
@@ -613,15 +596,13 @@ def get_cached_gateway_config(cache_client, id):
     try:
         config_data = json.loads(cached_data)
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(
-                f"[external_cache] Using cached config for id '{id}' with key hash: {config_key}",
-                is_debug=True,
+            logger.debug(
+                f"[external_cache] Using cached config for id '{id}' with key hash: {config_key}"
             )
         return config_data
     except json.JSONDecodeError:
-        sys_print(
-            f"[external_cache] Error deserializing config cache for hash key: {config_key}",
-            is_error=True,
+        logger.error(
+            f"[external_cache] Error deserializing config cache for hash key: {config_key}"
         )
         return None
 
@@ -650,9 +631,8 @@ def cache_gateway_config(cache_client, id, config):
         expiration_time = datetime.fromtimestamp(
             time.time() + expires_in_seconds
         ).strftime("%Y-%m-%d %H:%M:%S")
-        sys_print(
-            f"[external_cache] Cached gateway config for '{id}' with key '{id}-mcp-config' (hash: {config_key}) until {expiration_time}",
-            is_debug=True,
+        logger.debug(
+            f"[external_cache] Cached gateway config for '{id}' with key '{id}-mcp-config' (hash: {config_key}) until {expiration_time}"
         )
     gateway_registry = get_gateway_registry_hashed_key()
     cache_client.sadd(gateway_registry, id)
@@ -678,9 +658,8 @@ def cache_key_to_id(cache_client, gateway_key, id):
 
     cache_client.setex(key, expires_in_seconds, id)
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(
-            f"[external_cache] Cached key mapping with key 'gateway_key-****{gateway_key[-4:]}' (hash: {key})",
-            is_debug=True,
+        logger.debug(
+            f"[external_cache] Cached key mapping with key 'gateway_key-****{gateway_key[-4:]}' (hash: {key})"
         )
 
 
@@ -705,9 +684,7 @@ def get_id_from_key(cache_client, gateway_key):
     id = cache_client.get(key)
     if id:
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(
-                f"[external_cache] Found id for key with hash: {key}", is_debug=True
-            )
+            logger.debug(f"[external_cache] Found id for key with hash: {key}")
     return id
 
 
@@ -724,16 +701,15 @@ def clear_cache_for_servers(cache_client, id, server_name=None):
         int: Number of cache entries cleared
     """
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(
-            f"[clear_cache_for_servers] Clearing cache for servers for gateway/user: {id} with current local_server_registry: {local_server_registry}",
-            is_debug=True,
+        logger.debug(
+            f"[clear_cache_for_servers] Clearing cache for servers for gateway/user: {id} with current local_server_registry: {local_server_registry}"
         )
 
     count = 0
     # Local cache clear
     if server_name:
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(
+            logger.info(
                 f"[clear_cache_for_servers] Clearing cache for server: {server_name}"
             )
         key = get_server_hashed_key(id, server_name)
@@ -744,38 +720,33 @@ def clear_cache_for_servers(cache_client, id, server_name=None):
                 local_server_registry[id].discard(server_name)
     else:
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(
-                "[clear_cache_for_servers] Clearing cache for all servers for gateway/user",
-                is_debug=True,
+            logger.debug(
+                "[clear_cache_for_servers] Clearing cache for all servers for gateway/user"
             )
         # Clear all servers for a gateway/user
         if id in local_server_registry:
             if IS_DEBUG_LOG_LEVEL:
-                sys_print(
-                    f"[clear_cache_for_servers] Clearing cache for all servers for gateway/user found in local_server_registry: {id}",
-                    is_debug=True,
+                logger.debug(
+                    f"[clear_cache_for_servers] Clearing cache for all servers for gateway/user found in local_server_registry: {id}"
                 )
             for server_name in list(local_server_registry[id]):
                 if IS_DEBUG_LOG_LEVEL:
-                    sys_print(
-                        f"[clear_cache_for_servers] Clearing cache for server: {server_name}",
-                        is_debug=True,
+                    logger.debug(
+                        f"[clear_cache_for_servers] Clearing cache for server: {server_name}"
                     )
                 key = get_server_hashed_key(id, server_name)
                 if key in local_cache:
                     if IS_DEBUG_LOG_LEVEL:
-                        sys_print(
-                            f"[clear_cache_for_servers] Clearing cache for server: {server_name} found in local_cache",
-                            is_debug=True,
+                        logger.debug(
+                            f"[clear_cache_for_servers] Clearing cache for server: {server_name} found in local_cache"
                         )
                     del local_cache[key]
                     count += 1
             local_server_registry[id].clear()
         else:
             if IS_DEBUG_LOG_LEVEL:
-                sys_print(
-                    f"[clear_cache_for_servers] Clearing cache for all servers for gateway/user not found in local_server_registry: {id}",
-                    is_debug=True,
+                logger.debug(
+                    f"[clear_cache_for_servers] Clearing cache for all servers for gateway/user not found in local_server_registry: {id}"
                 )
 
     if cache_client is None:
@@ -820,16 +791,14 @@ def clear_gateway_config_cache(cache_client, id, gateway_key):
         bool: True if any cache entries were cleared
     """
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(
-            "[clear_gateway_config_cache] Clearing all cache entries for gateway/user",
-            is_debug=True,
+        logger.debug(
+            "[clear_gateway_config_cache] Clearing all cache entries for gateway/user"
         )
     # 1. Clear all tool caches for the gateway/user
     registry_key = get_gateway_servers_registry_hashed_key(id)
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(
-            f"[clear_gateway_config_cache] Clearing all tool caches for gateway/user: {id} with registry key: {registry_key}",
-            is_debug=True,
+        logger.debug(
+            f"[clear_gateway_config_cache] Clearing all tool caches for gateway/user: {id} with registry key: {registry_key}"
         )
     servers = (
         cache_client.smembers(registry_key)
@@ -837,16 +806,14 @@ def clear_gateway_config_cache(cache_client, id, gateway_key):
         else []
     )
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(
-            f"[clear_gateway_config_cache] Clearing all tool caches for gateway/user: {id} with servers: {servers}",
-            is_debug=True,
+        logger.debug(
+            f"[clear_gateway_config_cache] Clearing all tool caches for gateway/user: {id} with servers: {servers}"
         )
     for server_name in servers:
         tool_key = get_server_hashed_key(id, server_name)
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(
-                f"[clear_gateway_config_cache] Clearing tool cache for server: {server_name} with tool_key: {tool_key}",
-                is_debug=True,
+            logger.debug(
+                f"[clear_gateway_config_cache] Clearing tool cache for server: {server_name} with tool_key: {tool_key}"
             )
         if cache_client and cache_client.exists(tool_key):
             cache_client.delete(tool_key)

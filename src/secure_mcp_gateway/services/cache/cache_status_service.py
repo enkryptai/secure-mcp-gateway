@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from typing import Any
 
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
@@ -27,9 +28,9 @@ from secure_mcp_gateway.utils import (
     build_log_extra,
     generate_custom_id,
     get_server_info_by_name,
+    logger,
     mask_key,
     mask_sensitive_env_vars,
-    sys_print,
 )
 
 
@@ -44,6 +45,12 @@ class CacheStatusService:
     def __init__(self):
         self.auth_manager = get_auth_config_manager()
         self.cache_service = cache_service
+
+    def _format_timestamp(self, timestamp: float) -> str:
+        """Convert Unix timestamp to human-readable format."""
+        if timestamp is None:
+            return None
+        return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     async def get_cache_status(self, ctx, logger=None) -> dict[str, Any]:
         """
@@ -62,7 +69,7 @@ class CacheStatusService:
         """
         with tracer.start_as_current_span("cache_status.get_cache_status") as main_span:
             try:
-                sys_print("[get_cache_status] Request received")
+                logger.info("[get_cache_status] Request received")
                 custom_id = generate_custom_id()
                 main_span.set_attribute("request_id", ctx.request_id)
                 main_span.set_attribute("custom_id", custom_id)
@@ -95,16 +102,15 @@ class CacheStatusService:
                 # Set final span attributes
                 main_span.set_attribute("success", True)
 
-                sys_print(
-                    f"[get_cache_status] Returning cache status for Gateway or User {id}",
-                    is_debug=True,
+                logger.debug(
+                    f"[get_cache_status] Returning cache status for Gateway or User {id}"
                 )
                 return {"status": "success", "cache_status": cache_status}
 
             except Exception as e:
                 main_span.record_exception(e)
                 main_span.set_attribute("error", str(e))
-                sys_print(f"[get_cache_status] Critical error: {e}", is_error=True)
+                logger.error(f"[get_cache_status] Critical error: {e}")
                 logger.error(
                     "cache_status.get_cache_status.critical_error",
                     extra=build_log_extra(ctx, custom_id, error=str(e)),
@@ -124,9 +130,8 @@ class CacheStatusService:
             )
 
             if not gateway_config:
-                sys_print(
-                    f"[enkrypt_get_cache_status] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}",
-                    is_error=True,
+                logger.error(
+                    f"[enkrypt_get_cache_status] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}"
                 )
                 context = ErrorContext(
                     operation="cache_status.init",
@@ -160,7 +165,7 @@ class CacheStatusService:
                 result = await enkrypt_authenticate(ctx)
                 if result.get("status") != "success":
                     auth_span.set_attribute("error", "Authentication failed")
-                    sys_print("[get_cache_status] Not authenticated", is_error=True)
+                    logger.error("[get_cache_status] Not authenticated")
                     logger.error(
                         "cache_status.get_cache_status.not_authenticated",
                         extra=build_log_extra(
@@ -194,7 +199,7 @@ class CacheStatusService:
         with tracer.start_as_current_span(
             "cache_status.get_cache_statistics"
         ) as stats_span:
-            sys_print("[get_cache_status] Getting cache statistics")
+            logger.info("[get_cache_status] Getting cache statistics")
             stats = self.cache_service.get_cache_statistics()
             stats_span.set_attribute("total_gateways", stats.get("total_gateways", 0))
             stats_span.set_attribute(
@@ -231,7 +236,7 @@ class CacheStatusService:
         ) as config_span:
             config_span.set_attribute("gateway_id", id)
 
-            sys_print(
+            logger.info(
                 f"[get_cache_status] Getting gateway config for Gateway or User {id}"
             )
             logger.info(
@@ -265,9 +270,8 @@ class CacheStatusService:
                             config_key
                         )
                         if IS_DEBUG_LOG_LEVEL:
-                            sys_print(
-                                f"[get_cache_status] Redis TTL for gateway config: ttl_seconds={ttl_seconds}, expires_at={expires_at}",
-                                is_debug=True,
+                            logger.debug(
+                                f"[get_cache_status] Redis TTL for gateway config: ttl_seconds={ttl_seconds}, expires_at={expires_at}"
                             )
                     else:
                         expires_at = None
@@ -282,9 +286,8 @@ class CacheStatusService:
                     config_span.set_attribute("expires_in_hours", None)
 
                 if IS_DEBUG_LOG_LEVEL:
-                    sys_print(
-                        f"[get_cache_status] Cached gateway config: {gateway_config}",
-                        is_debug=True,
+                    logger.debug(
+                        f"[get_cache_status] Cached gateway config: {gateway_config}"
                     )
                     logger.info(
                         "cache_status.get_cache_status.cached_gateway_config",
@@ -295,7 +298,7 @@ class CacheStatusService:
 
                 cache_status["gateway_specific"]["config"] = {
                     "exists": True,
-                    "expires_at": expires_at,
+                    "expires_at": self._format_timestamp(expires_at),
                     "expires_in_hours": (expires_at - time.time()) / 3600
                     if expires_at
                     else None,
@@ -310,9 +313,8 @@ class CacheStatusService:
                 telemetry_mgr.cache_miss_counter.add(1, attributes=build_log_extra(ctx))
                 config_span.set_attribute("cache_hit", False)
 
-                sys_print(
-                    f"[get_cache_status] No cached gateway config found for {id}",
-                    is_debug=True,
+                logger.debug(
+                    f"[get_cache_status] No cached gateway config found for {id}"
                 )
                 logger.info(
                     "cache_status.get_cache_status.no_cached_gateway_config_found",
@@ -333,7 +335,7 @@ class CacheStatusService:
         with tracer.start_as_current_span(
             "cache_status.check_server_tools_cache"
         ) as servers_span:
-            sys_print("[get_cache_status] Getting server cache status", is_debug=True)
+            logger.debug("[get_cache_status] Getting server cache status")
             logger.info(
                 "cache_status.get_cache_status.getting_server_cache_status",
                 extra=build_log_extra(ctx, custom_id, id=id),
@@ -355,7 +357,7 @@ class CacheStatusService:
                             masked_server["config"]["env"]
                         )
                     masked_mcp_config.append(masked_server)
-                sys_print(f"mcp_configs: {masked_mcp_config}", is_debug=True)
+                logger.debug(f"mcp_configs: {masked_mcp_config}")
                 logger.info(
                     "cache_status.get_cache_status.mcp_configs",
                     extra=build_log_extra(ctx, custom_id, mcp_configs=mcp_config),
@@ -368,9 +370,8 @@ class CacheStatusService:
                 enkrypt_gateway_key
             )
             if not local_gateway_config:
-                sys_print(
-                    f"[enkrypt_get_cache_status] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}",
-                    is_error=True,
+                logger.error(
+                    f"[enkrypt_get_cache_status] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}"
                 )
                 context = ErrorContext(
                     operation="cache_status.local_config",
@@ -384,9 +385,7 @@ class CacheStatusService:
                 return create_error_response(err)
 
             if IS_DEBUG_LOG_LEVEL:
-                sys_print(
-                    f"local gateway_config: {local_gateway_config}", is_debug=True
-                )
+                logger.debug(f"local gateway_config: {local_gateway_config}")
                 logger.info(
                     "cache_status.get_cache_status.local_gateway_config",
                     extra=build_log_extra(
@@ -434,16 +433,13 @@ class CacheStatusService:
             server_span.set_attribute("gateway_id", id)
 
             if IS_DEBUG_LOG_LEVEL:
-                sys_print(
-                    f"[get_cache_status] Getting tool cache for server: {server_name}",
-                    is_debug=True,
+                logger.debug(
+                    f"[get_cache_status] Getting tool cache for server: {server_name}"
                 )
 
             cached_result = self.cache_service.get_cached_tools(id, server_name)
             if IS_DEBUG_LOG_LEVEL:
-                sys_print(
-                    f"[get_cache_status] Cached result: {cached_result}", is_debug=True
-                )
+                logger.debug(f"[get_cache_status] Cached result: {cached_result}")
 
             if cached_result:
                 # Handle both tuple (local cache) and non-tuple (external cache) returns
@@ -461,9 +457,8 @@ class CacheStatusService:
                             tools_key
                         )
                         if IS_DEBUG_LOG_LEVEL:
-                            sys_print(
-                                f"[get_cache_status] Redis TTL for {server_name}: ttl_seconds={ttl_seconds}, expires_at={expires_at}",
-                                is_debug=True,
+                            logger.debug(
+                                f"[get_cache_status] Redis TTL for {server_name}: ttl_seconds={ttl_seconds}, expires_at={expires_at}"
                             )
                     else:
                         expires_at = None
@@ -485,7 +480,7 @@ class CacheStatusService:
                     "are_tools_explicitly_defined": False,
                     "needs_discovery": False,
                     "exists": True,
-                    "expires_at": expires_at,
+                    "expires_at": self._format_timestamp(expires_at),
                     "expires_in_hours": (expires_at - time.time()) / 3600
                     if expires_at
                     else None,
@@ -507,9 +502,8 @@ class CacheStatusService:
                         and len(local_server_info.get("tools")) > 0
                     ):
                         if IS_DEBUG_LOG_LEVEL:
-                            sys_print(
-                                f"[get_cache_status] Server {server_name} tools are defined in the local gateway config",
-                                is_debug=True,
+                            logger.debug(
+                                f"[get_cache_status] Server {server_name} tools are defined in the local gateway config"
                             )
                         are_tools_explicitly_defined = True
                         needs_discovery = False
@@ -536,10 +530,7 @@ class CacheStatusService:
     def _count_tools(self, tools, server_name):
         """Count tools in various formats."""
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(
-                f"[get_cache_status] Tools found for server: {server_name}",
-                is_debug=True,
-            )
+            logger.debug(f"[get_cache_status] Tools found for server: {server_name}")
 
         # Handle ListToolsResult format
         if hasattr(tools, "tools") and isinstance(tools.tools, list):
@@ -558,8 +549,7 @@ class CacheStatusService:
         elif isinstance(tools, dict):
             return len(tools)
         else:
-            sys_print(
-                f"[get_cache_status] ERROR: Unknown tool format for server: {server_name} - type: {type(tools)}",
-                is_error=True,
+            logger.error(
+                f"[get_cache_status] ERROR: Unknown tool format for server: {server_name} - type: {type(tools)}"
             )
             return None

@@ -20,11 +20,28 @@ from secure_mcp_gateway.consts import (
 )
 
 # Lazy import to avoid circular imports
+#
+# We expose a single, centralized logger for the whole application via a
+# lazy accessor. Most modules should import and use `utils.logger`, which
+# routes to the active telemetry provider's logger when telemetry is
+# enabled. This centralizes formatting, context, and export behavior.
+#
+# IMPORTANT: Telemetry modules themselves (e.g. providers under
+# `plugins/telemetry`) MUST NOT import from `utils` to fetch this logger,
+# because `utils` depends on telemetry during initialization. Those
+# modules should instead create a local module logger with
+# `logging.getLogger(...)` to avoid circular imports during bootstrap.
 _logger_cache = None
 
 
 def get_logger():
-    """Lazy logger retrieval to avoid circular imports and early initialization."""
+    """Return the active application logger lazily.
+
+    This defers importing the telemetry config/manager until first use,
+    preventing circular imports during process startup. If telemetry is
+    disabled or unavailable, this returns None and `LazyLogger` will
+    no-op calls.
+    """
     global _logger_cache
     if _logger_cache is None:
         try:
@@ -34,24 +51,44 @@ def get_logger():
 
             telemetry_manager = get_telemetry_config_manager()
             _logger_cache = telemetry_manager.get_logger()
-        except Exception:
+            print("[utils] Logger initialized successfully", file=sys.stderr)
+        except Exception as e:
             # If telemetry is not available, return None
+            print(f"[utils] Logger initialization failed: {e}", file=sys.stderr)
             _logger_cache = None
     return _logger_cache
 
 
 # For backward compatibility, expose logger as a module-level variable
 class LazyLogger:
-    """Lazy logger wrapper for backward compatibility."""
+    """Lazy logger wrapper used by application modules.
+
+    Accessing any logging method (e.g., `.info`, `.debug`) forwards the
+    call to the real telemetry-backed logger when available. Otherwise it
+    becomes a safe no-op. This allows importing `logger` from `utils`
+    everywhere without eagerly initializing telemetry.
+    """
 
     def __getattr__(self, name):
         logger = get_logger()
         if logger:
             return getattr(logger, name)
         # No-op if logger not available
+        print(
+            f"[utils] LazyLogger: No logger available for method {name}",
+            file=sys.stderr,
+        )
         return lambda *args, **kwargs: None
 
 
+# Central application logger for non-telemetry modules.
+#
+# Usage guidance:
+# - In most modules, prefer: `from secure_mcp_gateway.utils import logger`
+# - In telemetry provider/config modules, prefer a local
+#   `logging.getLogger("enkrypt.telemetry")` to avoid importing `utils`
+#   (which depends on telemetry initialization) and creating a circular
+#   dependency.
 logger = LazyLogger()
 from secure_mcp_gateway.version import __version__
 
@@ -69,10 +106,21 @@ class _DebugLevel:
 
 IS_DEBUG_LOG_LEVEL = _DebugLevel()
 
-# TODO: Fix error and use stdout
+# NOTE:
+# This module is imported very early in the gateway startup sequence by multiple
+# subsystems. At that time, the telemetry provider (which owns the logger
+# configuration) may not yet be initialized. As a result, calls to acquire a
+# logger can return None, and the LazyLogger will no-op. To ensure critical
+# bootstrap diagnostics are visible, we mirror key messages to stderr via
+# print() in addition to logger calls. Once telemetry is initialized, logger
+# messages will flow through the configured provider as usual.
+# Initialize logger for this module
 print(
     f"[utils] Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}",
     file=sys.stderr,
+)
+logger.info(
+    f"[utils] Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}"
 )
 
 IS_TELEMETRY_ENABLED = None
@@ -150,24 +198,29 @@ def get_common_config(print_debug=False):
 
     # TODO: Fix error and use stdout
     print("[utils] Getting Enkrypt Common Configuration", file=sys.stderr)
+    logger.info("[utils] Getting Enkrypt Common Configuration")
 
     if print_debug:
-        print(f"[utils] config_path: {CONFIG_PATH}", file=sys.stderr)
-        print(f"[utils] docker_config_path: {DOCKER_CONFIG_PATH}", file=sys.stderr)
-        print(f"[utils] example_config_path: {EXAMPLE_CONFIG_PATH}", file=sys.stderr)
+        logger.debug(f"[utils] config_path: {CONFIG_PATH}")
+        logger.debug(f"[utils] docker_config_path: {DOCKER_CONFIG_PATH}")
+        logger.debug(f"[utils] example_config_path: {EXAMPLE_CONFIG_PATH}")
 
     is_running_in_docker = is_docker()
     print(f"[utils] is_running_in_docker: {is_running_in_docker}", file=sys.stderr)
+    logger.debug(f"[utils] is_running_in_docker: {is_running_in_docker}")
     picked_config_path = DOCKER_CONFIG_PATH if is_running_in_docker else CONFIG_PATH
     if does_file_exist(picked_config_path):
         print(f"[utils] Loading {picked_config_path} file...", file=sys.stderr)
+        logger.info(f"[utils] Loading {picked_config_path} file...")
         with open(picked_config_path, encoding="utf-8") as f:
             config = json.load(f)
     else:
         print("[utils] No config file found. Loading example config.", file=sys.stderr)
+        logger.info("[utils] No config file found. Loading example config.")
         if does_file_exist(EXAMPLE_CONFIG_PATH):
             if print_debug:
                 print(f"[utils] Loading {EXAMPLE_CONFIG_NAME} file...", file=sys.stderr)
+                logger.debug(f"[utils] Loading {EXAMPLE_CONFIG_NAME} file...")
             with open(EXAMPLE_CONFIG_PATH, encoding="utf-8") as f:
                 config = json.load(f)
         else:
@@ -175,9 +228,12 @@ def get_common_config(print_debug=False):
                 "[utils] Example config file not found. Using default common config.",
                 file=sys.stderr,
             )
+            logger.info(
+                "[utils] Example config file not found. Using default common config."
+            )
 
     if print_debug and config:
-        print(f"[utils] config: {config}", file=sys.stderr)
+        logger.debug(f"[utils] config: {config}")
 
     common_config = config.get("common_mcp_gateway_config", {})
     plugins_config = config.get("plugins", {})
@@ -209,7 +265,7 @@ def is_telemetry_enabled():
         hostname = parsed_url.hostname
         port = parsed_url.port
         if not hostname or not port:
-            print(f"[utils] Invalid OTLP endpoint URL: {endpoint}", file=sys.stderr)
+            logger.error(f"[utils] Invalid OTLP endpoint URL: {endpoint}")
             IS_TELEMETRY_ENABLED = False
             return False
 
@@ -223,9 +279,8 @@ def is_telemetry_enabled():
             IS_TELEMETRY_ENABLED = True
             return True
     except (OSError, AttributeError, TypeError, ValueError) as e:
-        print(
-            f"[utils] Telemetry is enabled in config, but endpoint {endpoint} is not accessible. So, disabling telemetry. Error: {e}",
-            file=sys.stderr,
+        logger.error(
+            f"[utils] Telemetry is enabled in config, but endpoint {endpoint} is not accessible. So, disabling telemetry. Error: {e}"
         )
         IS_TELEMETRY_ENABLED = False
         return False
@@ -248,43 +303,40 @@ def generate_custom_id():
 
         return f"{random_part}_{timestamp_ms}"
     except Exception as e:
-        print(f"[utils] Error generating custom ID: {e}", file=sys.stderr)
+        logger.error(f"[utils] Error generating custom ID: {e}")
         # Fallback to a simpler ID if there's an error
         return f"fallback_{int(time.time())}"
 
 
 def sys_print(*args, **kwargs):
     """
-    Print a message to the console only (no logging to avoid duplication).
+    Print a message using the logger system.
 
     Args:
-        *args: Arguments to print
+        *args: Arguments to log
         **kwargs: Keyword arguments including:
-            - is_error (bool): If True, print to stderr
-            - is_debug (bool): If True, print with [DEBUG] prefix
+            - is_error (bool): If True, use logger.error
+            - is_debug (bool): If True, use logger.debug
     """
     is_error = kwargs.pop("is_error", False)
     is_debug = kwargs.pop("is_debug", False)
 
-    # If is_error is True, print to stderr
-    if is_error:
-        kwargs.setdefault("file", sys.stderr)
-    else:
-        # TODO: Fix error and use stdout
-        # kwargs.setdefault('file', sys.stdout)
-        kwargs.setdefault("file", sys.stderr)
-
-    # Using try/except to avoid any print errors blocking the flow for edge cases
+    # Using try/except to avoid any logging errors blocking the flow for edge cases
     try:
         if args:
-            # Add debug prefix if needed
-            if is_debug:
-                print("[DEBUG]", *args, **kwargs)
+            # Join all arguments into a single message
+            message = " ".join(str(arg) for arg in args)
+
+            # Route to appropriate logger method
+            if is_error:
+                logger.error(message)
+            elif is_debug:
+                logger.debug(message)
             else:
-                print(*args, **kwargs)
+                logger.info(message)
     except Exception as e:
-        # Ignore any print errors
-        print(f"[utils] Error printing using sys_print: {e}", file=sys.stderr)
+        # Fallback to print if logger fails
+        print(f"[utils] Error logging using sys_print: {e}", file=sys.stderr)
         pass
 
 
@@ -474,10 +526,7 @@ def get_server_info_by_name(gateway_config, server_name):
         dict: Server configuration if found, None otherwise
     """
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(
-            f"[get_server_info_by_name] Getting server info for {server_name}",
-            is_debug=True,
-        )
+        logger.debug(f"[get_server_info_by_name] Getting server info for {server_name}")
     mcp_config = gateway_config.get("mcp_config", [])
     if IS_DEBUG_LOG_LEVEL:
         # Mask sensitive data in debug logs
@@ -490,9 +539,7 @@ def get_server_info_by_name(gateway_config, server_name):
                     masked_server["config"]["env"]
                 )
             masked_mcp_config.append(masked_server)
-        sys_print(
-            f"[get_server_info_by_name] mcp_config: {masked_mcp_config}", is_debug=True
-        )
+        logger.debug(f"[get_server_info_by_name] mcp_config: {masked_mcp_config}")
     return next((s for s in mcp_config if s.get("server_name") == server_name), None)
 
 

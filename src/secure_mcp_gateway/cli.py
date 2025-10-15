@@ -21,33 +21,29 @@ from secure_mcp_gateway.utils import (
     CONFIG_PATH,
     DOCKER_CONFIG_PATH,
     is_docker,
-    sys_print,
+    logger,
 )
 from secure_mcp_gateway.version import __version__
 
-sys_print(f"Initializing Enkrypt Secure MCP Gateway CLI Module v{__version__}")
+logger.info(f"Initializing Enkrypt Secure MCP Gateway CLI Module v{__version__}")
 
 HOME_DIR = os.path.expanduser("~")
-sys_print("HOME_DIR: ", HOME_DIR)
+logger.info("HOME_DIR: ", HOME_DIR)
 
 is_docker_running = is_docker()
-sys_print("is_docker_running: ", is_docker_running)
+logger.info("is_docker_running: ", is_docker_running)
 
 if is_docker_running:
     HOST_OS = os.environ.get("HOST_OS", None)
     HOST_ENKRYPT_HOME = os.environ.get("HOST_ENKRYPT_HOME", None)
     if not HOST_OS or not HOST_ENKRYPT_HOME:
-        sys_print(
-            "HOST_OS and HOST_ENKRYPT_HOME environment variables are not set.",
-            is_error=True,
-        )
-        sys_print(
-            "Please set them when running the Docker container:\n  docker run -e HOST_OS=<your_os> -e HOST_ENKRYPT_HOME=<path_to_enkrypt_home> ...",
-            is_error=True,
+        logger.error("HOST_OS and HOST_ENKRYPT_HOME environment variables are not set.")
+        logger.error(
+            "Please set them when running the Docker container:\n  docker run -e HOST_OS=<your_os> -e HOST_ENKRYPT_HOME=<path_to_enkrypt_home> ..."
         )
         sys.exit(1)
-    sys_print("HOST_OS: ", HOST_OS)
-    sys_print("HOST_ENKRYPT_HOME: ", HOST_ENKRYPT_HOME)
+    logger.info("HOST_OS: ", HOST_OS)
+    logger.info("HOST_ENKRYPT_HOME: ", HOST_ENKRYPT_HOME)
 else:
     HOST_OS = None
     HOST_ENKRYPT_HOME = None
@@ -55,9 +51,9 @@ else:
 GATEWAY_PY_PATH = os.path.join(BASE_DIR, "gateway.py")
 ECHO_SERVER_PATH = os.path.join(BASE_DIR, "bad_mcps", "echo_mcp.py")
 PICKED_CONFIG_PATH = DOCKER_CONFIG_PATH if is_docker_running else CONFIG_PATH
-sys_print("GATEWAY_PY_PATH: ", GATEWAY_PY_PATH)
-sys_print("ECHO_SERVER_PATH: ", ECHO_SERVER_PATH)
-sys_print("PICKED_CONFIG_PATH: ", PICKED_CONFIG_PATH)
+logger.info("GATEWAY_PY_PATH: ", GATEWAY_PY_PATH)
+logger.info("ECHO_SERVER_PATH: ", ECHO_SERVER_PATH)
+logger.info("PICKED_CONFIG_PATH: ", PICKED_CONFIG_PATH)
 print("--------------------------------\n\nOUTPUT:\n\n", file=sys.stderr)
 
 DOCKER_COMMAND = "docker"
@@ -86,12 +82,10 @@ def load_config(config_path):
         with open(config_path) as f:
             return json.load(f)
     except json.JSONDecodeError as e:
-        sys_print(
-            f"Error: Config file is corrupted or invalid JSON: {e}", is_error=True
-        )
+        logger.error(f"Error: Config file is corrupted or invalid JSON: {e}")
         sys.exit(1)
     except Exception as e:
-        sys_print(f"Error reading config file: {e}", is_error=True)
+        logger.error(f"Error reading config file: {e}")
         sys.exit(1)
 
 
@@ -111,7 +105,7 @@ def save_config(config_path, config):
         if os.name == "posix":
             os.chmod(config_path, 0o600)
     except Exception as e:
-        sys_print(f"Error saving config file: {e}", is_error=True)
+        logger.error(f"Error saving config file: {e}")
         sys.exit(1)
 
 
@@ -136,21 +130,14 @@ def validate_json_input(json_string, field_name):
     try:
         return json.loads(json_string)
     except json.JSONDecodeError as e:
-        sys_print(f"Error: Invalid JSON for {field_name}: {e}", is_error=True)
+        logger.error(f"Error: Invalid JSON for {field_name}: {e}")
         if sys.platform == "win32":
-            sys_print(
-                "PowerShell tip: Try using a variable or JSON file instead",
-                is_error=True,
-            )
-            sys_print(
-                'Example: $env = \'{"key": "value"}\'; python cli.py ... --env $env',
-                is_error=True,
+            logger.error("PowerShell tip: Try using a variable or JSON file instead")
+            logger.error(
+                'Example: $env = \'{"key": "value"}\'; python cli.py ... --env $env'
             )
         else:
-            sys_print(
-                "Tip: Use single quotes around JSON or escape inner quotes",
-                is_error=True,
-            )
+            logger.error("Tip: Use single quotes around JSON or escape inner quotes")
         sys.exit(1)
 
 
@@ -414,11 +401,10 @@ def add_or_update_cursor_server(config_path, server_name, command, args, env):
             with open(config_path) as f:
                 config = json.load(f)
         except json.JSONDecodeError as e:
-            sys_print(
+            logger.error(
                 f"Error parsing {config_path}. The file may be corrupted: {e!s}",
-                is_error=True,
             )
-            sys_print(f"Error parsing {config_path}: {e}", is_error=True)
+            logger.error(f"Error parsing {config_path}: {e}")
             sys.exit(1)
 
     if "mcpServers" not in config:
@@ -441,7 +427,7 @@ def add_or_update_cursor_server(config_path, server_name, command, args, env):
     if os.name == "posix":  # Unix-like systems
         os.chmod(config_path, 0o600)
 
-    sys_print(
+    logger.error(
         f"{'Updated' if server_already_exists else 'Added'} '{server_name}' in {config_path}"
     )
 
@@ -512,9 +498,7 @@ def add_config(config_path, config_name):
 
     # Check for duplicate names
     if check_duplicate_config_name(config, config_name):
-        sys_print(
-            f"Error: Config with name '{config_name}' already exists.", is_error=True
-        )
+        logger.info(f"Error: Config with name '{config_name}' already exists.")
         sys.exit(1)
 
     mcp_config_id = str(uuid.uuid4())
@@ -540,14 +524,13 @@ def copy_config(config_path, source_config, target_config):
     # Find source config
     source_id, source_data = find_config_by_name_or_id(config, source_config)
     if not source_data:
-        sys_print(f"Error: Source config '{source_config}' not found.", is_error=True)
+        logger.error(f"Error: Source config '{source_config}' not found.")
         sys.exit(1)
 
     # Check if target name already exists
     if check_duplicate_config_name(config, target_config):
-        sys_print(
+        logger.error(
             f"Error: Target config name '{target_config}' already exists.",
-            is_error=True,
         )
         sys.exit(1)
 
@@ -564,7 +547,7 @@ def copy_config(config_path, source_config, target_config):
     config["mcp_configs"][new_config_id] = new_config_data
 
     save_config(config_path, config)
-    sys_print(
+    logger.info(
         f"Config '{source_config}' copied to '{target_config}' with ID: {new_config_id}"
     )
 
@@ -576,14 +559,14 @@ def rename_config(config_path, config_identifier, new_name):
     # Find config
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     old_name = config_data.get("mcp_config_name", "Unnamed Config")
 
     # Check if new name already exists
     if check_duplicate_config_name(config, new_name):
-        sys_print(f"Error: Config name '{new_name}' already exists.", is_error=True)
+        logger.error(f"Error: Config name '{new_name}' already exists.")
         sys.exit(1)
 
     # Update name
@@ -591,7 +574,7 @@ def rename_config(config_path, config_identifier, new_name):
     config_data["updated_at"] = datetime.now().isoformat()
 
     save_config(config_path, config)
-    sys_print(f"Config '{old_name}' renamed to '{new_name}'")
+    logger.info(f"Config '{old_name}' renamed to '{new_name}'")
 
 
 def list_config_projects(config_path, config_identifier):
@@ -600,7 +583,7 @@ def list_config_projects(config_path, config_identifier):
 
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     using_projects = []
@@ -623,7 +606,7 @@ def list_config_servers(config_path, config_identifier):
 
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     servers = []
@@ -653,7 +636,7 @@ def get_config_server(config_path, config_identifier, server_name):
 
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     # Find server
@@ -664,9 +647,8 @@ def get_config_server(config_path, config_identifier, server_name):
             break
 
     if not server_data:
-        sys_print(
+        logger.error(
             f"Error: Server '{server_name}' not found in config '{config_identifier}'.",
-            is_error=True,
         )
         sys.exit(1)
 
@@ -688,7 +670,7 @@ def update_config_server(
 
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     # Find server
@@ -699,9 +681,8 @@ def update_config_server(
             break
 
     if not server_data:
-        sys_print(
+        logger.error(
             f"Error: Server '{server_name}' not found in config '{config_identifier}'.",
-            is_error=True,
         )
         sys.exit(1)
 
@@ -720,7 +701,7 @@ def update_config_server(
     server_data["updated_at"] = datetime.now().isoformat()
 
     save_config(config_path, config)
-    sys_print(f"Server '{server_name}' updated in config '{config_identifier}'")
+    logger.info(f"Server '{server_name}' updated in config '{config_identifier}'")
 
 
 def add_server_to_config(
@@ -740,14 +721,13 @@ def add_server_to_config(
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     # Check for duplicate server names
     if check_duplicate_server_name(config_data, server_name):
-        sys_print(
+        logger.error(
             f"Error: Server '{server_name}' already exists in config '{config_identifier}'.",
-            is_error=True,
         )
         sys.exit(1)
 
@@ -797,7 +777,7 @@ def add_server_to_config(
 
     config_data["mcp_config"].append(server_config)
     save_config(config_path, config)
-    sys_print(f"Server '{server_name}' added to config '{config_identifier}'")
+    logger.info(f"Server '{server_name}' added to config '{config_identifier}'")
 
 
 def get_config(config_path, config_identifier):
@@ -806,7 +786,7 @@ def get_config(config_path, config_identifier):
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     result = {"mcp_config_id": config_id, **config_data}
@@ -819,7 +799,7 @@ def remove_server_from_config(config_path, config_identifier, server_name):
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     original_count = len(config_data["mcp_config"])
@@ -830,14 +810,13 @@ def remove_server_from_config(config_path, config_identifier, server_name):
     ]
 
     if len(config_data["mcp_config"]) == original_count:
-        sys_print(
+        logger.error(
             f"Error: Server '{server_name}' not found in config '{config_identifier}'.",
-            is_error=True,
         )
         sys.exit(1)
 
     save_config(config_path, config)
-    sys_print(f"Server '{server_name}' removed from config '{config_identifier}'")
+    logger.info(f"Server '{server_name}' removed from config '{config_identifier}'")
 
 
 def remove_all_servers_from_config(config_path, config_identifier):
@@ -846,14 +825,14 @@ def remove_all_servers_from_config(config_path, config_identifier):
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     server_count = len(config_data["mcp_config"])
     config_data["mcp_config"] = []
 
     save_config(config_path, config)
-    sys_print(f"Removed {server_count} servers from config '{config_identifier}'")
+    logger.error(f"Removed {server_count} servers from config '{config_identifier}'")
 
 
 def remove_config(config_path, config_identifier):
@@ -862,7 +841,7 @@ def remove_config(config_path, config_identifier):
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     # Check if config is being used by projects
@@ -877,14 +856,11 @@ def remove_config(config_path, config_identifier):
             )
 
     if referenced_projects:
-        sys_print(
+        logger.error(
             f"Error: Config '{config_identifier}' is being used by projects:",
-            is_error=True,
         )
         for proj in referenced_projects:
-            sys_print(
-                f"  - {proj['project_name']} ({proj['project_id']})", is_error=True
-            )
+            logger.info(f"  - {proj['project_name']} ({proj['project_id']})")
         sys.exit(1)
 
     # Remove the config
@@ -892,7 +868,7 @@ def remove_config(config_path, config_identifier):
         del config["mcp_configs"][config_id]
 
     save_config(config_path, config)
-    sys_print(f"Config '{config_identifier}' removed successfully")
+    logger.info(f"Config '{config_identifier}' removed successfully")
 
 
 def validate_config(config_path, config_identifier):
@@ -901,7 +877,7 @@ def validate_config(config_path, config_identifier):
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     issues = []
@@ -934,12 +910,12 @@ def validate_config(config_path, config_identifier):
                 )
 
     if issues:
-        sys_print(f"Config '{config_identifier}' validation failed:", is_error=True)
+        logger.error(f"Config '{config_identifier}' validation failed:")
         for issue in issues:
-            sys_print(f"  - {issue}", is_error=True)
+            logger.error(f"  - {issue}")
         sys.exit(1)
     else:
-        sys_print(f"Config '{config_identifier}' is valid")
+        logger.error(f"Config '{config_identifier}' is valid")
 
 
 def export_config(config_path, config_identifier, output_file):
@@ -948,7 +924,7 @@ def export_config(config_path, config_identifier, output_file):
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     export_data = {
@@ -960,9 +936,9 @@ def export_config(config_path, config_identifier, output_file):
     try:
         with open(output_file, "w") as f:
             json.dump(export_data, f, indent=2)
-        sys_print(f"Config '{config_identifier}' exported to {output_file}")
+        logger.info(f"Config '{config_identifier}' exported to {output_file}")
     except Exception as e:
-        sys_print(f"Error exporting config: {e}", is_error=True)
+        logger.error(f"Error exporting config: {e}")
         sys.exit(1)
 
 
@@ -974,16 +950,16 @@ def import_config(config_path, input_file, config_name):
         with open(input_file) as f:
             import_data = json.load(f)
     except Exception as e:
-        sys_print(f"Error reading import file: {e}", is_error=True)
+        logger.error(f"Error reading import file: {e}")
         sys.exit(1)
 
     if "config" not in import_data:
-        sys_print("Error: Invalid import file format", is_error=True)
+        logger.error("Error: Invalid import file format")
         sys.exit(1)
 
     # Check for duplicate names
     if check_duplicate_config_name(config, config_name):
-        sys_print(f"Error: Config name '{config_name}' already exists.", is_error=True)
+        logger.error(f"Error: Config name '{config_name}' already exists.")
         sys.exit(1)
 
     # Import config
@@ -998,7 +974,7 @@ def import_config(config_path, input_file, config_name):
     config["mcp_configs"][new_config_id] = imported_config
 
     save_config(config_path, config)
-    sys_print(f"Config imported as '{config_name}' with ID: {new_config_id}")
+    logger.info(f"Config imported as '{config_name}' with ID: {new_config_id}")
 
 
 def search_configs(config_path, search_term):
@@ -1038,9 +1014,8 @@ def search_configs(config_path, search_term):
 def load_policy_from_file_or_string(policy_file, policy_string, policy_type):
     """Load policy configuration from file or string."""
     if policy_file and policy_string:
-        sys_print(
+        logger.info(
             f"Error: Cannot specify both --{policy_type}-policy-file and --{policy_type}-policy",
-            is_error=True,
         )
         sys.exit(1)
 
@@ -1049,14 +1024,13 @@ def load_policy_from_file_or_string(policy_file, policy_string, policy_type):
             with open(policy_file) as f:
                 return json.load(f)
         except Exception as e:
-            sys_print(f"Error reading {policy_type} policy file: {e}", is_error=True)
+            logger.error(f"Error reading {policy_type} policy file: {e}")
             sys.exit(1)
     elif policy_string:
         return validate_json_input(policy_string, f"{policy_type} guardrails policy")
     else:
-        sys_print(
+        logger.error(
             f"Error: Either --{policy_type}-policy-file or --{policy_type}-policy is required",
-            is_error=True,
         )
         sys.exit(1)
 
@@ -1069,7 +1043,7 @@ def update_server_input_guardrails(
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     # Find server
@@ -1080,9 +1054,8 @@ def update_server_input_guardrails(
             break
 
     if not server_data:
-        sys_print(
+        logger.error(
             f"Error: Server '{server_name}' not found in config '{config_identifier}'.",
-            is_error=True,
         )
         sys.exit(1)
 
@@ -1094,7 +1067,7 @@ def update_server_input_guardrails(
     server_data["updated_at"] = datetime.now().isoformat()
 
     save_config(config_path, config)
-    sys_print(
+    logger.info(
         f"Input guardrails policy updated for server '{server_name}' in config '{config_identifier}'"
     )
 
@@ -1107,7 +1080,7 @@ def update_server_output_guardrails(
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     # Find server
@@ -1118,9 +1091,8 @@ def update_server_output_guardrails(
             break
 
     if not server_data:
-        sys_print(
+        logger.error(
             f"Error: Server '{server_name}' not found in config '{config_identifier}'.",
-            is_error=True,
         )
         sys.exit(1)
 
@@ -1132,7 +1104,7 @@ def update_server_output_guardrails(
     server_data["updated_at"] = datetime.now().isoformat()
 
     save_config(config_path, config)
-    sys_print(
+    logger.info(
         f"Output guardrails policy updated for server '{server_name}' in config '{config_identifier}'"
     )
 
@@ -1151,7 +1123,7 @@ def update_server_guardrails(
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     # Find server
@@ -1162,9 +1134,8 @@ def update_server_guardrails(
             break
 
     if not server_data:
-        sys_print(
+        logger.error(
             f"Error: Server '{server_name}' not found in config '{config_identifier}'.",
-            is_error=True,
         )
         sys.exit(1)
 
@@ -1187,15 +1158,14 @@ def update_server_guardrails(
         updated_policies.append("output")
 
     if not updated_policies:
-        sys_print(
+        logger.info(
             "Error: At least one policy (input or output) must be provided",
-            is_error=True,
         )
         sys.exit(1)
 
     server_data["updated_at"] = datetime.now().isoformat()
     save_config(config_path, config)
-    sys_print(
+    logger.info(
         f"Updated {' and '.join(updated_policies)} guardrails policies for server '{server_name}' in config '{config_identifier}'"
     )
 
@@ -1249,9 +1219,7 @@ def create_project(config_path, project_name):
 
     # Check for duplicate names
     if check_duplicate_project_name(config, project_name):
-        sys_print(
-            f"Error: Project with name '{project_name}' already exists.", is_error=True
-        )
+        logger.info(f"Error: Project with name '{project_name}' already exists.")
         sys.exit(1)
 
     project_id = str(uuid.uuid4())
@@ -1276,12 +1244,12 @@ def assign_config_to_project(config_path, project_identifier, config_identifier)
 
     project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
-        sys_print(f"Error: Project '{project_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Project '{project_identifier}' not found.")
         sys.exit(1)
 
     config_id, config_data = find_config_by_name_or_id(config, config_identifier)
     if not config_data:
-        sys_print(f"Error: Config '{config_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_identifier}' not found.")
         sys.exit(1)
 
     # Assign config to project
@@ -1292,11 +1260,11 @@ def assign_config_to_project(config_path, project_identifier, config_identifier)
     save_config(config_path, config)
 
     if old_config_id:
-        sys_print(
+        logger.error(
             f"Config '{config_identifier}' assigned to project '{project_identifier}' (replaced previous config)"
         )
     else:
-        sys_print(
+        logger.info(
             f"Config '{config_identifier}' assigned to project '{project_identifier}'"
         )
 
@@ -1307,13 +1275,12 @@ def unassign_config_from_project(config_path, project_identifier):
 
     project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
-        sys_print(f"Error: Project '{project_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Project '{project_identifier}' not found.")
         sys.exit(1)
 
     if not project_data.get("mcp_config_id"):
-        sys_print(
+        logger.error(
             f"Error: Project '{project_identifier}' has no assigned config.",
-            is_error=True,
         )
         sys.exit(1)
 
@@ -1321,7 +1288,7 @@ def unassign_config_from_project(config_path, project_identifier):
     project_data["updated_at"] = datetime.now().isoformat()
 
     save_config(config_path, config)
-    sys_print(f"Config unassigned from project '{project_identifier}'")
+    logger.info(f"Config unassigned from project '{project_identifier}'")
 
 
 def get_project_config(config_path, project_identifier):
@@ -1330,14 +1297,13 @@ def get_project_config(config_path, project_identifier):
 
     project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
-        sys_print(f"Error: Project '{project_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Project '{project_identifier}' not found.")
         sys.exit(1)
 
     config_id = project_data.get("mcp_config_id")
     if not config_id:
-        sys_print(
+        logger.error(
             f"Error: Project '{project_identifier}' has no assigned config.",
-            is_error=True,
         )
         sys.exit(1)
 
@@ -1346,7 +1312,7 @@ def get_project_config(config_path, project_identifier):
         config_data = config["mcp_configs"][config_id]
 
     if not config_data:
-        sys_print(f"Error: Config '{config_id}' not found.", is_error=True)
+        logger.error(f"Error: Config '{config_id}' not found.")
         sys.exit(1)
 
     result = {"mcp_config_id": config_id, **config_data}
@@ -1359,7 +1325,7 @@ def list_project_users(config_path, project_identifier):
 
     project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
-        sys_print(f"Error: Project '{project_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Project '{project_identifier}' not found.")
         sys.exit(1)
 
     users = []
@@ -1393,7 +1359,7 @@ def get_project(config_path, project_identifier):
     project_id, project_data = find_project_by_name_or_id(config, project_identifier)
 
     if not project_data:
-        sys_print(f"Error: Project '{project_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Project '{project_identifier}' not found.")
         sys.exit(1)
 
     # Get config info
@@ -1440,12 +1406,12 @@ def add_user_to_project(config_path, project_identifier, user_identifier):
 
     project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
-        sys_print(f"Error: Project '{project_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Project '{project_identifier}' not found.")
         sys.exit(1)
 
     user_id, user_data = find_user_by_email_or_id(config, user_identifier)
     if not user_data:
-        sys_print(f"Error: User '{user_identifier}' not found.", is_error=True)
+        logger.error(f"Error: User '{user_identifier}' not found.")
         sys.exit(1)
 
     if "users" not in project_data:
@@ -1455,9 +1421,9 @@ def add_user_to_project(config_path, project_identifier, user_identifier):
         project_data["users"].append(user_id)
         project_data["updated_at"] = datetime.now().isoformat()
         save_config(config_path, config)
-        sys_print(f"User '{user_identifier}' added to project '{project_identifier}'")
+        logger.info(f"User '{user_identifier}' added to project '{project_identifier}'")
     else:
-        sys_print(
+        logger.info(
             f"User '{user_identifier}' is already in project '{project_identifier}'"
         )
 
@@ -1468,23 +1434,25 @@ def remove_user_from_project(config_path, project_identifier, user_identifier):
 
     project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
-        sys_print(f"Error: Project '{project_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Project '{project_identifier}' not found.")
         sys.exit(1)
 
     user_id, user_data = find_user_by_email_or_id(config, user_identifier)
     if not user_data:
-        sys_print(f"Error: User '{user_identifier}' not found.", is_error=True)
+        logger.error(f"Error: User '{user_identifier}' not found.")
         sys.exit(1)
 
     if user_id in project_data.get("users", []):
         project_data["users"].remove(user_id)
         project_data["updated_at"] = datetime.now().isoformat()
         save_config(config_path, config)
-        sys_print(
+        logger.error(
             f"User '{user_identifier}' removed from project '{project_identifier}'"
         )
     else:
-        sys_print(f"User '{user_identifier}' is not in project '{project_identifier}'")
+        logger.info(
+            f"User '{user_identifier}' is not in project '{project_identifier}'"
+        )
 
 
 def remove_all_users_from_project(config_path, project_identifier):
@@ -1493,7 +1461,7 @@ def remove_all_users_from_project(config_path, project_identifier):
 
     project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
-        sys_print(f"Error: Project '{project_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Project '{project_identifier}' not found.")
         sys.exit(1)
 
     user_count = len(project_data.get("users", []))
@@ -1501,7 +1469,7 @@ def remove_all_users_from_project(config_path, project_identifier):
     project_data["updated_at"] = datetime.now().isoformat()
 
     save_config(config_path, config)
-    sys_print(f"Removed {user_count} users from project '{project_identifier}'")
+    logger.error(f"Removed {user_count} users from project '{project_identifier}'")
 
 
 def remove_project(config_path, project_identifier):
@@ -1510,7 +1478,7 @@ def remove_project(config_path, project_identifier):
     project_id, project_data = find_project_by_name_or_id(config, project_identifier)
 
     if not project_data:
-        sys_print(f"Error: Project '{project_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Project '{project_identifier}' not found.")
         sys.exit(1)
 
     # Check if project has API keys
@@ -1520,23 +1488,21 @@ def remove_project(config_path, project_identifier):
             api_keys_to_remove.append(api_key)
 
     if api_keys_to_remove:
-        sys_print(
+        logger.error(
             f"Error: Project '{project_identifier}' has {len(api_keys_to_remove)} active API keys:",
-            is_error=True,
         )
         for api_key in api_keys_to_remove:
-            sys_print(f"  - {api_key[:20]}...", is_error=True)
-        sys_print("Please delete these API keys first using:", is_error=True)
+            logger.info(f"  - {api_key[:20]}...")
+        logger.error("Please delete these API keys first using:")
         for api_key in api_keys_to_remove:
-            sys_print(
+            logger.error(
                 f"  python cli.py user delete-api-key --api-key {api_key}",
-                is_error=True,
             )
         sys.exit(1)
 
     del config["projects"][project_id]
     save_config(config_path, config)
-    sys_print(f"Project '{project_identifier}' removed successfully")
+    logger.info(f"Project '{project_identifier}' removed successfully")
 
 
 def export_project(config_path, project_identifier, output_file):
@@ -1545,7 +1511,7 @@ def export_project(config_path, project_identifier, output_file):
 
     project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
-        sys_print(f"Error: Project '{project_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Project '{project_identifier}' not found.")
         sys.exit(1)
 
     # Get associated config
@@ -1577,9 +1543,9 @@ def export_project(config_path, project_identifier, output_file):
     try:
         with open(output_file, "w") as f:
             json.dump(export_data, f, indent=2)
-        sys_print(f"Project '{project_identifier}' exported to {output_file}")
+        logger.info(f"Project '{project_identifier}' exported to {output_file}")
     except Exception as e:
-        sys_print(f"Error exporting project: {e}", is_error=True)
+        logger.error(f"Error exporting project: {e}")
         sys.exit(1)
 
 
@@ -1665,7 +1631,7 @@ def create_user(config_path, email):
 
     # Validate email format
     if not validate_email(email):
-        sys_print(f"Error: Invalid email format: {email}", is_error=True)
+        logger.error(f"Error: Invalid email format: {email}")
         sys.exit(1)
 
     if "users" not in config:
@@ -1674,9 +1640,7 @@ def create_user(config_path, email):
     # Check if user already exists
     for existing_user in config["users"].values():
         if existing_user.get("email") == email:
-            sys_print(
-                f"Error: User with email '{email}' already exists.", is_error=True
-            )
+            logger.error(f"Error: User with email '{email}' already exists.")
             sys.exit(1)
 
     user_id = str(uuid.uuid4())
@@ -1695,20 +1659,18 @@ def update_user(config_path, user_identifier, new_email):
 
     user_id, user_data = find_user_by_email_or_id(config, user_identifier)
     if not user_data:
-        sys_print(f"Error: User '{user_identifier}' not found.", is_error=True)
+        logger.error(f"Error: User '{user_identifier}' not found.")
         sys.exit(1)
 
     # Validate new email format
     if not validate_email(new_email):
-        sys_print(f"Error: Invalid email format: {new_email}", is_error=True)
+        logger.error(f"Error: Invalid email format: {new_email}")
         sys.exit(1)
 
     # Check if new email already exists
     for existing_user in config["users"].values():
         if existing_user.get("email") == new_email:
-            sys_print(
-                f"Error: User with email '{new_email}' already exists.", is_error=True
-            )
+            logger.error(f"Error: User with email '{new_email}' already exists.")
             sys.exit(1)
 
     old_email = user_data.get("email")
@@ -1716,7 +1678,7 @@ def update_user(config_path, user_identifier, new_email):
     user_data["updated_at"] = datetime.now().isoformat()
 
     save_config(config_path, config)
-    sys_print(f"User email updated from '{old_email}' to '{new_email}'")
+    logger.info(f"User email updated from '{old_email}' to '{new_email}'")
 
 
 def get_user(config_path, user_identifier):
@@ -1725,7 +1687,7 @@ def get_user(config_path, user_identifier):
     user_id, user_data = find_user_by_email_or_id(config, user_identifier)
 
     if not user_data:
-        sys_print(f"Error: User '{user_identifier}' not found.", is_error=True)
+        logger.error(f"Error: User '{user_identifier}' not found.")
         sys.exit(1)
 
     # Find projects this user is in
@@ -1771,7 +1733,7 @@ def list_user_projects(config_path, user_identifier):
 
     user_id, user_data = find_user_by_email_or_id(config, user_identifier)
     if not user_data:
-        sys_print(f"Error: User '{user_identifier}' not found.", is_error=True)
+        logger.error(f"Error: User '{user_identifier}' not found.")
         sys.exit(1)
 
     user_projects = []
@@ -1804,7 +1766,7 @@ def delete_user(config_path, user_identifier, force=False):
 
     user_id, user_data = find_user_by_email_or_id(config, user_identifier)
     if not user_data:
-        sys_print(f"Error: User '{user_identifier}' not found.", is_error=True)
+        logger.error(f"Error: User '{user_identifier}' not found.")
         sys.exit(1)
 
     if force:
@@ -1817,21 +1779,21 @@ def delete_user(config_path, user_identifier, force=False):
 
         for api_key in api_keys_to_delete:
             del config["apikeys"][api_key]
-            sys_print(f"Deleted API key: {api_key[:20]}...")
+            logger.error(f"Deleted API key: {api_key[:20]}...")
 
         # Remove from all projects
         for project_id, project_data in config.get("projects", {}).items():
             if user_id in project_data.get("users", []):
                 project_data["users"].remove(user_id)
                 project_data["updated_at"] = datetime.now().isoformat()
-                sys_print(
+                logger.info(
                     f"Removed user from project: {project_data.get('project_name', project_id)}"
                 )
 
         # Delete user
         del config["users"][user_id]
         save_config(config_path, config)
-        sys_print(f"User '{user_identifier}' force deleted successfully")
+        logger.info(f"User '{user_identifier}' force deleted successfully")
     else:
         # Check for dependencies
         user_api_keys = []
@@ -1840,21 +1802,16 @@ def delete_user(config_path, user_identifier, force=False):
                 user_api_keys.append(api_key)
 
         if user_api_keys:
-            sys_print(
+            logger.info(
                 f"Error: Cannot delete user '{user_identifier}'. User has {len(user_api_keys)} active API keys:",
-                is_error=True,
             )
             for api_key in user_api_keys:
                 project_data = config.get("projects", {}).get(
                     config.get("apikeys", {}).get(api_key, {}).get("project_id"), {}
                 )
                 project_name = project_data.get("project_name", "Unknown Project")
-                sys_print(
-                    f"  - {api_key[:20]}... (Project: {project_name})", is_error=True
-                )
-            sys_print(
-                "Use --force to delete user and clean up all references", is_error=True
-            )
+                logger.info(f"  - {api_key[:20]}... (Project: {project_name})")
+            logger.error("Use --force to delete user and clean up all references")
             sys.exit(1)
 
         # Check project assignments
@@ -1871,24 +1828,20 @@ def delete_user(config_path, user_identifier, force=False):
                 )
 
         if user_projects:
-            sys_print(
+            logger.error(
                 f"Error: Cannot delete user '{user_identifier}'. User is assigned to {len(user_projects)} projects:",
-                is_error=True,
             )
             for project in user_projects:
-                sys_print(
+                logger.info(
                     f"  - {project['project_name']} ({project['project_id']})",
-                    is_error=True,
                 )
-            sys_print(
-                "Use --force to delete user and clean up all references", is_error=True
-            )
+            logger.info("Use --force to delete user and clean up all references")
             sys.exit(1)
 
         # Safe to delete user
         del config["users"][user_id]
         save_config(config_path, config)
-        sys_print(f"User '{user_identifier}' deleted successfully")
+        logger.info(f"User '{user_identifier}' deleted successfully")
 
 
 def generate_user_api_key(config_path, user_identifier, project_identifier):
@@ -1897,19 +1850,18 @@ def generate_user_api_key(config_path, user_identifier, project_identifier):
 
     user_id, user_data = find_user_by_email_or_id(config, user_identifier)
     if not user_data:
-        sys_print(f"Error: User '{user_identifier}' not found.", is_error=True)
+        logger.error(f"Error: User '{user_identifier}' not found.")
         sys.exit(1)
 
     project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
-        sys_print(f"Error: Project '{project_identifier}' not found.", is_error=True)
+        logger.error(f"Error: Project '{project_identifier}' not found.")
         sys.exit(1)
 
     # Check if user is in project
     if user_id not in project_data.get("users", []):
-        sys_print(
+        logger.error(
             f"Error: User '{user_identifier}' is not in project '{project_identifier}'. Add user to project first.",
-            is_error=True,
         )
         sys.exit(1)
 
@@ -1934,7 +1886,7 @@ def rotate_user_api_key(config_path, old_api_key):
     config = load_config(config_path)
 
     if old_api_key not in config.get("apikeys", {}):
-        sys_print(f"Error: API key '{old_api_key}' not found.", is_error=True)
+        logger.error(f"Error: API key '{old_api_key}' not found.")
         sys.exit(1)
 
     # Get old key data
@@ -1955,7 +1907,7 @@ def rotate_user_api_key(config_path, old_api_key):
     del config["apikeys"][old_api_key]
 
     save_config(config_path, config)
-    sys_print("API key rotated successfully")
+    logger.info("API key rotated successfully")
     print(f"new_api_key: {new_api_key}")
 
 
@@ -1964,14 +1916,14 @@ def disable_user_api_key(config_path, api_key):
     config = load_config(config_path)
 
     if api_key not in config.get("apikeys", {}):
-        sys_print(f"Error: API key '{api_key}' not found.", is_error=True)
+        logger.error(f"Error: API key '{api_key}' not found.")
         sys.exit(1)
 
     config["apikeys"][api_key]["disabled"] = True
     config["apikeys"][api_key]["disabled_at"] = datetime.now().isoformat()
 
     save_config(config_path, config)
-    sys_print(f"API key '{api_key[:20]}...' disabled successfully")
+    logger.info(f"API key '{api_key[:20]}...' disabled successfully")
 
 
 def enable_user_api_key(config_path, api_key):
@@ -1979,14 +1931,14 @@ def enable_user_api_key(config_path, api_key):
     config = load_config(config_path)
 
     if api_key not in config.get("apikeys", {}):
-        sys_print(f"Error: API key '{api_key}' not found.", is_error=True)
+        logger.error(f"Error: API key '{api_key}' not found.")
         sys.exit(1)
 
     config["apikeys"][api_key]["disabled"] = False
     config["apikeys"][api_key]["enabled_at"] = datetime.now().isoformat()
 
     save_config(config_path, config)
-    sys_print(f"API key '{api_key[:20]}...' enabled successfully")
+    logger.info(f"API key '{api_key[:20]}...' enabled successfully")
 
 
 def delete_user_api_key(config_path, api_key):
@@ -1994,12 +1946,12 @@ def delete_user_api_key(config_path, api_key):
     config = load_config(config_path)
 
     if api_key not in config.get("apikeys", {}):
-        sys_print(f"Error: API key '{api_key}' not found.", is_error=True)
+        logger.error(f"Error: API key '{api_key}' not found.")
         sys.exit(1)
 
     del config["apikeys"][api_key]
     save_config(config_path, config)
-    sys_print(f"API key '{api_key[:20]}...' deleted successfully")
+    logger.info(f"API key '{api_key[:20]}...' deleted successfully")
 
 
 def delete_all_user_api_keys(config_path, user_identifier):
@@ -2008,7 +1960,7 @@ def delete_all_user_api_keys(config_path, user_identifier):
 
     user_id, user_data = find_user_by_email_or_id(config, user_identifier)
     if not user_data:
-        sys_print(f"Error: User '{user_identifier}' not found.", is_error=True)
+        logger.error(f"Error: User '{user_identifier}' not found.")
         sys.exit(1)
 
     # Find all API keys for this user
@@ -2018,7 +1970,7 @@ def delete_all_user_api_keys(config_path, user_identifier):
             keys_to_delete.append(api_key)
 
     if not keys_to_delete:
-        sys_print(f"User '{user_identifier}' has no API keys to delete.")
+        logger.error(f"User '{user_identifier}' has no API keys to delete.")
         return
 
     # Delete all keys
@@ -2026,7 +1978,7 @@ def delete_all_user_api_keys(config_path, user_identifier):
         del config["apikeys"][api_key]
 
     save_config(config_path, config)
-    sys_print(f"Deleted {len(keys_to_delete)} API keys for user '{user_identifier}'")
+    logger.info(f"Deleted {len(keys_to_delete)} API keys for user '{user_identifier}'")
 
 
 def list_user_api_keys(config_path, user_identifier, project_identifier=None):
@@ -2035,16 +1987,14 @@ def list_user_api_keys(config_path, user_identifier, project_identifier=None):
 
     user_id, user_data = find_user_by_email_or_id(config, user_identifier)
     if not user_data:
-        sys_print(f"Error: User '{user_identifier}' not found.", is_error=True)
+        logger.error(f"Error: User '{user_identifier}' not found.")
         sys.exit(1)
 
     project_id = None
     if project_identifier:
         project_id, _ = find_project_by_name_or_id(config, project_identifier)
         if not project_id:
-            sys_print(
-                f"Error: Project '{project_identifier}' not found.", is_error=True
-            )
+            logger.error(f"Error: Project '{project_identifier}' not found.")
             sys.exit(1)
 
     api_keys = []
@@ -2246,9 +2196,9 @@ def system_backup(config_path, output_file):
     try:
         with open(output_file, "w") as f:
             json.dump(backup_data, f, indent=2)
-        sys_print(f"System backup created: {output_file}")
+        logger.info(f"System backup created: {output_file}")
     except Exception as e:
-        sys_print(f"Error creating backup: {e}", is_error=True)
+        logger.error(f"Error creating backup: {e}")
         sys.exit(1)
 
 
@@ -2258,29 +2208,27 @@ def system_restore(config_path, input_file):
         with open(input_file) as f:
             backup_data = json.load(f)
     except Exception as e:
-        sys_print(f"Error reading backup file: {e}", is_error=True)
+        logger.error(f"Error reading backup file: {e}")
         sys.exit(1)
 
     if "config" not in backup_data:
-        sys_print("Error: Invalid backup file format", is_error=True)
+        logger.error("Error: Invalid backup file format")
         sys.exit(1)
 
     # Validate restored config
     is_valid, message = validate_config_structure(backup_data["config"])
     if not is_valid:
-        sys_print(f"Error: Backup contains invalid config: {message}", is_error=True)
+        logger.error(f"Error: Backup contains invalid config: {message}")
         sys.exit(1)
 
     save_config(config_path, backup_data["config"])
-    sys_print(f"System restored from backup: {input_file}")
+    logger.error(f"System restored from backup: {input_file}")
 
 
 def system_reset(config_path, confirm=False):
     """Reset system to default configuration."""
     if not confirm:
-        sys_print(
-            "Error: This will delete all data. Use --confirm to proceed.", is_error=True
-        )
+        logger.info("Error: This will delete all data. Use --confirm to proceed.")
         sys.exit(1)
 
     # Create backup before reset
@@ -2289,12 +2237,12 @@ def system_reset(config_path, confirm=False):
     )
     if os.path.exists(config_path):
         shutil.copy2(config_path, backup_file)
-        sys_print(f"Backup created: {backup_file}")
+        logger.info(f"Backup created: {backup_file}")
 
     # Generate new default config
     default_config = generate_default_config()
     save_config(config_path, default_config)
-    sys_print("System reset to default configuration")
+    logger.info("System reset to default configuration")
 
 
 def start_api_server(host="0.0.0.0", port=8001, reload=False):
@@ -2304,22 +2252,19 @@ def start_api_server(host="0.0.0.0", port=8001, reload=False):
 
         from secure_mcp_gateway.api_server import app
 
-        sys_print(f"Starting REST API server on {host}:{port}")
-        sys_print(f"API documentation available at: http://{host}:{port}/docs")
-        sys_print(f"Config path: {PICKED_CONFIG_PATH}")
+        logger.info(f"Starting REST API server on {host}:{port}")
+        logger.info(f"API documentation available at: http://{host}:{port}/docs")
+        logger.info(f"Config path: {PICKED_CONFIG_PATH}")
 
         uvicorn.run(app, host=host, port=port, reload=reload, log_level="info")
     except ImportError:
-        sys_print(
+        logger.info(
             "Error: FastAPI and uvicorn are required to run the API server.",
-            is_error=True,
         )
-        sys_print(
-            "Please install them with: pip install fastapi uvicorn", is_error=True
-        )
+        logger.info("Please install them with: pip install fastapi uvicorn")
         sys.exit(1)
     except Exception as e:
-        sys_print(f"Error starting API server: {e}", is_error=True)
+        logger.error(f"Error starting API server: {e}")
         sys.exit(1)
 
 
@@ -2330,14 +2275,14 @@ def stop_api_server(port=8001, force=False):
     try:
         if force:
             # Force stop all Python processes
-            sys_print("Force stopping all Python processes...")
+            logger.error("Force stopping all Python processes...")
             for proc in psutil.process_iter(["pid", "name", "cmdline"]):
                 try:
                     if proc.info["name"] and "python" in proc.info["name"].lower():
                         if proc.info["cmdline"] and any(
                             "api_server" in str(cmd) for cmd in proc.info["cmdline"]
                         ):
-                            sys_print(
+                            logger.info(
                                 f"Stopping process {proc.info['pid']}: {' '.join(proc.info['cmdline'])}"
                             )
                             proc.terminate()
@@ -2348,10 +2293,10 @@ def stop_api_server(port=8001, force=False):
                     psutil.TimeoutExpired,
                 ):
                     pass
-            sys_print("All Python processes stopped.")
+            logger.info("All Python processes stopped.")
         else:
             # Find and stop processes listening on the specified port
-            sys_print(f"Looking for processes listening on port {port}...")
+            logger.info(f"Looking for processes listening on port {port}...")
             stopped_any = False
 
             # Use a more compatible approach to find processes by port
@@ -2365,12 +2310,12 @@ def stop_api_server(port=8001, force=False):
 
                         for conn in connections:
                             if hasattr(conn, "laddr") and conn.laddr.port == port:
-                                sys_print(
+                                logger.info(
                                     f"Found process {proc.info['pid']} ({proc.info['name']}) listening on port {port}"
                                 )
                                 proc_obj.terminate()
                                 proc_obj.wait(timeout=5)
-                                sys_print(f"Stopped process {proc.info['pid']}")
+                                logger.info(f"Stopped process {proc.info['pid']}")
                                 stopped_any = True
                                 break
                     except (
@@ -2382,22 +2327,22 @@ def stop_api_server(port=8001, force=False):
                         pass
 
             except Exception as e:
-                sys_print(f"Error checking connections: {e}")
+                logger.error(f"Error checking connections: {e}")
                 # Fallback: try to find Python processes that might be running the API
-                sys_print("Trying alternative method to find API server processes...")
+                logger.info("Trying alternative method to find API server processes...")
                 for proc in psutil.process_iter(["pid", "name", "cmdline"]):
                     try:
                         if proc.info["name"] and "python" in proc.info["name"].lower():
                             if proc.info["cmdline"] and any(
                                 "api_server" in str(cmd) for cmd in proc.info["cmdline"]
                             ):
-                                sys_print(
+                                logger.info(
                                     f"Found potential API server process {proc.info['pid']}: {' '.join(proc.info['cmdline'])}"
                                 )
                                 proc_obj = psutil.Process(proc.info["pid"])
                                 proc_obj.terminate()
                                 proc_obj.wait(timeout=5)
-                                sys_print(f"Stopped process {proc.info['pid']}")
+                                logger.info(f"Stopped process {proc.info['pid']}")
                                 stopped_any = True
                     except (
                         psutil.NoSuchProcess,
@@ -2407,17 +2352,17 @@ def stop_api_server(port=8001, force=False):
                         pass
 
             if not stopped_any:
-                sys_print(f"No processes found listening on port {port}")
-                sys_print("Use --force to stop all Python processes")
+                logger.info(f"No processes found listening on port {port}")
+                logger.info("Use --force to stop all Python processes")
             else:
-                sys_print(f"API server on port {port} stopped successfully")
+                logger.info(f"API server on port {port} stopped successfully")
 
     except ImportError:
-        sys_print("Error: psutil is required to stop the API server.", is_error=True)
-        sys_print("Please install it with: pip install psutil", is_error=True)
+        logger.error("Error: psutil is required to stop the API server.")
+        logger.error("Please install it with: pip install psutil")
         sys.exit(1)
     except Exception as e:
-        sys_print(f"Error stopping API server: {e}", is_error=True)
+        logger.error(f"Error stopping API server: {e}")
         sys.exit(1)
 
 
@@ -2968,22 +2913,22 @@ def main():
 
     # Handle missing subcommands
     if args.command == "config" and not args.config_command:
-        sys_print("Error: Please specify a config subcommand.", is_error=True)
+        logger.error("Error: Please specify a config subcommand.")
         config_parser.print_help()
         sys.exit(1)
 
     if args.command == "project" and not args.project_command:
-        sys_print("Error: Please specify a project subcommand.", is_error=True)
+        logger.error("Error: Please specify a project subcommand.")
         project_parser.print_help()
         sys.exit(1)
 
     if args.command == "user" and not args.user_command:
-        sys_print("Error: Please specify a user subcommand.", is_error=True)
+        logger.error("Error: Please specify a user subcommand.")
         user_parser.print_help()
         sys.exit(1)
 
     if args.command == "system" and not args.system_command:
-        sys_print("Error: Please specify a system subcommand.", is_error=True)
+        logger.error("Error: Please specify a system subcommand.")
         system_parser.print_help()
         sys.exit(1)
 
@@ -3000,45 +2945,40 @@ def main():
         elif args.config_command == "rename":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.error(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             rename_config(PICKED_CONFIG_PATH, config_identifier, args.new_name)
         elif args.config_command == "list-projects":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             list_config_projects(PICKED_CONFIG_PATH, config_identifier)
         elif args.config_command == "list-servers":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             list_config_servers(PICKED_CONFIG_PATH, config_identifier)
         elif args.config_command == "get-server":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             get_config_server(PICKED_CONFIG_PATH, config_identifier, args.server_name)
         elif args.config_command == "update-server":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             update_config_server(
@@ -3054,9 +2994,8 @@ def main():
         elif args.config_command == "add-server":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             add_server_to_config(
@@ -3074,18 +3013,16 @@ def main():
         elif args.config_command == "get":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             get_config(PICKED_CONFIG_PATH, config_identifier)
         elif args.config_command == "remove-server":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             remove_server_from_config(
@@ -3094,36 +3031,32 @@ def main():
         elif args.config_command == "remove-all-servers":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             remove_all_servers_from_config(PICKED_CONFIG_PATH, config_identifier)
         elif args.config_command == "remove":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             remove_config(PICKED_CONFIG_PATH, config_identifier)
         elif args.config_command == "validate":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             validate_config(PICKED_CONFIG_PATH, config_identifier)
         elif args.config_command == "export":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             export_config(PICKED_CONFIG_PATH, config_identifier, args.output_file)
@@ -3134,9 +3067,8 @@ def main():
         elif args.config_command == "update-server-input-guardrails":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             update_server_input_guardrails(
@@ -3150,9 +3082,8 @@ def main():
         elif args.config_command == "update-server-output-guardrails":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             update_server_output_guardrails(
@@ -3166,9 +3097,8 @@ def main():
         elif args.config_command == "update-server-guardrails":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --config-name or --config-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             update_server_guardrails(
@@ -3195,9 +3125,7 @@ def main():
             project_identifier = args.project_name or args.project_id
             config_identifier = args.config_name or args.config_id
             if not project_identifier or not config_identifier:
-                sys_print(
-                    "Error: Project and config identifiers are required", is_error=True
-                )
+                logger.info("Error: Project and config identifiers are required")
                 sys.exit(1)
             assign_config_to_project(
                 PICKED_CONFIG_PATH, project_identifier, config_identifier
@@ -3205,27 +3133,24 @@ def main():
         elif args.project_command == "unassign-config":
             project_identifier = args.project_name or args.project_id
             if not project_identifier:
-                sys_print(
+                logger.error(
                     "Error: Either --project-name or --project-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             unassign_config_from_project(PICKED_CONFIG_PATH, project_identifier)
         elif args.project_command == "get-config":
             project_identifier = args.project_name or args.project_id
             if not project_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --project-name or --project-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             get_project_config(PICKED_CONFIG_PATH, project_identifier)
         elif args.project_command == "list-users":
             project_identifier = args.project_name or args.project_id
             if not project_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --project-name or --project-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             list_project_users(PICKED_CONFIG_PATH, project_identifier)
@@ -3233,18 +3158,14 @@ def main():
             project_identifier = args.project_name or args.project_id
             user_identifier = args.user_id or args.email
             if not project_identifier or not user_identifier:
-                sys_print(
-                    "Error: Project and user identifiers are required", is_error=True
-                )
+                logger.info("Error: Project and user identifiers are required")
                 sys.exit(1)
             add_user_to_project(PICKED_CONFIG_PATH, project_identifier, user_identifier)
         elif args.project_command == "remove-user":
             project_identifier = args.project_name or args.project_id
             user_identifier = args.user_id or args.email
             if not project_identifier or not user_identifier:
-                sys_print(
-                    "Error: Project and user identifiers are required", is_error=True
-                )
+                logger.error("Error: Project and user identifiers are required")
                 sys.exit(1)
             remove_user_from_project(
                 PICKED_CONFIG_PATH, project_identifier, user_identifier
@@ -3252,36 +3173,32 @@ def main():
         elif args.project_command == "remove-all-users":
             project_identifier = args.project_name or args.project_id
             if not project_identifier:
-                sys_print(
+                logger.error(
                     "Error: Either --project-name or --project-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             remove_all_users_from_project(PICKED_CONFIG_PATH, project_identifier)
         elif args.project_command == "get":
             project_identifier = args.project_name or args.project_id
             if not project_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --project-name or --project-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             get_project(PICKED_CONFIG_PATH, project_identifier)
         elif args.project_command == "remove":
             project_identifier = args.project_name or args.project_id
             if not project_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --project-name or --project-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             remove_project(PICKED_CONFIG_PATH, project_identifier)
         elif args.project_command == "export":
             project_identifier = args.project_name or args.project_id
             if not project_identifier:
-                sys_print(
+                logger.info(
                     "Error: Either --project-name or --project-id is required",
-                    is_error=True,
                 )
                 sys.exit(1)
             export_project(PICKED_CONFIG_PATH, project_identifier, args.output_file)
@@ -3300,42 +3217,32 @@ def main():
         elif args.user_command == "update":
             user_identifier = args.user_id or args.email
             if not user_identifier:
-                sys_print(
-                    "Error: Either --user-id or --email is required", is_error=True
-                )
+                logger.info("Error: Either --user-id or --email is required")
                 sys.exit(1)
             update_user(PICKED_CONFIG_PATH, user_identifier, args.new_email)
         elif args.user_command == "get":
             user_identifier = args.user_id or args.email
             if not user_identifier:
-                sys_print(
-                    "Error: Either --user-id or --email is required", is_error=True
-                )
+                logger.error("Error: Either --user-id or --email is required")
                 sys.exit(1)
             get_user(PICKED_CONFIG_PATH, user_identifier)
         elif args.user_command == "list-projects":
             user_identifier = args.user_id or args.email
             if not user_identifier:
-                sys_print(
-                    "Error: Either --user-id or --email is required", is_error=True
-                )
+                logger.error("Error: Either --user-id or --email is required")
                 sys.exit(1)
             list_user_projects(PICKED_CONFIG_PATH, user_identifier)
         elif args.user_command == "delete":
             user_identifier = args.user_id or args.email
             if not user_identifier:
-                sys_print(
-                    "Error: Either --user-id or --email is required", is_error=True
-                )
+                logger.error("Error: Either --user-id or --email is required")
                 sys.exit(1)
             delete_user(PICKED_CONFIG_PATH, user_identifier, args.force)
         elif args.user_command == "generate-api-key":
             user_identifier = args.user_id or args.email
             project_identifier = args.project_name or args.project_id
             if not user_identifier or not project_identifier:
-                sys_print(
-                    "Error: User and project identifiers are required", is_error=True
-                )
+                logger.error("Error: User and project identifiers are required")
                 sys.exit(1)
             generate_user_api_key(
                 PICKED_CONFIG_PATH, user_identifier, project_identifier
@@ -3351,17 +3258,13 @@ def main():
         elif args.user_command == "delete-all-api-keys":
             user_identifier = args.user_id or args.email
             if not user_identifier:
-                sys_print(
-                    "Error: Either --user-id or --email is required", is_error=True
-                )
+                logger.error("Error: Either --user-id or --email is required")
                 sys.exit(1)
             delete_all_user_api_keys(PICKED_CONFIG_PATH, user_identifier)
         elif args.user_command == "list-api-keys":
             user_identifier = args.user_id or args.email
             if not user_identifier:
-                sys_print(
-                    "Error: Either --user-id or --email is required", is_error=True
-                )
+                logger.error("Error: Either --user-id or --email is required")
                 sys.exit(1)
             project_identifier = args.project_name or args.project_id
             list_user_api_keys(PICKED_CONFIG_PATH, user_identifier, project_identifier)
@@ -3394,16 +3297,12 @@ def main():
     # =========================================================================
     elif args.command == "generate-config":
         if os.path.exists(PICKED_CONFIG_PATH):
-            sys_print(
-                f"Config file already exists at {PICKED_CONFIG_PATH}.", is_error=True
-            )
-            sys_print(
+            logger.error(f"Config file already exists at {PICKED_CONFIG_PATH}.")
+            logger.error(
                 "Not overwriting. Please run install to install on Claude Desktop or Cursor.",
-                is_error=True,
             )
-            sys_print(
+            logger.info(
                 "If you want to start fresh, delete the config file and run again.",
-                is_error=True,
             )
             sys.exit(1)
 
@@ -3415,7 +3314,7 @@ def main():
         with open(PICKED_CONFIG_PATH, "w") as f:
             json.dump(config, f, indent=2)
 
-        sys_print(f"Generated default config at {PICKED_CONFIG_PATH}")
+        logger.info(f"Generated default config at {PICKED_CONFIG_PATH}")
         sys.exit(0)
 
     elif args.command == "install":
@@ -3425,9 +3324,8 @@ def main():
         user_id = credentials.get("user_id")
 
         if not gateway_key:
-            sys_print(
+            logger.info(
                 f"Gateway key not found in {PICKED_CONFIG_PATH}. Please generate a new config file using 'generate-config' subcommand and try again.",
-                is_error=True,
             )
             sys.exit(1)
 
@@ -3439,23 +3337,22 @@ def main():
 
         if args.client.lower() == "claude" or args.client.lower() == "claude-desktop":
             client = args.client
-            sys_print("client name from args: ", client)
+            logger.info("client name from args: ", client)
 
             if is_docker_running:
                 claude_desktop_config_path = os.path.join(
                     "/app", ".claude", "claude_desktop_config.json"
                 )
                 if os.path.exists(claude_desktop_config_path):
-                    sys_print(
+                    logger.info(
                         f"Loading claude_desktop_config.json file from {claude_desktop_config_path}"
                     )
                     with open(claude_desktop_config_path) as f:
                         try:
                             claude_desktop_config = json.load(f)
                         except json.JSONDecodeError as e:
-                            sys_print(
+                            logger.info(
                                 f"Error parsing {claude_desktop_config_path}. The file may be corrupted: {e!s}",
-                                is_error=True,
                             )
                             sys.exit(1)
                 else:
@@ -3468,11 +3365,11 @@ def main():
                 }
                 with open(claude_desktop_config_path, "w") as f:
                     json.dump(claude_desktop_config, f, indent=2)
-                sys_print(
+                logger.info(
                     f"Successfully installed gateway for {client} in docker container."
                 )
-                sys_print(f"Config updated at: {claude_desktop_config_path}")
-                sys_print("Please restart Claude Desktop to use the new gateway.")
+                logger.info(f"Config updated at: {claude_desktop_config_path}")
+                logger.info("Please restart Claude Desktop to use the new gateway.")
                 sys.exit(0)
             else:
                 # non-Docker logic
@@ -3491,12 +3388,10 @@ def main():
                 ]
                 result = subprocess.run(cmd, capture_output=True, text=True)
                 if result.returncode != 0:
-                    sys_print(
-                        f"Error installing gateway: {result.stderr}", is_error=True
-                    )
+                    logger.info(f"Error installing gateway: {result.stderr}")
                     sys.exit(1)
                 else:
-                    sys_print(f"Successfully installed gateway for {client}")
+                    logger.error(f"Successfully installed gateway for {client}")
 
                     # Check and fix path
                     if sys.platform == "darwin":
@@ -3536,15 +3431,14 @@ def main():
                                         args_list[-1] = GATEWAY_PY_PATH
                                     with open(claude_desktop_config_path, "w") as f:
                                         json.dump(claude_desktop_config, f, indent=2)
-                                    sys_print(
+                                    logger.info(
                                         "Path to gateway corrected in claude_desktop_config.json"
                                     )
                         except Exception as e:
-                            sys_print(
+                            logger.info(
                                 f"Warning: Could not verify/fix gateway path: {e}",
-                                is_error=True,
                             )
-                sys_print("Please restart Claude Desktop to use the gateway.")
+                logger.info("Please restart Claude Desktop to use the gateway.")
                 sys.exit(0)
 
         elif args.client.lower() == "cursor":
@@ -3566,22 +3460,20 @@ def main():
                     args=args_list,
                     env=env,
                 )
-                sys_print("Successfully configured Cursor")
+                logger.info("Successfully configured Cursor")
                 sys.exit(0)
             except Exception as e:
-                sys_print(f"Error configuring Cursor: {e!s}", is_error=True)
+                logger.error(f"Error configuring Cursor: {e!s}")
                 sys.exit(1)
         else:
-            sys_print(
+            logger.info(
                 f"Invalid client name: {args.client}. Please use 'claude-desktop' or 'cursor'.",
-                is_error=True,
             )
             sys.exit(1)
 
     else:
-        sys_print(
+        logger.info(
             f"Invalid command: {args.command}. Please use 'generate-config', 'install', 'config', 'project', 'user', or 'system'.",
-            is_error=True,
         )
         parser.print_help()
         sys.exit(1)

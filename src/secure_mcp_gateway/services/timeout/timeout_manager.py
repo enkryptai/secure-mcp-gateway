@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, Optional, Union
 
-from secure_mcp_gateway.utils import sys_print
+from secure_mcp_gateway.utils import logger
 
 
 class TimeoutEscalationLevel(Enum):
@@ -209,10 +209,9 @@ class TimeoutManager:
                 success=False,
             )
 
-            sys_print(
+            logger.error(
                 f"[TimeoutManager] Operation {operation_id} timed out after {elapsed_time:.2f}s "
                 f"(timeout: {timeout_value}s)",
-                is_error=True,
             )
 
             return TimeoutResult(
@@ -237,9 +236,8 @@ class TimeoutManager:
                 cancelled=True,
             )
 
-            sys_print(
-                f"[TimeoutManager] Operation {operation_id} was cancelled after {elapsed_time:.2f}s",
-                is_debug=True,
+            logger.debug(
+                f"[TimeoutManager] Operation {operation_id} was cancelled after {elapsed_time:.2f}s"
             )
 
             return TimeoutResult(
@@ -282,9 +280,8 @@ class TimeoutManager:
             # Log the error
             error_logger.log_error(error)
 
-            sys_print(
-                f"[TimeoutManager] Operation {operation_id} failed with error: {e}",
-                is_error=True,
+            logger.error(
+                f"[TimeoutManager] Operation {operation_id} failed with error: {e}"
             )
 
             return TimeoutResult(success=False, error=error, elapsed_time=elapsed_time)
@@ -319,22 +316,19 @@ class TimeoutManager:
         ratio = elapsed_time / timeout_value
 
         if escalation_level == TimeoutEscalationLevel.WARN:
-            sys_print(
+            logger.warning(
                 f"[TimeoutManager] WARNING: Operation {operation_id} is approaching timeout "
                 f"({elapsed_time:.2f}s / {timeout_value}s, {ratio:.1%})",
-                is_debug=True,
             )
         elif escalation_level == TimeoutEscalationLevel.TIMEOUT:
-            sys_print(
+            logger.error(
                 f"[TimeoutManager] TIMEOUT: Operation {operation_id} exceeded timeout "
                 f"({elapsed_time:.2f}s / {timeout_value}s, {ratio:.1%})",
-                is_error=True,
             )
         elif escalation_level == TimeoutEscalationLevel.FAIL:
-            sys_print(
+            logger.critical(
                 f"[TimeoutManager] FAIL: Operation {operation_id} severely exceeded timeout "
                 f"({elapsed_time:.2f}s / {timeout_value}s, {ratio:.1%})",
-                is_error=True,
             )
 
     async def cancel_operation(self, operation_id: str) -> bool:
@@ -350,7 +344,7 @@ class TimeoutManager:
         task = self._active_operations.get(operation_id)
         if task and not task.done():
             task.cancel()
-            sys_print(f"[TimeoutManager] Cancelled operation {operation_id}")
+            logger.info(f"[TimeoutManager] Cancelled operation {operation_id}")
             return True
         return False
 
@@ -367,7 +361,7 @@ class TimeoutManager:
                 task.cancel()
                 cancelled_count += 1
 
-        sys_print(f"[TimeoutManager] Cancelled {cancelled_count} active operations")
+        logger.info(f"[TimeoutManager] Cancelled {cancelled_count} active operations")
         return cancelled_count
 
     def get_active_operations(self) -> Dict[str, str]:
@@ -467,10 +461,7 @@ class TimeoutManager:
 
         except Exception as e:
             # Don't let telemetry errors break timeout functionality
-            sys_print(
-                f"[TimeoutManager] Failed to update telemetry metrics: {e}",
-                is_debug=True,
-            )
+            logger.debug(f"[TimeoutManager] Failed to update telemetry metrics: {e}")
 
 
 # Global timeout manager instance

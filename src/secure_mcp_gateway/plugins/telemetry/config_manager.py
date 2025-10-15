@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-# Avoid circular import by defining sys_print locally
-import sys
+import logging
 from typing import Any, Dict
 
 from secure_mcp_gateway.plugins.telemetry.base import (
@@ -12,15 +11,7 @@ from secure_mcp_gateway.plugins.telemetry.base import (
     TelemetryResult,
 )
 
-
-def sys_print(message: str, is_error: bool = False, is_debug: bool = False):
-    """Local sys_print to avoid circular imports."""
-    if is_error:
-        print(f"[ERROR] {message}", file=sys.stderr)
-    elif is_debug:
-        print(f"[DEBUG] {message}", file=sys.stderr)
-    else:
-        print(message, file=sys.stderr)
+logger = logging.getLogger("enkrypt.telemetry")
 
 
 class TelemetryConfigManager:
@@ -70,7 +61,7 @@ class TelemetryConfigManager:
             self.registry.register(provider)
             self._provider_initialized = False
 
-            sys_print(
+            logger.info(
                 f"[TelemetryConfigManager] Registered provider: {provider.name} v{provider.version}"
             )
 
@@ -82,7 +73,7 @@ class TelemetryConfigManager:
 
         except ValueError as e:
             # Provider already registered
-            sys_print(
+            logger.info(
                 f"[TelemetryConfigManager] Provider already registered: {provider.name}"
             )
             return TelemetryResult(
@@ -154,7 +145,7 @@ class TelemetryConfigManager:
 
         self._active_provider = provider_name
 
-        sys_print(f"[TelemetryConfigManager] Active provider set to: {provider_name}")
+        logger.info(f"[TelemetryConfigManager] Active provider set to: {provider_name}")
 
         return TelemetryResult(
             success=True,

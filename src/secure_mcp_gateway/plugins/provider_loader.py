@@ -11,7 +11,7 @@ from secure_mcp_gateway.exceptions import (
     ErrorContext,
     create_configuration_error,
 )
-from secure_mcp_gateway.utils import sys_print
+from secure_mcp_gateway.utils import logger
 
 
 def load_provider_class(class_path: str) -> type:
@@ -108,13 +108,13 @@ def create_provider_from_config(
                 # Pattern 3: No config needed
                 provider = provider_class()
 
-        sys_print(
+        logger.info(
             f"✓ Loaded {plugin_type} provider: {provider_name} ({provider_class.__name__})"
         )
         return provider
 
     except Exception as e:
-        sys_print(f"✗ Failed to load provider '{provider_name}': {e}", is_error=True)
+        logger.error(f"✗ Failed to load provider '{provider_name}': {e}")
         context = ErrorContext(
             operation="provider_loader.load_provider",
             additional_context={

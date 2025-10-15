@@ -18,8 +18,8 @@ from secure_mcp_gateway.utils import (
     CONFIG_PATH,
     DOCKER_CONFIG_PATH,
     is_docker,
+    logger,
     mask_key,
-    sys_print,
 )
 
 
@@ -52,7 +52,7 @@ class EnkryptAuthProvider(AuthProvider):
         self.timeout = timeout
         self.auth_url = f"{base_url}/mcp-gateway/get-gateway"
 
-        sys_print(f"Enkrypt auth provider initialized (remote={use_remote_config})")
+        logger.info(f"Enkrypt auth provider initialized (remote={use_remote_config})")
 
     def get_name(self) -> str:
         """Get provider name."""
@@ -89,7 +89,7 @@ class EnkryptAuthProvider(AuthProvider):
             AuthResult: Authentication result
         """
         try:
-            sys_print("[EnkryptAuthProvider] Starting authentication")
+            logger.info("[EnkryptAuthProvider] Starting authentication")
 
             # Extract credentials
             gateway_key = credentials.gateway_key or credentials.api_key
@@ -111,7 +111,7 @@ class EnkryptAuthProvider(AuthProvider):
             )
 
             if local_config:
-                sys_print(
+                logger.info(
                     f"[EnkryptAuthProvider] Local authentication successful for user: {user_id}"
                 )
                 return AuthResult(
@@ -144,7 +144,7 @@ class EnkryptAuthProvider(AuthProvider):
             )
 
         except Exception as e:
-            sys_print(f"[EnkryptAuthProvider] Authentication error: {e}", is_error=True)
+            logger.error(f"[EnkryptAuthProvider] Authentication error: {e}")
             return AuthResult(
                 status=AuthStatus.ERROR,
                 authenticated=False,
@@ -171,7 +171,7 @@ class EnkryptAuthProvider(AuthProvider):
         Returns:
             AuthResult: Authentication result
         """
-        sys_print(
+        logger.info(
             f"[EnkryptAuthProvider] Attempting remote authentication for gateway_key: {mask_key(gateway_key)}"
         )
 
@@ -224,7 +224,7 @@ class EnkryptAuthProvider(AuthProvider):
                     error="Empty response from server",
                 )
 
-            sys_print("[EnkryptAuthProvider] Remote authentication successful")
+            logger.info("[EnkryptAuthProvider] Remote authentication successful")
 
             return AuthResult(
                 status=AuthStatus.SUCCESS,
@@ -271,10 +271,7 @@ class EnkryptAuthProvider(AuthProvider):
         config_path = DOCKER_CONFIG_PATH if running_in_docker else CONFIG_PATH
 
         if not os.path.exists(config_path):
-            sys_print(
-                f"[EnkryptAuthProvider] Config file not found: {config_path}",
-                is_debug=True,
-            )
+            logger.debug(f"[EnkryptAuthProvider] Config file not found: {config_path}")
             return None
 
         try:
@@ -290,10 +287,7 @@ class EnkryptAuthProvider(AuthProvider):
             # Check if gateway_key exists in apikeys
             apikeys = json_config.get("apikeys", {})
             if gateway_key not in apikeys:
-                sys_print(
-                    "[EnkryptAuthProvider] Gateway key not found in config",
-                    is_debug=True,
-                )
+                logger.debug("[EnkryptAuthProvider] Gateway key not found in config")
                 return None
 
             key_info = apikeys[gateway_key]
@@ -308,7 +302,7 @@ class EnkryptAuthProvider(AuthProvider):
 
             # Validate IDs match
             if project_id != config_project_id or user_id != config_user_id:
-                sys_print("[EnkryptAuthProvider] ID mismatch in config", is_debug=True)
+                logger.debug("[EnkryptAuthProvider] ID mismatch in config")
                 return None
 
             # Get project and user configurations
@@ -316,9 +310,8 @@ class EnkryptAuthProvider(AuthProvider):
             users = json_config.get("users", {})
 
             if project_id not in projects or user_id not in users:
-                sys_print(
-                    "[EnkryptAuthProvider] Project or user not found in config",
-                    is_debug=True,
+                logger.debug(
+                    "[EnkryptAuthProvider] Project or user not found in config"
                 )
                 return None
 
@@ -327,13 +320,13 @@ class EnkryptAuthProvider(AuthProvider):
             mcp_config_id = project_config.get("mcp_config_id")
 
             if not mcp_config_id:
-                sys_print("[EnkryptAuthProvider] No MCP config ID found", is_debug=True)
+                logger.debug("[EnkryptAuthProvider] No MCP config ID found")
                 return None
 
             # Get MCP configuration
             mcp_configs = json_config.get("mcp_configs", {})
             if mcp_config_id not in mcp_configs:
-                sys_print("[EnkryptAuthProvider] MCP config not found", is_debug=True)
+                logger.debug("[EnkryptAuthProvider] MCP config not found")
                 return None
 
             mcp_config_entry = mcp_configs[mcp_config_id]
@@ -349,9 +342,7 @@ class EnkryptAuthProvider(AuthProvider):
             }
 
         except Exception as e:
-            sys_print(
-                f"[EnkryptAuthProvider] Error reading local config: {e}", is_error=True
-            )
+            logger.error(f"[EnkryptAuthProvider] Error reading local config: {e}")
             return None
 
     async def validate_session(self, session_id: str) -> bool:

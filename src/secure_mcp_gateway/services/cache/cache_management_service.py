@@ -21,8 +21,8 @@ from secure_mcp_gateway.utils import (
     build_log_extra,
     generate_custom_id,
     get_common_config,
+    logger,
     mask_key,
-    sys_print,
 )
 
 
@@ -91,7 +91,7 @@ class CacheManagementService:
         """
         with tracer.start_as_current_span("cache_management.clear_cache") as main_span:
             try:
-                sys_print(
+                logger.info(
                     f"[clear_cache] Requested with id={id}, server_name={server_name}, cache_type={cache_type}"
                 )
                 custom_id = generate_custom_id()
@@ -118,7 +118,7 @@ class CacheManagementService:
                 cache_type = self._determine_cache_type(cache_type, main_span)
 
                 # Log the request
-                sys_print(
+                logger.info(
                     f"[clear_cache] Gateway/User ID: {id}, Server Name: {server_name}, Cache Type: {cache_type}"
                 )
                 logger.info(
@@ -161,7 +161,7 @@ class CacheManagementService:
             except Exception as e:
                 main_span.record_exception(e)
                 main_span.set_attribute("error", str(e))
-                sys_print(f"[clear_cache] Critical error: {e}", is_error=True)
+                logger.error(f"[clear_cache] Critical error: {e}")
                 logger.error(
                     "cache_management.clear_cache.critical_error",
                     extra=build_log_extra(ctx, custom_id, error=str(e)),
@@ -181,9 +181,8 @@ class CacheManagementService:
             )
 
             if not gateway_config:
-                sys_print(
-                    f"[clear_cache] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}",
-                    is_error=True,
+                logger.error(
+                    f"[clear_cache] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}"
                 )
                 context = ErrorContext(
                     operation="cache_management.init",
@@ -217,7 +216,7 @@ class CacheManagementService:
                 result = await enkrypt_authenticate(ctx)
                 if result.get("status") != "success":
                     auth_span.set_attribute("error", "Authentication failed")
-                    sys_print("[clear_cache] Not authenticated", is_error=True)
+                    logger.error("[clear_cache] Not authenticated")
                     logger.error(
                         "cache_management.clear_cache.not_authenticated",
                         extra=build_log_extra(
@@ -256,7 +255,7 @@ class CacheManagementService:
             if not cache_type:
                 type_span.set_attribute("default_type", True)
                 if self.IS_DEBUG_LOG_LEVEL:
-                    sys_print(
+                    logger.debug(
                         "[clear_cache] No cache type provided. Defaulting to 'all'"
                     )
                 cache_type = "all"
@@ -287,7 +286,7 @@ class CacheManagementService:
                 all_span.set_attribute("id", id)
                 all_span.set_attribute("server_name", server_name or "all")
 
-                sys_print("[clear_cache] Clearing all caches")
+                logger.info("[clear_cache] Clearing all caches")
                 logger.info(
                     "cache_management.clear_cache.clearing_all_caches",
                     extra=build_log_extra(
@@ -333,7 +332,7 @@ class CacheManagementService:
                 config_span.set_attribute("id", id)
                 config_span.set_attribute("cache_type", cache_type)
 
-                sys_print("[clear_cache] Clearing gateway config cache")
+                logger.info("[clear_cache] Clearing gateway config cache")
                 logger.info(
                     "cache_management.clear_cache.clearing_gateway_config_cache",
                     extra=build_log_extra(
@@ -406,7 +405,7 @@ class CacheManagementService:
                 server_span.set_attribute("server_name", server_name or "all")
                 server_span.set_attribute("clear_specific_server", bool(server_name))
 
-                sys_print("[clear_cache] Clearing server config cache")
+                logger.info("[clear_cache] Clearing server config cache")
                 logger.info(
                     "cache_management.clear_cache.clearing_server_config_cache",
                     extra=build_log_extra(
@@ -421,9 +420,8 @@ class CacheManagementService:
                 # Clear tool cache for a specific server
                 if server_name:
                     if self.IS_DEBUG_LOG_LEVEL:
-                        sys_print(
-                            f"[clear_cache] Clearing tool cache for server: {server_name}",
-                            is_debug=True,
+                        logger.debug(
+                            f"[clear_cache] Clearing tool cache for server: {server_name}"
                         )
                         logger.info(
                             "cache_management.clear_cache.clearing_tool_cache_for_server",
@@ -466,7 +464,7 @@ class CacheManagementService:
                         }
                 # Clear all server caches (tool cache)
                 else:
-                    sys_print("[clear_cache] Clearing all server caches")
+                    logger.info("[clear_cache] Clearing all server caches")
                     logger.info(
                         "cache_management.clear_cache.clearing_all_server_caches",
                         extra=build_log_extra(
@@ -498,10 +496,7 @@ class CacheManagementService:
             "cache_management.refresh_remote_config"
         ) as refresh_span:
             if self.IS_DEBUG_LOG_LEVEL:
-                sys_print(
-                    "[clear_cache] Refreshing remote MCP config",
-                    is_debug=True,
-                )
+                logger.debug("[clear_cache] Refreshing remote MCP config")
                 logger.info(
                     "cache_management.clear_cache.refreshing_remote_mcp_config",
                     extra=build_log_extra(
@@ -536,9 +531,8 @@ class CacheManagementService:
                     refresh_span.set_attribute("success", refresh_response.ok)
 
                     if self.IS_DEBUG_LOG_LEVEL:
-                        sys_print(
-                            f"[clear_cache] Refresh response: {refresh_response}",
-                            is_debug=True,
+                        logger.debug(
+                            f"[clear_cache] Refresh response: {refresh_response}"
                         )
                         logger.info(
                             "cache_management.clear_cache.refresh_response",
