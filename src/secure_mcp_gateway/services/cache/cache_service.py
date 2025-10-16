@@ -7,12 +7,11 @@ from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
 
 # Get metrics from telemetry manager
 telemetry_manager = get_telemetry_config_manager()
-cache_hit_counter = telemetry_manager.cache_hit_counter
-cache_miss_counter = telemetry_manager.cache_miss_counter
+# Telemetry metrics will be obtained lazily when needed
 from secure_mcp_gateway.utils import (
     get_common_config,
+    logger,
     mask_key,
-    sys_print,
 )
 
 # Get debug log level
@@ -29,7 +28,7 @@ class CacheService:
 
     def __init__(self):
         """Initialize the cache service."""
-        sys_print("Initializing Enkrypt Secure MCP Gateway Cache Service")
+        logger.info("Initializing Enkrypt Secure MCP Gateway Cache Service")
 
         # Get configuration
         self.common_config = get_common_config()
@@ -49,30 +48,53 @@ class CacheService:
         self.cache_client = None
         self._initialize_cache()
 
-        sys_print("Cache service initialized:")
-        sys_print(f"  - Tool cache expiration: {self.tool_cache_expiration} hours")
-        sys_print(
+        logger.info("Cache service initialized:")
+        logger.info(f"  - Tool cache expiration: {self.tool_cache_expiration} hours")
+        logger.info(
             f"  - Gateway cache expiration: {self.gateway_cache_expiration} hours"
         )
-        sys_print(f"  - External cache enabled: {self.use_external_cache}")
+        logger.info(f"  - External cache enabled: {self.use_external_cache}")
 
     def _initialize_cache(self):
         """Initialize the cache client."""
         if self.use_external_cache:
-            sys_print("Initializing External Cache connection")
+            logger.info("Initializing External Cache connection")
             try:
                 from secure_mcp_gateway.client import initialize_cache
 
                 self.cache_client = initialize_cache()
-                sys_print("[external_cache] Successfully connected to External Cache")
+                logger.info("[external_cache] Successfully connected to External Cache")
             except Exception as e:
-                sys_print(
-                    f"[external_cache] Failed to connect to External Cache: {e}",
-                    is_error=True,
+                # Use standardized error handling
+                from secure_mcp_gateway.error_handling import error_logger
+                from secure_mcp_gateway.exceptions import (
+                    ErrorCode,
+                    ErrorContext,
+                    create_system_error,
+                )
+
+                context = ErrorContext(
+                    operation="cache.external_connection",
+                    additional_context={
+                        "cache_host": self.cache_host,
+                        "cache_port": self.cache_port,
+                    },
+                )
+
+                error = create_system_error(
+                    code=ErrorCode.CACHE_CONNECTION_FAILED,
+                    message=f"Failed to connect to External Cache: {e}",
+                    context=context,
+                    cause=e,
+                )
+                error_logger.log_error(error)
+
+                logger.error(
+                    f"[external_cache] Failed to connect to External Cache: {e}"
                 )
                 self.cache_client = None
         else:
-            sys_print("External Cache is not enabled. Using local cache only.")
+            logger.info("External Cache is not enabled. Using local cache only.")
             self.cache_client = None
 
     def get_redis_ttl(self, key: str) -> tuple:
@@ -101,9 +123,28 @@ class CacheService:
                 expires_at = time.time() + ttl_seconds
                 return ttl_seconds, expires_at
         except Exception as e:
-            sys_print(
-                f"[get_redis_ttl] Error getting TTL for key {key}: {e}", is_error=True
+            # Use standardized error handling
+            from secure_mcp_gateway.error_handling import error_logger
+            from secure_mcp_gateway.exceptions import (
+                ErrorCode,
+                ErrorContext,
+                create_system_error,
             )
+
+            context = ErrorContext(
+                operation="cache.get_ttl",
+                additional_context={"cache_key": key},
+            )
+
+            error = create_system_error(
+                code=ErrorCode.CACHE_OPERATION_FAILED,
+                message=f"Error getting TTL for key {key}: {e}",
+                context=context,
+                cause=e,
+            )
+            error_logger.log_error(error)
+
+            logger.error(f"[get_redis_ttl] Error getting TTL for key {key}: {e}")
             return None, None
 
     def cache_tools(
@@ -124,13 +165,10 @@ class CacheService:
             from secure_mcp_gateway.client import cache_tools
 
             cache_tools(self.cache_client, server_id, server_name, tools)
-            sys_print(f"[cache_tools] Successfully cached tools for {server_name}")
+            logger.info(f"[cache_tools] Successfully cached tools for {server_name}")
             return True
         except Exception as e:
-            sys_print(
-                f"[cache_tools] Failed to cache tools for {server_name}: {e}",
-                is_error=True,
-            )
+            logger.error(f"[cache_tools] Failed to cache tools for {server_name}: {e}")
             return False
 
     def get_cached_tools(
@@ -152,9 +190,8 @@ class CacheService:
 
             return get_cached_tools(self.cache_client, server_id, server_name)
         except Exception as e:
-            sys_print(
-                f"[get_cached_tools] Failed to get cached tools for {server_name}: {e}",
-                is_error=True,
+            logger.error(
+                f"[get_cached_tools] Failed to get cached tools for {server_name}: {e}"
             )
             return None
 
@@ -173,14 +210,13 @@ class CacheService:
             from secure_mcp_gateway.client import cache_gateway_config
 
             cache_gateway_config(self.cache_client, gateway_id, config)
-            sys_print(
+            logger.info(
                 f"[cache_gateway_config] Successfully cached gateway config for {gateway_id}"
             )
             return True
         except Exception as e:
-            sys_print(
-                f"[cache_gateway_config] Failed to cache gateway config for {gateway_id}: {e}",
-                is_error=True,
+            logger.error(
+                f"[cache_gateway_config] Failed to cache gateway config for {gateway_id}: {e}"
             )
             return False
 
@@ -202,9 +238,8 @@ class CacheService:
 
             return get_cached_gateway_config(self.cache_client, gateway_id)
         except Exception as e:
-            sys_print(
-                f"[get_cached_gateway_config] Failed to get cached gateway config for {gateway_id}: {e}",
-                is_error=True,
+            logger.error(
+                f"[get_cached_gateway_config] Failed to get cached gateway config for {gateway_id}: {e}"
             )
             return None
 
@@ -223,14 +258,13 @@ class CacheService:
             from secure_mcp_gateway.client import clear_cache_for_servers
 
             count = clear_cache_for_servers(self.cache_client, id, server_name)
-            sys_print(
+            logger.info(
                 f"[clear_cache_for_servers] Successfully cleared {count} cache entries for id={id}, server_name={server_name}"
             )
             return count
         except Exception as e:
-            sys_print(
-                f"[clear_cache_for_servers] Failed to clear cache for id={id}, server_name={server_name}: {e}",
-                is_error=True,
+            logger.error(
+                f"[clear_cache_for_servers] Failed to clear cache for id={id}, server_name={server_name}: {e}"
             )
             return 0
 
@@ -249,14 +283,13 @@ class CacheService:
             from secure_mcp_gateway.client import clear_gateway_config_cache
 
             result = clear_gateway_config_cache(self.cache_client, id, gateway_key)
-            sys_print(
+            logger.info(
                 f"[clear_gateway_config_cache] Successfully cleared gateway config cache for id={id}, gateway_key={mask_key(gateway_key)}"
             )
             return result
         except Exception as e:
-            sys_print(
-                f"[clear_gateway_config_cache] Failed to clear gateway config cache for id={id}, gateway_key={mask_key(gateway_key)}: {e}",
-                is_error=True,
+            logger.error(
+                f"[clear_gateway_config_cache] Failed to clear gateway config cache for id={id}, gateway_key={mask_key(gateway_key)}: {e}"
             )
             return False
 
@@ -272,10 +305,7 @@ class CacheService:
 
             return get_cache_statistics(self.cache_client)
         except Exception as e:
-            sys_print(
-                f"[get_cache_statistics] Failed to get cache statistics: {e}",
-                is_error=True,
-            )
+            logger.error(f"[get_cache_statistics] Failed to get cache statistics: {e}")
             return {
                 "total_tool_caches": 0,
                 "total_config_caches": 0,
@@ -299,9 +329,8 @@ class CacheService:
 
             return get_server_hashed_key(id, server_name)
         except Exception as e:
-            sys_print(
-                f"[get_server_hashed_key] Failed to get hashed key for {server_name}: {e}",
-                is_error=True,
+            logger.error(
+                f"[get_server_hashed_key] Failed to get hashed key for {server_name}: {e}"
             )
             return ""
 
@@ -320,9 +349,8 @@ class CacheService:
 
             return get_gateway_config_hashed_key(gateway_key)
         except Exception as e:
-            sys_print(
-                f"[get_gateway_config_hashed_key] Failed to get hashed key for gateway: {e}",
-                is_error=True,
+            logger.error(
+                f"[get_gateway_config_hashed_key] Failed to get hashed key for gateway: {e}"
             )
             return ""
 
@@ -341,9 +369,7 @@ class CacheService:
 
             return get_id_from_key(key)
         except Exception as e:
-            sys_print(
-                f"[get_id_from_key] Failed to get ID from key: {e}", is_error=True
-            )
+            logger.error(f"[get_id_from_key] Failed to get ID from key: {e}")
             return ""
 
     def cache_key_to_id(self, key: str) -> str:
@@ -361,9 +387,7 @@ class CacheService:
 
             return cache_key_to_id(key)
         except Exception as e:
-            sys_print(
-                f"[cache_key_to_id] Failed to convert key to ID: {e}", is_error=True
-            )
+            logger.error(f"[cache_key_to_id] Failed to convert key to ID: {e}")
             return ""
 
     def is_cache_available(self) -> bool:
@@ -417,48 +441,75 @@ class CacheService:
             dict: Updated server info with latest tools from config or cache
         """
         if IS_DEBUG_LOG_LEVEL:
-            sys_print(
-                f"[get_latest_server_info] Getting latest server info for {id}",
-                is_debug=True,
+            logger.debug(
+                f"[get_latest_server_info] Getting latest server info for {id}"
             )
         server_info_copy = server_info.copy()
         config_tools = server_info_copy.get("tools", {})
         server_name = server_info_copy.get("server_name")
-        sys_print(f"[get_latest_server_info] Server name: {server_name}")
+        logger.info(f"[get_latest_server_info] Server name: {server_name}")
 
         # If tools is empty {}, then we discover them
         if not config_tools:
-            sys_print(
+            logger.info(
                 f"[get_latest_server_info] No config tools found for {server_name}"
             )
             cached_tools = self.get_cached_tools(id, server_name)
             if cached_tools:
-                cache_hit_counter.add(1)
+                # Update metrics lazily
+                if (
+                    hasattr(telemetry_manager, "cache_hit_counter")
+                    and telemetry_manager.cache_hit_counter
+                ):
+                    telemetry_manager.cache_hit_counter.add(1)
                 if IS_DEBUG_LOG_LEVEL:
-                    sys_print(
-                        f"[get_latest_server_info] Found cached tools for {server_name}",
-                        is_debug=True,
+                    logger.debug(
+                        f"[get_latest_server_info] Found cached tools for {server_name}"
                     )
                 server_info_copy["tools"] = cached_tools
                 server_info_copy["has_cached_tools"] = True
                 server_info_copy["tools_source"] = "cache"
             else:
-                cache_miss_counter.add(1)
+                # Update metrics lazily
+                if (
+                    hasattr(telemetry_manager, "cache_miss_counter")
+                    and telemetry_manager.cache_miss_counter
+                ):
+                    telemetry_manager.cache_miss_counter.add(1)
                 if IS_DEBUG_LOG_LEVEL:
-                    sys_print(
-                        f"[get_latest_server_info] No cached tools found for {server_name}. Need to discover them",
-                        is_debug=True,
+                    logger.debug(
+                        f"[get_latest_server_info] No cached tools found for {server_name}. Need to discover them"
                     )
                 server_info_copy["tools"] = {}
                 server_info_copy["has_cached_tools"] = False
                 server_info_copy["tools_source"] = "needs_discovery"
         else:
             if IS_DEBUG_LOG_LEVEL:
-                sys_print(
-                    f"[get_latest_server_info] Tools defined in config already for {server_name}",
-                    is_debug=True,
+                logger.debug(
+                    f"[get_latest_server_info] Tools defined in config for {server_name}, checking cache first"
                 )
-            server_info_copy["tools_source"] = "config"
+
+            # Check if config tools are already cached for better performance
+            cached_tools = self.get_cached_tools(id, server_name)
+            if cached_tools:
+                # Use cached tools (faster than reading config)
+                if IS_DEBUG_LOG_LEVEL:
+                    logger.debug(
+                        f"[get_latest_server_info] Found cached tools for {server_name}, using cache"
+                    )
+                server_info_copy["tools"] = cached_tools
+                server_info_copy["has_cached_tools"] = True
+                server_info_copy["tools_source"] = "cache"
+            else:
+                # Cache the config tools for future use
+                if IS_DEBUG_LOG_LEVEL:
+                    logger.debug(
+                        f"[get_latest_server_info] Caching config tools for {server_name}"
+                    )
+                self.cache_tools(id, server_name, config_tools)
+                server_info_copy["tools"] = config_tools
+                server_info_copy["has_cached_tools"] = True
+                server_info_copy["tools_source"] = "config"
         return server_info_copy
 
 

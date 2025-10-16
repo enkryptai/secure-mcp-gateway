@@ -1,11 +1,4 @@
-"""
-Example Custom Guardrail Providers
-
-This module shows how to implement custom guardrail providers for different
-services like OpenAI Moderation, AWS Comprehend, or completely custom solutions.
-
-These are example implementations to demonstrate the plugin architecture.
-"""
+"""Example guardrail providers."""
 
 from typing import Any, Dict, List, Optional
 

@@ -6,6 +6,9 @@
 .cursorsettings
 .python-version
 
+# Claude Code local settings
+.claude/settings.local.json
+
 uv.lock
 node_modules
 package.json

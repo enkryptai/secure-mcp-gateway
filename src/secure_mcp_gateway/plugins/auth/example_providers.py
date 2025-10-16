@@ -1,15 +1,4 @@
-"""
-Example Authentication Providers
-
-This module contains example implementations of different authentication providers
-to demonstrate the plugin system's flexibility.
-
-Providers included:
-- OAuth2Provider - OAuth 2.0 authentication
-- JWTProvider - JWT token authentication
-- APIKeyProvider - Simple API key authentication
-- BasicAuthProvider - HTTP Basic authentication
-"""
+"""Example authentication providers."""
 
 import base64
 import hashlib

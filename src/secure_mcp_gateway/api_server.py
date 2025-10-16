@@ -1,18 +1,4 @@
-"""
-Enkrypt Secure MCP Gateway REST API Server
-
-This module provides a REST API interface for all CLI commands, allowing programmatic
-access to configuration management, project management, user management, and system operations.
-
-The API server uses FastAPI and provides comprehensive endpoints for:
-- MCP Configuration Management
-- Project Management
-- User Management
-- System Operations
-- API Key Management
-
-Authentication is handled via API keys in the Authorization header.
-"""
+"""REST API server for MCP Gateway."""
 
 import json
 import os
@@ -56,15 +42,27 @@ from secure_mcp_gateway.cli import (
     update_server_output_guardrails,
     validate_config,
 )
+from secure_mcp_gateway.error_handling import create_error_response, error_logger
+from secure_mcp_gateway.exceptions import (
+    AuthenticationError,
+    ConfigurationError,
+    ErrorCode,
+    ErrorContext,
+    ErrorSeverity,
+    SystemError,
+    create_auth_error,
+    create_configuration_error,
+    create_system_error,
+)
 from secure_mcp_gateway.utils import (
     CONFIG_PATH,
     DOCKER_CONFIG_PATH,
     is_docker,
-    sys_print,
+    logger,
 )
 from secure_mcp_gateway.version import __version__
 
-sys_print(f"Initializing Enkrypt Secure MCP Gateway REST API Server v{__version__}")
+logger.info(f"Initializing Enkrypt Secure MCP Gateway REST API Server v{__version__}")
 
 # Configuration
 is_docker_running = is_docker()
@@ -269,16 +267,30 @@ class SystemResetRequest(BaseModel):
 
 def get_api_key(authorization: Optional[str] = Header(None)) -> str:
     """Extract and validate API key from Authorization header."""
+    context = ErrorContext(operation="api_key_validation")
+
     if not authorization:
+        error = create_auth_error(
+            code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+            message="Authorization header required",
+            context=context,
+        )
+        error_logger.log_error(error)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization header required",
+            detail=create_error_response(error),
         )
 
     if not authorization.startswith("Bearer "):
+        error = create_auth_error(
+            code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+            message="Invalid authorization format. Use 'Bearer <api_key>'",
+            context=context,
+        )
+        error_logger.log_error(error)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization format. Use 'Bearer <api_key>'",
+            detail=create_error_response(error),
         )
 
     api_key = authorization[7:]  # Remove "Bearer " prefix
@@ -289,32 +301,89 @@ def get_api_key(authorization: Optional[str] = Header(None)) -> str:
             config = json.load(f)
 
         if api_key not in config.get("apikeys", {}):
+            error = create_auth_error(
+                code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+                message="Invalid API key",
+                context=context,
+            )
+            error_logger.log_error(error)
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=create_error_response(error),
             )
 
         # Check if API key is disabled
         if config["apikeys"][api_key].get("disabled", False):
+            error = create_auth_error(
+                code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+                message="API key is disabled",
+                context=context,
+            )
+            error_logger.log_error(error)
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="API key is disabled"
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=create_error_response(error),
             )
 
         return api_key
     except FileNotFoundError:
+        error = create_configuration_error(
+            code=ErrorCode.CONFIG_MISSING_REQUIRED,
+            message="Configuration file not found",
+            context=context,
+        )
+        error_logger.log_error(error)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Configuration file not found",
+            detail=create_error_response(error),
         )
     except json.JSONDecodeError:
+        error = create_configuration_error(
+            code=ErrorCode.CONFIG_INVALID,
+            message="Invalid configuration file",
+            context=context,
+        )
+        error_logger.log_error(error)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Invalid configuration file",
+            detail=create_error_response(error),
         )
 
 
 # =============================================================================
 # ERROR HANDLING
 # =============================================================================
+
+
+# Helper function to create HTTP exceptions with standardized errors
+def create_http_exception(
+    status_code: int,
+    error_code: ErrorCode,
+    message: str,
+    operation: str = "api_operation",
+):
+    """Helper to create HTTPException with standardized error format."""
+    context = ErrorContext(operation=operation)
+
+    if status_code == 401:
+        error = create_auth_error(code=error_code, message=message, context=context)
+    elif status_code >= 500:
+        error = create_system_error(code=error_code, message=message, context=context)
+    elif status_code == 404:
+        error = create_configuration_error(
+            code=ErrorCode.CONFIG_MISSING_REQUIRED, message=message, context=context
+        )
+    else:
+        error = create_configuration_error(
+            code=error_code, message=message, context=context
+        )
+
+    error_logger.log_error(error)
+
+    return HTTPException(
+        status_code=status_code,
+        detail=create_error_response(error),
+    )
 
 
 def run_cli_function_with_error_handling(func, *args, **kwargs):
@@ -343,12 +412,37 @@ def run_cli_function_with_error_handling(func, *args, **kwargs):
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     """Global exception handler for unhandled errors."""
-    sys_print(f"Unhandled exception: {exc}", is_error=True)
-    sys_print(f"Traceback: {traceback.format_exc()}", is_error=True)
+    # Import here to avoid circular imports
+    from secure_mcp_gateway.utils import mask_sensitive_headers
+
+    # Create error context
+    context = ErrorContext(
+        operation="api_request",
+        request_id=getattr(request, "id", None),
+        additional_context={
+            "method": request.method,
+            "url": str(request.url),
+            "headers": mask_sensitive_headers(dict(request.headers)),
+        },
+    )
+
+    # Create standardized error
+    error = create_system_error(
+        code=ErrorCode.SYSTEM_INTERNAL_ERROR,
+        message=f"Unhandled exception in API: {exc!s}",
+        context=context,
+        cause=exc,
+    )
+
+    # Log the error
+    error_logger.log_error(error)
+
+    logger.error(f"Unhandled exception: {exc}")
+    logger.error(f"Traceback: {traceback.format_exc()}")
 
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content=ErrorResponse(error="Internal server error", detail=str(exc)).dict(),
+        content=create_error_response(error),
     )
 
 
@@ -388,7 +482,9 @@ async def get_configs(api_key: str = Depends(get_api_key)):
             message="Configurations retrieved successfully", data=configs
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise create_http_exception(
+            500, ErrorCode.SYSTEM_INTERNAL_ERROR, str(e), "get_configs"
+        )
 
 
 @app.post("/api/v1/configs", response_model=SuccessResponse)
@@ -401,7 +497,9 @@ async def create_config(
     )
 
     if error:
-        raise HTTPException(status_code=400, detail=error)
+        raise create_http_exception(
+            400, ErrorCode.CONFIG_INVALID, error, "create_config"
+        )
 
     config_id = result.split(": ")[1] if ": " in result else result
 
@@ -428,9 +526,13 @@ async def copy_config_endpoint(
 
         return SuccessResponse(message="Configuration copied successfully")
     except SystemExit:
-        raise HTTPException(status_code=400, detail="Configuration copy failed")
+        raise create_http_exception(
+            400, ErrorCode.CONFIG_INVALID, "Configuration copy failed", "copy_config"
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise create_http_exception(
+            500, ErrorCode.SYSTEM_INTERNAL_ERROR, str(e), "copy_config"
+        )
 
 
 @app.put("/api/v1/configs/{config_identifier}/rename", response_model=SuccessResponse)
@@ -450,9 +552,16 @@ async def rename_config_endpoint(
 
         return SuccessResponse(message="Configuration renamed successfully")
     except SystemExit:
-        raise HTTPException(status_code=400, detail="Configuration rename failed")
+        raise create_http_exception(
+            400,
+            ErrorCode.CONFIG_INVALID,
+            "Configuration rename failed",
+            "rename_config",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise create_http_exception(
+            500, ErrorCode.SYSTEM_INTERNAL_ERROR, str(e), "rename_config"
+        )
 
 
 @app.get("/api/v1/configs/{config_identifier}", response_model=SuccessResponse)
@@ -473,9 +582,16 @@ async def get_config_endpoint(
             message="Configuration retrieved successfully", data=config_data
         )
     except SystemExit:
-        raise HTTPException(status_code=404, detail="Configuration not found")
+        raise create_http_exception(
+            404,
+            ErrorCode.CONFIG_MISSING_REQUIRED,
+            "Configuration not found",
+            "get_config",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise create_http_exception(
+            500, ErrorCode.SYSTEM_INTERNAL_ERROR, str(e), "get_config"
+        )
 
 
 @app.delete("/api/v1/configs/{config_identifier}", response_model=SuccessResponse)
@@ -493,9 +609,16 @@ async def delete_config_endpoint(
 
         return SuccessResponse(message="Configuration deleted successfully")
     except SystemExit:
-        raise HTTPException(status_code=400, detail="Configuration deletion failed")
+        raise create_http_exception(
+            400,
+            ErrorCode.CONFIG_INVALID,
+            "Configuration deletion failed",
+            "delete_config",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise create_http_exception(
+            500, ErrorCode.SYSTEM_INTERNAL_ERROR, str(e), "delete_config"
+        )
 
 
 @app.get("/api/v1/configs/{config_identifier}/projects", response_model=SuccessResponse)
@@ -598,9 +721,13 @@ async def add_server_to_config_endpoint(
 
         return SuccessResponse(message="Server added successfully")
     except SystemExit:
-        raise HTTPException(status_code=400, detail="Server addition failed")
+        raise create_http_exception(
+            400, ErrorCode.CONFIG_INVALID, "Server addition failed", "add_server"
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise create_http_exception(
+            500, ErrorCode.SYSTEM_INTERNAL_ERROR, str(e), "add_server"
+        )
 
 
 @app.put(
@@ -633,9 +760,13 @@ async def update_server_in_config_endpoint(
 
         return SuccessResponse(message="Server updated successfully")
     except SystemExit:
-        raise HTTPException(status_code=400, detail="Server update failed")
+        raise create_http_exception(
+            400, ErrorCode.CONFIG_INVALID, "Server update failed", "update_server"
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise create_http_exception(
+            500, ErrorCode.SYSTEM_INTERNAL_ERROR, str(e), "update_server"
+        )
 
 
 @app.delete(
@@ -658,9 +789,13 @@ async def delete_server_from_config_endpoint(
 
         return SuccessResponse(message="Server removed successfully")
     except SystemExit:
-        raise HTTPException(status_code=400, detail="Server removal failed")
+        raise create_http_exception(
+            400, ErrorCode.CONFIG_INVALID, "Server removal failed", "remove_server"
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise create_http_exception(
+            500, ErrorCode.SYSTEM_INTERNAL_ERROR, str(e), "remove_server"
+        )
 
 
 @app.delete(
@@ -702,9 +837,16 @@ async def validate_config_endpoint(
 
         return SuccessResponse(message="Configuration is valid")
     except SystemExit:
-        raise HTTPException(status_code=400, detail="Configuration validation failed")
+        raise create_http_exception(
+            400,
+            ErrorCode.CONFIG_VALIDATION_FAILED,
+            "Configuration validation failed",
+            "validate_config",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise create_http_exception(
+            500, ErrorCode.SYSTEM_INTERNAL_ERROR, str(e), "validate_config"
+        )
 
 
 @app.post("/api/v1/configs/{config_identifier}/export", response_model=SuccessResponse)
@@ -724,9 +866,16 @@ async def export_config_endpoint(
 
         return SuccessResponse(message="Configuration exported successfully")
     except SystemExit:
-        raise HTTPException(status_code=400, detail="Configuration export failed")
+        raise create_http_exception(
+            400,
+            ErrorCode.CONFIG_INVALID,
+            "Configuration export failed",
+            "export_config",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise create_http_exception(
+            500, ErrorCode.SYSTEM_INTERNAL_ERROR, str(e), "export_config"
+        )
 
 
 @app.post("/api/v1/configs/import", response_model=SuccessResponse)
@@ -744,9 +893,16 @@ async def import_config_endpoint(
 
         return SuccessResponse(message="Configuration imported successfully")
     except SystemExit:
-        raise HTTPException(status_code=400, detail="Configuration import failed")
+        raise create_http_exception(
+            400,
+            ErrorCode.CONFIG_INVALID,
+            "Configuration import failed",
+            "import_config",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise create_http_exception(
+            500, ErrorCode.SYSTEM_INTERNAL_ERROR, str(e), "import_config"
+        )
 
 
 @app.post("/api/v1/configs/search", response_model=SuccessResponse)
@@ -765,7 +921,9 @@ async def search_configs_endpoint(
         results = json.loads(f.getvalue())
         return SuccessResponse(message="Search completed successfully", data=results)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise create_http_exception(
+            500, ErrorCode.SYSTEM_INTERNAL_ERROR, str(e), "search_configs"
+        )
 
 
 @app.put(
@@ -789,7 +947,9 @@ async def update_server_input_guardrails_endpoint(
     )
 
     if error:
-        raise HTTPException(status_code=400, detail=error)
+        raise create_http_exception(
+            400, ErrorCode.CONFIG_INVALID, error, "create_config"
+        )
 
     return SuccessResponse(message="Input guardrails updated successfully")
 
@@ -815,7 +975,9 @@ async def update_server_output_guardrails_endpoint(
     )
 
     if error:
-        raise HTTPException(status_code=400, detail=error)
+        raise create_http_exception(
+            400, ErrorCode.CONFIG_INVALID, error, "create_config"
+        )
 
     return SuccessResponse(message="Output guardrails updated successfully")
 
@@ -843,7 +1005,9 @@ async def update_server_guardrails_endpoint(
     )
 
     if error:
-        raise HTTPException(status_code=400, detail=error)
+        raise create_http_exception(
+            400, ErrorCode.CONFIG_INVALID, error, "create_config"
+        )
 
     return SuccessResponse(message="Guardrails updated successfully")
 
@@ -852,10 +1016,13 @@ async def update_server_guardrails_endpoint(
 # INCLUDE ADDITIONAL ROUTES
 # =============================================================================
 
-# Import and include additional routes
-from secure_mcp_gateway.api_routes import router as additional_routes
+# Import and include additional routes (avoid circular import crash)
+try:
+    from secure_mcp_gateway.api_routes import router as additional_routes
 
-app.include_router(additional_routes)
+    app.include_router(additional_routes)
+except Exception as e:
+    logger.error(f"[api_server] Skipping additional routes due to import error: {e}")
 
 # =============================================================================
 # MAIN FUNCTION
@@ -864,9 +1031,9 @@ app.include_router(additional_routes)
 
 def main():
     """Run the API server."""
-    sys_print("Starting Enkrypt Secure MCP Gateway REST API Server")
-    sys_print(f"Config path: {PICKED_CONFIG_PATH}")
-    sys_print("API documentation available at: http://localhost:8001/docs")
+    logger.info("Starting Enkrypt Secure MCP Gateway REST API Server")
+    logger.info(f"Config path: {PICKED_CONFIG_PATH}")
+    logger.info("API documentation available at: http://localhost:8001/docs")
 
     uvicorn.run(
         "secure_mcp_gateway.api_server:app",

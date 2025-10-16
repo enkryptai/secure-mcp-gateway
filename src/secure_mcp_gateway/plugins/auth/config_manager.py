@@ -1,10 +1,4 @@
-"""
-Authentication Configuration Manager
-
-Manages authentication provider configuration and integrates with the gateway.
-Provides utilities for registering providers, extracting credentials, and
-managing sessions.
-"""
+"""Authentication configuration manager."""
 
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -18,7 +12,7 @@ from secure_mcp_gateway.plugins.auth.base import (
     AuthResult,
     SessionData,
 )
-from secure_mcp_gateway.utils import sys_print
+from secure_mcp_gateway.utils import logger
 
 
 class AuthConfigManager:
@@ -45,7 +39,7 @@ class AuthConfigManager:
             provider: Provider to register
         """
         self.registry.register(provider)
-        sys_print(f"Registered auth provider: {provider.get_name()}")
+        logger.info(f"Registered auth provider: {provider.get_name()}")
 
     def unregister_provider(self, name: str) -> None:
         """
@@ -55,7 +49,7 @@ class AuthConfigManager:
             name: Provider name
         """
         self.registry.unregister(name)
-        sys_print(f"Unregistered auth provider: {name}")
+        logger.info(f"Unregistered auth provider: {name}")
 
     def get_provider(self, name: Optional[str] = None) -> Optional[AuthProvider]:
         """
@@ -105,7 +99,10 @@ class AuthConfigManager:
             )
             credentials.username = headers.get("username")
             credentials.password = headers.get("password")
-            credentials.headers = dict(headers)
+            # Mask sensitive headers before storing
+            from secure_mcp_gateway.utils import mask_sensitive_headers
+
+            credentials.headers = mask_sensitive_headers(dict(headers))
 
         # Fallback to environment variables
         import os
@@ -132,7 +129,7 @@ class AuthConfigManager:
         Returns:
             AuthResult: Authentication result
         """
-        sys_print("[AuthConfigManager] Starting authentication")
+        logger.info("[AuthConfigManager] Starting authentication")
 
         # Extract credentials
         credentials = self.extract_credentials(ctx)
@@ -150,7 +147,7 @@ class AuthConfigManager:
             )
 
         # Get local config to find mcp_config_id
-        local_config = self.get_local_mcp_config(gateway_key, project_id, user_id)
+        local_config = await self.get_local_mcp_config(gateway_key, project_id, user_id)
         if not local_config:
             return AuthResult(
                 status="error",
@@ -175,7 +172,7 @@ class AuthConfigManager:
 
         # Check if already authenticated in session
         if self.is_session_authenticated(session_key):
-            sys_print("[AuthConfigManager] Already authenticated in session")
+            logger.info("[AuthConfigManager] Already authenticated in session")
             session = self.sessions[session_key]
             return AuthResult(
                 status="success",
@@ -194,7 +191,7 @@ class AuthConfigManager:
         if id:
             cached_config = self.cache_service.get_cached_gateway_config(id)
             if cached_config:
-                sys_print(f"[AuthConfigManager] Found cached config for ID: {id}")
+                logger.info(f"[AuthConfigManager] Found cached config for ID: {id}")
                 self.create_session(session_key, cached_config)
                 return AuthResult(
                     status="success",
@@ -355,7 +352,7 @@ class AuthConfigManager:
             "user_id": creds.user_id,
         }
 
-    def get_local_mcp_config(
+    async def get_local_mcp_config(
         self, gateway_key: str, project_id: str = None, user_id: str = None
     ) -> Dict[str, Any]:
         """
@@ -367,7 +364,7 @@ class AuthConfigManager:
         if not provider or not hasattr(provider, "_get_local_config"):
             return {}
 
-        return provider._get_local_config(gateway_key, project_id, user_id)
+        return await provider._get_local_config(gateway_key, project_id, user_id)
 
     def create_session_key(
         self, gateway_key: str, project_id: str, user_id: str, mcp_config_id: str
@@ -405,7 +402,7 @@ class AuthConfigManager:
             self.sessions[session_key].gateway_config = gateway_config
             self.sessions[session_key].last_accessed = time.time()
 
-    def is_authenticated(self, ctx: Context) -> bool:
+    async def is_authenticated(self, ctx: Context) -> bool:
         """
         Backward-compatible authentication check.
         """
@@ -418,7 +415,7 @@ class AuthConfigManager:
             return False
 
         # Get MCP config to get mcp_config_id
-        local_config = self.get_local_mcp_config(gateway_key, project_id, user_id)
+        local_config = await self.get_local_mcp_config(gateway_key, project_id, user_id)
         if not local_config:
             return False
 
@@ -452,7 +449,7 @@ class AuthConfigManager:
             "error": auth_result.error,
         }
 
-    def get_authenticated_session(self, ctx: Context) -> Optional[SessionData]:
+    async def get_authenticated_session(self, ctx: Context) -> Optional[SessionData]:
         """
         Backward-compatible authenticated session retrieval.
         """
@@ -464,7 +461,7 @@ class AuthConfigManager:
         if not all([gateway_key, project_id, user_id]):
             return None
 
-        local_config = self.get_local_mcp_config(gateway_key, project_id, user_id)
+        local_config = await self.get_local_mcp_config(gateway_key, project_id, user_id)
         if not local_config:
             return None
 
@@ -477,7 +474,7 @@ class AuthConfigManager:
         )
         return self.get_session(session_key)
 
-    def clear_session(self, ctx: Context) -> bool:
+    async def clear_session(self, ctx: Context) -> bool:
         """
         Backward-compatible session clearing.
         """
@@ -489,7 +486,7 @@ class AuthConfigManager:
         if not all([gateway_key, project_id, user_id]):
             return False
 
-        local_config = self.get_local_mcp_config(gateway_key, project_id, user_id)
+        local_config = await self.get_local_mcp_config(gateway_key, project_id, user_id)
         if not local_config:
             return False
 
@@ -502,7 +499,9 @@ class AuthConfigManager:
         )
         return self.delete_session(session_key)
 
-    def get_session_gateway_config_key_suffix(self, credentials: Dict[str, Any]) -> str:
+    async def get_session_gateway_config_key_suffix(
+        self, credentials: Dict[str, Any]
+    ) -> str:
         """
         Backward-compatible config key suffix extraction.
         """
@@ -511,7 +510,9 @@ class AuthConfigManager:
             project_id = credentials.get("project_id")
             user_id = credentials.get("user_id")
 
-            local_cfg = self.get_local_mcp_config(gateway_key, project_id, user_id)
+            local_cfg = await self.get_local_mcp_config(
+                gateway_key, project_id, user_id
+            )
             if not local_cfg:
                 return "not_provided"
             return local_cfg.get("mcp_config_id", "not_provided")

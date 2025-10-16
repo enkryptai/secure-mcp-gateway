@@ -1,13 +1,4 @@
-"""
-Telemetry Plugin System - Base Classes
-
-SOLID Principles Applied:
-- Single Responsibility: Each class has one clear purpose
-- Open/Closed: Open for extension (new providers), closed for modification
-- Liskov Substitution: All providers are interchangeable
-- Interface Segregation: Minimal, focused interfaces
-- Dependency Inversion: Depend on abstractions, not implementations
-"""
+"""Telemetry plugin base interfaces."""
 
 from __future__ import annotations
 

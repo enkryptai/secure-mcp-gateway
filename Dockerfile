@@ -2,10 +2,19 @@ FROM python:3.11-alpine
 
 WORKDIR /app
 
+# Install build dependencies required for psutil and other packages
+RUN apk add --no-cache --virtual .build-deps \
+    gcc \
+    python3-dev \
+    musl-dev \
+    linux-headers \
+    && apk add --no-cache \
+    libffi-dev
+
 # Install the dependencies
 COPY requirements.txt .
 COPY requirements-dev.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt && pip install -r requirements-dev.txt
+RUN pip install --upgrade pip && pip install -r requirements.txt && pip install -r requirements-dev.txt && apk del .build-deps
 
 # Copy source code
 COPY src src

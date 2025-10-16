@@ -1,8 +1,4 @@
-"""
-Additional API routes for the Enkrypt Secure MCP Gateway REST API Server
-
-This module contains the remaining API endpoints for projects, users, and system operations.
-"""
+"""Additional API routes for MCP Gateway."""
 
 import io
 import json

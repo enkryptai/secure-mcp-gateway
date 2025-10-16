@@ -237,10 +237,10 @@ Each test server includes:
 ### Immediate Tests
 Run these to validate core security:
 ```bash
-python -m src.secure_mcp_gateway.test_mcps.unauthenticated_access_mcp
-python -m src.secure_mcp_gateway.test_mcps.rce_mcp
-python -m src.secure_mcp_gateway.test_mcps.prompt_injection_mcp
-python -m src.secure_mcp_gateway.test_mcps.ssrf_mcp
+python -m src.secure_mcp_gateway.bad_mcps.unauthenticated_access_mcp
+python -m src.secure_mcp_gateway.bad_mcps.rce_mcp
+python -m src.secure_mcp_gateway.bad_mcps.prompt_injection_mcp
+python -m src.secure_mcp_gateway.bad_mcps.ssrf_mcp
 ```
 
 ### Integration Testing

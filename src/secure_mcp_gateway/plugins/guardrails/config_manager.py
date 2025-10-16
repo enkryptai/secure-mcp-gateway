@@ -1,15 +1,4 @@
-"""
-Guardrail Configuration Manager
-
-This module provides utilities for managing guardrail configurations and
-integrating the plugin system with the existing MCP gateway configuration.
-
-It handles:
-- Loading guardrail provider configurations
-- Creating and managing provider instances
-- Integrating with the existing enkrypt_mcp_config.json structure
-- Providing backward compatibility with existing Enkrypt guardrails
-"""
+"""Guardrail configuration manager."""
 
 from typing import Any, Dict, List, Optional
 
@@ -24,7 +13,7 @@ from secure_mcp_gateway.plugins.guardrails.base import (
 from secure_mcp_gateway.plugins.guardrails.enkrypt_provider import (
     EnkryptGuardrailProvider,
 )
-from secure_mcp_gateway.utils import sys_print
+from secure_mcp_gateway.utils import logger
 
 
 class GuardrailConfigManager:
@@ -77,11 +66,11 @@ class GuardrailConfigManager:
         """
         try:
             self.registry.register(provider)
-            sys_print(
+            logger.info(
                 f"[GuardrailConfigManager] Registered provider: {provider.get_name()} v{provider.get_version()}"
             )
         except ValueError as e:
-            sys_print(f"[GuardrailConfigManager] {e}", is_error=True)
+            logger.error(f"[GuardrailConfigManager] {e}")
 
     def register_enkrypt_provider(
         self,
@@ -123,9 +112,8 @@ class GuardrailConfigManager:
         try:
             return self.factory.create_input_guardrail(provider_name, policy_config)
         except ValueError as e:
-            sys_print(
-                f"[GuardrailConfigManager] Error creating input guardrail: {e}",
-                is_error=True,
+            logger.error(
+                f"[GuardrailConfigManager] Error creating input guardrail: {e}"
             )
             return None
 
@@ -152,9 +140,8 @@ class GuardrailConfigManager:
         try:
             return self.factory.create_output_guardrail(provider_name, policy_config)
         except ValueError as e:
-            sys_print(
-                f"[GuardrailConfigManager] Error creating output guardrail: {e}",
-                is_error=True,
+            logger.error(
+                f"[GuardrailConfigManager] Error creating output guardrail: {e}"
             )
             return None
 
@@ -179,10 +166,7 @@ class GuardrailConfigManager:
         try:
             return self.factory.create_pii_handler(provider_name, input_policy)
         except Exception as e:
-            sys_print(
-                f"[GuardrailConfigManager] Error creating PII handler: {e}",
-                is_error=True,
-            )
+            logger.error(f"[GuardrailConfigManager] Error creating PII handler: {e}")
             return None
 
     def list_providers(self) -> List[str]:
@@ -275,7 +259,7 @@ class GuardrailConfigManager:
         if not provider:
             return None
 
-        sys_print(f"[GuardrailConfigManager] Using provider: {provider.get_name()}")
+        logger.info(f"[GuardrailConfigManager] Using provider: {provider.get_name()}")
         request = ToolRegistrationRequest(
             server_name=server_name, tools=tools, validation_mode=mode
         )

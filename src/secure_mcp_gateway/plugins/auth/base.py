@@ -1,24 +1,4 @@
-"""
-Authentication Plugin System - Base Interfaces
-
-This module defines the core abstractions for the authentication plugin system,
-following SOLID principles to enable extensible, maintainable authentication
-providers.
-
-The system supports multiple authentication providers:
-- Enkrypt API authentication
-- OAuth 2.0
-- JWT tokens
-- API keys
-- Custom authentication mechanisms
-
-Design Principles:
-- Single Responsibility: Each class has one clear purpose
-- Open/Closed: Open for extension, closed for modification
-- Liskov Substitution: All providers are interchangeable
-- Interface Segregation: Separate concerns into focused interfaces
-- Dependency Inversion: Depend on abstractions, not implementations
-"""
+"""Authentication plugin base interfaces."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field

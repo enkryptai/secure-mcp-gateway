@@ -1,52 +1,4 @@
-"""
-Enkrypt Secure MCP Gateway Module
-
-This module provides the main gateway functionality for the Enkrypt Secure MCP Gateway, handling:
-1. Authentication and Authorization:
-   - API key validation
-   - Gateway configuration management
-   - Server access control
-
-2. Tool Management:
-   - Tool discovery and caching
-   - Secure tool invocation
-   - Server configuration management
-
-3. Guardrail Integration:
-   - Input/output guardrails
-   - PII handling
-   - Content quality checks
-
-4. Cache Management:
-   - Tool caching
-   - Gateway config caching
-   - Cache invalidation
-
-Configuration Variables:
-    enkrypt_base_url: Base URL for EnkryptAI API
-    enkrypt_use_remote_mcp_config: Enable/disable remote MCP config
-    enkrypt_remote_mcp_gateway_name: Name of the MCP gateway
-    enkrypt_remote_mcp_gateway_version: Version of the MCP gateway
-    enkrypt_tool_cache_expiration: Tool cache expiration in hours
-    enkrypt_gateway_cache_expiration: Gateway config cache expiration in hours
-    enkrypt_mcp_use_external_cache: Enable/disable external cache
-    enkrypt_async_input_guardrails_enabled: Enable/disable async input guardrails
-
-Example Usage:
-    ```python
-    # Authenticate gateway/user
-    auth_result = enkrypt_authenticate(ctx)
-
-    # Discover server tools
-    tools = await enkrypt_discover_all_tools(ctx, "server1")
-
-    # Call a tool securely
-    result = await enkrypt_secure_call_tool(ctx, "server1", "tool1", args)
-
-    # Get server information
-    info = await enkrypt_get_server_info(ctx, "server1")
-    ```
-"""
+"""Main MCP Gateway module."""
 
 import os
 import subprocess
@@ -122,11 +74,13 @@ from secure_mcp_gateway.dependencies import __dependencies__
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 from secure_mcp_gateway.utils import (
     get_common_config,
-    sys_print,
 )
 from secure_mcp_gateway.version import __version__
 
-sys_print(f"Successfully imported secure_mcp_gateway v{__version__} in gateway module")
+print(
+    f"Successfully imported secure_mcp_gateway v{__version__} in gateway module",
+    file=sys.stderr,
+)
 
 # Initialize telemetry system with plugin-based architecture
 from secure_mcp_gateway.plugins.telemetry import (
@@ -134,55 +88,18 @@ from secure_mcp_gateway.plugins.telemetry import (
     initialize_telemetry_system,
 )
 
-# Initialize the telemetry system
-try:
-    telemetry_manager = initialize_telemetry_system()
-    logger = telemetry_manager.get_logger()
-    tracer = telemetry_manager.get_tracer()
-except Exception as e:
-    sys_print(f"Telemetry initialization failed: {e}", is_error=True)
-
-    # Fallback to no-op logger/tracer if initialization fails
-    class NoOpLogger:
-        def info(self, *args, **kwargs):
-            pass
-
-        def error(self, *args, **kwargs):
-            pass
-
-        def warning(self, *args, **kwargs):
-            pass
-
-        def debug(self, *args, **kwargs):
-            pass
-
-    class NoOpTracer:
-        def start_as_current_span(self, *args, **kwargs):
-            class NoOpSpan:
-                def __enter__(self):
-                    return self
-
-                def __exit__(self, *args):
-                    pass
-
-                def set_attribute(self, *args):
-                    pass
-
-            return NoOpSpan()
-
-    logger = NoOpLogger()
-    tracer = NoOpTracer()
+# Telemetry will be initialized later with proper config
 
 try:
-    sys_print("Installing dependencies...")
+    print("Installing dependencies...", file=sys.stderr)
     subprocess.check_call(
         [sys.executable, "-m", "pip", "install", *__dependencies__],
         stdout=subprocess.DEVNULL,  # Suppress output
         stderr=subprocess.DEVNULL,
     )
-    sys_print("All dependencies installed successfully.")
+    print("All dependencies installed successfully.", file=sys.stderr)
 except Exception as e:
-    sys_print(f"Error installing dependencies: {e}", is_error=True)
+    print(f"Error installing dependencies: {e}", file=sys.stderr)
 
 import traceback
 
@@ -221,17 +138,22 @@ guardrail_manager = get_guardrail_config_manager()
 # Initialize auth system
 initialize_auth_system(common_config)
 
-# Initialize telemetry system (already imported at top) based on new flag
-if common_config.get("enkrypt_telemetry_enabled", False):
-    initialize_telemetry_system(common_config)
-    telemetry_manager = get_telemetry_config_manager()
-    sys_print(f"Telemetry providers: {telemetry_manager.list_providers()}")
-else:
-    telemetry_manager = get_telemetry_config_manager()
-    sys_print("Telemetry disabled by configuration (enkrypt_telemetry_enabled=false)")
+# Initialize telemetry system based on plugin configuration
+telemetry_manager = initialize_telemetry_system(common_config)
+logger = telemetry_manager.get_logger()
+tracer = telemetry_manager.get_tracer()
+logger.info(f"Telemetry providers: {telemetry_manager.list_providers()}")
+
+# Initialize timeout management system
+from secure_mcp_gateway.services.timeout import initialize_timeout_manager
+
+timeout_manager = initialize_timeout_manager(common_config)
+logger.info(
+    f"Timeout management system initialized with {len(timeout_manager.get_active_operations())} active operations"
+)
 
 # Plugin loading is now handled by the initialization functions above
-sys_print(f"Registered guardrail providers: {guardrail_manager.list_providers()}")
+logger.info(f"Registered guardrail providers: {guardrail_manager.list_providers()}")
 
 
 ENKRYPT_LOG_LEVEL = common_config.get("enkrypt_log_level", "INFO").lower()
@@ -261,39 +183,40 @@ ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED = common_config.get(
 ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED = common_config.get(
     "enkrypt_async_output_guardrails_enabled", False
 )
-ENKRYPT_TELEMETRY_ENABLED = common_config.get("enkrypt_telemetry_enabled", False)
-ENKRYPT_TELEMETRY_ENDPOINT = common_config.get("enkrypt_telemetry", {}).get(
-    "endpoint", "http://localhost:4317"
+# Get telemetry configuration from plugin config
+telemetry_plugin_config = common_config.get("plugins", {}).get("telemetry", {})
+TELEMETRY_ENABLED = telemetry_plugin_config.get("config", {}).get("enabled", False)
+TELEMETRY_ENDPOINT = telemetry_plugin_config.get("config", {}).get(
+    "url", "http://localhost:4317"
 )
 
 GUARDRAIL_API_KEY = guardrails_config.get("api_key", auth_config.get("api_key", "null"))
 
 
-sys_print("--------------------------------")
-sys_print(f"enkrypt_log_level: {ENKRYPT_LOG_LEVEL}")
-sys_print(f"is_debug_log_level: {IS_DEBUG_LOG_LEVEL}")
-sys_print(f"guardrail_url: {GUARDRAIL_URL}")
-sys_print(f"enkrypt_use_remote_mcp_config: {ENKRYPT_USE_REMOTE_MCP_CONFIG}")
+logger.info("--------------------------------")
+logger.info(f"enkrypt_log_level: {ENKRYPT_LOG_LEVEL}")
+logger.info(f"is_debug_log_level: {IS_DEBUG_LOG_LEVEL}")
+logger.info(f"guardrail_url: {GUARDRAIL_URL}")
+logger.info(f"enkrypt_use_remote_mcp_config: {ENKRYPT_USE_REMOTE_MCP_CONFIG}")
 if ENKRYPT_USE_REMOTE_MCP_CONFIG:
-    sys_print(f"enkrypt_remote_mcp_gateway_name: {ENKRYPT_REMOTE_MCP_GATEWAY_NAME}")
-    sys_print(
+    logger.info(f"enkrypt_remote_mcp_gateway_name: {ENKRYPT_REMOTE_MCP_GATEWAY_NAME}")
+    logger.info(
         f"enkrypt_remote_mcp_gateway_version: {ENKRYPT_REMOTE_MCP_GATEWAY_VERSION}"
     )
-sys_print(f'guardrail_api_key: {"****" + GUARDRAIL_API_KEY[-4:]}')
-sys_print(f"enkrypt_tool_cache_expiration: {ENKRYPT_TOOL_CACHE_EXPIRATION}")
-sys_print(f"enkrypt_gateway_cache_expiration: {ENKRYPT_GATEWAY_CACHE_EXPIRATION}")
-sys_print(f"enkrypt_mcp_use_external_cache: {ENKRYPT_MCP_USE_EXTERNAL_CACHE}")
-sys_print(
+logger.info(f'guardrail_api_key: {"****" + GUARDRAIL_API_KEY[-4:]}')
+logger.info(f"enkrypt_tool_cache_expiration: {ENKRYPT_TOOL_CACHE_EXPIRATION}")
+logger.info(f"enkrypt_gateway_cache_expiration: {ENKRYPT_GATEWAY_CACHE_EXPIRATION}")
+logger.info(f"enkrypt_mcp_use_external_cache: {ENKRYPT_MCP_USE_EXTERNAL_CACHE}")
+logger.info(
     f"enkrypt_async_input_guardrails_enabled: {ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED}"
 )
 if IS_DEBUG_LOG_LEVEL:
-    sys_print(
-        f"enkrypt_async_output_guardrails_enabled: {ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED}",
-        is_debug=True,
+    logger.debug(
+        f"enkrypt_async_output_guardrails_enabled: {ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED}"
     )
-sys_print(f"enkrypt_telemetry_enabled: {ENKRYPT_TELEMETRY_ENABLED}")
-sys_print(f"enkrypt_telemetry_endpoint: {ENKRYPT_TELEMETRY_ENDPOINT}")
-sys_print("--------------------------------")
+logger.info(f"telemetry_enabled: {TELEMETRY_ENABLED}")
+logger.info(f"telemetry_endpoint: {TELEMETRY_ENDPOINT}")
+logger.info("--------------------------------")
 
 # TODO
 AUTH_SERVER_VALIDATE_URL = f"{GUARDRAIL_URL}/mcp-gateway/get-gateway"
@@ -332,10 +255,10 @@ def get_gateway_credentials(ctx: Context):
 
 
 # Read from local MCP config file
-def get_local_mcp_config(gateway_key, project_id=None, user_id=None):
+async def get_local_mcp_config(gateway_key, project_id=None, user_id=None):
     """Wrapper for getting local MCP config using the auth manager."""
     auth_manager = get_auth_config_manager()
-    return auth_manager.get_local_mcp_config(gateway_key, project_id, user_id)
+    return await auth_manager.get_local_mcp_config(gateway_key, project_id, user_id)
 
 
 async def enkrypt_authenticate(ctx: Context):
@@ -435,13 +358,34 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
             - tools: Dictionary of discovered tools
             - source: Source of the tools (config/cache/discovery)
     """
+    # Get proper session key to match the one used for caching
+    creds = get_gateway_credentials(ctx)
+    gateway_key = creds.get("gateway_key")
+    project_id = creds.get("project_id")
+    user_id = creds.get("user_id")
+
+    # Get mcp_config_id from local config
+    auth_manager = get_auth_config_manager()
+    local_config = await auth_manager.get_local_mcp_config(
+        gateway_key, project_id, user_id
+    )
+    mcp_config_id = (
+        local_config.get("mcp_config_id", "not_provided")
+        if local_config
+        else "not_provided"
+    )
+
+    # Create the same session key format used by SecureToolExecutionService
+    session_key = f"{gateway_key}_{project_id}_{user_id}_{mcp_config_id}"
+
     service = DiscoveryService()
     return await service.discover_tools(
         ctx=ctx,
         server_name=server_name,
         tracer_obj=tracer,
-        logger=logger,
+        logger_instance=logger,
         IS_DEBUG_LOG_LEVEL=IS_DEBUG_LOG_LEVEL,
+        session_key=session_key,  # Pass the correct session key
     )
 
 
@@ -599,6 +543,33 @@ async def enkrypt_clear_cache(
     )
 
 
+async def enkrypt_get_timeout_metrics(ctx: Context):
+    """
+    Get timeout management metrics including active operations, success rates, and escalation counts.
+
+    Use this to monitor timeout performance and identify potential issues.
+    """
+    from secure_mcp_gateway.services.timeout import get_timeout_manager
+
+    timeout_manager = get_timeout_manager()
+    metrics = timeout_manager.get_metrics()
+    active_operations = timeout_manager.get_active_operations()
+
+    return {
+        "timeout_metrics": metrics,
+        "active_operations": active_operations,
+        "timeout_config": {
+            "default_timeout": timeout_manager.get_timeout("default"),
+            "guardrail_timeout": timeout_manager.get_timeout("guardrail"),
+            "auth_timeout": timeout_manager.get_timeout("auth"),
+            "tool_execution_timeout": timeout_manager.get_timeout("tool_execution"),
+            "discovery_timeout": timeout_manager.get_timeout("discovery"),
+            "cache_timeout": timeout_manager.get_timeout("cache"),
+            "connectivity_timeout": timeout_manager.get_timeout("connectivity"),
+        },
+    }
+
+
 # --- MCP Gateway Server ---
 
 GATEWAY_TOOLS = [
@@ -753,6 +724,18 @@ GATEWAY_TOOLS = [
         #     "required": []
         # }
     ),
+    Tool.from_function(
+        fn=enkrypt_get_timeout_metrics,
+        name="enkrypt_get_timeout_metrics",
+        description="Gets timeout management metrics including active operations, success rates, and escalation counts. Use this to monitor timeout performance and identify potential issues.",
+        annotations={
+            "title": "Get Timeout Metrics",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    ),
 ]
 
 
@@ -781,7 +764,7 @@ mcp = FastMCP(
 
 # --- Run ---
 if __name__ == "__main__":
-    sys_print("Starting Enkrypt Secure MCP Gateway")
+    logger.info("Starting Enkrypt Secure MCP Gateway")
     try:
         # --------------------------------------------
         # NOTE:
@@ -805,8 +788,8 @@ if __name__ == "__main__":
         mcp.settings.dependencies = __dependencies__
         # --------------------------------------------
         mcp.run(transport="streamable-http", mount_path="/mcp/")
-        sys_print("Enkrypt Secure MCP Gateway is running")
+        logger.info("Enkrypt Secure MCP Gateway is running")
     except Exception as e:
-        sys_print(f"Exception in mcp.run(): {e}", is_error=True)
+        logger.error(f"Exception in mcp.run(): {e}")
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)

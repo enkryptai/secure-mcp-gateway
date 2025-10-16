@@ -1,14 +1,8 @@
-"""
-Telemetry Config Manager
-
-Central configuration and management for the telemetry plugin system.
-Handles provider registration, initialization, and switching.
-"""
+"""Telemetry configuration manager."""
 
 from __future__ import annotations
 
-# Avoid circular import by defining sys_print locally
-import sys
+import logging
 from typing import Any, Dict
 
 from secure_mcp_gateway.plugins.telemetry.base import (
@@ -17,15 +11,7 @@ from secure_mcp_gateway.plugins.telemetry.base import (
     TelemetryResult,
 )
 
-
-def sys_print(message: str, is_error: bool = False, is_debug: bool = False):
-    """Local sys_print to avoid circular imports."""
-    if is_error:
-        print(f"[ERROR] {message}", file=sys.stderr)
-    elif is_debug:
-        print(f"[DEBUG] {message}", file=sys.stderr)
-    else:
-        print(message, file=sys.stderr)
+logger = logging.getLogger("enkrypt.telemetry")
 
 
 class TelemetryConfigManager:
@@ -75,7 +61,7 @@ class TelemetryConfigManager:
             self.registry.register(provider)
             self._provider_initialized = False
 
-            sys_print(
+            logger.info(
                 f"[TelemetryConfigManager] Registered provider: {provider.name} v{provider.version}"
             )
 
@@ -87,7 +73,7 @@ class TelemetryConfigManager:
 
         except ValueError as e:
             # Provider already registered
-            sys_print(
+            logger.info(
                 f"[TelemetryConfigManager] Provider already registered: {provider.name}"
             )
             return TelemetryResult(
@@ -159,7 +145,7 @@ class TelemetryConfigManager:
 
         self._active_provider = provider_name
 
-        sys_print(f"[TelemetryConfigManager] Active provider set to: {provider_name}")
+        logger.info(f"[TelemetryConfigManager] Active provider set to: {provider_name}")
 
         return TelemetryResult(
             success=True,
@@ -404,6 +390,52 @@ class TelemetryConfigManager:
         """Backward-compatible metric accessor"""
         return self._get_metric_from_provider("pii_redactions_counter")
 
+    # Timeout management metrics
+    @property
+    def timeout_operations_total(self):
+        """Backward-compatible metric accessor for timeout operations total"""
+        return self._get_metric_from_provider("timeout_operations_total")
+
+    @property
+    def timeout_operations_successful(self):
+        """Backward-compatible metric accessor for timeout operations successful"""
+        return self._get_metric_from_provider("timeout_operations_successful")
+
+    @property
+    def timeout_operations_timed_out(self):
+        """Backward-compatible metric accessor for timeout operations timed out"""
+        return self._get_metric_from_provider("timeout_operations_timed_out")
+
+    @property
+    def timeout_operations_cancelled(self):
+        """Backward-compatible metric accessor for timeout operations cancelled"""
+        return self._get_metric_from_provider("timeout_operations_cancelled")
+
+    @property
+    def timeout_escalation_warn(self):
+        """Backward-compatible metric accessor for timeout escalation warnings"""
+        return self._get_metric_from_provider("timeout_escalation_warn")
+
+    @property
+    def timeout_escalation_timeout(self):
+        """Backward-compatible metric accessor for timeout escalations"""
+        return self._get_metric_from_provider("timeout_escalation_timeout")
+
+    @property
+    def timeout_escalation_fail(self):
+        """Backward-compatible metric accessor for timeout escalation failures"""
+        return self._get_metric_from_provider("timeout_escalation_fail")
+
+    @property
+    def timeout_operation_duration(self):
+        """Backward-compatible metric accessor for timeout operation duration"""
+        return self._get_metric_from_provider("timeout_operation_duration")
+
+    @property
+    def timeout_active_operations(self):
+        """Backward-compatible metric accessor for timeout active operations"""
+        return self._get_metric_from_provider("timeout_active_operations")
+
 
 # ============================================================================
 # Global Instance
@@ -416,27 +448,12 @@ def get_telemetry_config_manager() -> TelemetryConfigManager:
     """
     Get or create the global TelemetryConfigManager instance.
 
-    Auto-initializes with OpenTelemetry provider if not already initialized.
-
     Returns:
         TelemetryConfigManager: Global instance
     """
     global _telemetry_config_manager
     if _telemetry_config_manager is None:
         _telemetry_config_manager = TelemetryConfigManager()
-
-        # Auto-initialize with OpenTelemetry provider
-        try:
-            from secure_mcp_gateway.plugins.telemetry.opentelemetry_provider import (
-                OpenTelemetryProvider,
-            )
-
-            provider = OpenTelemetryProvider()
-            _telemetry_config_manager.register_provider(provider)
-            _telemetry_config_manager.initialize_provider("opentelemetry", {})
-        except Exception:
-            # Silently fail - telemetry is optional
-            pass
 
     return _telemetry_config_manager
 

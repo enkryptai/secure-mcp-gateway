@@ -5,13 +5,17 @@ This document provides comprehensive documentation for the REST API endpoints th
 ## Table of Contents
 
 1. [Getting Started](#getting-started)
+
 2. [Authentication](#authentication)
+
 3. [API Endpoints](#api-endpoints)
    - [Configuration Management](#configuration-management)
    - [Project Management](#project-management)
    - [User Management](#user-management)
    - [System Operations](#system-operations)
+
 4. [Error Handling](#error-handling)
+
 5. [Examples](#examples)
 
 ## Getting Started
@@ -21,6 +25,7 @@ This document provides comprehensive documentation for the REST API endpoints th
 You can start the REST API server using the CLI:
 
 ```bash
+
 # Start with default settings (host: 0.0.0.0, port: 8001)
 secure-mcp-gateway system start-api
 
@@ -29,6 +34,7 @@ python cli.py system start-api --host 127.0.0.1 --port 9000
 
 # Start with auto-reload for development
 python cli.py system start-api --reload
+
 ```
 
 ### API Documentation
@@ -36,7 +42,9 @@ python cli.py system start-api --reload
 Once the server is running, you can access:
 
 - **Interactive API Documentation**: `http://localhost:8001/docs`
+
 - **ReDoc Documentation**: `http://localhost:8001/redoc`
+
 - **OpenAPI Schema**: `http://localhost:8001/openapi.json`
 
 ## Authentication
@@ -45,13 +53,17 @@ All API endpoints require authentication using an API key. Include the API key i
 
 ```Shell
 Authorization: Bearer <your_api_key>
+
 ```
 
 ### Getting an API Key
 
 1. Create a user: `POST /api/v1/users`
+
 2. Create a project: `POST /api/v1/projects`
+
 3. Add user to project: `POST /api/v1/projects/{project_id}/users`
+
 4. Generate API key: `POST /api/v1/users/{user_id}/api-keys`
 
 ## API Endpoints
@@ -62,6 +74,7 @@ Authorization: Bearer <your_api_key>
 
 ```http
 GET /api/v1/configs
+
 ```
 
 **Response:**
@@ -78,6 +91,7 @@ GET /api/v1/configs
     }
   ]
 }
+
 ```
 
 #### Create Configuration
@@ -89,12 +103,14 @@ Content-Type: application/json
 {
   "config_name": "My New Config"
 }
+
 ```
 
 #### Get Configuration
 
 ```http
 GET /api/v1/configs/{config_identifier}
+
 ```
 
 #### Update Configuration Name
@@ -106,12 +122,14 @@ Content-Type: application/json
 {
   "new_name": "Updated Config Name"
 }
+
 ```
 
 #### Delete Configuration
 
 ```http
 DELETE /api/v1/configs/{config_identifier}
+
 ```
 
 #### Copy Configuration
@@ -124,12 +142,14 @@ Content-Type: application/json
   "source_config": "source_config_name_or_id",
   "target_config": "new_config_name"
 }
+
 ```
 
 #### List Servers in Configuration
 
 ```http
 GET /api/v1/configs/{config_identifier}/servers
+
 ```
 
 #### Add Server to Configuration
@@ -154,6 +174,7 @@ Content-Type: application/json
     "policy_name": "Sample Policy"
   }
 }
+
 ```
 
 #### Update Server in Configuration
@@ -167,24 +188,28 @@ Content-Type: application/json
   "args": ["/new/path/to/server.py"],
   "description": "Updated description"
 }
+
 ```
 
 #### Remove Server from Configuration
 
 ```http
 DELETE /api/v1/configs/{config_identifier}/servers/{server_name}
+
 ```
 
 #### Remove All Servers from Configuration
 
 ```http
 DELETE /api/v1/configs/{config_identifier}/servers
+
 ```
 
 #### Validate Configuration
 
 ```http
 POST /api/v1/configs/{config_identifier}/validate
+
 ```
 
 #### Export Configuration
@@ -196,6 +221,7 @@ Content-Type: application/json
 {
   "output_file": "/path/to/export.json"
 }
+
 ```
 
 #### Import Configuration
@@ -208,6 +234,7 @@ Content-Type: application/json
   "input_file": "/path/to/import.json",
   "config_name": "Imported Config"
 }
+
 ```
 
 #### Search Configurations
@@ -219,6 +246,7 @@ Content-Type: application/json
 {
   "search_term": "search_query"
 }
+
 ```
 
 #### Update Server Input Guardrails
@@ -238,6 +266,7 @@ Content-Type: application/json
     "block": ["policy_violation", "injection_attack"]
   }
 }
+
 ```
 
 #### Update Server Output Guardrails
@@ -257,6 +286,7 @@ Content-Type: application/json
     "block": ["policy_violation", "injection_attack"]
   }
 }
+
 ```
 
 #### Update Server Guardrails (Both)
@@ -277,6 +307,7 @@ Content-Type: application/json
     "policy_name": "Output Guardrail Policy"
   }
 }
+
 ```
 
 ### Project Management
@@ -285,6 +316,7 @@ Content-Type: application/json
 
 ```http
 GET /api/v1/projects
+
 ```
 
 #### Create Project
@@ -296,18 +328,21 @@ Content-Type: application/json
 {
   "project_name": "My Project"
 }
+
 ```
 
 #### Get Project
 
 ```http
 GET /api/v1/projects/{project_identifier}
+
 ```
 
 #### Delete Project
 
 ```http
 DELETE /api/v1/projects/{project_identifier}
+
 ```
 
 #### Assign Configuration to Project
@@ -319,24 +354,28 @@ Content-Type: application/json
 {
   "config_name": "config_name_or_id"
 }
+
 ```
 
 #### Unassign Configuration from Project
 
 ```http
 POST /api/v1/projects/{project_identifier}/unassign-config
+
 ```
 
 #### Get Project Configuration
 
 ```http
 GET /api/v1/projects/{project_identifier}/config
+
 ```
 
 #### List Project Users
 
 ```http
 GET /api/v1/projects/{project_identifier}/users
+
 ```
 
 #### Add User to Project
@@ -348,18 +387,21 @@ Content-Type: application/json
 {
   "email": "user@example.com"
 }
+
 ```
 
 #### Remove User from Project
 
 ```http
 DELETE /api/v1/projects/{project_identifier}/users/{user_identifier}
+
 ```
 
 #### Remove All Users from Project
 
 ```http
 DELETE /api/v1/projects/{project_identifier}/users
+
 ```
 
 #### Export Project
@@ -371,6 +413,7 @@ Content-Type: application/json
 {
   "output_file": "/path/to/project_export.json"
 }
+
 ```
 
 #### Search Projects
@@ -382,6 +425,7 @@ Content-Type: application/json
 {
   "search_term": "search_query"
 }
+
 ```
 
 ### User Management
@@ -390,6 +434,7 @@ Content-Type: application/json
 
 ```http
 GET /api/v1/users
+
 ```
 
 #### Create User
@@ -401,12 +446,14 @@ Content-Type: application/json
 {
   "email": "user@example.com"
 }
+
 ```
 
 #### Get User
 
 ```http
 GET /api/v1/users/{user_identifier}
+
 ```
 
 #### Update User
@@ -418,6 +465,7 @@ Content-Type: application/json
 {
   "new_email": "newemail@example.com"
 }
+
 ```
 
 #### Delete User
@@ -429,12 +477,14 @@ Content-Type: application/json
 {
   "force": false
 }
+
 ```
 
 #### List User Projects
 
 ```http
 GET /api/v1/users/{user_identifier}/projects
+
 ```
 
 #### Generate API Key for User
@@ -446,24 +496,28 @@ Content-Type: application/json
 {
   "project_name": "project_name_or_id"
 }
+
 ```
 
 #### List User API Keys
 
 ```http
 GET /api/v1/users/{user_identifier}/api-keys?project_identifier=optional_project_id
+
 ```
 
 #### Delete All User API Keys
 
 ```http
 DELETE /api/v1/users/{user_identifier}/api-keys
+
 ```
 
 #### List All API Keys
 
 ```http
 GET /api/v1/api-keys
+
 ```
 
 #### Rotate API Key
@@ -475,24 +529,28 @@ Content-Type: application/json
 {
   "api_key": "old_api_key"
 }
+
 ```
 
 #### Disable API Key
 
 ```http
 POST /api/v1/api-keys/{api_key}/disable
+
 ```
 
 #### Enable API Key
 
 ```http
 POST /api/v1/api-keys/{api_key}/enable
+
 ```
 
 #### Delete API Key
 
 ```http
 DELETE /api/v1/api-keys/{api_key}
+
 ```
 
 #### Search Users
@@ -504,6 +562,7 @@ Content-Type: application/json
 {
   "search_term": "search_query"
 }
+
 ```
 
 ### System Operations
@@ -512,6 +571,7 @@ Content-Type: application/json
 
 ```http
 GET /api/v1/system/health
+
 ```
 
 #### System Backup
@@ -523,6 +583,7 @@ Content-Type: application/json
 {
   "output_file": "/path/to/backup.json"
 }
+
 ```
 
 #### System Restore
@@ -534,6 +595,7 @@ Content-Type: application/json
 {
   "input_file": "/path/to/backup.json"
 }
+
 ```
 
 #### System Reset
@@ -545,6 +607,7 @@ Content-Type: application/json
 {
   "confirm": true
 }
+
 ```
 
 ## Error Handling
@@ -557,15 +620,21 @@ The API uses standard HTTP status codes and returns error responses in the follo
   "detail": "Detailed error message",
   "timestamp": "2024-01-01T00:00:00"
 }
+
 ```
 
 ### Common Status Codes
 
 - `200 OK` - Request successful
+
 - `201 Created` - Resource created successfully
+
 - `400 Bad Request` - Invalid request data
+
 - `401 Unauthorized` - Invalid or missing API key
+
 - `404 Not Found` - Resource not found
+
 - `500 Internal Server Error` - Server error
 
 ## Examples
@@ -575,6 +644,7 @@ The API uses standard HTTP status codes and returns error responses in the follo
 Here's a complete example of creating a configuration, project, user, and API key:
 
 ```bash
+
 # 1. Create a user
 curl -X POST "http://localhost:8001/api/v1/users" \
   -H "Authorization: Bearer <admin_api_key>" \
@@ -627,6 +697,7 @@ curl -X POST "http://localhost:8001/api/v1/users/{user_id}/api-keys" \
   -d '{"project_name": "Development Project"}'
 
 # Response: {"message": "API key generated successfully", "data": {"api_key": "generated_api_key"}}
+
 ```
 
 ### Using the Generated API Key
@@ -634,6 +705,7 @@ curl -X POST "http://localhost:8001/api/v1/users/{user_id}/api-keys" \
 Once you have an API key, you can use it to make authenticated requests:
 
 ```bash
+
 # List configurations using the generated API key
 curl -X GET "http://localhost:8001/api/v1/configs" \
   -H "Authorization: Bearer <generated_api_key>"
@@ -641,6 +713,7 @@ curl -X GET "http://localhost:8001/api/v1/configs" \
 # List projects
 curl -X GET "http://localhost:8001/api/v1/projects" \
   -H "Authorization: Bearer <generated_api_key>"
+
 ```
 
 ## Integration Examples
@@ -657,20 +730,20 @@ class EnkryptGatewayAPI:
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
-    
+
     def list_configs(self):
         response = requests.get(f"{self.base_url}/api/v1/configs", headers=self.headers)
         return response.json()
-    
+
     def create_config(self, config_name):
         data = {"config_name": config_name}
-        response = requests.post(f"{self.base_url}/api/v1/configs", 
+        response = requests.post(f"{self.base_url}/api/v1/configs",
                                headers=self.headers, json=data)
         return response.json()
-    
+
     def create_user(self, email):
         data = {"email": email}
-        response = requests.post(f"{self.base_url}/api/v1/users", 
+        response = requests.post(f"{self.base_url}/api/v1/users",
                                headers=self.headers, json=data)
         return response.json()
 
@@ -678,6 +751,7 @@ class EnkryptGatewayAPI:
 api = EnkryptGatewayAPI(api_key="your_api_key")
 configs = api.list_configs()
 print(configs)
+
 ```
 
 ### JavaScript/Node.js Client Example
@@ -691,14 +765,14 @@ class EnkryptGatewayAPI {
             'Content-Type': 'application/json'
         };
     }
-    
+
     async listConfigs() {
         const response = await fetch(`${this.baseUrl}/api/v1/configs`, {
             headers: this.headers
         });
         return response.json();
     }
-    
+
     async createConfig(configName) {
         const response = await fetch(`${this.baseUrl}/api/v1/configs`, {
             method: 'POST',
@@ -712,6 +786,7 @@ class EnkryptGatewayAPI {
 // Usage
 const api = new EnkryptGatewayAPI('http://localhost:8001', 'your_api_key');
 api.listConfigs().then(configs => console.log(configs));
+
 ```
 
 This REST API provides complete programmatic access to all CLI functionality, making it easy to integrate the Enkrypt Secure MCP Gateway into your applications and workflows.

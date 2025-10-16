@@ -1,16 +1,17 @@
-"""
-Dynamic Provider Loader
-
-This module provides dynamic provider loading capabilities for all plugin systems.
-Allows loading providers by class path without modifying core code.
-"""
+"""Dynamic provider loader."""
 
 from __future__ import annotations
 
 import importlib
 from typing import Any
 
-from secure_mcp_gateway.utils import sys_print
+from secure_mcp_gateway.error_handling import error_logger
+from secure_mcp_gateway.exceptions import (
+    ErrorCode,
+    ErrorContext,
+    create_configuration_error,
+)
+from secure_mcp_gateway.utils import logger
 
 
 def load_provider_class(class_path: str) -> type:
@@ -75,7 +76,20 @@ def create_provider_from_config(
     config = provider_config.get("config", {})
 
     if not class_path:
-        raise ValueError(f"Provider '{provider_name}' missing 'class' field")
+        context = ErrorContext(
+            operation="provider_loader.missing_class",
+            additional_context={
+                "provider_name": provider_name,
+                "plugin_type": plugin_type,
+            },
+        )
+        err = create_configuration_error(
+            code=ErrorCode.CONFIG_MISSING_REQUIRED,
+            message=f"Provider '{provider_name}' missing 'class' field",
+            context=context,
+        )
+        error_logger.log_error(err)
+        raise err
 
     try:
         # Load the provider class
@@ -94,14 +108,29 @@ def create_provider_from_config(
                 # Pattern 3: No config needed
                 provider = provider_class()
 
-        sys_print(
+        logger.info(
             f"✓ Loaded {plugin_type} provider: {provider_name} ({provider_class.__name__})"
         )
         return provider
 
     except Exception as e:
-        sys_print(f"✗ Failed to load provider '{provider_name}': {e}", is_error=True)
-        raise
+        logger.error(f"✗ Failed to load provider '{provider_name}': {e}")
+        context = ErrorContext(
+            operation="provider_loader.load_provider",
+            additional_context={
+                "provider_name": provider_name,
+                "plugin_type": plugin_type,
+                "class_path": class_path,
+            },
+        )
+        err = create_configuration_error(
+            code=ErrorCode.CONFIG_PROVIDER_ERROR,
+            message=f"Cannot load provider '{provider_name}'",
+            context=context,
+            cause=e,
+        )
+        error_logger.log_error(err)
+        raise err
 
 
 __all__ = [

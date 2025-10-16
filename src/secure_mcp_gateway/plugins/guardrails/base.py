@@ -1,37 +1,4 @@
-"""
-Guardrail Plugin Base Module
-
-This module defines the base interfaces and abstract classes for guardrail plugins
-following SOLID principles:
-
-- Single Responsibility: Each interface handles one aspect of guardrails
-- Open/Closed: Open for extension (new plugins), closed for modification
-- Liskov Substitution: All plugins can be used interchangeably
-- Interface Segregation: Separate interfaces for input/output guardrails
-- Dependency Inversion: Depend on abstractions, not concrete implementations
-
-Example Usage:
-    ```python
-    # Implement a custom guardrail provider
-    class MyGuardrailProvider(GuardrailProvider):
-        def get_name(self) -> str:
-            return "my-guardrails"
-
-        def create_input_guardrail(self, config: Dict[str, Any]) -> InputGuardrail:
-            return MyInputGuardrail(config)
-
-        def create_output_guardrail(self, config: Dict[str, Any]) -> OutputGuardrail:
-            return MyOutputGuardrail(config)
-
-    # Register the provider
-    registry = GuardrailRegistry()
-    registry.register(MyGuardrailProvider())
-
-    # Use via factory
-    factory = GuardrailFactory(registry)
-    input_guardrail = factory.create_input_guardrail("my-guardrails", config)
-    ```
-"""
+"""Guardrail plugin base interfaces."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass

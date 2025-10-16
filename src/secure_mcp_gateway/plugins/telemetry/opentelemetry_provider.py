@@ -1,9 +1,4 @@
-"""
-OpenTelemetry Provider for Telemetry Plugin System
-
-This provider implements OpenTelemetry-based logging, tracing, and metrics
-for the Enkrypt Secure MCP Gateway.
-"""
+"""OpenTelemetry telemetry provider."""
 
 from __future__ import annotations
 
@@ -13,8 +8,10 @@ import os
 import socket
 import sys
 
-# Avoid circular import by defining sys_print locally
+# Avoid circular import; we'll use a module-local logger
 import sys as python_sys
+
+logger = logging.getLogger("enkrypt.telemetry")
 from typing import Any
 from urllib.parse import urlparse
 
@@ -39,16 +36,6 @@ from secure_mcp_gateway.consts import (
 )
 from secure_mcp_gateway.plugins.telemetry.base import TelemetryProvider, TelemetryResult
 from secure_mcp_gateway.version import __version__
-
-
-def sys_print(message: str, is_error: bool = False, is_debug: bool = False):
-    """Local sys_print to avoid circular imports."""
-    if is_error:
-        print(f"[ERROR] {message}", file=python_sys.stderr)
-    elif is_debug:
-        print(f"[DEBUG] {message}", file=python_sys.stderr)
-    else:
-        print(message, file=python_sys.stderr)
 
 
 class OpenTelemetryProvider(TelemetryProvider):
@@ -139,38 +126,28 @@ class OpenTelemetryProvider(TelemetryProvider):
         config = {}
 
         is_running_in_docker = self._check_docker()
-        sys_print(
-            f"[{self.name}] is_running_in_docker: {is_running_in_docker}", is_debug=True
-        )
+        logger.debug(f"[{self.name}] is_running_in_docker: {is_running_in_docker}")
 
         picked_config_path = DOCKER_CONFIG_PATH if is_running_in_docker else CONFIG_PATH
 
         if os.path.exists(picked_config_path):
-            sys_print(
-                f"[{self.name}] Loading {picked_config_path} file...", is_debug=True
-            )
+            logger.debug(f"[{self.name}] Loading {picked_config_path} file...")
             with open(picked_config_path, encoding="utf-8") as f:
                 config = json.load(f)
         else:
-            sys_print(
-                f"[{self.name}] No config file found. Loading example config.",
-                is_debug=True,
-            )
+            logger.debug(f"[{self.name}] No config file found. Loading example config.")
             if os.path.exists(EXAMPLE_CONFIG_PATH):
-                sys_print(
-                    f"[{self.name}] Loading {EXAMPLE_CONFIG_NAME} file...",
-                    is_debug=True,
-                )
+                logger.debug(f"[{self.name}] Loading {EXAMPLE_CONFIG_NAME} file...")
                 with open(EXAMPLE_CONFIG_PATH, encoding="utf-8") as f:
                     config = json.load(f)
             else:
-                sys_print(
-                    f"[{self.name}] Example config file not found. Using default common config.",
-                    is_debug=True,
+                logger.debug(
+                    f"[{self.name}] Example config file not found. Using default common config."
                 )
 
         common_config = config.get("common_mcp_gateway_config", {})
-        return {**DEFAULT_COMMON_CONFIG, **common_config}
+        plugins_config = config.get("plugins", {})
+        return {**DEFAULT_COMMON_CONFIG, **common_config, "plugins": plugins_config}
 
     def _check_telemetry_enabled(self, config: dict[str, Any]) -> bool:
         """Check if telemetry is enabled and endpoint is reachable."""
@@ -181,28 +158,79 @@ class OpenTelemetryProvider(TelemetryProvider):
             self._is_telemetry_enabled = False
             return False
 
-        endpoint = config.get("endpoint", "http://localhost:4317")
+        endpoint = config.get("url", "http://localhost:4317")
 
         try:
             parsed_url = urlparse(endpoint)
             hostname = parsed_url.hostname
             port = parsed_url.port
             if not hostname or not port:
-                sys_print(
-                    f"[{self.name}] Invalid OTLP endpoint URL: {endpoint}",
-                    is_error=True,
-                )
+                logger.error(f"[{self.name}] Invalid OTLP endpoint URL: {endpoint}")
                 self._is_telemetry_enabled = False
                 return False
 
-            with socket.create_connection((hostname, port), timeout=1):
-                self._is_telemetry_enabled = True
-                return True
+            # For gRPC endpoints (port 4317), use socket connection test
+            if parsed_url.port == 4317:
+                logger.debug(f"[{self.name}] Testing gRPC connectivity to {endpoint}")
+                # Get configurable timeout from TimeoutManager
+                from secure_mcp_gateway.services.timeout import get_timeout_manager
+
+                timeout_manager = get_timeout_manager()
+                timeout_value = timeout_manager.get_timeout("connectivity")
+
+                with socket.create_connection((hostname, port), timeout=timeout_value):
+                    logger.debug(f"[{self.name}] gRPC endpoint {endpoint} is reachable")
+                    self._is_telemetry_enabled = True
+                    return True
+            # For HTTP endpoints, test HTTP connectivity instead of just TCP
+            elif parsed_url.scheme == "http" or parsed_url.scheme == "https":
+                import urllib.error
+                import urllib.request
+
+                try:
+                    logger.debug(
+                        f"[{self.name}] Testing HTTP connectivity to {endpoint}"
+                    )
+                    # Test HTTP connectivity with a simple HEAD request
+                    req = urllib.request.Request(endpoint, method="HEAD")
+                    with urllib.request.urlopen(req, timeout=timeout_value) as response:
+                        # Any HTTP response (even 404, 405) means the endpoint is reachable
+                        logger.debug(
+                            f"[{self.name}] HTTP endpoint {endpoint} is reachable (status: {response.status})"
+                        )
+                        self._is_telemetry_enabled = True
+                        return True
+                except urllib.error.HTTPError as e:
+                    # HTTP errors (404, 405, etc.) mean the service is running
+                    if e.code in [404, 405, 400, 500]:
+                        logger.debug(
+                            f"[{self.name}] HTTP endpoint {endpoint} is reachable (status: {e.code})"
+                        )
+                        self._is_telemetry_enabled = True
+                        return True
+                    else:
+                        logger.error(
+                            f"[{self.name}] Telemetry enabled in config, but HTTP endpoint {endpoint} returned error {e.code}. "
+                            "Disabling telemetry."
+                        )
+                        self._is_telemetry_enabled = False
+                        return False
+                except urllib.error.URLError as e:
+                    logger.error(
+                        f"[{self.name}] Telemetry enabled in config, but HTTP endpoint {endpoint} is not accessible. "
+                        f"Disabling telemetry. Error: {e}"
+                    )
+                    self._is_telemetry_enabled = False
+                    return False
+            else:
+                # For non-HTTP endpoints, use socket connection test
+                with socket.create_connection((hostname, port), timeout=timeout_value):
+                    self._is_telemetry_enabled = True
+                    return True
         except (OSError, AttributeError, TypeError, ValueError) as e:
-            sys_print(
+            logger.error(
                 f"[{self.name}] Telemetry enabled in config, but endpoint {endpoint} is not accessible. "
-                f"Disabling telemetry. Error: {e}",
-                is_error=True,
+                f"Disabling telemetry. Error: {e}"
             )
             self._is_telemetry_enabled = False
             return False
@@ -223,38 +251,42 @@ class OpenTelemetryProvider(TelemetryProvider):
             TelemetryResult: Initialization result
         """
         try:
-            sys_print(
+            logger.info(
                 f"[{self.name}] Initializing OpenTelemetry provider v{__version__}..."
             )
 
             # Get config from common config if not provided
             if not config or "enabled" not in config:
                 common_config = self._get_common_config()
-                config = common_config.get("enkrypt_telemetry", {})
+                telemetry_plugin_config = common_config.get("plugins", {}).get(
+                    "telemetry", {}
+                )
+                config = telemetry_plugin_config.get("config", {})
+                logger.debug(f"[{self.name}] Loaded telemetry config: {config}")
 
             # Extract configuration
             enabled = self._check_telemetry_enabled(config)
-            endpoint = config.get("endpoint", "http://localhost:4317")
+            endpoint = config.get("url", "http://localhost:4317")
             insecure = config.get("insecure", True)
             service_name = config.get("service_name", "secure-mcp-gateway")
             job_name = config.get("job_name", "enkryptai")
 
             if enabled:
-                sys_print(
+                logger.info(
                     f"[{self.name}] OpenTelemetry enabled - initializing components"
                 )
                 self._setup_enabled_telemetry(
                     endpoint, insecure, service_name, job_name
                 )
             else:
-                sys_print(
+                logger.info(
                     f"[{self.name}] OpenTelemetry disabled - using no-op components"
                 )
                 self._setup_disabled_telemetry()
 
             self._initialized = True
 
-            sys_print(f"[{self.name}] ✓ Initialized OpenTelemetry provider")
+            logger.info(f"[{self.name}] ✓ Initialized OpenTelemetry provider")
 
             return TelemetryResult(
                 success=True,
@@ -268,7 +300,7 @@ class OpenTelemetryProvider(TelemetryProvider):
             )
 
         except Exception as e:
-            sys_print(f"[{self.name}] ✗ Failed to initialize: {e}", is_error=True)
+            logger.error(f"[{self.name}] ✗ Failed to initialize: {e}")
             return TelemetryResult(
                 success=False,
                 provider_name=self.name,
@@ -286,31 +318,23 @@ class OpenTelemetryProvider(TelemetryProvider):
         )
 
         # ---------- LOGGING SETUP ----------
-        root_logger = logging.getLogger()
-        root_logger.setLevel(logging.INFO)
+        # Don't modify root logger to avoid duplication
+        # Only set up telemetry-specific logging
 
-        json_formatter = logging.Formatter(
-            '{"timestamp":"%(asctime)s", "level":"%(levelname)s", "name":"%(name)s", "message":"%(message)s"}'
-        )
-        console_formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(console_formatter)
-        root_logger.addHandler(console_handler)
-
+        # Set up OTLP logging for telemetry data only
         otlp_exporter = OTLPLogExporter(endpoint=endpoint, insecure=insecure)
         logger_provider = LoggerProvider(resource=self._resource)
         logger_provider.add_log_record_processor(BatchLogRecordProcessor(otlp_exporter))
 
+        # Create telemetry-specific logger without console output
+        self._logger = logging.getLogger(service_name)
+        self._logger.setLevel(logging.INFO)
+
+        # Only add OTLP handler for telemetry data export
         otlp_handler = LoggingHandler(
             level=logging.INFO, logger_provider=logger_provider
         )
-        otlp_handler.setFormatter(json_formatter)
-        root_logger.addHandler(otlp_handler)
-
-        self._logger = logging.getLogger(service_name)
+        self._logger.addHandler(otlp_handler)
 
         # ---------- TRACING SETUP ----------
         trace.set_tracer_provider(TracerProvider(resource=self._resource))
@@ -332,6 +356,9 @@ class OpenTelemetryProvider(TelemetryProvider):
 
         # Create all metrics
         self._create_metrics()
+
+        # Create timeout-specific metrics
+        self._create_timeout_metrics()
 
     def _create_metrics(self):
         """Create all metrics."""
@@ -567,6 +594,52 @@ class OpenTelemetryProvider(TelemetryProvider):
         if not self._initialized:
             raise RuntimeError("Provider not initialized. Call initialize() first.")
         return self._meter
+
+    def _create_timeout_metrics(self):
+        """Create timeout-specific metrics."""
+        # Timeout operation counters
+        self.timeout_operations_total = self._meter.create_counter(
+            "enkrypt_timeout_operations_total",
+            description="Total number of timeout operations",
+        )
+        self.timeout_operations_successful = self._meter.create_counter(
+            "enkrypt_timeout_operations_successful",
+            description="Number of successful timeout operations",
+        )
+        self.timeout_operations_timed_out = self._meter.create_counter(
+            "enkrypt_timeout_operations_timed_out",
+            description="Number of operations that timed out",
+        )
+        self.timeout_operations_cancelled = self._meter.create_counter(
+            "enkrypt_timeout_operations_cancelled",
+            description="Number of operations that were cancelled",
+        )
+
+        # Timeout escalation counters
+        self.timeout_escalation_warn = self._meter.create_counter(
+            "enkrypt_timeout_escalation_warn",
+            description="Number of timeout escalation warnings",
+        )
+        self.timeout_escalation_timeout = self._meter.create_counter(
+            "enkrypt_timeout_escalation_timeout",
+            description="Number of timeout escalations",
+        )
+        self.timeout_escalation_fail = self._meter.create_counter(
+            "enkrypt_timeout_escalation_fail",
+            description="Number of timeout escalation failures",
+        )
+
+        # Timeout duration histogram
+        self.timeout_operation_duration = self._meter.create_histogram(
+            "enkrypt_timeout_operation_duration_seconds",
+            description="Duration of timeout operations in seconds",
+        )
+
+        # Active operations gauge
+        self.timeout_active_operations = self._meter.create_up_down_counter(
+            "enkrypt_timeout_active_operations",
+            description="Number of currently active timeout operations",
+        )
 
     def is_initialized(self) -> bool:
         """Check if provider is initialized"""

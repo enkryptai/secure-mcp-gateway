@@ -1,8 +1,4 @@
-"""
-Enkrypt Secure MCP Gateway Common Utilities Module
-
-This module provides common utilities for the Enkrypt Secure MCP Gateway
-"""
+"""Common utilities for MCP Gateway."""
 
 import json
 import os
@@ -12,6 +8,7 @@ import string
 import sys
 import time
 from functools import lru_cache
+from typing import Any, Dict, Union
 from urllib.parse import urlparse
 
 from secure_mcp_gateway.consts import (
@@ -23,11 +20,28 @@ from secure_mcp_gateway.consts import (
 )
 
 # Lazy import to avoid circular imports
+#
+# We expose a single, centralized logger for the whole application via a
+# lazy accessor. Most modules should import and use `utils.logger`, which
+# routes to the active telemetry provider's logger when telemetry is
+# enabled. This centralizes formatting, context, and export behavior.
+#
+# IMPORTANT: Telemetry modules themselves (e.g. providers under
+# `plugins/telemetry`) MUST NOT import from `utils` to fetch this logger,
+# because `utils` depends on telemetry during initialization. Those
+# modules should instead create a local module logger with
+# `logging.getLogger(...)` to avoid circular imports during bootstrap.
 _logger_cache = None
 
 
 def get_logger():
-    """Lazy logger retrieval to avoid circular imports and early initialization."""
+    """Return the active application logger lazily.
+
+    This defers importing the telemetry config/manager until first use,
+    preventing circular imports during process startup. If telemetry is
+    disabled or unavailable, this returns None and `LazyLogger` will
+    no-op calls.
+    """
     global _logger_cache
     if _logger_cache is None:
         try:
@@ -37,24 +51,44 @@ def get_logger():
 
             telemetry_manager = get_telemetry_config_manager()
             _logger_cache = telemetry_manager.get_logger()
-        except Exception:
+            print("[utils] Logger initialized successfully", file=sys.stderr)
+        except Exception as e:
             # If telemetry is not available, return None
+            print(f"[utils] Logger initialization failed: {e}", file=sys.stderr)
             _logger_cache = None
     return _logger_cache
 
 
 # For backward compatibility, expose logger as a module-level variable
 class LazyLogger:
-    """Lazy logger wrapper for backward compatibility."""
+    """Lazy logger wrapper used by application modules.
+
+    Accessing any logging method (e.g., `.info`, `.debug`) forwards the
+    call to the real telemetry-backed logger when available. Otherwise it
+    becomes a safe no-op. This allows importing `logger` from `utils`
+    everywhere without eagerly initializing telemetry.
+    """
 
     def __getattr__(self, name):
         logger = get_logger()
         if logger:
             return getattr(logger, name)
         # No-op if logger not available
+        print(
+            f"[utils] LazyLogger: No logger available for method {name}",
+            file=sys.stderr,
+        )
         return lambda *args, **kwargs: None
 
 
+# Central application logger for non-telemetry modules.
+#
+# Usage guidance:
+# - In most modules, prefer: `from secure_mcp_gateway.utils import logger`
+# - In telemetry provider/config modules, prefer a local
+#   `logging.getLogger("enkrypt.telemetry")` to avoid importing `utils`
+#   (which depends on telemetry initialization) and creating a circular
+#   dependency.
 logger = LazyLogger()
 from secure_mcp_gateway.version import __version__
 
@@ -72,10 +106,21 @@ class _DebugLevel:
 
 IS_DEBUG_LOG_LEVEL = _DebugLevel()
 
-# TODO: Fix error and use stdout
+# NOTE:
+# This module is imported very early in the gateway startup sequence by multiple
+# subsystems. At that time, the telemetry provider (which owns the logger
+# configuration) may not yet be initialized. As a result, calls to acquire a
+# logger can return None, and the LazyLogger will no-op. To ensure critical
+# bootstrap diagnostics are visible, we mirror key messages to stderr via
+# print() in addition to logger calls. Once telemetry is initialized, logger
+# messages will flow through the configured provider as usual.
+# Initialize logger for this module
 print(
     f"[utils] Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}",
     file=sys.stderr,
+)
+logger.info(
+    f"[utils] Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}"
 )
 
 IS_TELEMETRY_ENABLED = None
@@ -153,24 +198,29 @@ def get_common_config(print_debug=False):
 
     # TODO: Fix error and use stdout
     print("[utils] Getting Enkrypt Common Configuration", file=sys.stderr)
+    logger.info("[utils] Getting Enkrypt Common Configuration")
 
     if print_debug:
-        print(f"[utils] config_path: {CONFIG_PATH}", file=sys.stderr)
-        print(f"[utils] docker_config_path: {DOCKER_CONFIG_PATH}", file=sys.stderr)
-        print(f"[utils] example_config_path: {EXAMPLE_CONFIG_PATH}", file=sys.stderr)
+        logger.debug(f"[utils] config_path: {CONFIG_PATH}")
+        logger.debug(f"[utils] docker_config_path: {DOCKER_CONFIG_PATH}")
+        logger.debug(f"[utils] example_config_path: {EXAMPLE_CONFIG_PATH}")
 
     is_running_in_docker = is_docker()
     print(f"[utils] is_running_in_docker: {is_running_in_docker}", file=sys.stderr)
+    logger.debug(f"[utils] is_running_in_docker: {is_running_in_docker}")
     picked_config_path = DOCKER_CONFIG_PATH if is_running_in_docker else CONFIG_PATH
     if does_file_exist(picked_config_path):
         print(f"[utils] Loading {picked_config_path} file...", file=sys.stderr)
+        logger.info(f"[utils] Loading {picked_config_path} file...")
         with open(picked_config_path, encoding="utf-8") as f:
             config = json.load(f)
     else:
         print("[utils] No config file found. Loading example config.", file=sys.stderr)
+        logger.info("[utils] No config file found. Loading example config.")
         if does_file_exist(EXAMPLE_CONFIG_PATH):
             if print_debug:
                 print(f"[utils] Loading {EXAMPLE_CONFIG_NAME} file...", file=sys.stderr)
+                logger.debug(f"[utils] Loading {EXAMPLE_CONFIG_NAME} file...")
             with open(EXAMPLE_CONFIG_PATH, encoding="utf-8") as f:
                 config = json.load(f)
         else:
@@ -178,13 +228,17 @@ def get_common_config(print_debug=False):
                 "[utils] Example config file not found. Using default common config.",
                 file=sys.stderr,
             )
+            logger.info(
+                "[utils] Example config file not found. Using default common config."
+            )
 
     if print_debug and config:
-        print(f"[utils] config: {config}", file=sys.stderr)
+        logger.debug(f"[utils] config: {config}")
 
     common_config = config.get("common_mcp_gateway_config", {})
+    plugins_config = config.get("plugins", {})
     # Merge with defaults to ensure all required fields exist
-    return {**DEFAULT_COMMON_CONFIG, **common_config}
+    return {**DEFAULT_COMMON_CONFIG, **common_config, "plugins": plugins_config}
 
 
 def is_telemetry_enabled():
@@ -198,29 +252,35 @@ def is_telemetry_enabled():
         return False
 
     config = get_common_config()
-    telemetry_config = config.get("enkrypt_telemetry", {})
+    telemetry_plugin_config = config.get("plugins", {}).get("telemetry", {})
+    telemetry_config = telemetry_plugin_config.get("config", {})
     if not telemetry_config.get("enabled", False):
         IS_TELEMETRY_ENABLED = False
         return False
 
-    endpoint = telemetry_config.get("endpoint", "http://localhost:4317")
+    endpoint = telemetry_config.get("url", "http://localhost:4317")
 
     try:
         parsed_url = urlparse(endpoint)
         hostname = parsed_url.hostname
         port = parsed_url.port
         if not hostname or not port:
-            print(f"[utils] Invalid OTLP endpoint URL: {endpoint}", file=sys.stderr)
+            logger.error(f"[utils] Invalid OTLP endpoint URL: {endpoint}")
             IS_TELEMETRY_ENABLED = False
             return False
 
-        with socket.create_connection((hostname, port), timeout=1):
+        # Get configurable timeout from TimeoutManager
+        from secure_mcp_gateway.services.timeout import get_timeout_manager
+
+        timeout_manager = get_timeout_manager()
+        timeout_value = timeout_manager.get_timeout("connectivity")
+
+        with socket.create_connection((hostname, port), timeout=timeout_value):
             IS_TELEMETRY_ENABLED = True
             return True
     except (OSError, AttributeError, TypeError, ValueError) as e:
-        print(
-            f"[utils] Telemetry is enabled in config, but endpoint {endpoint} is not accessible. So, disabling telemetry. Error: {e}",
-            file=sys.stderr,
+        logger.error(
+            f"[utils] Telemetry is enabled in config, but endpoint {endpoint} is not accessible. So, disabling telemetry. Error: {e}"
         )
         IS_TELEMETRY_ENABLED = False
         return False
@@ -243,52 +303,40 @@ def generate_custom_id():
 
         return f"{random_part}_{timestamp_ms}"
     except Exception as e:
-        print(f"[utils] Error generating custom ID: {e}", file=sys.stderr)
+        logger.error(f"[utils] Error generating custom ID: {e}")
         # Fallback to a simpler ID if there's an error
         return f"fallback_{int(time.time())}"
 
 
 def sys_print(*args, **kwargs):
     """
-    Print a message to the console and optionally log it via telemetry.
+    Print a message using the logger system.
 
     Args:
-        *args: Arguments to print
+        *args: Arguments to log
         **kwargs: Keyword arguments including:
-            - is_error (bool): If True, print to stderr and log as error
-            - is_debug (bool): If True, log as debug instead of info
+            - is_error (bool): If True, use logger.error
+            - is_debug (bool): If True, use logger.debug
     """
     is_error = kwargs.pop("is_error", False)
     is_debug = kwargs.pop("is_debug", False)
 
-    # If is_error is True, print to stderr
-    if is_error:
-        kwargs.setdefault("file", sys.stderr)
-    else:
-        # TODO: Fix error and use stdout
-        # kwargs.setdefault('file', sys.stdout)
-        kwargs.setdefault("file", sys.stderr)
-
-    # Using try/except to avoid any print errors blocking the flow for edge cases
+    # Using try/except to avoid any logging errors blocking the flow for edge cases
     try:
         if args:
-            # Always print to console
-            print(*args, **kwargs)
+            # Join all arguments into a single message
+            message = " ".join(str(arg) for arg in args)
 
-            # Also log via telemetry if enabled
-            if is_telemetry_enabled():
-                # Format args similar to how print() does it
-                sep = kwargs.get("sep", " ")
-                log_message = sep.join(str(arg) for arg in args)
-                if is_error:
-                    logger.error(log_message)
-                elif is_debug:
-                    logger.debug(log_message)
-                else:
-                    logger.info(log_message)
+            # Route to appropriate logger method
+            if is_error:
+                logger.error(message)
+            elif is_debug:
+                logger.debug(message)
+            else:
+                logger.info(message)
     except Exception as e:
-        # Ignore any print errors
-        print(f"[utils] Error printing using sys_print: {e}", file=sys.stderr)
+        # Fallback to print if logger fails
+        print(f"[utils] Error logging using sys_print: {e}", file=sys.stderr)
         pass
 
 
@@ -302,26 +350,72 @@ def mask_key(key):
 
 
 def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs):
-    from secure_mcp_gateway.plugins.auth import get_auth_config_manager
+    """Build structured log extras. Tolerates missing/invalid ctx.
 
-    auth_manager = get_auth_config_manager()
-    credentials = auth_manager.get_gateway_credentials(ctx)
-    gateway_key = credentials.get("gateway_key")
-    project_id = credentials.get("project_id", "not_provided")
-    user_id = credentials.get("user_id", "not_provided")
-    # if project_id == "not_provided" or user_id == "not_provided" or mcp_config_id == "not_provided":
-    #     sys_print(f"[build_log_extra] Project ID, User ID or MCP Config ID is not provided", is_error=True)
-    #     return {}
+    Falls back to 'not_provided' values if ctx is not an MCP Context or
+    if credentials/config cannot be resolved.
+    """
+    project_id = "not_provided"
+    user_id = "not_provided"
+    project_name = "not_provided"
+    email = "not_provided"
+    mcp_config_id = "not_provided"
 
-    gateway_config = auth_manager.get_local_mcp_config(gateway_key, project_id, user_id)
-    project_name = gateway_config.get("project_name", "not_provided")
-    email = gateway_config.get("email", "not_provided")
-    mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
+    try:
+        # Only attempt auth lookups when ctx looks like an MCP Context
+        has_ctx_attrs = hasattr(ctx, "request_context") or hasattr(ctx, "__dict__")
+        if has_ctx_attrs:
+            from secure_mcp_gateway.plugins.auth import get_auth_config_manager
+
+            auth_manager = get_auth_config_manager()
+            credentials = auth_manager.get_gateway_credentials(ctx)
+            gateway_key = credentials.get("gateway_key")
+            project_id = credentials.get("project_id", project_id)
+            user_id = credentials.get("user_id", user_id)
+
+            if gateway_key:
+                try:
+                    import asyncio
+
+                    # Check if we're already in an async context
+                    try:
+                        # Try to get the current event loop
+                        loop = asyncio.get_running_loop()
+                        # If we get here, we're in an async context, skip the call
+                        # to avoid creating unawaited coroutines
+                        pass
+                    except RuntimeError:
+                        # No event loop running, safe to use asyncio.run()
+                        try:
+                            gateway_config = (
+                                asyncio.run(
+                                    auth_manager.get_local_mcp_config(
+                                        gateway_key, project_id, user_id
+                                    )
+                                )
+                                or {}
+                            )
+                            project_name = gateway_config.get(
+                                "project_name", project_name
+                            )
+                            email = gateway_config.get("email", email)
+                            mcp_config_id = gateway_config.get(
+                                "mcp_config_id", mcp_config_id
+                            )
+                        except Exception:
+                            # If anything fails, just use defaults
+                            pass
+                except Exception:
+                    # If anything fails, just use defaults
+                    pass
+    except Exception:
+        # Swallow errors and use defaults to avoid breaking logging
+        pass
+
     # Filter out None values from kwargs
     filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
 
     return {
-        # "request_id": getattr(ctx, 'request_id', None),
         "custom_id": custom_id or "",
         "server_name": server_name or "",
         "project_id": project_id or "",
@@ -432,10 +526,7 @@ def get_server_info_by_name(gateway_config, server_name):
         dict: Server configuration if found, None otherwise
     """
     if IS_DEBUG_LOG_LEVEL:
-        sys_print(
-            f"[get_server_info_by_name] Getting server info for {server_name}",
-            is_debug=True,
-        )
+        logger.debug(f"[get_server_info_by_name] Getting server info for {server_name}")
     mcp_config = gateway_config.get("mcp_config", [])
     if IS_DEBUG_LOG_LEVEL:
         # Mask sensitive data in debug logs
@@ -448,7 +539,186 @@ def get_server_info_by_name(gateway_config, server_name):
                     masked_server["config"]["env"]
                 )
             masked_mcp_config.append(masked_server)
-        sys_print(
-            f"[get_server_info_by_name] mcp_config: {masked_mcp_config}", is_debug=True
-        )
+        logger.debug(f"[get_server_info_by_name] mcp_config: {masked_mcp_config}")
     return next((s for s in mcp_config if s.get("server_name") == server_name), None)
+
+
+def mask_sensitive_headers(
+    headers: Union[Dict[str, str], Dict[str, Any]],
+) -> Dict[str, str]:
+    """
+    Mask sensitive information in HTTP headers for logging purposes.
+
+    Args:
+        headers: Dictionary of HTTP headers
+
+    Returns:
+        Dictionary with sensitive headers masked
+    """
+    if not headers:
+        return {}
+
+    # Define sensitive header patterns (case-insensitive)
+    sensitive_patterns = [
+        # Authentication headers
+        "authorization",
+        "auth",
+        "bearer",
+        "token",
+        "apikey",
+        "api-key",
+        "api_key",
+        "x-api-key",
+        "x-auth-token",
+        "x-access-token",
+        "x-auth",
+        "x-token",
+        "x-enkrypt-api-key",
+        "x-enkrypt-gateway-key",
+        # Security headers
+        "cookie",
+        "set-cookie",
+        "x-csrf-token",
+        "x-csrf",
+        "csrf-token",
+        "x-requested-with",
+        "x-forwarded-for",
+        "x-real-ip",
+        # Sensitive data headers
+        "password",
+        "passwd",
+        "pwd",
+        "secret",
+        "private",
+        "key",
+        "session",
+        "sessionid",
+        "session-id",
+        "sess",
+        # Custom sensitive headers
+        "x-session",
+        "x-user",
+        "x-tenant",
+        "x-org",
+        "x-organization",
+        "x-client",
+        "x-device",
+        "x-device-id",
+        "x-deviceid",
+        # OAuth and JWT
+        "oauth",
+        "jwt",
+        "access-token",
+        "refresh-token",
+        "id-token",
+        "x-oauth",
+        "x-jwt",
+        "x-access",
+        "x-refresh",
+    ]
+
+    masked_headers = {}
+
+    for key, value in headers.items():
+        key_lower = key.lower()
+
+        # Check if this header should be masked
+        should_mask = any(pattern in key_lower for pattern in sensitive_patterns)
+
+        if should_mask:
+            # Mask the value but preserve the structure
+            if isinstance(value, str) and len(value) > 0:
+                if len(value) <= 4:
+                    masked_headers[key] = "***"
+                else:
+                    # Show first 2 and last 2 characters for longer values
+                    masked_headers[key] = f"{value[:2]}***{value[-2:]}"
+            else:
+                masked_headers[key] = "***"
+        else:
+            # Keep non-sensitive headers as-is
+            masked_headers[key] = value
+
+    return masked_headers
+
+
+def mask_sensitive_data(
+    data: Dict[str, Any], sensitive_keys: list = None
+) -> Dict[str, Any]:
+    """
+    Recursively mask sensitive information in a dictionary.
+
+    Args:
+        data: Dictionary to mask
+        sensitive_keys: List of keys to mask (defaults to common sensitive keys)
+
+    Returns:
+        Dictionary with sensitive values masked
+    """
+    if sensitive_keys is None:
+        sensitive_keys = [
+            "password",
+            "passwd",
+            "pwd",
+            "secret",
+            "private",
+            "key",
+            "token",
+            "apikey",
+            "api_key",
+            "api-key",
+            "auth",
+            "authorization",
+            "bearer",
+            "session",
+            "sessionid",
+            "session-id",
+            "cookie",
+            "csrf",
+            "oauth",
+            "jwt",
+            "access-token",
+            "refresh-token",
+            "id-token",
+            "x-api-key",
+            "x-auth-token",
+            "x-access-token",
+            "x-csrf-token",
+            "x-enkrypt-api-key",
+            "x-enkrypt-gateway-key",
+        ]
+
+    if not isinstance(data, dict):
+        return data
+
+    masked_data = {}
+
+    for key, value in data.items():
+        key_lower = key.lower()
+
+        # Check if this key should be masked
+        should_mask = any(pattern in key_lower for pattern in sensitive_keys)
+
+        if should_mask:
+            if isinstance(value, str) and len(value) > 0:
+                if len(value) <= 4:
+                    masked_data[key] = "***"
+                else:
+                    masked_data[key] = f"{value[:2]}***{value[-2:]}"
+            else:
+                masked_data[key] = "***"
+        elif isinstance(value, dict):
+            # Recursively mask nested dictionaries
+            masked_data[key] = mask_sensitive_data(value, sensitive_keys)
+        elif isinstance(value, list):
+            # Mask items in lists
+            masked_data[key] = [
+                mask_sensitive_data(item, sensitive_keys)
+                if isinstance(item, dict)
+                else item
+                for item in value
+            ]
+        else:
+            masked_data[key] = value
+
+    return masked_data

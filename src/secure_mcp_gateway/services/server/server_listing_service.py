@@ -8,13 +8,18 @@ from secure_mcp_gateway.services.cache.cache_service import cache_service
 
 # Get metrics from telemetry manager
 telemetry_manager = get_telemetry_config_manager()
-list_servers_call_count = telemetry_manager.list_servers_call_count
-servers_discovered_count = telemetry_manager.servers_discovered_count
+# Telemetry metrics will be obtained lazily when needed
+from secure_mcp_gateway.error_handling import create_error_response
+from secure_mcp_gateway.exceptions import (
+    ErrorCode,
+    ErrorContext,
+    create_discovery_error,
+)
 from secure_mcp_gateway.utils import (
     build_log_extra,
+    logger,
     mask_key,
     mask_server_config_sensitive_data,
-    sys_print,
 )
 
 
@@ -62,27 +67,38 @@ class ServerListingService:
 
         with tracer.start_as_current_span("enkrypt_list_all_servers") as main_span:
             # Count total calls to this endpoint
-            list_servers_call_count.add(1, attributes=build_log_extra(ctx, custom_id))
-            sys_print("[list_available_servers] Request received")
+            if (
+                hasattr(telemetry_manager, "list_servers_call_count")
+                and telemetry_manager.list_servers_call_count
+            ):
+                telemetry_manager.list_servers_call_count.add(
+                    1, attributes=build_log_extra(ctx, custom_id)
+                )
+            logger.info("[list_available_servers] Request received")
 
             # Get credentials and config
             credentials = self.auth_manager.get_gateway_credentials(ctx)
             enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
             enkrypt_project_id = credentials.get("project_id", "not_provided")
             enkrypt_user_id = credentials.get("user_id", "not_provided")
-            gateway_config = self.auth_manager.get_local_mcp_config(
+            gateway_config = await self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
             )
 
             if not gateway_config:
-                sys_print(
-                    f"[list_available_servers] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}",
-                    is_error=True,
+                logger.error(
+                    f"[list_available_servers] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}"
                 )
-                return {
-                    "status": "error",
-                    "error": "No MCP config found. Please check your credentials.",
-                }
+                context = ErrorContext(
+                    operation="list_servers.init",
+                    request_id=getattr(ctx, "request_id", None),
+                )
+                err = create_discovery_error(
+                    code=ErrorCode.CONFIG_MISSING_REQUIRED,
+                    message="No MCP config found. Please check your credentials.",
+                    context=context,
+                )
+                return create_error_response(err)
 
             enkrypt_project_name = gateway_config.get("project_name", "not_provided")
             enkrypt_email = gateway_config.get("email", "not_provided")
@@ -128,14 +144,18 @@ class ServerListingService:
                     ctx,
                     custom_id,
                     tracer,
-                    logger,
                     IS_DEBUG_LOG_LEVEL,
                 )
 
                 # Update metrics
-                servers_discovered_count.add(
-                    len(servers_with_tools), attributes=build_log_extra(ctx, custom_id)
-                )
+                if (
+                    hasattr(telemetry_manager, "servers_discovered_count")
+                    and telemetry_manager.servers_discovered_count
+                ):
+                    telemetry_manager.servers_discovered_count.add(
+                        len(servers_with_tools),
+                        attributes=build_log_extra(ctx, custom_id),
+                    )
 
                 if not discover_tools:
                     return self._return_servers_without_discovery(
@@ -154,7 +174,7 @@ class ServerListingService:
                 main_span.set_attribute("error", "true")
                 main_span.record_exception(e)
                 main_span.set_attribute("error_message", str(e))
-                sys_print(f"[list_available_servers] Exception: {e}", is_error=True)
+                logger.error(f"[list_available_servers] Exception: {e}")
                 logger.error(
                     "list_all_servers.exception",
                     extra=build_log_extra(ctx, custom_id, error=str(e)),
@@ -162,7 +182,17 @@ class ServerListingService:
                 import traceback
 
                 traceback.print_exc()
-                return {"status": "error", "error": f"Tool discovery failed: {e}"}
+                context = ErrorContext(
+                    operation="list_servers.exception",
+                    request_id=getattr(ctx, "request_id", None),
+                )
+                err = create_discovery_error(
+                    code=ErrorCode.DISCOVERY_FAILED,
+                    message=f"Tool discovery failed: {e}",
+                    context=context,
+                    cause=e,
+                )
+                return create_error_response(err)
 
     def _generate_custom_id(self) -> str:
         """Generate a custom ID for tracking."""
@@ -223,14 +253,23 @@ class ServerListingService:
             )
 
             if not enkrypt_gateway_key:
-                sys_print("[list_available_servers] No gateway key provided")
+                logger.warning("[list_available_servers] No gateway key provided")
                 logger.warning(
                     "list_all_servers.no_gateway_key",
                     extra=build_log_extra(ctx, custom_id),
                 )
-                return {"status": "error", "error": "No gateway key provided."}
+                context = ErrorContext(
+                    operation="list_servers.auth",
+                    request_id=getattr(ctx, "request_id", None),
+                )
+                err = create_discovery_error(
+                    code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+                    message="No gateway key provided.",
+                    context=context,
+                )
+                return create_error_response(err)
 
-            is_authenticated = self.auth_manager.is_session_authenticated(session_key)
+            is_authenticated = await self.auth_manager.is_authenticated(ctx)
             auth_span.set_attribute("is_authenticated", is_authenticated)
 
             if not is_authenticated:
@@ -244,11 +283,17 @@ class ServerListingService:
                             "list_all_servers.auth_failed",
                             extra=build_log_extra(ctx, custom_id),
                         )
-                        sys_print(
-                            "[list_available_servers] Not authenticated",
-                            is_error=True,
-                        )
-                    return {"status": "error", "error": "Not authenticated."}
+                        logger.error("[list_available_servers] Not authenticated")
+                    context = ErrorContext(
+                        operation="list_servers.auth",
+                        request_id=getattr(ctx, "request_id", None),
+                    )
+                    err = create_discovery_error(
+                        code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+                        message="Not authenticated.",
+                        context=context,
+                    )
+                    return create_error_response(err)
         return None
 
     async def _process_servers(
@@ -259,7 +304,6 @@ class ServerListingService:
         ctx,
         custom_id,
         tracer,
-        logger,
         IS_DEBUG_LOG_LEVEL,
     ):
         """Process servers and return servers with tools and those needing discovery."""
@@ -280,7 +324,7 @@ class ServerListingService:
                             masked_server["config"]["env"]
                         )
                     masked_mcp_config.append(masked_server)
-                sys_print(f"mcp_config: {masked_mcp_config}", is_debug=True)
+                logger.debug(f"mcp_config: {masked_mcp_config}")
 
             servers_with_tools = {}
             servers_needing_discovery = []
@@ -297,9 +341,8 @@ class ServerListingService:
                             "list_all_servers.processing_server",
                             extra=build_log_extra(ctx, custom_id, server_name),
                         )
-                        sys_print(
-                            f"[list_available_servers] Processing server: {server_name}",
-                            is_debug=True,
+                        logger.debug(
+                            f"[list_available_servers] Processing server: {server_name}"
                         )
 
                     server_info_copy = cache_service.get_latest_server_info(
@@ -352,27 +395,60 @@ class ServerListingService:
             discovery_failed_servers = []
             discovery_success_servers = []
 
-            for server_name in servers_needing_discovery:
+            # Parallelize discovery across servers
+            import asyncio
+
+            # Import here to avoid circular imports
+            from secure_mcp_gateway.gateway import (
+                enkrypt_discover_all_tools,
+            )
+
+            async def _discover_single(server_name: str):
                 with tracer.start_span(f"discover_server_{server_name}") as server_span:
                     server_span.set_attribute("server_name", server_name)
+                    result = await enkrypt_discover_all_tools(ctx, server_name)
+                    success = result.get("status") == "success"
+                    server_span.set_attribute("discovery_success", success)
+                    return server_name, result
 
-                    # Import here to avoid circular imports
-                    from secure_mcp_gateway.gateway import (
-                        enkrypt_discover_all_tools,
-                    )
+            tasks = [
+                _discover_single(server_name)
+                for server_name in servers_needing_discovery
+            ]
 
-                    discover_server_result = await enkrypt_discover_all_tools(
-                        ctx, server_name
-                    )
+            # Use timeout management for parallel discovery operations
+            from secure_mcp_gateway.services.timeout import get_timeout_manager
 
-                    if discover_server_result.get("status") != "success":
-                        status = "error"
-                        discovery_failed_servers.append(server_name)
-                        server_span.set_attribute("discovery_success", False)
-                    else:
-                        discovery_success_servers.append(server_name)
-                        servers_with_tools[server_name] = discover_server_result
-                        server_span.set_attribute("discovery_success", True)
+            timeout_manager = get_timeout_manager()
+
+            # Create a proper async function for timeout manager
+            async def _parallel_server_discovery():
+                return await asyncio.gather(*tasks, return_exceptions=True)
+
+            results = await timeout_manager.execute_with_timeout(
+                _parallel_server_discovery,
+                "discovery",
+                f"server_discovery_{len(tasks)}_servers",
+            )
+
+            # Extract results from timeout result
+            if hasattr(results, "result"):
+                results = results.result
+
+            for item in results:
+                if isinstance(item, Exception):
+                    # If an exception bubbles up, we cannot attribute to a server name here
+                    status = "error"
+                    continue
+                server_name, discover_server_result = item
+                if discover_server_result.get("status") != "success":
+                    status = "error"
+                    discovery_failed_servers.append(server_name)
+                    # Include error response in servers_with_tools for proper error reporting
+                    servers_with_tools[server_name] = discover_server_result
+                else:
+                    discovery_success_servers.append(server_name)
+                    servers_with_tools[server_name] = discover_server_result
 
             discover_span.set_attribute("failed_servers", len(discovery_failed_servers))
             discover_span.set_attribute(

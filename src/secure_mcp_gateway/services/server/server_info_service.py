@@ -2,13 +2,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from secure_mcp_gateway.error_handling import create_error_response
+from secure_mcp_gateway.exceptions import (
+    ErrorCode,
+    ErrorContext,
+    create_discovery_error,
+)
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 from secure_mcp_gateway.utils import (
     build_log_extra,
     get_server_info_by_name,
+    logger,
     mask_key,
     mask_server_config_sensitive_data,
-    sys_print,
 )
 
 
@@ -28,7 +34,6 @@ class ServerInfoService:
         ctx,
         server_name: str,
         tracer=None,
-        logger=None,
         cache_client=None,
     ) -> dict[str, Any]:
         """
@@ -46,7 +51,7 @@ class ServerInfoService:
         """
         custom_id = self._generate_custom_id()
 
-        sys_print(f"[get_server_info] Requested for server: {server_name}")
+        logger.info(f"[get_server_info] Requested for server: {server_name}")
         logger.info(
             "enkrypt_get_server_info.started",
             extra={
@@ -61,19 +66,24 @@ class ServerInfoService:
         enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
         enkrypt_project_id = credentials.get("project_id", "not_provided")
         enkrypt_user_id = credentials.get("user_id", "not_provided")
-        gateway_config = self.auth_manager.get_local_mcp_config(
+        gateway_config = await self.auth_manager.get_local_mcp_config(
             enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
         )
 
         if not gateway_config:
-            sys_print(
-                f"[get_server_info] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}",
-                is_error=True,
+            logger.error(
+                f"[get_server_info] No local MCP config found for gateway_key={mask_key(enkrypt_gateway_key)}, project_id={enkrypt_project_id}, user_id={enkrypt_user_id}"
             )
-            return {
-                "status": "error",
-                "error": "No MCP config found. Please check your credentials.",
-            }
+            context = ErrorContext(
+                operation="server_info.init",
+                request_id=getattr(ctx, "request_id", None),
+            )
+            err = create_discovery_error(
+                code=ErrorCode.CONFIG_MISSING_REQUIRED,
+                message="No MCP config found. Please check your credentials.",
+                context=context,
+            )
+            return create_error_response(err)
 
         enkrypt_project_name = gateway_config.get("project_name", "not_provided")
         enkrypt_email = gateway_config.get("email", "not_provided")
@@ -102,7 +112,6 @@ class ServerInfoService:
                     enkrypt_gateway_key,
                     tracer,
                     custom_id,
-                    logger,
                     server_name,
                 )
                 if auth_result:
@@ -113,10 +122,17 @@ class ServerInfoService:
                     session_key, server_name, tracer, custom_id, logger
                 )
                 if not server_info:
-                    return {
-                        "status": "error",
-                        "error": f"Server '{server_name}' not available.",
-                    }
+                    context = ErrorContext(
+                        operation="server_info.lookup",
+                        request_id=getattr(ctx, "request_id", None),
+                        server_name=server_name,
+                    )
+                    err = create_discovery_error(
+                        code=ErrorCode.DISCOVERY_SERVER_UNAVAILABLE,
+                        message=f"Server '{server_name}' not available.",
+                        context=context,
+                    )
+                    return create_error_response(err)
 
                 # Get latest server info
                 latest_server_info = await self._get_latest_server_info(
@@ -125,7 +141,6 @@ class ServerInfoService:
                     server_name,
                     tracer,
                     custom_id,
-                    logger,
                     enkrypt_gateway_key,
                     enkrypt_project_id,
                     enkrypt_user_id,
@@ -152,12 +167,23 @@ class ServerInfoService:
             except Exception as e:
                 main_span.record_exception(e)
                 main_span.set_attribute("error", str(e))
-                sys_print(f"[get_server_info] Exception: {e}", is_error=True)
+                logger.error(f"[get_server_info] Exception: {e}")
                 logger.error(
                     "get_server_info.exception",
                     extra=build_log_extra(ctx, custom_id, error=str(e)),
                 )
-                return {"status": "error", "error": f"Tool discovery failed: {e}"}
+                context = ErrorContext(
+                    operation="server_info.exception",
+                    request_id=getattr(ctx, "request_id", None),
+                    server_name=server_name,
+                )
+                err = create_discovery_error(
+                    code=ErrorCode.DISCOVERY_FAILED,
+                    message=f"Tool discovery failed: {e}",
+                    context=context,
+                    cause=e,
+                )
+                return create_error_response(err)
 
     def _generate_custom_id(self) -> str:
         """Generate a custom ID for tracking."""
@@ -172,7 +198,6 @@ class ServerInfoService:
         enkrypt_gateway_key,
         tracer,
         custom_id,
-        logger,
         server_name,
     ):
         """Check authentication and return error if needed."""
@@ -183,7 +208,7 @@ class ServerInfoService:
             )
 
             # Add authentication status tracking
-            is_authenticated = self.auth_manager.is_session_authenticated(session_key)
+            is_authenticated = await self.auth_manager.is_authenticated(ctx)
             auth_span.set_attribute("is_authenticated", is_authenticated)
 
             if not is_authenticated:
@@ -194,7 +219,7 @@ class ServerInfoService:
                 auth_span.set_attribute("auth_result", result.get("status"))
                 if result.get("status") != "success":
                     auth_span.set_attribute("error", "Authentication failed")
-                    sys_print("[get_server_info] Not authenticated")
+                    logger.warning("[get_server_info] Not authenticated")
                     logger.warning(
                         "get_server_info.not_authenticated",
                         extra=build_log_extra(
@@ -203,7 +228,17 @@ class ServerInfoService:
                             server_name=server_name,
                         ),
                     )
-                    return {"status": "error", "error": "Not authenticated."}
+                    context = ErrorContext(
+                        operation="server_info.auth",
+                        request_id=getattr(ctx, "request_id", None),
+                        server_name=server_name,
+                    )
+                    err = create_discovery_error(
+                        code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+                        message="Not authenticated.",
+                        context=context,
+                    )
+                    return create_error_response(err)
         return None
 
     async def _get_server_info(
@@ -221,7 +256,9 @@ class ServerInfoService:
                 server_span.set_attribute(
                     "error", f"Server '{server_name}' not available"
                 )
-                sys_print(f"[get_server_info] Server '{server_name}' not available")
+                logger.warning(
+                    f"[get_server_info] Server '{server_name}' not available"
+                )
                 logger.warning(
                     "get_server_info.server_not_available",
                     extra=build_log_extra(session_key, custom_id, server_name),
@@ -237,7 +274,6 @@ class ServerInfoService:
         server_name,
         tracer,
         custom_id,
-        logger,
         enkrypt_gateway_key,
         enkrypt_project_id,
         enkrypt_user_id,

@@ -1,13 +1,8 @@
-"""
-Centralized Plugin Loader with Fallback Mechanism
-
-This module provides a centralized way to load plugin providers with automatic
-fallback to default Enkrypt providers when no custom provider is specified.
-"""
+"""Plugin loader with fallback mechanism."""
 
 from typing import Any, ClassVar, Dict, Optional
 
-from secure_mcp_gateway.utils import sys_print
+from secure_mcp_gateway.utils import logger
 
 
 class PluginLoader:
@@ -67,12 +62,10 @@ class PluginLoader:
             # Get the class path for the provider
             class_path = provider_class_mapping.get(provider_name)
             if not class_path:
-                sys_print(
-                    f"Unknown {plugin_type} provider: {provider_name}", is_error=True
-                )
+                logger.error(f"Unknown {plugin_type} provider: {provider_name}")
                 class_path = PluginLoader.DEFAULT_PROVIDERS[plugin_type]["class"]
                 provider_name = PluginLoader.DEFAULT_PROVIDERS[plugin_type]["name"]
-                sys_print(
+                logger.info(
                     f"Falling back to default {plugin_type} provider: {provider_name}"
                 )
 
@@ -92,17 +85,16 @@ class PluginLoader:
                     hasattr(manager, "list_providers")
                     and provider_name in manager.list_providers()
                 ):
-                    sys_print(
+                    logger.info(
                         f"[i] {plugin_type} provider '{provider_name}' already registered"
                     )
                 else:
                     manager.register_provider(provider)
-                    sys_print(f"✓ Registered {plugin_type} provider: {provider_name}")
+                    logger.info(f"✓ Registered {plugin_type} provider: {provider_name}")
 
             except Exception as e:
-                sys_print(
-                    f"Error loading {plugin_type} provider '{provider_name}': {e}",
-                    is_error=True,
+                logger.error(
+                    f"Error loading {plugin_type} provider '{provider_name}': {e}"
                 )
                 # Fall back to default provider
                 PluginLoader._load_default_provider(plugin_type, manager, config)
@@ -135,7 +127,7 @@ class PluginLoader:
             hasattr(manager, "list_providers")
             and provider_name in manager.list_providers()
         ):
-            sys_print(
+            logger.info(
                 f"[i] Default {plugin_type} provider '{provider_name}' already registered"
             )
             return
@@ -183,12 +175,10 @@ class PluginLoader:
             )
 
             manager.register_provider(provider)
-            sys_print(f"✓ Registered default {plugin_type} provider: {provider_name}")
+            logger.info(f"✓ Registered default {plugin_type} provider: {provider_name}")
 
         except Exception as e:
-            sys_print(
-                f"Error loading default {plugin_type} provider: {e}", is_error=True
-            )
+            logger.error(f"Error loading default {plugin_type} provider: {e}")
 
 
 __all__ = ["PluginLoader"]

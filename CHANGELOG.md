@@ -2,13 +2,36 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [2.1.1] - 2025-10-10
+
+### Updates in v2.1.1
+
+- Updated telemetry plugin to use the new telemetry conf
+
+- Tool guardrails
+
+- OAuth 2.0, 2.1 client credentials support
+
+- Standardized logging and error handling
+
+- Added request timeout settings
+
+- Added support for parallel processing
+
+- Standardized sync async usage
+
+- Bug fixes and improvements
+
 ## [2.1.0] - 2025-10-07
 
 ### New Features in v2.1.0
 
 - Added API support for all `cli` commands
+
 - Added API documentation
+
 - Added support for async output guardrails
+
 - Added concept of `plugins` to the gateway
   - Added support for `guardrails plugin` in the gateway
   - Added support for `telemetry plugin` in the gateway
@@ -17,10 +40,15 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 ### Updates in v2.1.0
 
 - Refactored the codebase to make it more modular and easier to maintain
+
 - Updated the `enkrypt_mcp_config.json` schema to include `plugins` section and other changes
+
 - Fixed external cache server issues
+
 - Using single detect call for PII redaction on input side instead of 2 like before
+
 - Pre-commit hooks for linting, formatting, security checks and type checking
+
 - Minor bug fixes and improvements
 
 ## [2.0.3] - 2025-09-05
@@ -32,6 +60,7 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 ### Updates in v2.0.2
 
 - Updated gateway according to latest `FastMCP` version
+
 - Locked dependencies to fix the version mismatch issues
 
 ## [2.0.1] - 2025-07-24
@@ -70,6 +99,7 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 ### New Features in v1.0.5
 
 - `opentelemetry` support for tracing
+
 - `prometheus`, `jaeger` and `grafana loki` setup for tracing
 
 ## [1.0.4] - 2025-07-07
@@ -77,9 +107,13 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 ### New Features in v1.0.4
 
 - `streamable-http` transport support for remote installation
+
 - `gateway_key` is now fetched from the request context in addition to the environment variable
+
 - Auto disovering all tools of all servers in list and discover calls
+
 - Using `fastmcp.tools` instead of `@mcp.tool()` decorator for centralized tool definitions
+
 - Minor bug fixes and improvements
 
 ## [1.0.3] - 2025-06-17
@@ -93,8 +127,11 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 ### New Features in v1.0.1, v1.0.2
 
 - `pip` support for installation
+
 - `cli` commands to `generate-config` and `install` the gateway for `claude-desktop` and `cursor`
+
 - Automatic installation of dependencies
+
 - Simplified Readme
 
 ## [1.0.0] - 2025-06-04
@@ -102,13 +139,21 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 ### Initial Release
 
 - Initial release of Enkrypt Secure MCP Gateway
+
 - Core gateway functionality with authentication and authorization
+
 - Dynamic tool discovery and management
+
 - Tool invocation restriction capabilities
+
 - Comprehensive caching system with local and external cache support
+
 - Guardrails integration for input and output protection
+
 - Logging system for request/response monitoring
+
 - CLI interface for easy installation and setup
+
 - Cross-platform support with Windows and Unix installation scripts
 
 ### Features
@@ -152,19 +197,31 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 ### Dependencies
 
 - flask>=2.0.0
+
 - flask-cors>=3.0.0
+
 - redis>=4.0.0
+
 - requests>=2.26.0
+
 - aiohttp>=3.8.0
+
 - python-json-logger>=2.0.0
+
 - python-dateutil>=2.8.2
+
 - cryptography>=3.4.0
+
 - pyjwt>=2.0.0
+
 - asyncio>=3.4.3
+
 - mcp[cli]
 
 ### System Requirements
 
 - Python >= 3.8
+
 - MCP CLI installed
+
 - Redis (optional, for external caching)

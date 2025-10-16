@@ -1,9 +1,4 @@
-"""
-Example Telemetry Providers
-
-This module contains example implementations of telemetry providers that can be used as
-templates for creating custom providers.
-"""
+"""Example telemetry providers."""
 
 from __future__ import annotations
 
@@ -15,7 +10,7 @@ from secure_mcp_gateway.plugins.telemetry.base import (
     TelemetryProvider,
     TelemetryResult,
 )
-from secure_mcp_gateway.utils import sys_print
+from secure_mcp_gateway.utils import logger
 
 # ============================================================================
 # Console Provider (Simple Logging)
@@ -122,7 +117,7 @@ class DatadogTelemetryProvider(TelemetryProvider):
             - environment: Environment (prod, staging, dev)
         """
         try:
-            sys_print(f"[{self.name}] Initializing Datadog provider...")
+            logger.info(f"[{self.name}] Initializing Datadog provider...")
 
             # Import Datadog tracer
             try:
@@ -140,7 +135,7 @@ class DatadogTelemetryProvider(TelemetryProvider):
                 self._tracer = tracer
                 self._initialized = True
 
-                sys_print(f"[{self.name}] ✓ Datadog initialized")
+                logger.info(f"[{self.name}] ✓ Datadog initialized")
 
                 return TelemetryResult(
                     success=True,
@@ -155,7 +150,7 @@ class DatadogTelemetryProvider(TelemetryProvider):
                 )
 
         except Exception as e:
-            sys_print(f"[{self.name}] ✗ Failed: {e}", is_error=True)
+            logger.error(f"[{self.name}] ✗ Failed: {e}")
             return TelemetryResult(
                 success=False,
                 provider_name=self.name,
@@ -208,7 +203,7 @@ class NewRelicTelemetryProvider(TelemetryProvider):
             - environment: Environment
         """
         try:
-            sys_print(f"[{self.name}] Initializing New Relic provider...")
+            logger.info(f"[{self.name}] Initializing New Relic provider...")
 
             try:
                 import newrelic.agent
@@ -221,7 +216,7 @@ class NewRelicTelemetryProvider(TelemetryProvider):
 
                 self._initialized = True
 
-                sys_print(f"[{self.name}] ✓ New Relic initialized")
+                logger.info(f"[{self.name}] ✓ New Relic initialized")
 
                 return TelemetryResult(
                     success=True,
@@ -236,7 +231,7 @@ class NewRelicTelemetryProvider(TelemetryProvider):
                 )
 
         except Exception as e:
-            sys_print(f"[{self.name}] ✗ Failed: {e}", is_error=True)
+            logger.error(f"[{self.name}] ✗ Failed: {e}")
             return TelemetryResult(
                 success=False,
                 provider_name=self.name,
@@ -288,7 +283,7 @@ class PrometheusTelemetryProvider(TelemetryProvider):
             - namespace: Metrics namespace
         """
         try:
-            sys_print(f"[{self.name}] Initializing Prometheus provider...")
+            logger.info(f"[{self.name}] Initializing Prometheus provider...")
 
             try:
                 from prometheus_client import start_http_server
@@ -298,7 +293,7 @@ class PrometheusTelemetryProvider(TelemetryProvider):
 
                 self._initialized = True
 
-                sys_print(f"[{self.name}] ✓ Prometheus metrics on port {self.port}")
+                logger.info(f"[{self.name}] ✓ Prometheus metrics on port {self.port}")
 
                 return TelemetryResult(
                     success=True,
@@ -313,7 +308,7 @@ class PrometheusTelemetryProvider(TelemetryProvider):
                 )
 
         except Exception as e:
-            sys_print(f"[{self.name}] ✗ Failed: {e}", is_error=True)
+            logger.error(f"[{self.name}] ✗ Failed: {e}")
             return TelemetryResult(
                 success=False,
                 provider_name=self.name,
@@ -371,13 +366,13 @@ class CustomTelemetryProvider(TelemetryProvider):
         4. Return TelemetryResult
         """
         try:
-            sys_print(f"[{self.name}] Initializing custom provider...")
+            logger.info(f"[{self.name}] Initializing custom provider...")
 
             # TODO: Implement your initialization logic
 
             self._initialized = True
 
-            sys_print(f"[{self.name}] ✓ Custom provider initialized")
+            logger.info(f"[{self.name}] ✓ Custom provider initialized")
 
             return TelemetryResult(
                 success=True,
@@ -386,7 +381,7 @@ class CustomTelemetryProvider(TelemetryProvider):
             )
 
         except Exception as e:
-            sys_print(f"[{self.name}] ✗ Failed: {e}", is_error=True)
+            logger.error(f"[{self.name}] ✗ Failed: {e}")
             return TelemetryResult(
                 success=False,
                 provider_name=self.name,

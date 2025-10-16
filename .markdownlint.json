@@ -1,0 +1,17 @@
+{
+  "default": true,
+  "MD013": false,
+  "MD033": false,
+  "MD034": false,
+  "MD024": false,
+  "MD026": false,
+  "MD036": false,
+  "MD051": false,
+  "line-length": false,
+  "no-inline-html": false,
+  "no-bare-urls": false,
+  "no-duplicate-heading": false,
+  "no-trailing-punctuation": false,
+  "no-emphasis-as-heading": false,
+  "link-fragments": false
+}

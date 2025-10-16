@@ -2,6 +2,12 @@
 
 ![enkrypt-secure-mcp-gateway-hld](./docs/images/enkrypt-secure-mcp-gateway-hld.png)
 
+> **📖 Featured Blog Post:** Learn how the Secure MCP Gateway prevents top attacks and vulnerabilities in our latest blog:
+>
+> **[How Enkrypt's Secure MCP Gateway and MCP Scanner Prevent Top Attacks](https://www.enkryptai.com/blog/how-enkrypts-secure-mcp-gateway-and-mcp-scanner-prevent-top-attacks)**
+>
+> Discover real-world attack scenarios, security best practices, and how our gateway protects your AI applications.
+
 ## Overview
 
 This Secure MCP Gateway is built with authentication, automatic tool discovery, caching, and guardrail enforcement.
@@ -23,35 +29,56 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 
 - [1. Features 🚀](#1-features)
   <!-- - [1.1 Guardrails 🔒 🚧](#11-guardrails)
+
   - [1.2 Concepts 💡](#12-concepts) -->
+
 - [2. High level steps of how the MCP Gateway works 🪜](#2-high-level-steps-of-how-the-mcp-gateway-works)
+
 - [3. Prerequisites 🧩](#3-prerequisites)
+
 - [4. Gateway Setup 👨‍💻](#4-gateway-setup)
   <!-- - [4.1 Local Installation with pip 📦](#41-local-installation-with-pip)
+
   - [4.2 Local Installation with git clone 🗂️](#42-local-installation-with-git-clone)
-    - [4.2.1 Clone the repo, setup virtual environment and install dependencies 📥](#421-clone-the-repo-setup-virtual-environment-and-install-dependencies)
-    - [4.2.2 Run the setup script 📥](#422-run-the-setup-script)
-    - [4.2.3 Setup Other MCP Clients 🤖](#423-setup-other-mcp-clients)
+   - [4.2.1 Clone the repo, setup virtual environment and install dependencies 📥](#421-clone-the-repo-setup-virtual-environment-and-install-dependencies)
+   - [4.2.2 Run the setup script 📥](#422-run-the-setup-script)
+   - [4.2.3 Setup Other MCP Clients 🤖](#423-setup-other-mcp-clients)
   - [4.3 Docker Installation 🐳](#43-docker-installation)
   - [4.4 Remote Installation 🌐](#44-remote-installation) -->
+
 - [5. (Optional) OpenTelemetry Setup 📊](#5-optional-opentelemetry-setup)
+
 - [6. Verify Installation and check the files generated ✅](#6-verify-installation-and-check-the-files-generated)
   <!-- - [6.1 Verify Claude Desktop 🔍](#61-verify-claude-desktop)
+
   - [6.2 Example MCP config file generated 📄](#62-example-mcp-config-file-generated)
   - [6.3 Restart Claude Desktop to run the Gateway 🔄](#63-restart-claude-desktop-to-run-the-gateway)
   - [6.4 Example prompts 💬](#64-example-prompts)
   - [6.5 Example config file generated ⚙️](#65-example-config-file-generated)
   - [6.6 Verify Cursor 🔍](#66-verify-cursor) -->
+
 - [7. Edit the Gateway config as needed ✏️](#7-edit-the-gateway-config-as-needed)
+
 - [8. (Optional) Add GitHub MCP Server to the Gateway 🤖](#8-optional-add-github-mcp-server-to-the-gateway)
+
+- [8.1 (Optional) Connect to MCP Servers with OAuth 🔐](#81-optional-connect-to-mcp-servers-with-oauth)
+
 - [9. (Optional) Protect GitHub MCP Server and Test Echo Server 🔒](#9-optional-protect-github-mcp-server-and-test-echo-server)
+
 - [10. Recommendations for using Guardrails 💡](#10-recommendations-for-using-guardrails)
+
 - [11. Other tools available 🔧](#11-other-tools-available)
+
 - [12. Deployment Patterns 🪂](#12-deployment-patterns)
+
 - [13. Uninstall the Gateway 🗑️](#13-uninstall-the-gateway)
+
 - [14. Troubleshooting 🕵](#14-troubleshooting)
+
 - [15. Known Issues being worked on 🏗️](#15-known-issues-being-worked-on)
+
 - [16. Known Limitations ⚠️](#16-known-limitations)
+
 - [17. Contribute 🤝](#17-contribute)
 
 ## 1. Features
@@ -78,7 +105,7 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 
 ![enkrypt-secure-mcp-gateway-guardrails](./docs/images/enkrypt-secure-mcp-gateway-guardrails.png)
 
-**Input Protection:** Topic detection, NSFW filtering, toxicity detection, injection attack prevention, keyword detection, policy violation detection, bias detection, and PII redaction (More coming soon like system prompt protection, copyright protection, etc.)  
+**Input Protection:** Topic detection, NSFW filtering, toxicity detection, injection attack prevention, keyword detection, policy violation detection, bias detection, and PII redaction (More coming soon like system prompt protection, copyright protection, etc.)
 
 **Output Protection:** All input protections plus adherence checking and relevancy validation (More coming soon like hallucination detection, etc.) We also auto unredact the response if it was redacted on input.
 
@@ -86,11 +113,14 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 
 - MCP Config is an array of MCP servers like `mcp_server_1`, `mcp_server_2`, `mcp_server_3` etc.
   - Each config has a unique ID
+
 - User is a user of the gateway with unique email and ID
+
 - A project is a collection of users that share an MCP Config
   - Project has a name and unique ID
   - The MCP Config can be updated or can be pointed to a different config by the Admin
   - Users can be added to multiple projects
+
 - An API Key is created for a user and project combination
   - A user can have different API Keys for different projects
   - This API Key is used to authenticate the user and identify the right project and MCP Config
@@ -113,7 +143,7 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
     - It caches the config locally or in an external cache server like KeyDB if configured to improve performance.
 
 3. If input guardrails are enabled, request is validated before the tool call (handled by `src/secure_mcp_gateway/guardrail.py`).
-    - Request is blocked if it violates any of the configured guardrails and the specific detector is configured to block.
+   - Request is blocked if it violates any of the configured guardrails and the specific detector is configured to block.
 
 4. Requests are forwarded to the Gateway Client (handled by `src/secure_mcp_gateway/client.py`).
 
@@ -153,8 +183,11 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 - If any of the below commands fail, please refer the respective documentation to install them properly
 
 ```bash
+
 # ------------------
+
 # Python
+
 # ------------------
 
 python --version
@@ -165,7 +198,9 @@ Python 3.13.3
 # If not, install python from their website and run the version check again
 
 # ------------------
+
 # pip
+
 # ------------------
 pip --version
 
@@ -176,12 +211,15 @@ pip 25.0.1 from C:\Users\PC\AppData\Local\Packages\PythonSoftwareFoundation.Pyth
 python -m ensurepip
 
 # ------------------
+
 # uv
+
 # ------------------
 
 uv --version
 
 # Or run with "python -m" if uv is not found directly
+
 # If this works, use "python -m" before all uv commands from now on
 python -m uv --version
 
@@ -190,6 +228,7 @@ uv 0.7.9 (13a86a23b 2025-05-30)
 
 # If not, try the following and run the version check again
 python -m pip install uv
+
 ```
 
 </details>
@@ -316,6 +355,7 @@ enkrypt_async_input_guardrails_enabled: False
 External Cache is not enabled. Using local cache only.
 Initializing Enkrypt Secure MCP Gateway CLI Module
 Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
+
 ```
 
 </details>
@@ -362,7 +402,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
           "config": {
             "command": "python",
             "args": [
-              "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/secure_mcp_gateway/test_mcps/echo_mcp.py"
+              "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/secure_mcp_gateway/bad_mcps/echo_mcp.py"
             ]
           },
           "tools": {},
@@ -416,6 +456,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
     }
   }
 }
+
 ```
 
 </details>
@@ -459,7 +500,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
           "config": {
             "command": "python",
             "args": [
-              "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\test_mcps\\echo_mcp.py"
+              "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\bad_mcps\\echo_mcp.py"
             ]
           },
           "tools": {},
@@ -513,6 +554,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
     }
   }
 }
+
 ```
 
 </details>
@@ -574,6 +616,7 @@ Successfully installed gateway for claude-desktop
 Path to gateway is incorrect. Modifying the path to gateway in claude_desktop_config.json file...
 Path to gateway modified in claude_desktop_config.json file
 Please restart Claude Desktop to use the gateway.
+
 ```
 
 </details>
@@ -729,6 +772,7 @@ Please restart Claude Desktop to use the gateway.
 git clone https://github.com/enkryptai/secure-mcp-gateway
 
 cd secure-mcp-gateway
+
 ```
 
 <br>
@@ -737,8 +781,11 @@ cd secure-mcp-gateway
 <br>
 
 ```bash
+
 # ------------------
+
 # Create a virtual environment
+
 # ------------------
 
 uv venv
@@ -749,7 +796,9 @@ Creating virtual environment at: .venv
 Activate with: .venv\Scripts\activate
 
 # ------------------
+
 # Activate the virtual environment
+
 # ------------------
 
 # For 🍎 Linux/macOS, run the following
@@ -759,26 +808,34 @@ source ./.venv/Scripts/activate
 .\.venv\Scripts\activate
 
 # After activating, you should see (enkrypt-secure-mcp-gateway) before the file path in the terminal
+
 # Example:
+
 # (enkrypt-secure-mcp-gateway) %USERPROFILE%\Documents\GitHub\EnkryptAI\secure-mcp-gateway>
 
 # ------------------
+
 # Install pip in the virtual environment
+
 # ------------------
 
 python -m ensurepip
 
 # ------------------
+
 # Install uv in the virtual environment
+
 # ------------------
 
 python -m pip install uv
+
 ```
 
 - Install Python dependencies:
 
 ```bash
 uv pip install -r requirements.txt
+
 ```
 
 - Verify mcp cli got installed successfully:
@@ -788,6 +845,7 @@ mcp version
 
 # Example output
 MCP version 1.9.2
+
 ```
 
 </details>
@@ -800,13 +858,14 @@ MCP version 1.9.2
 
 - This script creates the config file at `~/.enkrypt/enkrypt_mcp_config.json` on macOS and `%USERPROFILE%\.enkrypt\enkrypt_mcp_config.json` on Windows based on `src/secure_mcp_gateway/example_enkrypt_mcp_config.json` file
 
-- It replaces `UNIQUE_GATEWAY_KEY` and other `UUIDs` with auto generated values and also replaces `DUMMY_MCP_FILE_PATH` with the actual path to the test MCP file `test_mcps/echo_mcp.py`
+- It replaces `UNIQUE_GATEWAY_KEY` and other `UUIDs` with auto generated values and also replaces `DUMMY_MCP_FILE_PATH` with the actual path to the test MCP file `bad_mcps/echo_mcp.py`
 
 - It also installs the MCP client in Claude Desktop
 
 - *NOTE: Please restart Claude Desktop after running the setup script to see the Gateway running in Claude Desktop*
 
 ```bash
+
 # On 🍎 Linux/macOS run the below
 cd scripts
 chmod +x *.sh
@@ -817,6 +876,7 @@ cd scripts
 setup.bat
 
 # Now restart Claude Desktop to see the Gateway running
+
 ```
 
 <br>
@@ -831,7 +891,7 @@ Setting up Enkrypt Secure MCP Gateway enkrypt_mcp_config.json config file
         1 file(s) copied.
 Generated unique gateway key: WTZOpoU1mXJz8b_ZJQ42DuSXlQCSCtWOn3FX0jG8sO_FKYNJetjYEgSluvhtBN8_
 Generated unique uuid: 7920749a-228e-47fe-a6a9-cd2d64a2283b
-DUMMY_MCP_FILE_PATH: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\src\secure_mcp_gateway\test_mcps\echo_mcp.py
+DUMMY_MCP_FILE_PATH: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\src\secure_mcp_gateway\bad_mcps\echo_mcp.py
 -------------------------------
 Setup complete. Please check the enkrypt_mcp_config.json file in the ~\.enkrypt directory and update with your MCP server configs as needed.
 -------------------------------
@@ -907,6 +967,7 @@ External Cache is not enabled. Using local cache only.
 -------------------------------
 Installation complete. Check the claude_desktop_config.json file as per the readme instructions and restart Claude Desktop.
 -------------------------------
+
 ```
 
 </details>
@@ -921,7 +982,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
   - If you would like to use at a **Project level** place it inside your project. For details see [Cursor's docs](https://docs.cursor.com/context/model-context-protocol#configuration-locations)
 
-- You can also navigate to the file Via cursor's UI by clicking on `settings` gear icon on the top right  
+- You can also navigate to the file Via cursor's UI by clicking on `settings` gear icon on the top right
 
   ![cursor-settings-icon](./docs/images/cursor-settings-icon.png)
 
@@ -951,6 +1012,7 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
 ```bash
 docker build -t secure-mcp-gateway .
+
 ```
 
 <details>
@@ -989,7 +1051,8 @@ docker build -t secure-mcp-gateway .
  => => exporting attestation manifest sha256:bc85b5aaf4035e6f449d9b94567135a28a61c594fa2a507ca7fea889efbf2952                                                                          0.0s
  => => exporting manifest list sha256:7cd30cbf456ba3105d4bef7c28ea8402ec5476e4da3cd8c16b752f3214f8b3b1                                                                                 0.0s
  => => naming to docker.io/library/secure-mcp-gateway:latest                                                                                                                           0.0s
- => => unpacking to docker.io/library/secure-mcp-gateway:latest 
+ => => unpacking to docker.io/library/secure-mcp-gateway:latest
+
 ```
 
 </details>
@@ -999,6 +1062,7 @@ docker build -t secure-mcp-gateway .
 - This creates a config file in the `~/.enkrypt/docker/enkrypt_mcp_config.json` file on macOS/Linux and `%USERPROFILE%\.enkrypt\docker\enkrypt_mcp_config.json` file on Windows.
 
 ```bash
+
 # On 🍎 Linux/macOS run the below
 docker run --rm -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkrypt:/app/.enkrypt --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
 
@@ -1007,6 +1071,7 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -
 
 # If you are using 📟 Powershell, you can use the below command
 docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt -v ${env:USERPROFILE}\.enkrypt:/app/.enkrypt --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
+
 ```
 
 <details>
@@ -1047,7 +1112,7 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkryp
           "config": {
             "command": "python",
             "args": [
-              "/usr/local/lib/python3.11/site-packages/secure_mcp_gateway/test_mcps/echo_mcp.py"
+              "/usr/local/lib/python3.11/site-packages/secure_mcp_gateway/bad_mcps/echo_mcp.py"
             ]
           },
           "tools": {},
@@ -1101,6 +1166,7 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkryp
     }
   }
 }
+
 ```
 
 </details>
@@ -1112,6 +1178,7 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkryp
   - Windows: `%APPDATA%\Claude`
 
 ```bash
+
 # On 🍎 Linux/macOS run the below
 docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkrypt:/app/.enkrypt -v ~/Library/Application\ Support/Claude:/app/.claude --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
 
@@ -1120,6 +1187,7 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkryp
 
 # If you are using 📟 Powershell, you can use the below command
 docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt -v ${env:USERPROFILE}\.enkrypt:/app/.enkrypt -v ${env:APPDATA}\Claude:/app/.claude --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
+
 ```
 
 #### 4.3.4 Example Claude Desktop config file
@@ -1149,6 +1217,7 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enk
     }
   }
 }
+
 ```
 
 </details>
@@ -1160,6 +1229,7 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enk
   - Windows: `%USERPROFILE%\.cursor`
 
 ```bash
+
 # On 🍎 Linux/macOS run the below
 docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkrypt:/app/.enkrypt -v ~/Library/Application\ Support/Cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
 
@@ -1168,6 +1238,7 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkryp
 
 # If you are using 📟 Powershell, you can use the below command
 docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt -v ${env:USERPROFILE}\.enkrypt:/app/.enkrypt -v ${env:USERPROFILE}\.cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
+
 ```
 
 </details>
@@ -1181,12 +1252,17 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enk
 
 ```bash
 python gateway.py
+
 ```
 
 - Or run in k8s using our docker image `enkryptai/secure-mcp-gateway:vx.x.x`
-- Example: `enkryptai/secure-mcp-gateway:v2.1.0`
+
+- Example: `enkryptai/secure-mcp-gateway:v2.1.1`
+
 - Use the latest version from Docker Hub: <https://hub.docker.com/r/enkryptai/secure-mcp-gateway/tags>
+
 - You can either mount the config file locally or download the json file from a remote place like `S3` using an `initContainer` and mount the volume
+
 - See `docs/secure-mcp-gateway-manifest-example.yaml` for the complete manifest file reference
 
 #### 4.4.2 Modify your MCP Client config to use the Gateway
@@ -1200,9 +1276,13 @@ python gateway.py
   - Windows: `%USERPROFILE%\.cursor`
 
 - Replace the `ENKRYPT_GATEWAY_KEY` with the key you got from the `enkrypt_mcp_config.json` file
+
 - Replace the `http://0.0.0.0:8000/mcp/` with the `http(s)://<remote_server_ip>:<port>/mcp/`
+
 - If you are running this locally, you can use `http://0.0.0.0:8000/mcp/`
+
 - You can setup ingress to route the traffic to the MCP Gateway over `https`
+
 - Example: `https://mcp.enkryptai.com/mcp/`
 
 - **NOTE: Please make sure node and npm are installed on the client machine**
@@ -1234,6 +1314,7 @@ python gateway.py
     }
   }
 }
+
 ```
 
 </details>
@@ -1251,15 +1332,20 @@ This section explains how to set up and use OpenTelemetry (OTEL) with the Enkryp
 The observability stack includes:
 
 - OpenTelemetry Collector: Collects telemetry data (traces, metrics, logs)
+
 - Jaeger: Distributed tracing visualization
+
 - Loki: Log aggregation and querying
+
 - Prometheus: Metrics aggregation
+
 - Grafana: Unified visualization for metrics and logs
   - Traces are not visible in Grafana for some reason. Please use Jaeger for traces.
 
 ### 5.2 Prerequisites
 
 - Docker and Docker Compose installed
+
 - Gateway installed and running (follow [section 4](#4-gateway-setup))
 
 ### 5.3 Setup Steps
@@ -1486,7 +1572,7 @@ The observability stack includes:
 ### 6.4 Example prompts
 
 - `list all servers, get all tools available and echo test`
-  - This uses a test MCP server `echo_server` which is in `test_mcps/echo_mcp.py`
+  - This uses a test MCP server `echo_server` which is in `bad_mcps/echo_mcp.py`
 
 ![claude-mcp-chat-1](./docs/images/claude-mcp-chat-1.png)
 
@@ -1549,7 +1635,7 @@ The observability stack includes:
             "config": {
               "command": "python",
               "args": [
-                "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\secure_mcp_gateway\\test_mcps\\echo_mcp.py"
+                "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\secure_mcp_gateway\\bad_mcps\\echo_mcp.py"
               ]
             },
             "tools": {},
@@ -1620,7 +1706,7 @@ The observability stack includes:
     - *(Click `Run Tool` when Cursor asks you to)*
 
     - `list all servers, get all tools available and echo test`
-      - This uses a test MCP server `echo_server` which is in `test_mcps/echo_mcp.py`
+      - This uses a test MCP server `echo_server` which is in `bad_mcps/echo_mcp.py`
 
     ![cursor-mcp-chat](./docs/images/cursor-mcp-chat.png)
 
@@ -1928,6 +2014,246 @@ The observability stack includes:
 
 </details>
 
+## 8.1 (Optional) Connect to MCP Servers with OAuth
+
+<details>
+<summary><strong>🔐 Configure OAuth for Remote MCP Servers </strong></summary>
+
+Many MCP servers require OAuth authentication to access protected resources. The Secure MCP Gateway supports OAuth 2.0/2.1 with client credentials grant for seamless integration with OAuth-enabled servers.
+
+### Overview
+
+The Gateway handles OAuth token acquisition, caching, and automatic refresh so you don't have to manage tokens manually. Tokens are automatically injected into requests when connecting to remote MCP servers.
+
+For detailed OAuth configuration options, see [OAuth Configuration Guide](./docs/OAUTH_CONFIGURATION_GUIDE.md).
+
+### Basic OAuth Configuration
+
+To connect to an OAuth-enabled MCP server, add an `oauth_config` section to your server configuration:
+
+```json
+{
+  "server_name": "oauth-enabled-server",
+  "description": "Remote MCP Server with OAuth",
+  "config": {
+    "command": "npx",
+    "args": ["-y", "mcp-remote", "https://api.example.com/mcp", "--allow-http"]
+  },
+  "oauth_config": {
+    "enabled": true,
+    "is_remote": true,
+    "OAUTH_VERSION": "2.1",
+    "OAUTH_GRANT_TYPE": "client_credentials",
+    "OAUTH_CLIENT_ID": "your-client-id",
+    "OAUTH_CLIENT_SECRET": "your-client-secret",
+    "OAUTH_TOKEN_URL": "https://auth.example.com/oauth/token",
+    "OAUTH_AUDIENCE": "https://api.example.com"
+  },
+  "tools": {},
+  "enable_tool_guardrails": true,
+  "input_guardrails_policy": {
+    "enabled": false
+  },
+  "output_guardrails_policy": {
+    "enabled": false
+  }
+}
+```
+
+### Key OAuth Fields
+
+#### Core Configuration
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `enabled` | Yes | `false` | Enable OAuth for this server |
+| `is_remote` | Recommended | Auto-detected | Set to `true` for remote servers, `false` for local servers |
+| `OAUTH_VERSION` | No | `"2.1"` | OAuth version: `"2.0"` or `"2.1"` |
+| `OAUTH_GRANT_TYPE` | No | `"client_credentials"` | OAuth grant type (currently only client credentials supported) |
+| `OAUTH_CLIENT_ID` | Yes | - | Your OAuth client ID |
+| `OAUTH_CLIENT_SECRET` | Yes | - | Your OAuth client secret |
+| `OAUTH_TOKEN_URL` | Yes | - | Token endpoint URL (must be HTTPS for OAuth 2.1) |
+
+#### Optional OAuth Parameters
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `OAUTH_AUDIENCE` | No | `null` | Intended audience for the token (aud claim) |
+| `OAUTH_ORGANIZATION` | No | `null` | Organization ID (for multi-tenant OAuth providers) |
+| `OAUTH_SCOPE` | No | `null` | Space-separated scopes (e.g., "read write") |
+| `OAUTH_RESOURCE` | No | `null` | Resource indicator (RFC 8707) |
+| `OAUTH_TOKEN_EXPIRY_BUFFER` | No | `300` | Seconds before token expiry to trigger refresh (default: 5 minutes) |
+| `OAUTH_ADDITIONAL_PARAMS` | No | `{}` | Additional parameters to include in token requests (JSON object) |
+| `OAUTH_CUSTOM_HEADERS` | No | `{}` | Custom HTTP headers for token requests (JSON object) |
+
+#### Security & Authentication Settings
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `OAUTH_USE_BASIC_AUTH` | No | `true` | Use HTTP Basic Auth for client credentials (RFC 6749 §2.3.1) |
+| `OAUTH_ENFORCE_HTTPS` | No | `true` | Enforce HTTPS for OAuth 2.1 compliance (set `false` only for local testing) |
+| `OAUTH_TOKEN_IN_HEADER_ONLY` | No | `true` | Send token only in Authorization header (recommended) |
+| `OAUTH_VALIDATE_SCOPES` | No | `true` | Verify returned token contains requested scopes |
+
+#### Mutual TLS (mTLS) Configuration
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `OAUTH_USE_MTLS` | No | `false` | Enable mutual TLS (RFC 8705) for enhanced security |
+| `OAUTH_CLIENT_CERT_PATH` | Conditional | `null` | Path to client certificate file (required if mTLS enabled) |
+| `OAUTH_CLIENT_KEY_PATH` | Conditional | `null` | Path to client private key file (required if mTLS enabled) |
+| `OAUTH_CA_BUNDLE_PATH` | No | `null` | Path to CA bundle for server certificate verification |
+
+#### Token Revocation
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `OAUTH_REVOCATION_URL` | No | `null` | Token revocation endpoint URL (RFC 7009) |
+
+### Testing with Echo OAuth Server
+
+The Gateway includes a test echo server that demonstrates OAuth header injection. You can use it to verify OAuth is working correctly.
+
+#### Step 1: Start the Echo OAuth Server
+
+The echo OAuth server needs to run in HTTP mode to accept remote connections:
+
+**macOS/Linux:**
+
+```bash
+# Export the environment variable
+export MCP_HTTP_MODE=true
+
+# Start the server
+python src/secure_mcp_gateway/bad_mcps/echo_oauth_mcp.py
+```
+
+**Windows (PowerShell):**
+
+```powershell
+# Set the environment variable
+$env:MCP_HTTP_MODE = "true"
+
+# Start the server
+python src/secure_mcp_gateway/bad_mcps/echo_oauth_mcp.py
+```
+
+**Windows (Command Prompt):**
+
+```cmd
+# Set the environment variable
+set MCP_HTTP_MODE=true
+
+# Start the server
+python src/secure_mcp_gateway/bad_mcps/echo_oauth_mcp.py
+```
+
+The server will start on `http://localhost:8001/mcp/` and print OAuth-related headers whenever tools are called.
+
+#### Step 2: Add Echo OAuth Server to Gateway Config
+
+Add this configuration to your `enkrypt_mcp_config.json` in the `mcp_config` array:
+
+```json
+{
+  "server_name": "echo_oauth_server",
+  "description": "Echo Server with OAuth Testing",
+  "config": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "mcp-remote",
+      "http://localhost:8001/mcp/",
+      "--allow-http"
+    ]
+  },
+  "oauth_config": {
+    "enabled": true,
+    "is_remote": true,
+    "OAUTH_VERSION": "2.0",
+    "OAUTH_GRANT_TYPE": "client_credentials",
+    "OAUTH_CLIENT_ID": "test-client-id",
+    "OAUTH_CLIENT_SECRET": "test-client-secret",
+    "OAUTH_TOKEN_URL": "https://auth.example.com/oauth/token",
+    "OAUTH_ENFORCE_HTTPS": false
+  },
+  "tools": {},
+  "enable_tool_guardrails": false,
+  "input_guardrails_policy": {
+    "enabled": false
+  },
+  "output_guardrails_policy": {
+    "enabled": false
+  }
+}
+```
+
+**Note:** `OAUTH_ENFORCE_HTTPS: false` is set only for local testing. Always use HTTPS in production!
+
+#### Step 3: Test OAuth Token Injection
+
+1. Restart Claude Desktop (or your MCP client) to pick up the new server configuration
+
+2. Use the prompt: `list all servers and discover tools from echo_oauth_server`
+
+3. Call the echo tool: `call the echo tool from echo_oauth_server with message "test oauth"`
+
+4. Check the echo server terminal output - you should see OAuth headers being printed:
+
+```
+================================================================================
+🔐 OAuth HTTP Headers Check (Remote Mode)
+================================================================================
+  ✅ AUTHORIZATION: Bearer <token>...
+  ❌ X-OAUTH-TOKEN: Not set
+  ❌ X-ACCESS-TOKEN: Not set
+
+📋 All Request Headers:
+  authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+  content-type: application/json
+  user-agent: python-requests/2.31.0
+================================================================================
+```
+
+This confirms the OAuth token is being automatically acquired and injected into the Authorization header.
+
+### OAuth Token Flow
+
+1. **First Request**: Gateway acquires token from OAuth provider
+2. **Caching**: Token is cached with expiration tracking
+3. **Token Injection**:
+   - **Remote servers**: Token added as `Authorization: Bearer <token>` header via `mcp-remote --header` argument
+   - **Local servers**: Token available in environment variables (ENKRYPT_ACCESS_TOKEN, etc.)
+4. **Auto-refresh**: Token refreshed 5 minutes before expiry (configurable)
+
+### Advanced Features
+
+- **Mutual TLS (mTLS)**: Enhanced security with client certificates
+- **Token Revocation**: Programmatically revoke tokens (RFC 7009)
+- **Scope Validation**: Verify returned token has requested scopes
+- **Custom Headers**: Add custom HTTP headers to token requests
+- **Metrics**: Track token acquisition success/failure, cache hit ratio
+
+See the [OAuth Configuration Guide](./docs/OAUTH_CONFIGURATION_GUIDE.md) for complete documentation.
+
+### Troubleshooting
+
+**OAuth token request failed:**
+- Verify CLIENT_ID and CLIENT_SECRET are correct
+- Check TOKEN_URL is reachable
+- Ensure HTTPS is used (or set `OAUTH_ENFORCE_HTTPS: false` for testing)
+
+**Token not appearing in requests:**
+- Confirm `is_remote: true` for remote servers
+- Check server logs for OAuth acquisition messages
+- Enable debug logging: `"enkrypt_log_level": "DEBUG"`
+
+**Echo server not receiving headers:**
+- Ensure `MCP_HTTP_MODE=true` environment variable is set
+- Verify server is running on http://localhost:8001/mcp/
+
+</details>
+
 ## 9. (Optional) Protect GitHub MCP Server and Test Echo Server
 
 <details>
@@ -1945,6 +2271,7 @@ The observability stack includes:
 <br>
 
 ```text
+
 1. MCP-Specific Security Policies
 Scan all tool descriptions for hidden instructions/malicious patterns.
 
@@ -2011,6 +2338,7 @@ Restrict certain languages (e.g., shell scripts, assembly).
 Monitor API/system calls and network activity.
 
 Enforce strict context boundaries across repositories.
+
 ```
 
 </details>
@@ -2292,8 +2620,11 @@ Enforce strict context boundaries across repositories.
 ## 12. Deployment patterns
 
 1. [Local Gateway, Local Guardrails and Local MCP Server](#111-local-gateway-local-guardrails-and-local-mcp-server)
+
 2. [Local Gateway, Local MCP Server with Remote Guardrails](#112-local-gateway-local-mcp-server-with-remote-guardrails)
+
 3. [Local Gateway with Remote MCP Server and Remote Guardrails](#113-local-gateway-with-remote-mcp-server-and-remote-guardrails)
+
 4. [Remote Gateway, Remote MCP Server and Remote Guardrails](#114-remote-gateway-remote-mcp-server-and-remote-guardrails)
 
 ### 12.1 Local Gateway, Local Guardrails and Local MCP Server
@@ -2397,7 +2728,7 @@ Enforce strict context boundaries across repositories.
    # Restart the stack
    docker-compose down
    docker-compose up -d
-   
+
    # Check individual service logs
    docker logs <service-name>
    ```
@@ -2431,7 +2762,9 @@ This project's core functionality is licensed under the MIT License.
 <!-- In addition to the MIT License, the following additional terms apply:
 
 - You can freely use, modify, and distribute this software as part of your commercial product
+
 - You can use this as part of your commercial product if your product is not an MCP gateway or gateway-based service
+
 - You cannot sell this gateway as a standalone product -->
 
 For the full license text, see the `LICENSE.txt` file in this repository.

@@ -1,0 +1,137 @@
+<svg viewBox="0 0 1200 900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#333" />
+    </marker>
+    <marker id="arrowhead-red" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#c0392b" />
+    </marker>
+    <filter id="shadow">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  
+  <!-- Title -->
+  <text x="600" y="35" font-family="Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="#2c3e50">
+    Enkrypt Secure MCP Gateway Architecture
+  </text>
+  
+  <!-- Layer backgrounds -->
+  <rect x="50" y="80" width="1100" height="180" fill="#e8f4f8" stroke="#3498db" stroke-width="2" rx="5" filter="url(#shadow)"/>
+  <rect x="50" y="280" width="1100" height="240" fill="#fff4e6" stroke="#f39c12" stroke-width="2" rx="5" filter="url(#shadow)"/>
+  <rect x="50" y="540" width="1100" height="180" fill="#e8f5e9" stroke="#27ae60" stroke-width="2" rx="5" filter="url(#shadow)"/>
+  
+  <!-- Layer Labels -->
+  <text x="100" y="110" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#2980b9">CLIENT LAYER</text>
+  <text x="100" y="310" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#d68910">EAI LAYER</text>
+  <text x="100" y="570" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#229954">SERVER LAYER</text>
+  
+  <!-- Client Layer Components -->
+  <rect x="150" y="130" width="180" height="100" fill="#3498db" stroke="#2980b9" stroke-width="2" rx="5" filter="url(#shadow)"/>
+  <text x="240" y="170" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="white">User</text>
+  <text x="240" y="195" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="white">Initiates queries</text>
+  
+  <rect x="450" y="130" width="180" height="100" fill="#3498db" stroke="#2980b9" stroke-width="2" rx="5" filter="url(#shadow)"/>
+  <text x="540" y="170" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="white">MCP Client</text>
+  <text x="540" y="195" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="white">Interface layer</text>
+  
+  <rect x="820" y="130" width="180" height="100" fill="#3498db" stroke="#2980b9" stroke-width="2" rx="5" filter="url(#shadow)"/>
+  <text x="910" y="170" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="white">LLM</text>
+  <text x="910" y="190" font-family="Arial, sans-serif" font-size="11" text-anchor="middle" fill="white">Discovery Phase</text>
+  <text x="910" y="205" font-family="Arial, sans-serif" font-size="11" text-anchor="middle" fill="white">Execution Phase</text>
+  
+  <!-- EAI Layer Components -->
+  <rect x="300" y="340" width="250" height="150" fill="#f39c12" stroke="#d68910" stroke-width="2" rx="5" filter="url(#shadow)"/>
+  <text x="425" y="375" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="white">MCP Gateway</text>
+  <text x="425" y="400" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="white">• Routes requests</text>
+  <text x="425" y="420" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="white">• Enforces security</text>
+  <text x="425" y="440" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="white">• Validates I/O</text>
+  
+  <rect x="700" y="340" width="250" height="150" fill="#e74c3c" stroke="#c0392b" stroke-width="2" rx="5" filter="url(#shadow)"/>
+  <text x="825" y="375" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="white">EAI Guardrails</text>
+  <text x="825" y="400" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="white">Security validation:</text>
+  <text x="825" y="420" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="white">• Request safety</text>
+  <text x="825" y="440" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="white">• Response safety</text>
+  <text x="825" y="460" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="white">• Tool/server validation</text>
+  
+  <!-- Server Layer Components -->
+  <rect x="300" y="580" width="250" height="100" fill="#27ae60" stroke="#229954" stroke-width="2" rx="5" filter="url(#shadow)"/>
+  <text x="425" y="620" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="white">MCP Server</text>
+  <text x="425" y="645" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="white">Manages tool execution</text>
+  
+  <rect x="700" y="580" width="250" height="100" fill="#27ae60" stroke="#229954" stroke-width="2" rx="5" filter="url(#shadow)"/>
+  <text x="825" y="620" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="white">Tools</text>
+  <text x="825" y="645" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="white">Execute operations</text>
+  
+  <!-- Flow arrows -->
+  <!-- User to Client (forward) -->
+  <line x1="330" y1="170" x2="450" y2="170" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="390" y="160" font-family="Arial, sans-serif" font-size="11" fill="#2c3e50">Query</text>
+  
+  <!-- Client to User (return) -->
+  <line x1="450" y1="190" x2="330" y2="190" stroke="#16a085" stroke-width="2" marker-end="url(#arrowhead)" stroke-dasharray="3,3"/>
+  <text x="390" y="205" font-family="Arial, sans-serif" font-size="11" fill="#16a085">Response</text>
+  
+  <!-- Client to LLM (forward) -->
+  <line x1="630" y1="170" x2="820" y2="170" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="725" y="160" font-family="Arial, sans-serif" font-size="11" fill="#2c3e50">Request</text>
+  
+  <!-- LLM to Client (return) -->
+  <line x1="820" y1="190" x2="630" y2="190" stroke="#16a085" stroke-width="2" marker-end="url(#arrowhead)" stroke-dasharray="3,3"/>
+  <text x="725" y="205" font-family="Arial, sans-serif" font-size="11" fill="#16a085">Result</text>
+  
+  <!-- LLM to Gateway (forward) -->
+  <line x1="890" y1="230" x2="530" y2="340" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="740" y="270" font-family="Arial, sans-serif" font-size="11" fill="#2c3e50">Discovery/Execute</text>
+  
+  <!-- Gateway to LLM (return) -->
+  <line x1="500" y1="340" x2="850" y2="230" stroke="#16a085" stroke-width="2" marker-end="url(#arrowhead)" stroke-dasharray="3,3"/>
+  <text x="710" y="300" font-family="Arial, sans-serif" font-size="11" fill="#16a085">Response</text>
+  
+  <!-- Gateway to Guardrails (validation) -->
+  <line x1="550" y1="390" x2="700" y2="390" stroke="#c0392b" stroke-width="2" marker-end="url(#arrowhead-red)" stroke-dasharray="5,5"/>
+  <text x="625" y="380" font-family="Arial, sans-serif" font-size="11" fill="#c0392b">Validate</text>
+  
+  <!-- Guardrails to Gateway (validation result) -->
+  <line x1="700" y1="450" x2="550" y2="450" stroke="#c0392b" stroke-width="2" marker-end="url(#arrowhead-red)" stroke-dasharray="5,5"/>
+  <text x="625" y="443" font-family="Arial, sans-serif" font-size="11" fill="#27ae60" font-weight="bold">Safe ✓</text>
+  <text x="625" y="470" font-family="Arial, sans-serif" font-size="11" fill="#c0392b" font-weight="bold">or Blocked ✗</text>
+  
+  <!-- Gateway to Server (forward) -->
+  <line x1="410" y1="490" x2="410" y2="580" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="390" y="540" font-family="Arial, sans-serif" font-size="11" fill="#2c3e50">Tool call</text>
+  
+  <!-- Server to Gateway (return) -->
+  <line x1="440" y1="580" x2="440" y2="490" stroke="#16a085" stroke-width="2" marker-end="url(#arrowhead)" stroke-dasharray="3,3"/>
+  <text x="460" y="540" font-family="Arial, sans-serif" font-size="11" fill="#16a085">Result</text>
+  
+  <!-- Server to Tools (forward) -->
+  <line x1="550" y1="620" x2="700" y2="620" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="625" y="610" font-family="Arial, sans-serif" font-size="11" fill="#2c3e50">Execute</text>
+  
+  <!-- Tools to Server (return) -->
+  <line x1="700" y1="640" x2="550" y2="640" stroke="#16a085" stroke-width="2" marker-end="url(#arrowhead)" stroke-dasharray="3,3"/>
+  <text x="625" y="655" font-family="Arial, sans-serif" font-size="11" fill="#16a085">Output</text>
+  
+  <!-- Legend -->
+  <rect x="50" y="760" width="350" height="120" fill="white" stroke="#95a5a6" stroke-width="1" rx="3"/>
+  <text x="60" y="780" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#2c3e50">Legend:</text>
+  
+  <line x1="70" y1="800" x2="120" y2="800" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="130" y="805" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">Data flow</text>
+  
+  <line x1="70" y1="825" x2="120" y2="825" stroke="#c0392b" stroke-width="2" marker-end="url(#arrowhead-red)" stroke-dasharray="5,5"/>
+  <text x="130" y="830" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">Validation check</text>
+  
+  <line x1="70" y1="850" x2="120" y2="850" stroke="#16a085" stroke-width="2" marker-end="url(#arrowhead)" stroke-dasharray="3,3"/>
+  <text x="130" y="855" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">Return path</text>
+  
+  <!-- Key Features box -->
+  <rect x="450" y="760" width="700" height="120" fill="white" stroke="#95a5a6" stroke-width="1" rx="3"/>
+  <text x="460" y="780" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#2c3e50">Key Features:</text>
+  
+  <text x="470" y="805" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">• <tspan font-weight="bold">Discovery Phase:</tspan> LLM discovers available servers and tools via Gateway</text>
+  <text x="470" y="825" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">• <tspan font-weight="bold">Execution Phase:</tspan> Tool execution with multi-layer validation (request + response)</text>
+  <text x="470" y="845" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">• <tspan font-weight="bold">Security:</tspan> EAI Guardrails validate all requests and responses for safety</text>
+  <text x="470" y="865" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">• <tspan font-weight="bold">Flexibility:</tspan> LLM can respond directly or route through tools as needed</text>
+</svg>
