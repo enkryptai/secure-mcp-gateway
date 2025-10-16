@@ -702,6 +702,11 @@ class SecureToolExecutionService:
                     ),
                 )
 
+                # Test debug log
+                logger.debug(
+                    f"[secure_call_tools] Call {i}: Starting tool execution for {tool_name}"
+                )
+
                 # Tool validation
                 validation_result = self._validate_tool(
                     tool_name, server_config_tools, tool_span
@@ -742,6 +747,9 @@ class SecureToolExecutionService:
                     input_guardrail_response = result.get(
                         "input_guardrail_response", {}
                     )
+                    logger.debug(
+                        f"[secure_call_tools] Call {i}: Input Guardrails Response: {input_guardrail_response}"
+                    )
                 else:
                     result = await self._execute_without_input_guardrails(
                         ctx,
@@ -754,6 +762,8 @@ class SecureToolExecutionService:
                         tool_span,
                         logger,
                     )
+                    # Initialize empty input guardrail response for debug logging
+                    input_guardrail_response = {}
 
                 if result.get("status") in ["blocked_input", "error"]:
                     return result
@@ -790,6 +800,35 @@ class SecureToolExecutionService:
                         output_hallucination_response = output_result.get(
                             "output_hallucination_response", {}
                         )
+                    else:
+                        # Initialize empty responses if no output guardrails
+                        output_guardrail_response = {}
+                        output_relevancy_response = {}
+                        output_adherence_response = {}
+                        output_hallucination_response = {}
+                else:
+                    # Initialize empty responses if no text result
+                    output_guardrail_response = {}
+                    output_relevancy_response = {}
+                    output_adherence_response = {}
+                    output_hallucination_response = {}
+
+                # Debug logging for guardrails responses
+                logger.debug(
+                    f"[secure_call_tools] Call {i}: Input Guardrails Response: {input_guardrail_response}"
+                )
+                logger.debug(
+                    f"[secure_call_tools] Call {i}: Output Guardrails Response: {output_guardrail_response}"
+                )
+                logger.debug(
+                    f"[secure_call_tools] Call {i}: Output Relevancy Response: {output_relevancy_response}"
+                )
+                logger.debug(
+                    f"[secure_call_tools] Call {i}: Output Adherence Response: {output_adherence_response}"
+                )
+                logger.debug(
+                    f"[secure_call_tools] Call {i}: Output Hallucination Response: {output_hallucination_response}"
+                )
 
                 # Build successful result
                 return self._build_successful_result(

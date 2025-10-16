@@ -7,10 +7,10 @@ from importlib.resources import files
 from secure_mcp_gateway.version import __version__
 
 # TODO: Fix error and use stdout
-print(
-    f"Initializing Enkrypt Secure MCP Gateway Common Constants Module v{__version__}",
-    file=sys.stderr,
-)
+# print(
+#     f"Initializing Enkrypt Secure MCP Gateway Common Constants Module v{__version__}",
+#     file=sys.stderr,
+# )
 
 CONFIG_NAME = "enkrypt_mcp_config.json"
 DOCKER_CONFIG_PATH = f"/app/.enkrypt/docker/{CONFIG_NAME}"

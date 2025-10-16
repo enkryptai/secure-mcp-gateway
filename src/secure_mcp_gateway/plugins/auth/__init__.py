@@ -63,7 +63,7 @@ from .config_manager import (
 )
 
 # Providers
-from .enkrypt_provider import EnkryptAuthProvider
+from .local_apikey_provider import LocalApiKeyProvider
 
 __all__ = [
     # Enums
@@ -86,7 +86,7 @@ __all__ = [
     "get_auth_config_manager",
     "initialize_auth_system",
     # Providers
-    "EnkryptAuthProvider",
+    "LocalApiKeyProvider",
     # Utilities
     "mask_sensitive_value",
 ]

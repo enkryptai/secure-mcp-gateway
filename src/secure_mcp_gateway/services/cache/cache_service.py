@@ -28,7 +28,7 @@ class CacheService:
 
     def __init__(self):
         """Initialize the cache service."""
-        logger.info("Initializing Enkrypt Secure MCP Gateway Cache Service")
+        # logger.info("Initializing Enkrypt Secure MCP Gateway Cache Service")
 
         # Get configuration
         self.common_config = get_common_config()

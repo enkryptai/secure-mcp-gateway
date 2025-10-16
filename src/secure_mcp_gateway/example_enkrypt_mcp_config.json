@@ -43,6 +43,7 @@
     "telemetry": {
       "provider": "opentelemetry",
       "config": {
+        "enabled": true,
         "url": "http://localhost:4317",
         "insecure": true
       }

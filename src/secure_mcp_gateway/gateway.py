@@ -12,16 +12,16 @@ import sys
 # So, we can use this debug system info to identify that python interpreter to install the missing modules using that specific interpreter
 # So, debugging this in gateway module as this info can be used for fixing such issues in other modules
 # TODO: Fix error and use stdout
-print("Initializing Enkrypt Secure MCP Gateway Module", file=sys.stderr)
-print("--------------------------------", file=sys.stderr)
-print("SYSTEM INFO: ", file=sys.stderr)
-print(f"Using Python interpreter: {sys.executable}", file=sys.stderr)
-print(f"Python version: {sys.version}", file=sys.stderr)
-print(f"Current working directory: {os.getcwd()}", file=sys.stderr)
-print(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}", file=sys.stderr)
+# print("Initializing Enkrypt Secure MCP Gateway Module", file=sys.stderr)
+# print("--------------------------------", file=sys.stderr)
+# print("SYSTEM INFO: ", file=sys.stderr)
+# print(f"Using Python interpreter: {sys.executable}", file=sys.stderr)
+# print(f"Python version: {sys.version}", file=sys.stderr)
+# print(f"Current working directory: {os.getcwd()}", file=sys.stderr)
+# print(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}", file=sys.stderr)
 # print(f"ENKRYPT_ENVIRONMENT: {ENKRYPT_ENVIRONMENT}", file=sys.stderr)
 # print(f"IS_LOCAL_ENVIRONMENT: {IS_LOCAL_ENVIRONMENT}", file=sys.stderr)
-print("--------------------------------", file=sys.stderr)
+# print("--------------------------------", file=sys.stderr)
 
 # Error: Can't find secure_mcp_gateway
 # import importlib
@@ -47,11 +47,11 @@ root_dir = os.path.abspath(os.path.join(src_dir, ".."))
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
-print("--------------------------------", file=sys.stderr)
-print("PATHS: ", file=sys.stderr)
-print(f"src_dir: {src_dir}", file=sys.stderr)
-print(f"root_dir: {root_dir}", file=sys.stderr)
-print("--------------------------------", file=sys.stderr)
+# print("--------------------------------", file=sys.stderr)
+# print("PATHS: ", file=sys.stderr)
+# print(f"src_dir: {src_dir}", file=sys.stderr)
+# print(f"root_dir: {root_dir}", file=sys.stderr)
+# print("--------------------------------", file=sys.stderr)
 
 # Try to install the package if not found to cater for clients like Claude Desktop who use a separate python interpreter
 try:

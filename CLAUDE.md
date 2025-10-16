@@ -1,6 +1,6 @@
 # Secure MCP Gateway - Complete Project Analysis
 
-**Version**: 2.1.1
+**Version**: 2.1.2
 **Last Updated**: 2025-10-15
 **Project Type**: Python Security Middleware for Model Context Protocol (MCP)
 
@@ -27,7 +27,7 @@
 secure-mcp-gateway/
 ├── src/secure_mcp_gateway/
 │   ├── __init__.py                    # Package initialization
-│   ├── version.py                     # Version: "2.1.1"
+│   ├── version.py                     # Version: "2.1.2"
 │   ├── consts.py                      # Constants and defaults
 │   ├── utils.py                       # Utilities, lazy logger, masking
 │   ├── dependencies.py                # Package dependencies list

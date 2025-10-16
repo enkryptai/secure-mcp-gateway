@@ -62,7 +62,7 @@ from secure_mcp_gateway.utils import (
 )
 from secure_mcp_gateway.version import __version__
 
-logger.info(f"Initializing Enkrypt Secure MCP Gateway REST API Server v{__version__}")
+# logger.info(f"Initializing Enkrypt Secure MCP Gateway REST API Server v{__version__}")
 
 # Configuration
 is_docker_running = is_docker()
