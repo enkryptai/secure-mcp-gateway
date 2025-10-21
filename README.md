@@ -2019,17 +2019,31 @@ The observability stack includes:
 <details>
 <summary><strong>🔐 Configure OAuth for Remote MCP Servers </strong></summary>
 
-Many MCP servers require OAuth authentication to access protected resources. The Secure MCP Gateway supports OAuth 2.0/2.1 with client credentials grant for seamless integration with OAuth-enabled servers.
+Many MCP servers require OAuth authentication to access protected resources. The Secure MCP Gateway supports OAuth 2.0/2.1 with both **Client Credentials** and **Authorization Code + PKCE** flows for seamless integration with OAuth-enabled servers.
 
 ### Overview
 
 The Gateway handles OAuth token acquisition, caching, and automatic refresh so you don't have to manage tokens manually. Tokens are automatically injected into requests when connecting to remote MCP servers.
 
-For detailed OAuth configuration options, see [OAuth Configuration Guide](./docs/OAUTH_CONFIGURATION_GUIDE.md).
+**Supported Grant Types:**
 
-### Basic OAuth Configuration
+- **Client Credentials** - For server-to-server authentication (machine-to-machine)
+- **Authorization Code + PKCE** - For user authorization flows with enhanced security
 
-To connect to an OAuth-enabled MCP server, add an `oauth_config` section to your server configuration:
+**Key Features:**
+
+- Automatic browser authorization for Authorization Code flow
+- Local and remote callback URL support
+- Automatic token refresh before expiration
+- Secure token caching
+- PKCE (S256) for enhanced security
+- State parameter for CSRF protection
+
+### OAuth Configuration Examples
+
+#### Client Credentials Flow (Server-to-Server)
+
+For machine-to-machine authentication, use the Client Credentials flow:
 
 ```json
 {
@@ -2069,10 +2083,12 @@ To connect to an OAuth-enabled MCP server, add an `oauth_config` section to your
 | `enabled` | Yes | `false` | Enable OAuth for this server |
 | `is_remote` | Recommended | Auto-detected | Set to `true` for remote servers, `false` for local servers |
 | `OAUTH_VERSION` | No | `"2.1"` | OAuth version: `"2.0"` or `"2.1"` |
-| `OAUTH_GRANT_TYPE` | No | `"client_credentials"` | OAuth grant type (currently only client credentials supported) |
+| `OAUTH_GRANT_TYPE` | No | `"client_credentials"` | Grant type: `"client_credentials"` or `"authorization_code"` |
 | `OAUTH_CLIENT_ID` | Yes | - | Your OAuth client ID |
 | `OAUTH_CLIENT_SECRET` | Yes | - | Your OAuth client secret |
 | `OAUTH_TOKEN_URL` | Yes | - | Token endpoint URL (must be HTTPS for OAuth 2.1) |
+| `OAUTH_AUTHORIZATION_URL` | Conditional | - | Authorization endpoint (required for `authorization_code` grant) |
+| `OAUTH_REDIRECT_URI` | Conditional | - | Callback URL (required for `authorization_code` grant) |
 
 #### Optional OAuth Parameters
 
@@ -2083,6 +2099,8 @@ To connect to an OAuth-enabled MCP server, add an `oauth_config` section to your
 | `OAUTH_SCOPE` | No | `null` | Space-separated scopes (e.g., "read write") |
 | `OAUTH_RESOURCE` | No | `null` | Resource indicator (RFC 8707) |
 | `OAUTH_TOKEN_EXPIRY_BUFFER` | No | `300` | Seconds before token expiry to trigger refresh (default: 5 minutes) |
+| `OAUTH_USE_PKCE` | No | `false` | Enable PKCE for Authorization Code flow (recommended) |
+| `OAUTH_CODE_CHALLENGE_METHOD` | No | `"S256"` | PKCE challenge method: `"S256"` (recommended) or `"plain"` |
 | `OAUTH_ADDITIONAL_PARAMS` | No | `{}` | Additional parameters to include in token requests (JSON object) |
 | `OAUTH_CUSTOM_HEADERS` | No | `{}` | Custom HTTP headers for token requests (JSON object) |
 
@@ -2109,6 +2127,100 @@ To connect to an OAuth-enabled MCP server, add an `oauth_config` section to your
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `OAUTH_REVOCATION_URL` | No | `null` | Token revocation endpoint URL (RFC 7009) |
+
+### Authorization Code + PKCE Flow
+
+For user authorization with enhanced security, use the Authorization Code flow with PKCE:
+
+```json
+{
+  "server_name": "user-auth-server",
+  "description": "MCP Server requiring user authorization",
+  "config": {
+    "command": "npx",
+    "args": ["-y", "mcp-remote", "https://api.example.com/mcp"]
+  },
+  "oauth_config": {
+    "enabled": true,
+    "is_remote": true,
+    "OAUTH_VERSION": "2.1",
+    "OAUTH_GRANT_TYPE": "authorization_code",
+    "OAUTH_CLIENT_ID": "your-client-id",
+    "OAUTH_CLIENT_SECRET": "your-client-secret",
+    "OAUTH_AUTHORIZATION_URL": "https://auth.example.com/authorize",
+    "OAUTH_TOKEN_URL": "https://auth.example.com/oauth/token",
+    "OAUTH_REDIRECT_URI": "http://localhost:8080/callback",
+    "OAUTH_SCOPE": "openid profile email",
+    "OAUTH_USE_PKCE": true,
+    "OAUTH_CODE_CHALLENGE_METHOD": "S256"
+  },
+  "tools": {},
+  "enable_tool_guardrails": true
+}
+```
+
+#### Automatic Browser Authorization
+
+When using Authorization Code flow, the gateway automatically:
+
+1. Opens your browser to the authorization URL
+2. Handles the callback (localhost or remote)
+3. Exchanges the authorization code for tokens
+4. Caches tokens for future use
+
+**Flow Options:**
+
+**Localhost Callback (Automatic):**
+
+```json
+"OAUTH_REDIRECT_URI": "http://localhost:8080/callback"
+```
+
+- Gateway starts local server on port 8080
+- Automatically captures authorization code
+- No manual intervention needed
+
+**Remote Callback (Manual Code Entry):**
+
+```json
+"OAUTH_REDIRECT_URI": "https://oauth.yourdomain.com/callback"
+```
+
+- Gateway opens browser for authorization
+- User completes authorization on remote page
+- User copies code from callback page
+- User pastes code into terminal
+- Gateway exchanges code for token
+
+#### Setting Up Remote Callback
+
+If you want to use a remote callback URL (professional, branded experience):
+
+1. **Host the callback page:**
+
+   ```bash
+   # Quick start with Python
+   python host_oauth_callback.py
+   
+   # Or with Docker
+   docker-compose -f docker-compose.oauth-callback.yml up -d
+   
+   # Or deploy oauth_callback.html to any static hosting
+   # (GitHub Pages, Vercel, Netlify, AWS S3, etc.)
+   ```
+
+2. **Update your config:**
+
+   ```json
+   "OAUTH_REDIRECT_URI": "https://your-domain.com/callback"
+   ```
+
+3. **Register with OAuth provider:**
+   - Add callback URL to your OAuth app settings
+   - Auth0: "Allowed Callback URLs"
+   - Okta: "Sign-in redirect URIs"
+   - Azure AD: "Redirect URIs"
+   - Google: "Authorized redirect URIs"
 
 ### Testing with Echo OAuth Server
 
@@ -2217,38 +2329,70 @@ Add this configuration to your `enkrypt_mcp_config.json` in the `mcp_config` arr
 
 This confirms the OAuth token is being automatically acquired and injected into the Authorization header.
 
-### OAuth Token Flow
+### OAuth Token Flows
+
+#### Client Credentials Flow
 
 1. **First Request**: Gateway acquires token from OAuth provider
 2. **Caching**: Token is cached with expiration tracking
 3. **Token Injection**:
-   - **Remote servers**: Token added as `Authorization: Bearer <token>` header via `mcp-remote --header` argument
-   - **Local servers**: Token available in environment variables (ENKRYPT_ACCESS_TOKEN, etc.)
+   - **Remote servers**: Token added as `Authorization: Bearer <token>` header
+   - **Local servers**: Token available in environment variables
 4. **Auto-refresh**: Token refreshed 5 minutes before expiry (configurable)
+
+#### Authorization Code + PKCE Flow
+
+1. **Initial Setup**: Gateway generates PKCE code verifier and challenge
+2. **Browser Authorization**: 
+   - Gateway opens browser to authorization URL
+   - User logs in and authorizes the application
+3. **Callback Handling**:
+   - **Localhost**: Gateway automatically captures code from callback
+   - **Remote**: User copies code and pastes into terminal
+4. **Token Exchange**: Gateway exchanges authorization code for tokens
+5. **Caching & Refresh**: Tokens cached and automatically refreshed before expiry
 
 ### Advanced Features
 
-- **Mutual TLS (mTLS)**: Enhanced security with client certificates
+- **Authorization Code + PKCE**: User authorization with enhanced security (S256)
+- **Automatic Browser Flow**: Opens browser and handles callback automatically
+- **Remote Callback Support**: Host callback page on your domain
+- **Mutual TLS (mTLS)**: Enhanced security with client certificates (RFC 8705)
 - **Token Revocation**: Programmatically revoke tokens (RFC 7009)
 - **Scope Validation**: Verify returned token has requested scopes
 - **Custom Headers**: Add custom HTTP headers to token requests
+- **State Parameter**: CSRF protection for Authorization Code flow
 - **Metrics**: Track token acquisition success/failure, cache hit ratio
-
-See the [OAuth Configuration Guide](./docs/OAUTH_CONFIGURATION_GUIDE.md) for complete documentation.
 
 ### Troubleshooting
 
 **OAuth token request failed:**
+
 - Verify CLIENT_ID and CLIENT_SECRET are correct
 - Check TOKEN_URL is reachable
 - Ensure HTTPS is used (or set `OAUTH_ENFORCE_HTTPS: false` for testing)
 
 **Token not appearing in requests:**
+
 - Confirm `is_remote: true` for remote servers
 - Check server logs for OAuth acquisition messages
 - Enable debug logging: `"enkrypt_log_level": "DEBUG"`
 
+**Authorization Code flow issues:**
+
+- Verify AUTHORIZATION_URL and REDIRECT_URI are correct
+- Ensure callback URL is registered with OAuth provider
+- Check that browser opens automatically (or use manual URL)
+- For remote callbacks, verify callback page is accessible
+
+**Callback not working:**
+
+- Localhost: Gateway automatically tries next available port if 8080 is in use (up to 10 ports)
+- Remote: Verify callback URL is accessible and matches OAuth provider settings
+- Check for firewall blocking the callback
+
 **Echo server not receiving headers:**
+
 - Ensure `MCP_HTTP_MODE=true` environment variable is set
 - Verify server is running on http://localhost:8001/mcp/
 

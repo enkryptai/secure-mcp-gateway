@@ -57,6 +57,14 @@ class OAuthConfig:
     resource: Optional[str] = None  # Resource Indicator (RFC 8707)
     use_pkce: bool = False  # PKCE for Authorization Code flow
 
+    # Authorization Code Grant specific
+    authorization_url: Optional[str] = None  # Authorization endpoint
+    redirect_uri: Optional[str] = None  # Callback URL
+    state: Optional[str] = None  # CSRF protection state
+    code_verifier: Optional[str] = None  # PKCE code verifier (generated)
+    code_challenge: Optional[str] = None  # PKCE code challenge (generated)
+    code_challenge_method: str = "S256"  # S256 (SHA-256) or plain
+
     # Token management
     token_expiry_buffer: int = 300  # Refresh token 5 minutes before expiry
 
@@ -118,6 +126,14 @@ class OAuthConfig:
             scope=data.get("OAUTH_SCOPE"),
             resource=data.get("OAUTH_RESOURCE"),
             use_pkce=data.get("OAUTH_USE_PKCE", False),
+            # Authorization Code Grant fields
+            authorization_url=data.get("OAUTH_AUTHORIZATION_URL"),
+            redirect_uri=data.get("OAUTH_REDIRECT_URI"),
+            state=data.get("OAUTH_STATE"),
+            code_verifier=data.get("OAUTH_CODE_VERIFIER"),
+            code_challenge=data.get("OAUTH_CODE_CHALLENGE"),
+            code_challenge_method=data.get("OAUTH_CODE_CHALLENGE_METHOD", "S256"),
+            # Token management
             token_expiry_buffer=data.get("OAUTH_TOKEN_EXPIRY_BUFFER", 300),
             use_basic_auth=data.get("OAUTH_USE_BASIC_AUTH", True),
             enforce_https=data.get(
@@ -159,6 +175,14 @@ class OAuthConfig:
             "OAUTH_SCOPE": self.scope,
             "OAUTH_RESOURCE": self.resource,
             "OAUTH_USE_PKCE": self.use_pkce,
+            "OAUTH_AUTHORIZATION_URL": self.authorization_url,
+            "OAUTH_REDIRECT_URI": self.redirect_uri,
+            "OAUTH_STATE": self.state[:10] + "..." if self.state else None,
+            "OAUTH_CODE_VERIFIER": "****" if self.code_verifier else None,
+            "OAUTH_CODE_CHALLENGE": self.code_challenge[:10] + "..."
+            if self.code_challenge
+            else None,
+            "OAUTH_CODE_CHALLENGE_METHOD": self.code_challenge_method,
             "OAUTH_TOKEN_EXPIRY_BUFFER": self.token_expiry_buffer,
             "OAUTH_USE_BASIC_AUTH": self.use_basic_auth,
             "OAUTH_ENFORCE_HTTPS": self.enforce_https,
@@ -199,6 +223,42 @@ class OAuthConfig:
                 return (
                     False,
                     "OAUTH_CLIENT_SECRET is required and cannot be empty for client_credentials grant",
+                )
+        elif self.grant_type == OAuthGrantType.AUTHORIZATION_CODE:
+            if not self.client_id or not self.client_id.strip():
+                return (
+                    False,
+                    "OAUTH_CLIENT_ID is required and cannot be empty for authorization_code grant",
+                )
+            if not self.authorization_url or not self.authorization_url.strip():
+                return (
+                    False,
+                    "OAUTH_AUTHORIZATION_URL is required and cannot be empty for authorization_code grant",
+                )
+            if not self.redirect_uri or not self.redirect_uri.strip():
+                return (
+                    False,
+                    "OAUTH_REDIRECT_URI is required and cannot be empty for authorization_code grant",
+                )
+            # OAuth 2.1 requires PKCE for authorization code flow
+            if self.version == OAuthVersion.OAUTH_2_1 and not self.use_pkce:
+                return (
+                    False,
+                    "OAuth 2.1 requires PKCE for authorization_code grant (set OAUTH_USE_PKCE: true)",
+                )
+            # Validate authorization URL format
+            if not self.authorization_url.startswith(("http://", "https://")):
+                return (
+                    False,
+                    "OAUTH_AUTHORIZATION_URL must start with http:// or https://",
+                )
+            # Validate redirect URI format
+            if not self.redirect_uri.startswith(
+                ("http://", "https://", "http://localhost", "http://127.0.0.1")
+            ):
+                return (
+                    False,
+                    "OAUTH_REDIRECT_URI must be a valid URL (http:// or https://)",
                 )
 
         # OAuth 2.1 HTTPS enforcement

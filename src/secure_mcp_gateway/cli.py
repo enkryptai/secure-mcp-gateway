@@ -48,7 +48,7 @@ else:
     HOST_ENKRYPT_HOME = None
 
 GATEWAY_PY_PATH = os.path.join(BASE_DIR, "gateway.py")
-ECHO_SERVER_PATH = os.path.join(BASE_DIR, "bad_mcps", "echo_mcp.py")
+ECHO_SERVER_PATH = os.path.join(BASE_DIR, "bad_mcps", "echo_oauth_mcp.py")
 PICKED_CONFIG_PATH = DOCKER_CONFIG_PATH if is_docker_running else CONFIG_PATH
 print(f"INFO: GATEWAY_PY_PATH:  {GATEWAY_PY_PATH}")
 print(f"INFO: ECHO_SERVER_PATH:  {ECHO_SERVER_PATH}")

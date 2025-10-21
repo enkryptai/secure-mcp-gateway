@@ -19,6 +19,8 @@ async def prepare_oauth_for_server(
     Extracts oauth_config from server entry, obtains access token,
     and prepares environment variables and/or command args for the server.
 
+    Supports both Client Credentials and Authorization Code flows.
+
     Args:
         server_name: Name of the server (required)
         server_entry: Server configuration entry (required)
@@ -53,17 +55,79 @@ async def prepare_oauth_for_server(
 
     logger.info(
         f"[OAuth Integration] Obtaining OAuth token for {server_name} "
-        f"(OAuth {oauth_config.version.value})"
+        f"(OAuth {oauth_config.version.value}, grant_type: {oauth_config.grant_type.value})"
     )
 
     # Obtain access token
     oauth_service = get_oauth_service()
-    access_token, error_msg = await oauth_service.get_access_token(
-        server_name=server_name,
-        oauth_config=oauth_config,
-        config_id=config_id,
-        project_id=project_id,
-    )
+
+    # For authorization_code flow, check cache first
+    # If no token exists, automatically trigger browser authorization
+    if oauth_config.grant_type.value == "authorization_code":
+        # Try to get cached token
+        from secure_mcp_gateway.services.oauth.token_manager import get_token_manager
+
+        token_manager = get_token_manager()
+        cached_token = await token_manager.get_token(
+            server_name, oauth_config, config_id, project_id
+        )
+
+        if cached_token:
+            logger.info(f"[OAuth Integration] Using cached token for {server_name}")
+            access_token = cached_token.access_token
+            error_msg = None
+        else:
+            # No token - trigger automatic browser authorization
+            logger.warning(
+                f"[OAuth Integration] No token found for {server_name} - starting browser authorization"
+            )
+
+            try:
+                # Import auto-detection helper (handles both local and remote callbacks)
+                from secure_mcp_gateway.services.oauth.remote_callback import (
+                    authorize_with_auto_detection,
+                )
+
+                logger.info(
+                    f"[OAuth Integration] Triggering automatic browser authorization for {server_name}"
+                )
+
+                # Trigger browser authorization with auto-detection
+                # (automatically detects if callback is localhost or remote)
+                token, auth_error = await authorize_with_auto_detection(
+                    server_name=server_name,
+                    oauth_config=oauth_config,
+                    config_id=config_id,
+                    project_id=project_id,
+                    open_browser=True,  # Automatically open browser
+                    callback_port=8080,  # Only used for localhost callbacks
+                    timeout=300,  # 5 minutes
+                )
+
+                if auth_error or not token:
+                    error_msg = f"Browser authorization failed: {auth_error}"
+                    logger.error(f"[OAuth Integration] {error_msg}")
+                    return None, error_msg
+
+                # Token obtained successfully
+                logger.info(
+                    f"[OAuth Integration] Browser authorization successful for {server_name}"
+                )
+                access_token = token.access_token
+                error_msg = None
+
+            except Exception as e:
+                error_msg = f"Browser authorization failed: {e}"
+                logger.error(f"[OAuth Integration] {error_msg}")
+                return None, error_msg
+    else:
+        # Client Credentials flow - automatic token acquisition
+        access_token, error_msg = await oauth_service.get_access_token(
+            server_name=server_name,
+            oauth_config=oauth_config,
+            config_id=config_id,
+            project_id=project_id,
+        )
 
     if error_msg or not access_token:
         logger.error(

@@ -125,10 +125,17 @@ async def echo(ctx: Context, message: str) -> list[types.TextContent]:
     """
     # Try to get HTTP headers from context if available (HTTP mode)
     http_headers = None
-    if hasattr(ctx, "request_context") and ctx.request_context:
-        if hasattr(ctx.request_context, "request"):
-            http_headers = ctx.request_context.request.headers
-            print("\n🌐 Tool called via HTTP", file=sys.stderr)
+    try:
+        if hasattr(ctx, "request_context") and ctx.request_context is not None:
+            if (
+                hasattr(ctx.request_context, "request")
+                and ctx.request_context.request is not None
+            ):
+                if hasattr(ctx.request_context.request, "headers"):
+                    http_headers = ctx.request_context.request.headers
+                    print("\n[HTTP Mode] Tool called via HTTP", file=sys.stderr)
+    except Exception as e:
+        print(f"\n[Warning] Could not access HTTP headers: {e}", file=sys.stderr)
 
     # Print OAuth headers on every tool call for testing
     if http_headers:
@@ -140,7 +147,9 @@ async def echo(ctx: Context, message: str) -> list[types.TextContent]:
         span.set_attributes(
             {
                 "message.length": len(message) if message else 0,
-                "request_id": ctx.request_id,
+                "request_id": ctx.request_id
+                if hasattr(ctx, "request_id")
+                else "unknown",
             }
         )
 
