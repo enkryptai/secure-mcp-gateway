@@ -332,6 +332,7 @@ def generate_default_config():
                             "OAUTH_CUSTOM_HEADERS": {},
                         },
                         "tools": {},
+                        "enable_server_info_validation": True,
                         "enable_tool_guardrails": True,
                         "input_guardrails_policy": {
                             "enabled": False,
