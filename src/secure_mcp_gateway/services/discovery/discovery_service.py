@@ -510,7 +510,15 @@ class DiscoveryService:
                         }
 
                     # Validate server registration
-                    if self.registration_validation_enabled and self.guardrail_manager:
+                    # Check per-server flag (defaults to True for backward compatibility)
+                    enable_server_info_validation = server_info.get(
+                        "enable_server_info_validation", True
+                    )
+                    if (
+                        self.registration_validation_enabled
+                        and self.guardrail_manager
+                        and enable_server_info_validation
+                    ):
                         server_validation_response = (
                             await self.guardrail_manager.validate_server_registration(
                                 server_name=server_name, server_config=server_info
@@ -996,7 +1004,15 @@ class DiscoveryService:
             info_span.set_attribute("gateway_id", id)
 
             # NEW: Validate server registration before proceeding
-            if self.registration_validation_enabled and self.guardrail_manager:
+            # Check per-server flag (defaults to True for backward compatibility)
+            enable_server_info_validation = server_info.get(
+                "enable_server_info_validation", True
+            )
+            if (
+                self.registration_validation_enabled
+                and self.guardrail_manager
+                and enable_server_info_validation
+            ):
                 with tracer_obj.start_as_current_span(
                     "validate_server_registration"
                 ) as server_validation_span:
@@ -1200,7 +1216,15 @@ class DiscoveryService:
 
             # PHASE 2: Server description validation for ALL servers (parallel)
             # This happens regardless of whether server has config tools or not
-            if self.registration_validation_enabled and self.guardrail_manager:
+            # Check per-server flag (defaults to True for backward compatibility)
+            enable_server_info_validation = server_info.get(
+                "enable_server_info_validation", True
+            )
+            if (
+                self.registration_validation_enabled
+                and self.guardrail_manager
+                and enable_server_info_validation
+            ):
                 logger.info(
                     f"[discover_server_tools] 🔄 Starting server description validation for {server_name}"
                 )
@@ -1218,6 +1242,10 @@ class DiscoveryService:
                 )
                 logger.info(
                     f"[discover_server_tools]   Static description: '{static_desc}'"
+                )
+            else:
+                logger.info(
+                    f"[discover_server_tools] ⏭️  Skipping server description validation for {server_name} (enable_server_info_validation={enable_server_info_validation})"
                 )
 
                 # For servers with config tools, we'll get dynamic description during discovery
@@ -1641,7 +1669,15 @@ class DiscoveryService:
                     )
 
                 # NEW: Parallel validation for config servers (static + dynamic descriptions)
-                if self.registration_validation_enabled and self.guardrail_manager:
+                # Check per-server flag (defaults to True for backward compatibility)
+                enable_server_info_validation = server_info.get(
+                    "enable_server_info_validation", True
+                )
+                if (
+                    self.registration_validation_enabled
+                    and self.guardrail_manager
+                    and enable_server_info_validation
+                ):
                     logger.info(
                         f"[discover_server_tools] 🔄 Starting parallel validation for config server {server_name}"
                     )
@@ -1895,6 +1931,10 @@ class DiscoveryService:
                                 }
                             )
                             return er
+                else:
+                    logger.info(
+                        f"[discover_server_tools] ⏭️  Skipping description validation for config server {server_name} (enable_server_info_validation={enable_server_info_validation})"
+                    )
 
                 main_span = trace.get_current_span()
                 main_span.set_attribute("success", True)
@@ -2030,7 +2070,15 @@ class DiscoveryService:
                 tool_span.set_attribute("tools_found", bool(tools))
 
                 # Parallel validation: dynamic and static descriptions
-                if self.registration_validation_enabled and self.guardrail_manager:
+                # Check per-server flag (defaults to True for backward compatibility)
+                enable_server_info_validation = server_info.get(
+                    "enable_server_info_validation", True
+                )
+                if (
+                    self.registration_validation_enabled
+                    and self.guardrail_manager
+                    and enable_server_info_validation
+                ):
                     import asyncio
 
                     logger.info(
@@ -2282,6 +2330,10 @@ class DiscoveryService:
                                 }
                             )
                             return er
+                else:
+                    logger.info(
+                        f"[discover_server_tools] ⏭️  Skipping description validation for {server_name} (enable_server_info_validation={enable_server_info_validation})"
+                    )
 
                 # Track blocked tools information
                 blocked_tools_list = []

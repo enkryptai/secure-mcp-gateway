@@ -32,7 +32,7 @@ class TimeoutConfig:
     guardrail_timeout: int = 1
     auth_timeout: int = 10
     tool_execution_timeout: int = 60
-    discovery_timeout: int = 20
+    discovery_timeout: int = 120  # Increased to 120s to accommodate OAuth flows
     cache_timeout: int = 5
     connectivity_timeout: int = 2
     escalation_policies: Dict[str, float] = None
@@ -99,7 +99,7 @@ class TimeoutManager:
         self.config.tool_execution_timeout = timeout_settings.get(
             "tool_execution_timeout", 60
         )
-        self.config.discovery_timeout = timeout_settings.get("discovery_timeout", 20)
+        self.config.discovery_timeout = timeout_settings.get("discovery_timeout", 120)
         self.config.cache_timeout = timeout_settings.get("cache_timeout", 5)
         self.config.connectivity_timeout = timeout_settings.get(
             "connectivity_timeout", 2

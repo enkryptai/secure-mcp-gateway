@@ -90,6 +90,7 @@
             "OAUTH_CUSTOM_HEADERS": {}
           },
           "tools": {},
+          "enable_server_info_validation": true,
           "enable_tool_guardrails": true,
           "input_guardrails_policy": {
             "enabled": false,

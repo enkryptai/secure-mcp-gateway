@@ -1752,6 +1752,8 @@ The observability stack includes:
                 // Example: "tools": { "echo": "Echo a message" }
                 // Or leave the tools empty {} to discover all tools dynamically
                 "tools": {},
+                "enable_server_info_validation": true,
+                "enable_tool_guardrails": true,
                 "input_guardrails_policy": {...},
                 "output_guardrails_policy": {...}
               },
@@ -1760,6 +1762,8 @@ The observability stack includes:
                 "description": "MCP_SERVER_DESCRIPTION_2",
                 "config": {...},
                 "tools": {},
+                "enable_server_info_validation": true,
+                "enable_tool_guardrails": true,
                 "input_guardrails_policy": {...},
                 "output_guardrails_policy": {...}
               }
@@ -1966,6 +1970,8 @@ The observability stack includes:
             }
           },
           "tools": {},
+          "enable_server_info_validation": true,
+          "enable_tool_guardrails": true,
           "input_guardrails_policy": {
             "enabled": false,
             "policy_name": "Sample Airline Guardrail",
@@ -2064,6 +2070,7 @@ For machine-to-machine authentication, use the Client Credentials flow:
     "OAUTH_AUDIENCE": "https://api.example.com"
   },
   "tools": {},
+  "enable_server_info_validation": true,
   "enable_tool_guardrails": true,
   "input_guardrails_policy": {
     "enabled": false
@@ -2155,6 +2162,7 @@ For user authorization with enhanced security, use the Authorization Code flow w
     "OAUTH_CODE_CHALLENGE_METHOD": "S256"
   },
   "tools": {},
+  "enable_server_info_validation": true,
   "enable_tool_guardrails": true
 }
 ```
@@ -2290,6 +2298,7 @@ Add this configuration to your `enkrypt_mcp_config.json` in the `mcp_config` arr
     "OAUTH_ENFORCE_HTTPS": false
   },
   "tools": {},
+  "enable_server_info_validation": false,
   "enable_tool_guardrails": false,
   "input_guardrails_policy": {
     "enabled": false
@@ -2312,7 +2321,7 @@ Add this configuration to your `enkrypt_mcp_config.json` in the `mcp_config` arr
 
 4. Check the echo server terminal output - you should see OAuth headers being printed:
 
-```
+```text
 ================================================================================
 🔐 OAuth HTTP Headers Check (Remote Mode)
 ================================================================================
@@ -2343,7 +2352,7 @@ This confirms the OAuth token is being automatically acquired and injected into 
 #### Authorization Code + PKCE Flow
 
 1. **Initial Setup**: Gateway generates PKCE code verifier and challenge
-2. **Browser Authorization**: 
+2. **Browser Authorization**:
    - Gateway opens browser to authorization URL
    - User logs in and authorizes the application
 3. **Callback Handling**:
@@ -2617,6 +2626,8 @@ Enforce strict context boundaries across repositories.
               }
             },
             "tools": {},
+            "enable_server_info_validation": true,
+            "enable_tool_guardrails": true,
             "input_guardrails_policy": {
               "enabled": true,
               "policy_name": "GitHub Guardrail",
@@ -2724,6 +2735,67 @@ Enforce strict context boundaries across repositories.
 
 </details>
 </details>
+
+### 10.1 Per-Server Guardrail Configuration
+
+You can control guardrail behavior for each server individually using per-server flags in your configuration.
+
+**Note:** While both fields default to `true`, it's recommended to explicitly include them in your server configurations for clarity and maintainability.
+
+#### `enable_server_info_validation` (boolean, default: `true`)
+
+Controls whether server descriptions are validated during discovery/registration for harmful content (injection attacks, policy violations, etc.).
+
+**When to disable:**
+
+- Testing/development environments with known safe servers
+- Internal servers where content is fully trusted
+- When server metadata contains technical terms that trigger false positives
+
+**Example:**
+```json
+{
+  "server_name": "test_server",
+  "description": "Development test server",
+  "config": {
+    "command": "python",
+    "args": ["test_server.py"]
+  },
+  "enable_server_info_validation": false,
+  "enable_tool_guardrails": false,
+  "input_guardrails_policy": {
+    "enabled": false
+  },
+  "output_guardrails_policy": {
+    "enabled": false
+  }
+}
+```
+
+#### `enable_tool_guardrails` (boolean, default: `true`)
+
+Controls whether individual tool descriptions and schemas are validated during discovery.
+
+**Guardrail Levels:**
+
+The gateway has three distinct levels of guardrails:
+
+1. **Server Registration Validation** (`enable_server_info_validation`)
+   - **When**: During server discovery, before any tools are loaded
+   - **What**: Validates server names and descriptions for harmful content
+   - **Blocks**: Servers with malicious metadata
+
+2. **Tool Registration Validation** (`enable_tool_guardrails`)
+   - **When**: During tool discovery
+   - **What**: Validates tool descriptions and schemas
+   - **Blocks**: Individual tools with harmful content
+
+3. **Runtime Guardrails** (`input_guardrails_policy` / `output_guardrails_policy`)
+   - **When**: During tool execution (input before, output after)
+   - **What**: Validates tool arguments and responses
+   - **Blocks**: Requests/responses violating policies
+
+**Note:** All three levels are independent and can be configured separately per server.
 
 ## 11. Other Tools Available
 

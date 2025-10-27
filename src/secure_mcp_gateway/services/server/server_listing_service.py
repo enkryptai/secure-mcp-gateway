@@ -435,6 +435,10 @@ class ServerListingService:
             if hasattr(results, "result"):
                 results = results.result
 
+            # Handle case where results is None (timeout occurred)
+            if results is None:
+                results = []
+
             for item in results:
                 if isinstance(item, Exception):
                     # If an exception bubbles up, we cannot attribute to a server name here
