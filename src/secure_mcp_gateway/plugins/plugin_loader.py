@@ -13,7 +13,7 @@ class PluginLoader:
     # Default provider mappings
     DEFAULT_PROVIDERS: ClassVar[Dict[str, Dict[str, str]]] = {
         "auth": {
-            "class": "secure_mcp_gateway.plugins.auth.enkrypt_provider.EnkryptAuthProvider",
+            "class": "secure_mcp_gateway.plugins.auth.local_apikey_provider.LocalApiKeyProvider",
             "name": "enkrypt",
         },
         "guardrails": {
@@ -164,6 +164,7 @@ class PluginLoader:
                 config.get("plugins", {}).get("telemetry", {}).get("config", {})
             )
             provider_config = {
+                "enabled": telemetry_plugin_cfg.get("enabled", True),
                 "url": telemetry_plugin_cfg.get("url", "http://localhost:4317"),
                 "insecure": telemetry_plugin_cfg.get("insecure", True),
             }

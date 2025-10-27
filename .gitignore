@@ -43,3 +43,5 @@ tmp
 
 # Security checks
 bandit-report.json
+
+*.md

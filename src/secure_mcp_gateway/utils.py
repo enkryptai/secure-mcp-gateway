@@ -51,10 +51,10 @@ def get_logger():
 
             telemetry_manager = get_telemetry_config_manager()
             _logger_cache = telemetry_manager.get_logger()
-            print("[utils] Logger initialized successfully", file=sys.stderr)
+            # print("[utils] Logger initialized successfully", file=sys.stderr)
         except Exception as e:
             # If telemetry is not available, return None
-            print(f"[utils] Logger initialization failed: {e}", file=sys.stderr)
+            # print(f"[utils] Logger initialization failed: {e}", file=sys.stderr)
             _logger_cache = None
     return _logger_cache
 
@@ -74,10 +74,10 @@ class LazyLogger:
         if logger:
             return getattr(logger, name)
         # No-op if logger not available
-        print(
-            f"[utils] LazyLogger: No logger available for method {name}",
-            file=sys.stderr,
-        )
+        # print(
+        #     f"[utils] LazyLogger: No logger available for method {name}",
+        #     file=sys.stderr,
+        # )
         return lambda *args, **kwargs: None
 
 
@@ -115,13 +115,13 @@ IS_DEBUG_LOG_LEVEL = _DebugLevel()
 # print() in addition to logger calls. Once telemetry is initialized, logger
 # messages will flow through the configured provider as usual.
 # Initialize logger for this module
-print(
-    f"[utils] Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}",
-    file=sys.stderr,
-)
-logger.info(
-    f"[utils] Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}"
-)
+# print(
+#     f"[utils] Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}",
+#     file=sys.stderr,
+# )
+# logger.info(
+#     f"[utils] Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}"
+# )
 
 IS_TELEMETRY_ENABLED = None
 
@@ -197,8 +197,8 @@ def get_common_config(print_debug=False):
     # So we are using print instead.
 
     # TODO: Fix error and use stdout
-    print("[utils] Getting Enkrypt Common Configuration", file=sys.stderr)
-    logger.info("[utils] Getting Enkrypt Common Configuration")
+    # print("[utils] Getting Enkrypt Common Configuration", file=sys.stderr)
+    # logger.info("[utils] Getting Enkrypt Common Configuration")
 
     if print_debug:
         logger.debug(f"[utils] config_path: {CONFIG_PATH}")
@@ -206,8 +206,7 @@ def get_common_config(print_debug=False):
         logger.debug(f"[utils] example_config_path: {EXAMPLE_CONFIG_PATH}")
 
     is_running_in_docker = is_docker()
-    print(f"[utils] is_running_in_docker: {is_running_in_docker}", file=sys.stderr)
-    logger.debug(f"[utils] is_running_in_docker: {is_running_in_docker}")
+    # logger.debug(f"[utils] is_running_in_docker: {is_running_in_docker}")
     picked_config_path = DOCKER_CONFIG_PATH if is_running_in_docker else CONFIG_PATH
     if does_file_exist(picked_config_path):
         print(f"[utils] Loading {picked_config_path} file...", file=sys.stderr)
@@ -215,19 +214,13 @@ def get_common_config(print_debug=False):
         with open(picked_config_path, encoding="utf-8") as f:
             config = json.load(f)
     else:
-        print("[utils] No config file found. Loading example config.", file=sys.stderr)
         logger.info("[utils] No config file found. Loading example config.")
         if does_file_exist(EXAMPLE_CONFIG_PATH):
             if print_debug:
-                print(f"[utils] Loading {EXAMPLE_CONFIG_NAME} file...", file=sys.stderr)
                 logger.debug(f"[utils] Loading {EXAMPLE_CONFIG_NAME} file...")
             with open(EXAMPLE_CONFIG_PATH, encoding="utf-8") as f:
                 config = json.load(f)
         else:
-            print(
-                "[utils] Example config file not found. Using default common config.",
-                file=sys.stderr,
-            )
             logger.info(
                 "[utils] Example config file not found. Using default common config."
             )

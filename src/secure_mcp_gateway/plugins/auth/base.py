@@ -436,12 +436,12 @@ class AuthProviderFactory:
             Optional[AuthProvider]: Created provider instance, None if type unknown
         """
         # Import here to avoid circular dependencies
-        from secure_mcp_gateway.plugins.auth.enkrypt_provider import (
-            EnkryptAuthProvider,
+        from secure_mcp_gateway.plugins.auth.local_apikey_provider import (
+            LocalApiKeyProvider,
         )
 
-        if provider_type == "enkrypt":
-            return EnkryptAuthProvider(**config)
+        if provider_type == "local_apikey":
+            return LocalApiKeyProvider(**config)
 
         # Add more provider types as needed
         return None

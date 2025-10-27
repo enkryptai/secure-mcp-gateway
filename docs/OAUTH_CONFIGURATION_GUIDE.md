@@ -605,7 +605,7 @@ A: No. Each server has its own cached token, keyed by `server_name` and `config_
 
 ## Version History
 
-- **v2.1.1** (2025-10-15): Added mTLS, scope validation, token revocation, retry logic, metrics
+- **v2.1.2** (2025-10-15): Added mTLS, scope validation, token revocation, retry logic, metrics
 
 - **v2.1.0** (2025-10-10): Initial OAuth 2.0/2.1 client credentials support
 

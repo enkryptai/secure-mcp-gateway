@@ -126,7 +126,7 @@ class OpenTelemetryProvider(TelemetryProvider):
         config = {}
 
         is_running_in_docker = self._check_docker()
-        logger.debug(f"[{self.name}] is_running_in_docker: {is_running_in_docker}")
+        # logger.debug(f"[{self.name}] is_running_in_docker: {is_running_in_docker}")
 
         picked_config_path = DOCKER_CONFIG_PATH if is_running_in_docker else CONFIG_PATH
 
@@ -276,7 +276,7 @@ class OpenTelemetryProvider(TelemetryProvider):
                     f"[{self.name}] OpenTelemetry enabled - initializing components"
                 )
                 self._setup_enabled_telemetry(
-                    endpoint, insecure, service_name, job_name
+                    endpoint, insecure, service_name, job_name, config
                 )
             else:
                 logger.info(
@@ -309,7 +309,12 @@ class OpenTelemetryProvider(TelemetryProvider):
             )
 
     def _setup_enabled_telemetry(
-        self, endpoint: str, insecure: bool, service_name: str, job_name: str
+        self,
+        endpoint: str,
+        insecure: bool,
+        service_name: str,
+        job_name: str,
+        config: dict[str, Any] = None,
     ):
         """Setup telemetry when enabled."""
         # Common resource
@@ -326,9 +331,14 @@ class OpenTelemetryProvider(TelemetryProvider):
         logger_provider = LoggerProvider(resource=self._resource)
         logger_provider.add_log_record_processor(BatchLogRecordProcessor(otlp_exporter))
 
-        # Create telemetry-specific logger without console output
+        # Create telemetry-specific logger
         self._logger = logging.getLogger(service_name)
-        self._logger.setLevel(logging.INFO)
+        # log level from common config (enkrypt_log_level)
+        from secure_mcp_gateway.utils import get_common_config
+
+        common_config = get_common_config()
+        log_level = common_config.get("enkrypt_log_level", "INFO").upper()
+        self._logger.setLevel(getattr(logging, log_level))
 
         # Only add OTLP handler for telemetry data export
         otlp_handler = LoggingHandler(

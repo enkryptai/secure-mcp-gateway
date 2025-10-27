@@ -21,7 +21,7 @@ from secure_mcp_gateway.services.oauth.integration import (
 from secure_mcp_gateway.utils import get_common_config, logger
 from secure_mcp_gateway.version import __version__
 
-logger.info(f"Initializing Enkrypt Secure MCP Gateway Client Module v{__version__}")
+# logger.info(f"Initializing Enkrypt Secure MCP Gateway Client Module v{__version__}")
 
 common_config = get_common_config()
 

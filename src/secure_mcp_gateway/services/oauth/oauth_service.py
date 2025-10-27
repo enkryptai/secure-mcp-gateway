@@ -6,6 +6,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+from urllib.parse import urlencode
 
 import aiohttp
 from tenacity import (
@@ -30,6 +31,11 @@ from secure_mcp_gateway.services.oauth.models import (
     OAuthToken,
     OAuthVersion,
 )
+from secure_mcp_gateway.services.oauth.pkce import (
+    generate_pkce_pair,
+    generate_state,
+    validate_code_verifier,
+)
 from secure_mcp_gateway.services.oauth.token_manager import (
     TokenManager,
     get_token_manager,
@@ -44,6 +50,7 @@ class OAuthService:
 
     Supports:
     - Client Credentials grant (OAuth 2.0/2.1)
+    - Authorization Code grant with PKCE (OAuth 2.1)
     - Token caching and refresh
     - OAuth 2.1 security requirements
     - Resource Indicators (RFC 8707)
@@ -113,8 +120,15 @@ class OAuthService:
                     server_name, oauth_config
                 )
             elif oauth_config.grant_type == OAuthGrantType.AUTHORIZATION_CODE:
+                # Authorization Code flow requires user interaction
+                # This should not be called directly - use generate_authorization_url first
                 self.metrics.record_token_acquisition(False)
-                return None, "Authorization Code flow not yet implemented"
+                return (
+                    None,
+                    "Authorization Code flow requires user authorization. "
+                    "Use generate_authorization_url() to start the flow, "
+                    "then exchange_authorization_code() after receiving the callback.",
+                )
             else:
                 self.metrics.record_token_acquisition(False)
                 return None, f"Unsupported grant type: {oauth_config.grant_type.value}"
@@ -640,6 +654,295 @@ class OAuthService:
         except Exception as e:
             logger.error(f"[OAuthService] Unexpected error during revocation: {e}")
             return False, f"Unexpected error: {e}"
+
+    def generate_authorization_url(
+        self,
+        oauth_config: OAuthConfig,
+        state: Optional[str] = None,
+    ) -> Tuple[str, str, Optional[str], Optional[str]]:
+        """
+        Generate authorization URL for Authorization Code flow.
+
+        This is the first step in the Authorization Code grant flow.
+        The user should be redirected to this URL to authorize the application.
+
+        Args:
+            oauth_config: OAuth configuration
+            state: Optional state parameter (generated if not provided)
+
+        Returns:
+            Tuple of (authorization_url, state, code_verifier, code_challenge)
+
+        Raises:
+            ValueError: If required configuration is missing
+        """
+        if not oauth_config.authorization_url:
+            raise ValueError(
+                "OAUTH_AUTHORIZATION_URL is required for authorization code flow"
+            )
+
+        if not oauth_config.redirect_uri:
+            raise ValueError(
+                "OAUTH_REDIRECT_URI is required for authorization code flow"
+            )
+
+        # Generate state for CSRF protection
+        if not state:
+            state = generate_state()
+
+        logger.info(
+            f"[OAuthService] Generating authorization URL for OAuth {oauth_config.version.value}"
+        )
+
+        # Build base parameters
+        params = {
+            "response_type": "code",
+            "client_id": oauth_config.client_id,
+            "redirect_uri": oauth_config.redirect_uri,
+            "state": state,
+        }
+
+        # Add scope if provided
+        if oauth_config.scope:
+            params["scope"] = oauth_config.scope
+
+        # Add audience if provided (Auth0, etc.)
+        if oauth_config.audience:
+            params["audience"] = oauth_config.audience
+
+        # Add organization if provided (Auth0, etc.)
+        if oauth_config.organization:
+            params["organization"] = oauth_config.organization
+
+        # Generate PKCE parameters
+        code_verifier = None
+        code_challenge = None
+
+        if oauth_config.use_pkce:
+            code_verifier, code_challenge = generate_pkce_pair(
+                method=oauth_config.code_challenge_method
+            )
+            params["code_challenge"] = code_challenge
+            params["code_challenge_method"] = oauth_config.code_challenge_method
+
+            logger.info(
+                f"[OAuthService] Generated PKCE challenge using {oauth_config.code_challenge_method}"
+            )
+        elif oauth_config.version == OAuthVersion.OAUTH_2_1:
+            logger.warning(
+                "[OAuthService] OAuth 2.1 requires PKCE for authorization code flow, "
+                "but use_pkce is False"
+            )
+
+        # Build authorization URL
+        auth_url = f"{oauth_config.authorization_url}?{urlencode(params)}"
+
+        logger.info(
+            f"[OAuthService] Generated authorization URL with state={state[:10]}..."
+        )
+
+        return auth_url, state, code_verifier, code_challenge
+
+    async def exchange_authorization_code(
+        self,
+        server_name: str,
+        oauth_config: OAuthConfig,
+        authorization_code: str,
+        code_verifier: Optional[str] = None,
+        state: Optional[str] = None,
+        expected_state: Optional[str] = None,
+        config_id: str = None,
+        project_id: str = None,
+    ) -> Tuple[Optional[OAuthToken], Optional[str]]:
+        """
+        Exchange authorization code for access token.
+
+        This is the second step in the Authorization Code grant flow,
+        called after the user has authorized the application and been
+        redirected back to the redirect_uri with an authorization code.
+
+        Args:
+            server_name: Server name
+            oauth_config: OAuth configuration
+            authorization_code: Authorization code from callback
+            code_verifier: PKCE code verifier (required if use_pkce=True)
+            state: State parameter from callback
+            expected_state: Expected state value for CSRF protection
+            config_id: MCP config ID
+            project_id: Project ID
+
+        Returns:
+            Tuple of (OAuthToken, error_message)
+        """
+        logger.info(f"[OAuthService] Exchanging authorization code for {server_name}")
+
+        # Validate state for CSRF protection
+        if expected_state and state != expected_state:
+            return (
+                None,
+                f"State mismatch: expected {expected_state[:10]}..., got {state[:10] if state else 'None'}...",
+            )
+
+        # Validate PKCE
+        if oauth_config.use_pkce:
+            if not code_verifier:
+                return None, "PKCE code_verifier is required but not provided"
+
+            if not validate_code_verifier(code_verifier):
+                return None, "Invalid PKCE code_verifier format"
+
+            logger.info(f"[OAuthService] Using PKCE code verifier for {server_name}")
+
+        # Build token request
+        headers, data = self._build_authorization_code_token_request(
+            oauth_config, authorization_code, code_verifier
+        )
+
+        # Make token request
+        timeout_value = self.timeout_manager.get_timeout("auth")
+        ssl_context = self._create_ssl_context(oauth_config)
+
+        # Generate correlation ID
+        correlation_id = str(uuid.uuid4())
+        headers["X-Correlation-ID"] = correlation_id
+        headers["X-Request-ID"] = correlation_id
+
+        logger.debug(f"[OAuthService] Token exchange correlation_id={correlation_id}")
+
+        try:
+            connector = aiohttp.TCPConnector(ssl=ssl_context) if ssl_context else None
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.post(
+                    oauth_config.token_url,
+                    headers=headers,
+                    data=data,
+                    timeout=aiohttp.ClientTimeout(total=timeout_value),
+                ) as response:
+                    try:
+                        response_data = await response.json()
+                    except (aiohttp.ContentTypeError, ValueError) as e:
+                        logger.error(
+                            f"[OAuthService] Failed to parse JSON response: {e}"
+                        )
+                        response_text = await response.text()
+                        return None, f"Invalid JSON response: {response_text[:200]}"
+
+                    if response.status == 200:
+                        token = OAuthToken.from_response(
+                            response_data,
+                            server_name=server_name,
+                            config_id=config_id,
+                        )
+
+                        # Validate scopes
+                        if oauth_config.validate_scopes and oauth_config.scope:
+                            scope_valid = self._validate_token_scopes(
+                                token, oauth_config.scope
+                            )
+                            if not scope_valid:
+                                logger.warning(
+                                    f"[OAuthService] Token scopes validation failed for {server_name}. "
+                                    f"Requested: {oauth_config.scope}, Received: {token.scope}"
+                                )
+
+                        logger.info(
+                            f"[OAuthService] Successfully obtained token for {server_name}, "
+                            f"expires in {token.expires_in}s"
+                        )
+
+                        # Cache the token
+                        if config_id and project_id:
+                            await self.token_manager.store_token(
+                                server_name, token, config_id, project_id
+                            )
+
+                        return token, None
+
+                    # Handle error response
+                    oauth_error = OAuthError.from_response(
+                        response_data, response.status
+                    )
+                    logger.error(
+                        f"[OAuthService] Token exchange failed for {server_name}: {oauth_error}"
+                    )
+
+                    return None, str(oauth_error)
+
+        except aiohttp.ClientError as e:
+            logger.error(f"[OAuthService] HTTP error during token exchange: {e}")
+            return None, f"Failed to connect to OAuth server: {e}"
+        except Exception as e:
+            logger.error(f"[OAuthService] Unexpected error during token exchange: {e}")
+            return None, f"Unexpected error: {e}"
+
+    def _build_authorization_code_token_request(
+        self,
+        oauth_config: OAuthConfig,
+        authorization_code: str,
+        code_verifier: Optional[str] = None,
+    ) -> Tuple[Dict[str, str], Dict[str, str]]:
+        """
+        Build token request for authorization code exchange.
+
+        Args:
+            oauth_config: OAuth configuration
+            authorization_code: Authorization code from callback
+            code_verifier: PKCE code verifier (if using PKCE)
+
+        Returns:
+            Tuple of (headers, data)
+        """
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+        }
+
+        # Add custom headers
+        headers.update(oauth_config.custom_headers)
+
+        data = {
+            "grant_type": "authorization_code",
+            "code": authorization_code,
+            "redirect_uri": oauth_config.redirect_uri,
+            "client_id": oauth_config.client_id,
+        }
+
+        # Add PKCE code verifier if using PKCE
+        if oauth_config.use_pkce and code_verifier:
+            data["code_verifier"] = code_verifier
+            logger.debug("[OAuthService] Including PKCE code_verifier in token request")
+
+        # Client authentication
+        # For authorization code flow, client_secret may be optional (public clients)
+        if oauth_config.client_secret:
+            if oauth_config.use_basic_auth:
+                # client_secret_basic (RFC 6749 Section 2.3.1)
+                credentials = f"{oauth_config.client_id}:{oauth_config.client_secret}"
+                encoded_credentials = base64.b64encode(credentials.encode()).decode()
+                headers["Authorization"] = f"Basic {encoded_credentials}"
+                logger.debug("[OAuthService] Using client_secret_basic authentication")
+            else:
+                # client_secret_post (RFC 6749 Section 2.3.1)
+                data["client_secret"] = oauth_config.client_secret
+                logger.debug("[OAuthService] Using client_secret_post authentication")
+        else:
+            logger.info("[OAuthService] No client_secret provided (public client)")
+
+        # Add optional parameters
+        if oauth_config.audience:
+            data["audience"] = oauth_config.audience
+
+        if oauth_config.organization:
+            data["organization"] = oauth_config.organization
+
+        # OAuth 2.1: Resource Indicators (RFC 8707)
+        if oauth_config.resource and oauth_config.version == OAuthVersion.OAUTH_2_1:
+            data["resource"] = oauth_config.resource
+
+        # Additional custom parameters
+        data.update(oauth_config.additional_params)
+
+        return headers, data
 
 
 # Global OAuth service instance
