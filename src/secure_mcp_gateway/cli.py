@@ -332,8 +332,8 @@ def generate_default_config():
                             "OAUTH_CUSTOM_HEADERS": {},
                         },
                         "tools": {},
-                        "enable_server_info_validation": True,
-                        "enable_tool_guardrails": True,
+                        "enable_server_info_validation": False,
+                        "enable_tool_guardrails": False,
                         "input_guardrails_policy": {
                             "enabled": False,
                             "policy_name": "Sample Airline Guardrail",

@@ -81,6 +81,10 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 
 - [17. Contribute 🤝](#17-contribute)
 
+- [18. Testing 🧪](#18-testing)
+
+- [19. License](#19-license)
+
 ## 1. Features
 
 ![enkrypt-secure-mcp-gateway-features](./docs/images/enkrypt-secure-mcp-gateway-features.png)
@@ -1923,8 +1927,8 @@ The observability stack includes:
                 // Example: "tools": { "echo": "Echo a message" }
                 // Or leave the tools empty {} to discover all tools dynamically
                 "tools": {},
-                "enable_server_info_validation": true,
-                "enable_tool_guardrails": true,
+                "enable_server_info_validation": false,
+                "enable_tool_guardrails": false,
                 "input_guardrails_policy": {...},
                 "output_guardrails_policy": {...}
               },
@@ -1933,8 +1937,8 @@ The observability stack includes:
                 "description": "MCP_SERVER_DESCRIPTION_2",
                 "config": {...},
                 "tools": {},
-                "enable_server_info_validation": true,
-                "enable_tool_guardrails": true,
+                "enable_server_info_validation": false,
+                "enable_tool_guardrails": false,
                 "input_guardrails_policy": {...},
                 "output_guardrails_policy": {...}
               }
@@ -2040,6 +2044,12 @@ The observability stack includes:
   - i.e., Guardrails detect call, relevancy check, adherence check, PII unredaction, etc. are made in parallel after getting the response from the MCP server
 
 - **Inside each MCP server config, you can set the following:**
+
+  - `oauth_config`: Use this if we plan to use OAuth for the MCP server
+
+  - `enable_server_info_validation`: Whether to enable server info validation or not. This is `false` in the example config file
+
+  - `enable_tool_guardrails`: Whether to enable tool guardrails or not. This is `false` in the example config file
 
   - `input_guardrails_policy`: Use this if we plan to use Enkrypt Guardrails on input side
 
@@ -2147,8 +2157,8 @@ The observability stack includes:
             }
           },
           "tools": {},
-          "enable_server_info_validation": true,
-          "enable_tool_guardrails": true,
+          "enable_server_info_validation": false,
+          "enable_tool_guardrails": false,
           "input_guardrails_policy": {
             "enabled": false,
             "policy_name": "Sample Airline Guardrail",
@@ -2216,8 +2226,8 @@ If you're running the Enkrypt Gateway in Docker or prefer not to use Docker-in-D
     }
   },
   "tools": {},
-  "enable_server_info_validation": true,
-  "enable_tool_guardrails": true,
+  "enable_server_info_validation": false,
+  "enable_tool_guardrails": false,
   "input_guardrails_policy": {
     "enabled": false,
     "policy_name": "Sample Airline Guardrail",
@@ -2308,8 +2318,8 @@ For machine-to-machine authentication, use the Client Credentials flow:
     "OAUTH_AUDIENCE": "https://api.example.com"
   },
   "tools": {},
-  "enable_server_info_validation": true,
-  "enable_tool_guardrails": true,
+  "enable_server_info_validation": false,
+  "enable_tool_guardrails": false,
   "input_guardrails_policy": {
     "enabled": false
   },
@@ -2400,7 +2410,7 @@ For user authorization with enhanced security, use the Authorization Code flow w
     "OAUTH_CODE_CHALLENGE_METHOD": "S256"
   },
   "tools": {},
-  "enable_server_info_validation": true,
+  "enable_server_info_validation": false,
   "enable_tool_guardrails": true
 }
 ```
@@ -2980,7 +2990,7 @@ You can control guardrail behavior for each server individually using per-server
 
 **Note:** While both fields default to `true`, it's recommended to explicitly include them in your server configurations for clarity and maintainability.
 
-#### `enable_server_info_validation` (boolean, default: `true`)
+#### `enable_server_info_validation` (boolean, default: `false`)
 
 Controls whether server descriptions are validated during discovery/registration for harmful content (injection attacks, policy violations, etc.).
 
@@ -3000,7 +3010,7 @@ Controls whether server descriptions are validated during discovery/registration
     "command": "python",
     "args": ["test_server.py"]
   },
-  "enable_server_info_validation": false,
+  "enable_server_info_validation": true,
   "enable_tool_guardrails": false,
   "input_guardrails_policy": {
     "enabled": false
@@ -3011,7 +3021,7 @@ Controls whether server descriptions are validated during discovery/registration
 }
 ```
 
-#### `enable_tool_guardrails` (boolean, default: `true`)
+#### `enable_tool_guardrails` (boolean, default: `false`)
 
 Controls whether individual tool descriptions and schemas are validated during discovery.
 
@@ -3208,9 +3218,163 @@ The gateway has three distinct levels of guardrails:
 
 - Report or fix any bugs you encounter 😊
 
-## 18. License
+## 18. Testing
 
-### 18.1 Enkrypt AI MCP Gateway Core
+<details>
+<summary><strong>🧪 Running Tests </strong></summary>
+
+The gateway includes a comprehensive test suite that validates all core functionality including server discovery, tool execution, guardrails, caching, telemetry, and more.
+
+### Prerequisites
+
+- Gateway installed locally (follow [Local Installation](#42-local-installation-with-git-clone))
+- Virtual environment activated
+- Echo OAuth MCP server running (for testing remote server scenarios)
+
+### Running the Test Suite
+
+#### Step 1: Set Environment Variable
+
+**Windows PowerShell:**
+
+```powershell
+$env:MCP_HTTP_MODE="true"
+```
+
+**Windows Command Prompt:**
+
+```cmd
+set MCP_HTTP_MODE=true
+```
+
+**macOS/Linux:**
+
+```bash
+export MCP_HTTP_MODE="true"
+```
+
+This environment variable enables the echo OAuth server to run in HTTP mode for testing.
+
+#### Step 2: Start the Echo OAuth Server
+
+Navigate to the echo server directory and start it:
+
+**Windows PowerShell:**
+
+```powershell
+cd src\secure_mcp_gateway\bad_mcps
+python .\echo_oauth_mcp.py
+```
+
+**macOS/Linux:**
+
+```bash
+cd src/secure_mcp_gateway/bad_mcps
+python echo_oauth_mcp.py
+```
+
+The server will start on `http://localhost:8001/mcp/` and remain running. Keep this terminal open.
+
+#### Step 3: Run the Test Suite
+
+Open a new terminal, activate your virtual environment, and run the tests:
+
+**Windows PowerShell:**
+
+```powershell
+# Activate virtual environment
+.\.venv\Scripts\activate
+
+# Navigate to tests directory
+cd tests
+
+# Run tests
+python .\test_gateway.py
+```
+
+**macOS/Linux:**
+
+```bash
+# Activate virtual environment
+source ./.venv/bin/activate
+
+# Navigate to tests directory
+cd tests
+
+# Run tests
+python test_gateway.py
+```
+
+### Test Coverage
+
+The test suite includes:
+
+- **Server Discovery Tests**: List servers, get server info, discover tools
+- **Tool Execution Tests**: Call tools, multiple tool calls, error handling
+- **Cache Tests**: Cache status, cache clearing, cache expiration
+- **Guardrails Tests**: Input/output guardrails, async guardrails, PII redaction
+- **Telemetry Tests**: OpenTelemetry integration, metrics, traces, logs
+- **Configuration Tests**: Timeout settings, log levels, external cache
+- **Integration Tests**: Full workflows, error recovery, performance
+
+### Expected Output
+
+The test runner will display:
+
+- Progress for each test
+- Success/failure status
+- Execution duration
+- Final summary with pass/fail counts
+
+Example output:
+
+```text
+=== Gateway Tools Test Runner ===
+
+Setting up test environment...
+Setup complete.
+
+Running Tests...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ test_list_all_servers_basic (0.45s)
+✅ test_discover_all_tools_all_servers (1.23s)
+✅ test_secure_call_tools_basic (0.89s)
+...
+
+=== Test Summary ===
+Total Tests: 45
+Passed: 45
+Failed: 0
+Success Rate: 100.0%
+Total Duration: 45.67s
+```
+
+### Troubleshooting Tests
+
+**Echo server connection errors:**
+
+- Verify the echo OAuth server is running on port 8001
+- Check that `MCP_HTTP_MODE` environment variable is set
+- Ensure no other service is using port 8001
+
+**Gateway configuration errors:**
+
+- Verify `enkrypt_mcp_config.json` exists in `~/.enkrypt/` directory
+- Check that the config file has valid gateway keys and server configurations
+- Ensure virtual environment has all dependencies installed
+
+**Test failures:**
+
+- Enable debug logging by setting `enkrypt_log_level: "DEBUG"` in config
+- Check MCP client logs for detailed error messages
+- Verify all prerequisites are installed (Python 3.11+, pip, uv)
+
+</details>
+
+## 19. License
+
+### 19.1 Enkrypt AI MCP Gateway Core
 
 This project's core functionality is licensed under the MIT License.
 
@@ -3224,7 +3388,7 @@ This project's core functionality is licensed under the MIT License.
 
 For the full license text, see the `LICENSE.txt` file in this repository.
 
-### 18.2 Enkrypt AI Guardrails, Logo, and Branding
+### 19.2 Enkrypt AI Guardrails, Logo, and Branding
 
 © 2025 Enkrypt AI. All rights reserved.
 
