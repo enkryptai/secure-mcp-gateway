@@ -21,7 +21,7 @@ exporters:
       insecure: true
 
   otlphttp/loki:
-    endpoint: "http://loki:3100/otlp/v1/logs"
+    endpoint: "http://loki:3100/otlp"
     tls:
       insecure: true
 

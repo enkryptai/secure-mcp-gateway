@@ -90,16 +90,22 @@ from secure_mcp_gateway.plugins.telemetry import (
 
 # Telemetry will be initialized later with proper config
 
-try:
-    print("Installing dependencies...", file=sys.stderr)
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", *__dependencies__],
-        stdout=subprocess.DEVNULL,  # Suppress output
-        stderr=subprocess.DEVNULL,
+if os.environ.get("SKIP_DEPENDENCY_INSTALL") != "true":
+    try:
+        print("Installing dependencies...", file=sys.stderr)
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", *__dependencies__],
+            stdout=subprocess.DEVNULL,  # Suppress output
+            stderr=subprocess.DEVNULL,
+        )
+        print("All dependencies installed successfully.", file=sys.stderr)
+    except Exception as e:
+        print(f"Error installing dependencies: {e}", file=sys.stderr)
+else:
+    print(
+        "Skipping dependency installation (SKIP_DEPENDENCY_INSTALL=true)",
+        file=sys.stderr,
     )
-    print("All dependencies installed successfully.", file=sys.stderr)
-except Exception as e:
-    print(f"Error installing dependencies: {e}", file=sys.stderr)
 
 import traceback
 
@@ -333,7 +339,6 @@ async def enkrypt_get_server_info(ctx: Context, server_name: str):
         ctx=ctx,
         server_name=server_name,
         tracer=tracer,
-        logger=logger,
         cache_client=cache_client,
     )
 

@@ -1241,6 +1241,177 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enk
 
 ```
 
+#### 4.3.6 Running Gateway with Docker Run (Advanced)
+
+For advanced Docker deployments, you can run the gateway container directly with custom configurations:
+
+```bash
+# Basic Docker run command
+docker run -d \
+  --name enkrypt-gateway \
+  -p 8000:8000 \
+  -v ~/.enkrypt:/app/.enkrypt/docker \
+  -e ENKRYPT_GATEWAY_KEY="your-gateway-key" \
+  -e ENKRYPT_PROJECT_ID="your-project-id" \
+  -e ENKRYPT_USER_ID="your-user-id" \
+  secure-mcp-gateway:latest
+```
+
+**Windows PowerShell:**
+
+```powershell
+docker run -d `
+  --name enkrypt-gateway `
+  -p 8000:8000 `
+  -v ${env:USERPROFILE}\.enkrypt:/app/.enkrypt/docker `
+  -e ENKRYPT_GATEWAY_KEY="your-gateway-key" `
+  -e ENKRYPT_PROJECT_ID="your-project-id" `
+  -e ENKRYPT_USER_ID="your-user-id" `
+  secure-mcp-gateway:latest
+```
+
+##### Environment Variables
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `ENKRYPT_GATEWAY_KEY` | API key for authentication | - | Yes |
+| `ENKRYPT_PROJECT_ID` | Project ID from config | - | Yes |
+| `ENKRYPT_USER_ID` | User ID from config | - | Yes |
+| `SKIP_DEPENDENCY_INSTALL` | Skip runtime dependency installation | `false` | No |
+| `HOST` | Gateway bind address | `0.0.0.0` | No |
+| `FASTAPI_HOST` | FastAPI server bind address | `0.0.0.0` | No |
+
+##### SKIP_DEPENDENCY_INSTALL
+
+The `SKIP_DEPENDENCY_INSTALL` environment variable controls whether the gateway reinstalls Python dependencies at runtime.
+
+**When to use `SKIP_DEPENDENCY_INSTALL=true`:**
+
+- ✅ Production deployments where dependencies are pre-installed in the Docker image
+- ✅ When using pre-built Docker images from Docker Hub
+- ✅ To reduce container startup time (faster cold starts)
+- ✅ In orchestrated environments (Kubernetes, Docker Swarm, ECS)
+
+**When to omit (default behavior):**
+
+- Development environments where you're testing new dependencies
+- When mounting source code volumes for live development
+- If you're unsure whether all dependencies are properly installed
+
+**Example with docker-compose integration:**
+
+```bash
+# Connect to observability stack network
+docker run -d \
+  --name enkrypt-gateway \
+  --network secure-mcp-gateway-infra_default \
+  -p 8000:8000 \
+  -p 8080:8080 \
+  -v ~/.enkrypt:/app/.enkrypt/docker \
+  -e SKIP_DEPENDENCY_INSTALL=true \
+  -e ENKRYPT_GATEWAY_KEY="your-gateway-key" \
+  -e ENKRYPT_PROJECT_ID="your-project-id" \
+  -e ENKRYPT_USER_ID="your-user-id" \
+  secure-mcp-gateway:latest
+```
+
+**Windows PowerShell:**
+
+```powershell
+docker run -d `
+  --name enkrypt-gateway `
+  --network secure-mcp-gateway-infra_default `
+  -p 8000:8000 `
+  -p 8080:8080 `
+  -v ${env:USERPROFILE}\.enkrypt:/app/.enkrypt/docker `
+  -e SKIP_DEPENDENCY_INSTALL=true `
+  -e ENKRYPT_GATEWAY_KEY="your-gateway-key" `
+  -e ENKRYPT_PROJECT_ID="your-project-id" `
+  -e ENKRYPT_USER_ID="your-user-id" `
+  secure-mcp-gateway:latest
+```
+
+**Note:** The `--network` flag connects the gateway to the observability stack (Grafana, Prometheus, Loki, Jaeger) if you're running the monitoring services from section 5.
+
+##### Port Mapping
+
+- `8000`: Gateway MCP server (required)
+- `8080`: OAuth callback server (optional, only needed for Authorization Code flow)
+- `8001`: REST API server (optional, if you want to expose the management API)
+
+##### Volume Mounts
+
+- `~/.enkrypt:/app/.enkrypt/docker` - Config file location (required)
+- Additional mounts may be needed if your MCP servers require access to local files
+
+#### ⚠️ Important: Configuring MCP Servers When Gateway Runs in Docker
+
+When running the Enkrypt Gateway in Docker, **DO NOT configure your MCP servers to also run in Docker mode**. This causes Docker-in-Docker issues, networking problems, and volume mount complications.
+
+**❌ Avoid (Docker-based MCP servers):**
+
+```json
+{
+  "server_name": "github_server",
+  "config": {
+    "command": "docker",
+    "args": [
+      "run",
+      "-i",
+      "--rm",
+      "-e",
+      "GITHUB_PERSONAL_ACCESS_TOKEN",
+      "ghcr.io/github/github-mcp-server"
+    ],
+    "env": {
+      "GITHUB_PERSONAL_ACCESS_TOKEN": "your-token"
+    }
+  }
+}
+```
+
+**✅ Use instead (npx/npm/Python-based servers):**
+
+```json
+{
+  "server_name": "github_server",
+  "config": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-github"
+    ],
+    "env": {
+      "GITHUB_PERSONAL_ACCESS_TOKEN": "your-token"
+    }
+  }
+}
+```
+
+**Why?**
+
+- Docker-in-Docker requires privileged mode and special socket mounting
+- Network isolation prevents containers from communicating properly
+- Volume mounts don't work as expected across container boundaries
+- Performance overhead and security concerns
+- Increased complexity and debugging difficulty
+
+**Recommended MCP Server Formats When Gateway is in Docker:**
+
+- ✅ **npx-based servers**: `npx -y @modelcontextprotocol/server-*`
+- ✅ **npm-based servers**: `npm exec -y server-name`
+- ✅ **Python-based servers**: `python /path/to/server.py` or `uv run server.py`
+- ✅ **Node.js-based servers**: `node /path/to/server.js`
+- ✅ **Remote MCP servers**: `npx mcp-remote https://api.example.com/mcp/`
+
+**Exception:**
+
+If you absolutely must use Docker-based MCP servers, consider:
+
+1. Running the gateway outside of Docker (local installation), OR
+2. Setting up proper Docker networking with `--network host` or custom bridge networks, OR
+3. Using Docker-in-Docker with proper configuration (requires `--privileged` flag and `/var/run/docker.sock` mount - **not recommended for production**)
+
 </details>
 
 ### 4.4 Remote Installation
@@ -1924,7 +2095,13 @@ The observability stack includes:
 <details>
 <summary><strong>👨🏻‍💻 Configure GitHub </strong></summary>
 
-- `GitHub MCP Server` needs `docker` to be installed. So, please install and have `docker` running on your machine before proceeding with the steps below
+> **⚠️ Important Note for Docker Users:**
+>
+> If you're running the Enkrypt Gateway in Docker, **use the npx version** of the GitHub MCP server instead of the Docker version shown below. See the [npx-based configuration example](#github-server-configuration-npx-version) at the end of this section.
+>
+> For details on why, see [Section 4.3.6: Configuring MCP Servers When Gateway Runs in Docker](#️-important-configuring-mcp-servers-when-gateway-runs-in-docker).
+
+- `GitHub MCP Server` can be run with `docker` or `npx`. The Docker version requires Docker to be installed and running on your machine.
 
   - You can [download docker desktop from here](https://www.docker.com/products/docker-desktop/). Install and run it if you don't have it already
 
@@ -2017,6 +2194,67 @@ The observability stack includes:
 - This may not have caused actual damage but imagine a more complicated prompt that may have caused actual damage to the system.
 
 - To protect the MCP server, we can use **Enkrypt Guardrails** as shown in the next section.
+
+### GitHub Server Configuration (npx version)
+
+**✅ Recommended for Docker Gateway Deployments**
+
+If you're running the Enkrypt Gateway in Docker or prefer not to use Docker-in-Docker, use the npx-based GitHub MCP server instead:
+
+```json
+{
+  "server_name": "github_server",
+  "description": "GitHub Server (npx version)",
+  "config": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-github"
+    ],
+    "env": {
+      "GITHUB_PERSONAL_ACCESS_TOKEN": "REPLACE_WITH_YOUR_PERSONAL_ACCESS_TOKEN"
+    }
+  },
+  "tools": {},
+  "enable_server_info_validation": true,
+  "enable_tool_guardrails": true,
+  "input_guardrails_policy": {
+    "enabled": false,
+    "policy_name": "Sample Airline Guardrail",
+    "additional_config": {
+      "pii_redaction": false
+    },
+    "block": [
+      "policy_violation"
+    ]
+  },
+  "output_guardrails_policy": {
+    "enabled": false,
+    "policy_name": "Sample Airline Guardrail",
+    "additional_config": {
+      "relevancy": false,
+      "hallucination": false,
+      "adherence": false
+    },
+    "block": [
+      "policy_violation"
+    ]
+  }
+}
+```
+
+**Benefits of npx version:**
+
+- ✅ No Docker-in-Docker complications
+- ✅ Faster startup time
+- ✅ Works seamlessly with Dockerized gateway
+- ✅ Simpler networking and volume management
+- ✅ Lower resource overhead
+
+**Prerequisites:**
+
+- Node.js and npm must be installed in the gateway container or on the host machine
+- The default Dockerfile already includes Node.js 22.x LTS
 
 </details>
 
@@ -2753,6 +2991,7 @@ Controls whether server descriptions are validated during discovery/registration
 - When server metadata contains technical terms that trigger false positives
 
 **Example:**
+
 ```json
 {
   "server_name": "test_server",
