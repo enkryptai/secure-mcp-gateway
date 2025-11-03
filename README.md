@@ -1433,7 +1433,7 @@ python gateway.py
 
 - Or run in k8s using our docker image `enkryptai/secure-mcp-gateway:vx.x.x`
 
-- Example: `enkryptai/secure-mcp-gateway:v2.1.2`
+- Example: `enkryptai/secure-mcp-gateway:v2.1.3`
 
 - Use the latest version from Docker Hub: <https://hub.docker.com/r/enkryptai/secure-mcp-gateway/tags>
 
