@@ -2,7 +2,7 @@
 # This image includes everything needed to run MCP servers:
 # - Python 3.12 (pip, uv, pipx) - for Python-based MCP servers
 # - Node.js 22.x LTS (npm, npx) - for JavaScript/TypeScript MCP servers
-# - Docker CLI & Compose - for containerized MCP servers
+# - Docker CLI & Compose - for containerized MCP servers (Optional, commented out for security reasons)
 # - Git & SSH - for repository operations
 # - Build tools (gcc, g++, make) - for compiling native dependencies
 # - Utilities (jq, yq, curl, wget, zip, tar) - for data processing & archives
@@ -74,15 +74,16 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && npm install -g npm@latest \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Docker CLI (latest stable)
-RUN install -m 0755 -d /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
-    && chmod a+r /etc/apt/keyrings/docker.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-    $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
-    && apt-get update \
-    && apt-get install -y docker-ce-cli docker-compose-plugin \
-    && rm -rf /var/lib/apt/lists/*
+# # NOTE: Only use if you are fine with risks of running Docker inside the container
+# # Install Docker CLI (latest stable)
+# RUN install -m 0755 -d /etc/apt/keyrings \
+#     && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+#     && chmod a+r /etc/apt/keyrings/docker.gpg \
+#     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+#     $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+#     && apt-get update \
+#     && apt-get install -y docker-ce-cli docker-compose-plugin \
+#     && rm -rf /var/lib/apt/lists/*
 
 # Verify installations
 RUN echo "=== Verifying Installations ===" \
@@ -93,7 +94,7 @@ RUN echo "=== Verifying Installations ===" \
     && node --version \
     && npm --version \
     && npx --version \
-    && docker --version \
+    # && docker --version \
     && git --version \
     && jq --version \
     && yq --version \
