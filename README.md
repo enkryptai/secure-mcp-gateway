@@ -1415,6 +1415,7 @@ If you absolutely must use Docker-based MCP servers, consider:
 1. Running the gateway outside of Docker (local installation), OR
 2. Setting up proper Docker networking with `--network host` or custom bridge networks, OR
 3. Using Docker-in-Docker with proper configuration (requires `--privileged` flag and `/var/run/docker.sock` mount - **not recommended for production**)
+4. Uncomment the Docker CLI installation in the Dockerfile and build the image again
 
 </details>
 
