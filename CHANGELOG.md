@@ -2,7 +2,7 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
-## [2.1.3] - 2025-10-27
+## [2.1.3] - 2025-11-03
 
 ### Updates in v2.1.3
 
