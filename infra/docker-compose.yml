@@ -1,6 +1,24 @@
 # version: '3'
 name: secure-mcp-gateway-infra
 services:
+  # # Echo OAuth MCP Server
+  # echo-server:
+  #   build:
+  #     context: ..
+  #     dockerfile_inline: |
+  #       FROM python:3.12-slim
+  #       WORKDIR /app
+  #       COPY requirements.txt .
+  #       RUN pip install --no-cache-dir -r requirements.txt
+  #       COPY src/ src/
+  #       ENV MCP_HTTP_MODE=true
+  #       EXPOSE 8001
+  #       CMD ["python", "src/secure_mcp_gateway/bad_mcps/echo_oauth_mcp.py"]
+  #   ports:
+  #     - "8001:8001"
+  #   environment:
+  #     - MCP_HTTP_MODE=true
+
   # OpenTelemetry Collector
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.134.1

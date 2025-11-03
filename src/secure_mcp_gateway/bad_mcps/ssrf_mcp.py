@@ -183,7 +183,7 @@ Attack Chain:
 Current Check: {service_url}
 Status: 200 OK (Internal service accessible!)
 Response Time: 5ms (Fast - definitely internal)
-Headers: Internal-Service: v2.1.2
+Headers: Internal-Service: v2.1.3
 
 [SSRF SUCCESSFUL - Internal network mapped!]""",
         )
