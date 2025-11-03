@@ -7,6 +7,7 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 ### Updates in v2.1.3
 
 - Minor bug fixes and improvements
+- Tests for the Gateway with OAuth enabled
 
 ## [2.1.2] - 2025-10-16
 
