@@ -2970,9 +2970,9 @@ Enforce strict context boundaries across repositories.
 
 You can control guardrail behavior for each server individually using per-server flags in your configuration.
 
-**Note:** While both fields default to `true`, it's recommended to explicitly include them in your server configurations for clarity and maintainability.
+**Note:** While both fields default to `false`, it's recommended to explicitly include them in your server configurations for clarity and maintainability.
 
-#### `enable_server_info_validation` (boolean, default: `true`)
+#### `enable_server_info_validation` (boolean, default: `false`)
 
 Controls whether server descriptions are validated during discovery/registration for harmful content (injection attacks, policy violations, etc.).
 
@@ -3003,7 +3003,7 @@ Controls whether server descriptions are validated during discovery/registration
 }
 ```
 
-#### `enable_tool_guardrails` (boolean, default: `true`)
+#### `enable_tool_guardrails` (boolean, default: `false`)
 
 Controls whether individual tool descriptions and schemas are validated during discovery.
 
