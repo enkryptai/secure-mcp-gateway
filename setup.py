@@ -40,6 +40,9 @@ setup(
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     include_package_data=True,
+    package_data={
+        "secure_mcp_gateway": ["openapi.json", "example_enkrypt_mcp_config.json"],
+    },
     install_requires=__dependencies__,
     classifiers=[
         "Programming Language :: Python :: 3",

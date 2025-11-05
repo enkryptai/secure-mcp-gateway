@@ -53,22 +53,6 @@ if src_dir not in sys.path:
 # print(f"root_dir: {root_dir}", file=sys.stderr)
 # print("--------------------------------", file=sys.stderr)
 
-# Try to install the package if not found to cater for clients like Claude Desktop who use a separate python interpreter
-try:
-    import secure_mcp_gateway
-except ImportError:
-    # What if user is intalling a specific version of the package?
-    # package_name = src_dir if IS_LOCAL_ENVIRONMENT else "secure_mcp_gateway"
-
-    # TODO: Fix error and use stdout
-    print("Installing secure_mcp_gateway package...", file=sys.stderr)
-    print(f"src_dir: {src_dir}", file=sys.stderr)
-    print(f"src_dir: {src_dir}", file=sys.stderr)
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", src_dir],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
 
 from secure_mcp_gateway.dependencies import __dependencies__
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager

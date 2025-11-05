@@ -1,1 +1,2 @@
 include src/secure_mcp_gateway/example_*.json
+include src/secure_mcp_gateway/openapi.json

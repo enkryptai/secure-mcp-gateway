@@ -19,4 +19,10 @@ __dependencies__ = [
     "opentelemetry-instrumentation-requests>=0.55b1",
     "structlog>=25.4.0",
     "tenacity>=8.2.0",  # Retry logic with exponential backoff
+    # FastAPI and REST API dependencies
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "pydantic>=2.11.0",
+    "email-validator>=2.2.0",  # Required by pydantic[email] for EmailStr validation
+    "psutil>=6.0.0",  # Required for system management commands
 ]
