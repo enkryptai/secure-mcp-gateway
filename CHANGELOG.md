@@ -6,7 +6,35 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 
 ### Updates in v2.1.4
 
-- Minor bug fixes and improvements
+#### Security & Authentication
+
+- Added `admin_apikey` (256-character secure key) for administrative REST API operations
+- Separated admin API key from regular user API keys for enhanced security
+- Updated API server authentication to use `admin_apikey` for administrative endpoints
+
+#### API & Configuration
+
+- Improved OpenAPI schema handling with static `openapi.json` file
+- Added `openapi.json` to package data and MANIFEST.in
+- Updated API server to load OpenAPI schema from static file
+- Added `admin_apikey` to example configuration and documentation
+
+#### Command Structure & Dependencies
+
+- Simplified command structure from `uv run --with mcp[cli] mcp` to `mcp`
+- Added `email-validator` dependency for pydantic EmailStr validation
+- Updated dependencies.py with FastAPI and REST API requirements
+- Removed automatic package installation in gateway.py
+
+#### Documentation
+
+- Updated README.md with admin API key details and usage
+- Added REST API authentication section
+- Updated Claude Desktop and Cursor configuration examples
+
+#### Bug Fixes
+
+- Minor code cleanup and improvements
 
 ## [2.1.3] - 2025-11-03
 
