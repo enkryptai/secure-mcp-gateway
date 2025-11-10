@@ -18,11 +18,19 @@
   "tags": [
     {
       "name": "Health",
-      "description": "Health check endpoints"
+      "description": "Health check endpoints for monitoring service availability"
     },
     {
       "name": "Configurations",
-      "description": "MCP configuration management - create, read, update, delete configurations and servers"
+      "description": "MCP configuration management - create, read, update, delete configurations"
+    },
+    {
+      "name": "Servers",
+      "description": "Server management within configurations - add, update, delete MCP servers"
+    },
+    {
+      "name": "Guardrails",
+      "description": "Security guardrails - manage input and output policies for servers"
     },
     {
       "name": "Projects",
@@ -35,6 +43,14 @@
     {
       "name": "API Keys",
       "description": "API key management - generate, rotate, enable, disable, and delete API keys"
+    },
+    {
+      "name": "Search",
+      "description": "Search operations across configurations, projects, and users"
+    },
+    {
+      "name": "Import/Export",
+      "description": "Import and export operations for configurations and projects"
     },
     {
       "name": "System",
@@ -101,12 +117,72 @@
               }
             }
           },
+          "400": {
+            "description": "Bad Request - Malformed request syntax",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
-            "description": "Validation Error",
+            "description": "Unprocessable Entity - Validation Error",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests - Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error - Unexpected server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable - Service temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -164,12 +240,82 @@
               }
             }
           },
+          "400": {
+            "description": "Bad Request - Malformed request syntax",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict - Configuration already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
-            "description": "Validation Error",
+            "description": "Unprocessable Entity - Validation Error",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests - Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error - Unexpected server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable - Service temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -576,7 +722,7 @@
       },
       "post": {
         "tags": [
-          "Configurations"
+          "Servers"
         ],
         "summary": "Add Server To Config Endpoint",
         "description": "Add a server to a configuration.",
@@ -648,7 +794,7 @@
       },
       "delete": {
         "tags": [
-          "Configurations"
+          "Servers"
         ],
         "summary": "Delete All Servers From Config Endpoint",
         "description": "Remove all servers from a configuration.",
@@ -782,6 +928,9 @@
         ]
       },
       "put": {
+        "tags": [
+          "Configurations"
+        ],
         "summary": "Update Server In Config Endpoint",
         "description": "Update a server in a configuration.",
         "operationId": "update_server_in_config_endpoint_api_v1_configs__config_identifier__servers__server_name__put",
@@ -857,12 +1006,12 @@
           {
             "BearerAuth": []
           }
-        ],
-        "tags": [
-          "Configurations"
         ]
       },
       "delete": {
+        "tags": [
+          "Configurations"
+        ],
         "summary": "Delete Server From Config Endpoint",
         "description": "Remove a server from a configuration.",
         "operationId": "delete_server_from_config_endpoint_api_v1_configs__config_identifier__servers__server_name__delete",
@@ -928,9 +1077,6 @@
           {
             "BearerAuth": []
           }
-        ],
-        "tags": [
-          "Configurations"
         ]
       }
     },
@@ -1000,6 +1146,9 @@
     },
     "/api/v1/configs/{config_identifier}/export": {
       "post": {
+        "tags": [
+          "Configurations"
+        ],
         "summary": "Export Config Endpoint",
         "description": "Export a configuration to file.",
         "operationId": "export_config_endpoint_api_v1_configs__config_identifier__export_post",
@@ -1066,14 +1215,14 @@
           {
             "BearerAuth": []
           }
-        ],
-        "tags": [
-          "Configurations"
         ]
       }
     },
     "/api/v1/configs/import": {
       "post": {
+        "tags": [
+          "Configurations"
+        ],
         "summary": "Import Config Endpoint",
         "description": "Import a configuration from file.",
         "operationId": "import_config_endpoint_api_v1_configs_import_post",
@@ -1131,16 +1280,16 @@
           {
             "BearerAuth": []
           }
-        ],
-        "tags": [
-          "Configurations"
         ]
       }
     },
     "/api/v1/configs/search": {
       "post": {
+        "tags": [
+          "Search"
+        ],
         "summary": "Search Configs Endpoint",
-        "description": "Search configurations.",
+        "description": "Search MCP configurations by name or other configuration metadata. Returns all matching configurations.",
         "operationId": "search_configs_endpoint_api_v1_configs_search_post",
         "parameters": [
           {
@@ -1181,6 +1330,36 @@
               }
             }
           },
+          "400": {
+            "description": "Bad Request - Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1190,20 +1369,40 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error - Server encountered an error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable - Service temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
           {
             "BearerAuth": []
           }
-        ],
-        "tags": [
-          "Configurations"
         ]
       }
     },
     "/api/v1/configs/{config_identifier}/servers/{server_name}/input-guardrails": {
       "put": {
+        "tags": [
+          "Configurations"
+        ],
         "summary": "Update Server Input Guardrails Endpoint",
         "description": "Update server input guardrails policy.",
         "operationId": "update_server_input_guardrails_endpoint_api_v1_configs__config_identifier__servers__server_name__input_guardrails_put",
@@ -1279,14 +1478,14 @@
           {
             "BearerAuth": []
           }
-        ],
-        "tags": [
-          "Configurations"
         ]
       }
     },
     "/api/v1/configs/{config_identifier}/servers/{server_name}/output-guardrails": {
       "put": {
+        "tags": [
+          "Configurations"
+        ],
         "summary": "Update Server Output Guardrails Endpoint",
         "description": "Update server output guardrails policy.",
         "operationId": "update_server_output_guardrails_endpoint_api_v1_configs__config_identifier__servers__server_name__output_guardrails_put",
@@ -1362,14 +1561,14 @@
           {
             "BearerAuth": []
           }
-        ],
-        "tags": [
-          "Configurations"
         ]
       }
     },
     "/api/v1/configs/{config_identifier}/servers/{server_name}/guardrails": {
       "put": {
+        "tags": [
+          "Configurations"
+        ],
         "summary": "Update Server Guardrails Endpoint",
         "description": "Update server guardrails policies (both input and output).",
         "operationId": "update_server_guardrails_endpoint_api_v1_configs__config_identifier__servers__server_name__guardrails_put",
@@ -1445,9 +1644,6 @@
           {
             "BearerAuth": []
           }
-        ],
-        "tags": [
-          "Configurations"
         ]
       }
     },
@@ -2170,8 +2366,11 @@
     },
     "/api/v1/projects/{project_identifier}/export": {
       "post": {
+        "tags": [
+          "Projects"
+        ],
         "summary": "Export Project Endpoint",
-        "description": "Export a project to file.",
+        "description": "Export a project and its associated MCP configuration to a JSON file. The export includes project metadata, users, and the complete MCP configuration with all servers.",
         "operationId": "export_project_endpoint_api_v1_projects__project_identifier__export_post",
         "parameters": [
           {
@@ -2221,6 +2420,46 @@
               }
             }
           },
+          "400": {
+            "description": "Bad Request - Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found - Project does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2230,22 +2469,42 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error - Server encountered an error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable - Service temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
           {
             "BearerAuth": []
           }
-        ],
-        "tags": [
-          "Projects"
         ]
       }
     },
     "/api/v1/projects/search": {
       "post": {
+        "tags": [
+          "Search"
+        ],
         "summary": "Search Projects Endpoint",
-        "description": "Search projects.",
+        "description": "Search projects by name or other project metadata. Returns all matching projects.",
         "operationId": "search_projects_endpoint_api_v1_projects_search_post",
         "parameters": [
           {
@@ -2286,6 +2545,36 @@
               }
             }
           },
+          "400": {
+            "description": "Bad Request - Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2295,15 +2584,32 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error - Server encountered an error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable - Service temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
           {
             "BearerAuth": []
           }
-        ],
-        "tags": [
-          "Projects"
         ]
       }
     },
@@ -2969,7 +3275,7 @@
     "/api/v1/api-keys/rotate": {
       "post": {
         "summary": "Rotate Api Key Endpoint",
-        "description": "Rotate an API key.",
+        "description": "Rotate an existing API key. Generates a new API key to replace the old one while maintaining the same user and project associations.",
         "operationId": "rotate_api_key_endpoint_api_v1_api_keys_rotate_post",
         "parameters": [
           {
@@ -3010,12 +3316,72 @@
               }
             }
           },
+          "400": {
+            "description": "Bad Request - Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found - API key does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error - Server encountered an error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable - Service temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -3225,8 +3591,11 @@
     },
     "/api/v1/users/search": {
       "post": {
+        "tags": [
+          "Search"
+        ],
         "summary": "Search Users Endpoint",
-        "description": "Search users.",
+        "description": "Search users by email or other user metadata. Returns all matching users.",
         "operationId": "search_users_endpoint_api_v1_users_search_post",
         "parameters": [
           {
@@ -3267,6 +3636,36 @@
               }
             }
           },
+          "400": {
+            "description": "Bad Request - Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -3276,15 +3675,32 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error - Server encountered an error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable - Service temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
           {
             "BearerAuth": []
           }
-        ],
-        "tags": [
-          "Users"
         ]
       }
     },
@@ -3545,14 +3961,18 @@
         "properties": {
           "api_key": {
             "type": "string",
-            "title": "Api Key"
+            "title": "Api Key",
+            "description": "The API key to rotate (will be replaced with a new key)"
           }
         },
         "type": "object",
         "required": [
           "api_key"
         ],
-        "title": "ApiKeyRotateRequest"
+        "title": "ApiKeyRotateRequest",
+        "example": {
+          "api_key": "your-existing-api-key-here"
+        }
       },
       "CombinedGuardrailsUpdateRequest": {
         "properties": {
@@ -3736,6 +4156,33 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "status_code": {
+            "type": "integer",
+            "title": "Status Code"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message",
+          "status_code"
+        ],
+        "title": "ErrorResponse"
+      },
       "ProjectAddUserRequest": {
         "properties": {
           "user_id": {
@@ -3809,14 +4256,19 @@
         "properties": {
           "output_file": {
             "type": "string",
-            "title": "Output File"
+            "title": "Output File",
+            "description": "Full path where the project export file will be saved",
+            "example": "C:/Users/username/exports/my_project.json"
           }
         },
         "type": "object",
         "required": [
           "output_file"
         ],
-        "title": "ProjectExportRequest"
+        "title": "ProjectExportRequest",
+        "example": {
+          "output_file": "C:/Users/username/exports/my_project.json"
+        }
       },
       "ProjectSearchRequest": {
         "properties": {
