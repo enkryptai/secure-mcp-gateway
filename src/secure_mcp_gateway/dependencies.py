@@ -1,28 +1,34 @@
 """Package dependencies."""
 
 __dependencies__ = [
-    "flask~=2.0.0",
-    "flask-cors~=3.0.0",
-    "redis~=4.0.0",
-    "requests~=2.26.0",
-    "aiohttp~=3.8.0",
-    "python-json-logger~=2.0.0",
-    "python-dateutil~=2.8.2",
-    "cryptography~=3.4.0",
-    "pyjwt~=2.0.0",
-    "asyncio~=3.4.3",
-    "mcp[cli]~=1.10.1",
-    "opentelemetry-sdk~=1.34.1",
-    "opentelemetry-exporter-otlp~=1.34.1",
-    "opentelemetry-exporter-prometheus~=0.55b1",
-    "opentelemetry-instrumentation~=0.55b1",
-    "opentelemetry-instrumentation-requests~=0.55b1",
-    "structlog~=25.4.0",
-    "tenacity~=8.2.0",  # Retry logic with exponential backoff
+    # Core dependencies
+    "flask~=3.1.2",
+    "flask-cors~=6.0.1",
+    "redis~=6.4.0",
+    "requests~=2.32.5",
+    "aiohttp~=3.12.15",
     # FastAPI and REST API dependencies
-    "fastapi~=0.115.0",
-    "uvicorn~=0.32.0",
+    "fastapi~=0.115.6",
+    "uvicorn[standard]~=0.32.1",
     "pydantic~=2.11.0",
-    "email-validator~=2.2.0",  # Required by pydantic[email] for EmailStr validation
-    "psutil~=6.0.0",  # Required for system management commands
+    "pydantic[email]~=2.11.0",
+    "email-validator~=2.2.0",
+    # Logging and utilities
+    "python-json-logger~=3.3.0",
+    "python-dateutil~=2.9.0.post0",
+    "psutil~=6.1.0",
+    # Security and encryption
+    "cryptography~=45.0.7",
+    "pyjwt~=2.10.1",
+    # Async support
+    "asyncio~=4.0.0",
+    # MCP
+    "mcp[cli]~=1.13.1",
+    # OpenTelemetry
+    "opentelemetry-sdk~=1.36.0",
+    "opentelemetry-exporter-otlp~=1.36.0",
+    "opentelemetry-exporter-prometheus~=0.57b0",
+    "opentelemetry-instrumentation~=0.57b0",
+    "opentelemetry-instrumentation-requests~=0.57b0",
+    "structlog~=25.4.0",
 ]

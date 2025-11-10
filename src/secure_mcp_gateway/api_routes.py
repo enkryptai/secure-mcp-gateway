@@ -7,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from secure_mcp_gateway.api_server import (
+from secure_mcp_gateway.api_models import (
     PICKED_CONFIG_PATH,
     ApiKeyRotateRequest,
     ProjectAddUserRequest,
