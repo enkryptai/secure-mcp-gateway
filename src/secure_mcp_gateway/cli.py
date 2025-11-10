@@ -245,11 +245,14 @@ def check_duplicate_project_name(config, project_name):
 def generate_default_config():
     """Generate a default config with both structures for compatibility."""
     gateway_key = base64.urlsafe_b64encode(os.urandom(36)).decode().rstrip("=")
+    # Generate 256-character admin API key for administrative operations
+    admin_apikey = base64.urlsafe_b64encode(os.urandom(192)).decode().rstrip("=")
     project_id = str(uuid.uuid4())
     user_id = str(uuid.uuid4())
     mcp_config_id = str(uuid.uuid4())
 
     config = {
+        "admin_apikey": admin_apikey,
         "common_mcp_gateway_config": {
             "enkrypt_log_level": "INFO",
             "enkrypt_use_remote_mcp_config": False,
@@ -3502,8 +3505,8 @@ def main():
                 args_list = DOCKER_ARGS
                 command = DOCKER_COMMAND
             else:
-                command = "uv"
-                args_list = ["run", "--with", "mcp[cli]", "mcp", "run", GATEWAY_PY_PATH]
+                command = "mcp"
+                args_list = ["run", GATEWAY_PY_PATH]
 
             try:
                 add_or_update_cursor_server(

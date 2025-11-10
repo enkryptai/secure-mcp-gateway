@@ -91,7 +91,7 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 
 Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 
-1. **Authentication**: We use Unique Key to authenticate with the Gateway. We also use Enkrypt API Key if you want to protect your MCPs with Enkrypt Guardrails
+1. **Authentication**: We use Unique Key to authenticate with the Gateway. We also use Enkrypt API Key if you want to protect your MCPs with Enkrypt Guardrails. Additionally, a secure `admin_apikey` (256-character random string) is automatically generated for administrative REST API operations.
 
 2. **Ease of use**: You can configure all your MCP servers locally in the config file or better yet in Enkrypt *(Coming soon)* and use them in the Gateway by using their name
 
@@ -637,12 +637,8 @@ Please restart Claude Desktop to use the gateway.
   {
     "mcpServers": {
       "Enkrypt Secure MCP Gateway": {
-        "command": "/opt/homebrew/bin/uv",
+        "command": "mcp",
         "args": [
-          "run",
-          "--with",
-          "mcp[cli]",
-          "mcp",
           "run",
           "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/secure_mcp_gateway/gateway.py"
         ],
@@ -667,12 +663,8 @@ Please restart Claude Desktop to use the gateway.
   {
     "mcpServers": {
       "Enkrypt Secure MCP Gateway": {
-        "command": "C:\\Users\\<User>\\.local\\bin\\uv.EXE",
+        "command": "mcp",
         "args": [
-          "run",
-          "--with",
-          "mcp[cli]",
-          "mcp",
           "run",
           "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\gateway.py"
         ],
@@ -710,12 +702,8 @@ Please restart Claude Desktop to use the gateway.
   {
     "mcpServers": {
       "Enkrypt Secure MCP Gateway": {
-        "command": "uv",
+        "command": "mcp",
         "args": [
-          "run",
-          "--with",
-          "mcp[cli]",
-          "mcp",
           "run",
           "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/secure_mcp_gateway/gateway.py"
         ],
@@ -1415,7 +1403,6 @@ If you absolutely must use Docker-based MCP servers, consider:
 1. Running the gateway outside of Docker (local installation), OR
 2. Setting up proper Docker networking with `--network host` or custom bridge networks, OR
 3. Using Docker-in-Docker with proper configuration (requires `--privileged` flag and `/var/run/docker.sock` mount - **not recommended for production**)
-4. Uncomment the Docker CLI installation in the Dockerfile and build the image again
 
 </details>
 
@@ -1433,7 +1420,7 @@ python gateway.py
 
 - Or run in k8s using our docker image `enkryptai/secure-mcp-gateway:vx.x.x`
 
-- Example: `enkryptai/secure-mcp-gateway:v2.1.3`
+- Example: `enkryptai/secure-mcp-gateway:v2.1.2`
 
 - Use the latest version from Docker Hub: <https://hub.docker.com/r/enkryptai/secure-mcp-gateway/tags>
 
@@ -1663,12 +1650,8 @@ The observability stack includes:
   {
     "mcpServers": {
       "Enkrypt Secure MCP Gateway": {
-        "command": "/opt/homebrew/bin/uv",
+        "command": "mcp",
         "args": [
-          "run",
-          "--with",
-          "mcp[cli]",
-          "mcp",
           "run",
           "/Users/user/enkryptai/secure-mcp-gateway/src/secure_mcp_gateway/gateway.py"
         ],
@@ -1693,12 +1676,8 @@ The observability stack includes:
   {
     "mcpServers": {
       "Enkrypt Secure MCP Gateway": {
-        "command": "C:\\Users\\<User>\\.local\\bin\\uv.EXE",
+        "command": "mcp",
         "args": [
-          "run",
-          "--with",
-          "mcp[cli]",
-          "mcp",
           "run",
           "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\secure_mcp_gateway\\gateway.py"
         ],
@@ -1779,6 +1758,7 @@ The observability stack includes:
 
   ```json
   {
+    "admin_apikey": "AUTO_GENERATED_256_CHAR_ADMIN_API_KEY_FOR_ADMINISTRATIVE_OPERATIONS",
     "common_mcp_gateway_config": {
       "enkrypt_log_level": "INFO",
       "enkrypt_base_url": "https://api.enkryptai.com",
@@ -1980,6 +1960,13 @@ The observability stack includes:
 <details>
 <summary><strong>⛩️ Gateway Config Schema</strong></summary>
 
+- **`admin_apikey`** (root level): A 256-character random string used for authenticating REST API administrative operations (user management, project management, configuration management, API key management). This is automatically generated when you run `secure-mcp-gateway generate-config`.
+
+  - **Important**: Keep this key secure! It provides full administrative access to the gateway.
+  - Used with `Authorization: Bearer <admin_apikey>` header for REST API calls.
+  - Different from regular API keys used by MCP clients to connect to the gateway.
+  - See [Section 11: REST API for Administrative Operations](#11-other-tools-available) for details.
+
 - If you want a different set of MCP servers for a separate client/user, you can add a new `mcp_config` section to the config file. Also, you can run cli commands. See [CLI-Commands-Reference.md](./CLI-Commands-Reference.md) section `2. CONFIGURATION MANAGEMENT` for details
 
 - Set `enkrypt_log_level` to `DEBUG` to get more detailed logs inside `common_mcp_gateway_config` part of the config file
@@ -2045,12 +2032,6 @@ The observability stack includes:
   - i.e., Guardrails detect call, relevancy check, adherence check, PII unredaction, etc. are made in parallel after getting the response from the MCP server
 
 - **Inside each MCP server config, you can set the following:**
-
-  - `oauth_config`: Use this if we plan to use OAuth for the MCP server
-
-  - `enable_server_info_validation`: Whether to enable server info validation or not. This is `false` in the example config file
-
-  - `enable_tool_guardrails`: Whether to enable tool guardrails or not. This is `false` in the example config file
 
   - `input_guardrails_policy`: Use this if we plan to use Enkrypt Guardrails on input side
 
@@ -2875,8 +2856,8 @@ Enforce strict context boundaries across repositories.
               }
             },
             "tools": {},
-            "enable_server_info_validation": true,
-            "enable_tool_guardrails": true,
+            "enable_server_info_validation": false,
+            "enable_tool_guardrails": false,
             "input_guardrails_policy": {
               "enabled": true,
               "policy_name": "GitHub Guardrail",
@@ -2989,7 +2970,7 @@ Enforce strict context boundaries across repositories.
 
 You can control guardrail behavior for each server individually using per-server flags in your configuration.
 
-**Note:** While both fields default to `true`, it's recommended to explicitly include them in your server configurations for clarity and maintainability.
+**Note:** While both fields default to `false`, it's recommended to explicitly include them in your server configurations for clarity and maintainability.
 
 #### `enable_server_info_validation` (boolean, default: `false`)
 
@@ -3011,7 +2992,7 @@ Controls whether server descriptions are validated during discovery/registration
     "command": "python",
     "args": ["test_server.py"]
   },
-  "enable_server_info_validation": true,
+  "enable_server_info_validation": false,
   "enable_tool_guardrails": false,
   "input_guardrails_policy": {
     "enabled": false
@@ -3048,6 +3029,85 @@ The gateway has three distinct levels of guardrails:
 **Note:** All three levels are independent and can be configured separately per server.
 
 ## 11. Other Tools Available
+
+<details>
+<summary><strong>🔧 REST API for Administrative Operations </strong></summary>
+<br>
+
+The Gateway provides a REST API server for administrative operations like managing users, projects, configurations, and API keys.
+
+### Starting the REST API Server
+
+```bash
+secure-mcp-gateway system start-api --host 0.0.0.0 --port 8001
+```
+
+- **API Documentation**: Available at `http://localhost:8001/docs` (Swagger UI)
+- **Health Check**: `http://localhost:8001/health`
+- **OpenAPI Schema**: Loaded from `openapi.json` in the project root
+
+### Admin API Key Authentication
+
+**Important**: Administrative operations require a special `admin_apikey` that is separate from regular user API keys. This provides enhanced security for admin operations.
+
+#### Getting Your Admin API Key
+
+The `admin_apikey` is automatically generated when you run `secure-mcp-gateway generate-config`. Find it in your configuration file:
+
+- **Windows**: `%USERPROFILE%\.enkrypt\enkrypt_mcp_config.json`
+- **macOS/Linux**: `~/.enkrypt/enkrypt_mcp_config.json`
+
+```json
+{
+  "admin_apikey": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6...",
+  "apikeys": {
+    "regular_user_key_1": { ... },
+    "regular_user_key_2": { ... }
+  },
+  ...
+}
+```
+
+#### Key Differences
+
+- **`admin_apikey`** (root level): Used for all administrative operations (user management, project management, etc.)
+  - 256-character random string for maximum security
+  - Generated during `secure-mcp-gateway generate-config`
+  - Required for REST API endpoints
+
+- **`apikeys`** (in the `apikeys` section): Used for gateway access by users
+  - Used by MCP clients to connect to the gateway
+  - Associated with specific users and projects
+  - Not used for administrative operations
+
+#### Using the Admin API Key
+
+Include the `admin_apikey` in the Authorization header for all administrative API calls:
+
+```bash
+curl -X GET "http://localhost:8001/api/v1/users" \
+  -H "Authorization: Bearer YOUR_ADMIN_API_KEY_HERE"
+```
+
+**Security Note**:
+- Keep your admin API key secure and never commit it to version control
+- Only share the admin API key with authorized administrators
+- Regular users should never have access to the admin API key
+
+### Available Administrative Operations
+
+The REST API provides endpoints for:
+
+1. **User Management**: Create, list, update, and delete users
+2. **Project Management**: Create projects, assign configurations, manage users
+3. **API Key Management**: Generate, rotate, disable/enable, and delete API keys
+4. **Configuration Management**: Create, update, and manage MCP configurations and servers
+
+For complete API documentation and examples, see:
+- [API-Reference.md](./API-Reference.md)
+- Interactive API docs at `http://localhost:8001/docs`
+
+</details>
 
 <details>
 <summary><strong>💾 Cache Management </strong></summary>

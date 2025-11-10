@@ -68,6 +68,9 @@ from secure_mcp_gateway.version import __version__
 is_docker_running = is_docker()
 PICKED_CONFIG_PATH = DOCKER_CONFIG_PATH if is_docker_running else CONFIG_PATH
 
+# OpenAPI configuration - always use static openapi.json file
+OPENAPI_JSON_PATH = os.path.join(os.path.dirname(__file__), "openapi.json")
+
 # FastAPI app
 app = FastAPI(
     title="Enkrypt Secure MCP Gateway API",
@@ -78,31 +81,23 @@ app = FastAPI(
 )
 
 
-# Add security scheme for Swagger UI
+# Load OpenAPI schema from static file
 def custom_openapi():
+    """Load OpenAPI schema from static openapi.json file."""
     if app.openapi_schema:
         return app.openapi_schema
-    openapi_schema = get_openapi(
-        title="Enkrypt Secure MCP Gateway API",
-        version=__version__,
-        description="REST API for managing MCP configurations, projects, users, and system operations",
-        routes=app.routes,
-    )
 
-    # Add security schemes
-    openapi_schema["components"]["securitySchemes"] = {
-        "BearerAuth": {
-            "type": "http",
-            "scheme": "bearer",
-            "bearerFormat": "JWT",
-        }
-    }
-
-    # Add security to all endpoints except health check
-    for path in openapi_schema["paths"]:
-        for method in openapi_schema["paths"][path]:
-            if method != "parameters" and path != "/health":
-                openapi_schema["paths"][path][method]["security"] = [{"BearerAuth": []}]
+    try:
+        logger.info(f"Loading OpenAPI schema from: {OPENAPI_JSON_PATH}")
+        with open(OPENAPI_JSON_PATH, encoding="utf-8") as f:
+            openapi_schema = json.load(f)
+        logger.info("Successfully loaded OpenAPI schema")
+    except FileNotFoundError:
+        logger.error(f"OpenAPI file not found at {OPENAPI_JSON_PATH}")
+        raise RuntimeError(f"OpenAPI schema file not found: {OPENAPI_JSON_PATH}")
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in OpenAPI file: {e}")
+        raise RuntimeError(f"Invalid OpenAPI schema file: {e}")
 
     app.openapi_schema = openapi_schema
     return app.openapi_schema
@@ -266,8 +261,8 @@ class SystemResetRequest(BaseModel):
 
 
 def get_api_key(authorization: Optional[str] = Header(None)) -> str:
-    """Extract and validate API key from Authorization header."""
-    context = ErrorContext(operation="api_key_validation")
+    """Extract and validate admin API key from Authorization header."""
+    context = ErrorContext(operation="admin_api_key_validation")
 
     if not authorization:
         error = create_auth_error(
@@ -295,28 +290,28 @@ def get_api_key(authorization: Optional[str] = Header(None)) -> str:
 
     api_key = authorization[7:]  # Remove "Bearer " prefix
 
-    # Validate API key exists in config
+    # Validate admin API key exists in config
     try:
         with open(PICKED_CONFIG_PATH) as f:
             config = json.load(f)
 
-        if api_key not in config.get("apikeys", {}):
+        # Check if admin_apikey exists and matches
+        if "admin_apikey" not in config:
             error = create_auth_error(
                 code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-                message="Invalid API key",
+                message="Admin API key not configured. Please regenerate configuration.",
                 context=context,
             )
             error_logger.log_error(error)
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=create_error_response(error),
             )
 
-        # Check if API key is disabled
-        if config["apikeys"][api_key].get("disabled", False):
+        if api_key != config["admin_apikey"]:
             error = create_auth_error(
                 code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-                message="API key is disabled",
+                message="Invalid admin API key. Administrative operations require admin_apikey.",
                 context=context,
             )
             error_logger.log_error(error)
@@ -1033,6 +1028,7 @@ def main():
     """Run the API server."""
     logger.info("Starting Enkrypt Secure MCP Gateway REST API Server")
     logger.info(f"Config path: {PICKED_CONFIG_PATH}")
+    logger.info(f"OpenAPI schema: {OPENAPI_JSON_PATH}")
     logger.info("API documentation available at: http://localhost:8001/docs")
 
     uvicorn.run(

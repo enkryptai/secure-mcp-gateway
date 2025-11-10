@@ -10,6 +10,7 @@ fastapi~=0.115.6
 uvicorn[standard]~=0.32.1
 pydantic~=2.11.0
 pydantic[email]~=2.11.0
+email-validator~=2.2.0
 
 # Logging and utilities
 python-json-logger~=3.3.0
