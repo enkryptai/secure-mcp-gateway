@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src *; img-src 'self' data:;">
+    <meta http-equiv="Strict-Transport-Security" content="max-age=31536000; includeSubDomains; preload">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+    <title>OAuth 2.1 Authorization Callback - Enkrypt Secure MCP Gateway</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+            animation: slideIn 0.4s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 16px;
+        }
+
+        .status {
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .status.success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+        }
+
+        .status.loading {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            color: #856404;
+        }
+
+        .status.warning {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            color: #856404;
+        }
+
+        .status-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .status-message {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .status-detail {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #e0e0e0;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            animation: progressAnimation 3s ease-out forwards;
+        }
+
+        @keyframes progressAnimation {
+            0% { width: 0%; }
+            100% { width: 100%; }
+        }
+
+        .info-section {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 4px;
+        }
+
+        .info-section h3 {
+            color: #1976D2;
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .info-section p {
+            color: #333;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .info-section code {
+            background: rgba(0, 0, 0, 0.05);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+
+        .warning-section {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 4px;
+        }
+
+        .warning-section h3 {
+            color: #856404;
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            text-align: center;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            margin-top: 15px;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(108, 117, 125, 0.4);
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .security-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #d4edda;
+            border: 1px solid #28a745;
+            color: #155724;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            margin-top: 15px;
+        }
+
+        .details-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .detail-item {
+            background: #f8f9fa;
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .detail-item strong {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">🔐</div>
+            <h1>OAuth Authorization</h1>
+            <p class="subtitle">Enkrypt Secure MCP Gateway</p>
+        </div>
+
+        <div id="content">
+            <div class="status loading">
+                <div class="spinner"></div>
+                <div class="status-message">Processing Authorization...</div>
+                <div class="status-detail">Securely relaying to your gateway</div>
+                <div class="progress-bar">
+                    <div class="progress-bar-fill"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Enkrypt Secure MCP Gateway © 2025</p>
+            <p style="margin-top: 8px; font-size: 12px;">
+                <a href="https://github.com/enkryptai/secure-mcp-gateway" target="_blank">
+                    GitHub Repository
+                </a>
+                |
+                <a href="https://docs.enkryptai.com/oauth" target="_blank">
+                    Documentation
+                </a>
+            </p>
+            <div class="security-badge">
+                🔒 OAuth 2.1 Compliant | PKCE Enabled | TLS Required
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Security configuration
+        const SECURITY_CONFIG = {
+            MAX_REDIRECT_TIME: 30000, // 30 seconds max
+            RELAY_TIMEOUT: 15000, // 15 seconds timeout for relay
+            MIN_STATE_LENGTH: 32,
+            ALLOWED_PROTOCOLS: ['https:'],
+            MAX_RETRY_ATTEMPTS: 2
+        };
+
+        // Enforce HTTPS
+        if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+            window.location.href = 'https://' + window.location.host + window.location.pathname + window.location.search;
+        }
+
+        // State management - use sessionStorage briefly, clear immediately after use
+        class SecureStateManager {
+            static store(key, value, ttl = 60000) {
+                const item = {
+                    value: value,
+                    expiry: Date.now() + ttl
+                };
+                sessionStorage.setItem(key, JSON.stringify(item));
+            }
+
+            static retrieve(key) {
+                const itemStr = sessionStorage.getItem(key);
+                if (!itemStr) return null;
+
+                const item = JSON.parse(itemStr);
+                if (Date.now() > item.expiry) {
+                    sessionStorage.removeItem(key);
+                    return null;
+                }
+                return item.value;
+            }
+
+            static clear(key) {
+                sessionStorage.removeItem(key);
+            }
+
+            static clearAll() {
+                sessionStorage.clear();
+            }
+        }
+
+        // URL parameter parser with validation
+        function getUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            return {
+                code: params.get('code'),
+                state: params.get('state'),
+                error: params.get('error'),
+                error_description: params.get('error_description'),
+                error_uri: params.get('error_uri')
+            };
+        }
+
+        // Parse and validate state parameter
+        function parseState(stateParam) {
+            if (!stateParam || stateParam.length < SECURITY_CONFIG.MIN_STATE_LENGTH) {
+                return { valid: false, error: 'Invalid state parameter: too short' };
+            }
+
+            try {
+                // State format: base64(JSON({gateway_url, nonce, timestamp, pkce_verifier}))
+                const decoded = atob(stateParam);
+                const state = JSON.parse(decoded);
+
+                // Validate required fields
+                if (!state.gateway_url || !state.nonce) {
+                    return { valid: false, error: 'Invalid state: missing required fields' };
+                }
+
+                // Validate gateway URL protocol
+                const url = new URL(state.gateway_url);
+                if (!SECURITY_CONFIG.ALLOWED_PROTOCOLS.includes(url.protocol)) {
+                    return { valid: false, error: 'Invalid gateway URL: must use HTTPS' };
+                }
+
+                // Check timestamp if present (prevent replay attacks)
+                if (state.timestamp) {
+                    const age = Date.now() - state.timestamp;
+                    if (age > SECURITY_CONFIG.MAX_REDIRECT_TIME) {
+                        return { valid: false, error: 'State expired: authorization took too long' };
+                    }
+                }
+
+                return { valid: true, state: state };
+            } catch (err) {
+                console.error('State parsing error:', err);
+                return { valid: false, error: 'Invalid state format: cannot decode' };
+            }
+        }
+
+        // Clear URL from browser history (security best practice)
+        function clearUrlParams() {
+            if (window.history && window.history.replaceState) {
+                const cleanUrl = window.location.origin + window.location.pathname;
+                window.history.replaceState({}, document.title, cleanUrl);
+            }
+        }
+
+        // Relay authorization code to gateway
+        async function relayToGateway(code, state, retryCount = 0) {
+            const callbackUrl = `${state.gateway_url}/api/v1/oauth/callback`;
+
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), SECURITY_CONFIG.RELAY_TIMEOUT);
+
+                const response = await fetch(callbackUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-OAuth-Relay': 'app.enkryptai.com',
+                        'X-Request-ID': generateRequestId()
+                    },
+                    body: JSON.stringify({
+                        code: code,
+                        state: state.nonce,
+                        timestamp: new Date().toISOString(),
+                        pkce_verifier: state.pkce_verifier || null
+                    }),
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `Gateway returned ${response.status}`);
+                }
+
+                const result = await response.json();
+                return { success: true, data: result };
+
+            } catch (err) {
+                console.error('Relay error:', err);
+
+                // Retry logic for network errors
+                if (retryCount < SECURITY_CONFIG.MAX_RETRY_ATTEMPTS &&
+                    (err.name === 'AbortError' || err.message.includes('network'))) {
+                    console.log(`Retrying... Attempt ${retryCount + 1}`);
+                    await sleep(1000 * (retryCount + 1)); // Exponential backoff
+                    return relayToGateway(code, state, retryCount + 1);
+                }
+
+                return {
+                    success: false,
+                    error: err.message,
+                    retryable: retryCount < SECURITY_CONFIG.MAX_RETRY_ATTEMPTS
+                };
+            }
+        }
+
+        // Generate unique request ID for tracing
+        function generateRequestId() {
+            return 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // Sleep utility
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // Render success state
+        function renderSuccess(gatewayUrl) {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="status success">
+                    <div class="status-icon">✓</div>
+                    <div class="status-message">Authorization Successful!</div>
+                    <div class="status-detail">Your gateway has received the access token</div>
+                </div>
+
+                <div class="info-section">
+                    <h3>✅ What Happened</h3>
+                    <p>
+                        1. Authorization code received from OAuth provider<br>
+                        2. Code securely relayed to your gateway<br>
+                        3. Gateway exchanged code for access token<br>
+                        4. Token stored securely in your gateway instance
+                    </p>
+                </div>
+
+                <div class="details-grid">
+                    <div class="detail-item">
+                        <strong>Gateway:</strong> ${sanitizeUrl(gatewayUrl)}
+                    </div>
+                    <div class="detail-item">
+                        <strong>Security:</strong> OAuth 2.1 with PKCE
+                    </div>
+                    <div class="detail-item">
+                        <strong>Status:</strong> Ready to use authenticated MCP servers
+                    </div>
+                </div>
+
+                <button class="btn btn-secondary" onclick="window.close()">
+                    ✕ Close Window
+                </button>
+            `;
+        }
+
+        // Render error state
+        function renderError(errorType, errorMessage, details = null) {
+            const content = document.getElementById('content');
+
+            let troubleshooting = '';
+            if (errorType === 'state_validation') {
+                troubleshooting = `
+                    <div class="warning-section">
+                        <h3>🔧 Troubleshooting</h3>
+                        <p>
+                            • Ensure your gateway generated a valid state parameter<br>
+                            • Check that the authorization flow completed within 30 seconds<br>
+                            • Verify your gateway URL uses HTTPS
+                        </p>
+                    </div>
+                `;
+            } else if (errorType === 'relay_failure') {
+                troubleshooting = `
+                    <div class="warning-section">
+                        <h3>🔧 Troubleshooting</h3>
+                        <p>
+                            • Verify your gateway is running and accessible<br>
+                            • Check that <code>/api/v1/oauth/callback</code> endpoint exists<br>
+                            • Ensure your firewall allows incoming HTTPS connections<br>
+                            • Check gateway logs for errors
+                        </p>
+                    </div>
+                `;
+            } else if (errorType === 'oauth_error') {
+                troubleshooting = `
+                    <div class="warning-section">
+                        <h3>🔧 Common OAuth Errors</h3>
+                        <p>
+                            • <strong>access_denied</strong>: User denied authorization - try again<br>
+                            • <strong>invalid_request</strong>: Check OAuth configuration<br>
+                            • <strong>invalid_scope</strong>: Requested scopes not available<br>
+                            • <strong>server_error</strong>: Try again or contact support
+                        </p>
+                    </div>
+                `;
+            }
+
+            content.innerHTML = `
+                <div class="status error">
+                    <div class="status-icon">✗</div>
+                    <div class="status-message">Authorization Failed</div>
+                    <div class="status-detail">${escapeHtml(errorMessage)}</div>
+                </div>
+
+                ${details ? `
+                <div class="details-grid">
+                    <div class="detail-item">
+                        <strong>Error Type:</strong> ${escapeHtml(errorType)}
+                    </div>
+                    ${details.gateway_url ? `
+                    <div class="detail-item">
+                        <strong>Gateway:</strong> ${sanitizeUrl(details.gateway_url)}
+                    </div>
+                    ` : ''}
+                    <div class="detail-item">
+                        <strong>Timestamp:</strong> ${new Date().toISOString()}
+                    </div>
+                </div>
+                ` : ''}
+
+                ${troubleshooting}
+
+                <div class="info-section">
+                    <h3>📚 Need Help?</h3>
+                    <p>
+                        Check the <a href="https://docs.enkryptai.com/oauth" target="_blank">OAuth documentation</a>
+                        or contact support at <a href="mailto:support@enkryptai.com">support@enkryptai.com</a>
+                    </p>
+                </div>
+
+                <button class="btn btn-secondary" onclick="window.close()">
+                    ✕ Close Window
+                </button>
+            `;
+        }
+
+        // Sanitize URL for display
+        function sanitizeUrl(url) {
+            try {
+                const parsed = new URL(url);
+                return escapeHtml(parsed.origin + parsed.pathname);
+            } catch {
+                return '[Invalid URL]';
+            }
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Main initialization
+        async function init() {
+            const params = getUrlParams();
+
+            // Clear URL immediately after reading (prevent history/bookmark leaks)
+            clearUrlParams();
+
+            // Store params briefly in sessionStorage (will be cleared after processing)
+            if (params.code || params.error) {
+                SecureStateManager.store('oauth_params', params, 10000); // 10 second TTL
+            }
+
+            // Retrieve from secure storage
+            const storedParams = SecureStateManager.retrieve('oauth_params') || params;
+
+            // Check for OAuth error
+            if (storedParams.error) {
+                SecureStateManager.clearAll();
+                renderError(
+                    'oauth_error',
+                    storedParams.error_description || storedParams.error,
+                    { error_code: storedParams.error, error_uri: storedParams.error_uri }
+                );
+                return;
+            }
+
+            // Check for authorization code
+            if (!storedParams.code) {
+                SecureStateManager.clearAll();
+                renderError(
+                    'missing_params',
+                    'No authorization code found',
+                    { hint: 'This page should be accessed via OAuth redirect' }
+                );
+                return;
+            }
+
+            // Validate state parameter
+            const stateValidation = parseState(storedParams.state);
+            if (!stateValidation.valid) {
+                SecureStateManager.clearAll();
+                renderError('state_validation', stateValidation.error);
+                return;
+            }
+
+            const state = stateValidation.state;
+
+            // Relay authorization code to gateway
+            try {
+                const result = await relayToGateway(storedParams.code, state);
+
+                // Clear sensitive data immediately
+                SecureStateManager.clearAll();
+
+                if (result.success) {
+                    renderSuccess(state.gateway_url);
+                } else {
+                    renderError(
+                        'relay_failure',
+                        result.error,
+                        { gateway_url: state.gateway_url, retryable: result.retryable }
+                    );
+                }
+            } catch (err) {
+                SecureStateManager.clearAll();
+                renderError('unexpected_error', err.message);
+            }
+        }
+
+        // Run on page load
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+
+        // Clear sessionStorage when page is unloaded (extra security)
+        window.addEventListener('beforeunload', () => {
+            SecureStateManager.clearAll();
+        });
+
+        // Prevent accidental navigation away during processing
+        let processingComplete = false;
+        window.addEventListener('beforeunload', (e) => {
+            if (!processingComplete) {
+                e.preventDefault();
+                e.returnValue = 'Authorization is still processing. Are you sure you want to leave?';
+            }
+        });
+
+        // Mark processing complete after 5 seconds
+        setTimeout(() => {
+            processingComplete = true;
+        }, 5000);
+    </script>
+</body>
+</html>
