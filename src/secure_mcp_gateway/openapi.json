@@ -3,7 +3,7 @@
   "info": {
     "title": "Enkrypt Secure MCP Gateway API",
     "description": "REST API for managing MCP configurations, projects, users, and system operations",
-    "version": "2.1.5"
+    "version": "2.1.6"
   },
   "servers": [
     {
@@ -55,6 +55,10 @@
     {
       "name": "System",
       "description": "System operations - health checks, backup, restore, and reset"
+    },
+    {
+      "name": "Settings",
+      "description": "Settings management - configure Enkrypt API key and OpenTelemetry settings"
     }
   ],
   "paths": {
@@ -3953,6 +3957,176 @@
           "System"
         ]
       }
+    },
+    "/api/v1/settings/enkrypt-api-key": {
+      "put": {
+        "summary": "Set Enkrypt API Key",
+        "description": "Set Enkrypt API key in guardrails configuration.",
+        "operationId": "set_enkrypt_api_key_endpoint_api_v1_settings_enkrypt_api_key_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnkryptApiKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/v1/settings/telemetry": {
+      "put": {
+        "summary": "Configure Telemetry",
+        "description": "Configure OpenTelemetry settings including enabling/disabling telemetry, setting collector URL, and security options.",
+        "operationId": "configure_telemetry_endpoint_api_v1_settings_telemetry_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelemetryConfigRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid configuration or no options provided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Settings"
+        ]
+      }
     }
   },
   "components": {
@@ -4113,6 +4287,23 @@
           "search_term"
         ],
         "title": "ConfigSearchRequest"
+      },
+      "EnkryptApiKeyRequest": {
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "title": "Api Key",
+            "description": "Enkrypt API key for guardrails"
+          }
+        },
+        "type": "object",
+        "required": [
+          "api_key"
+        ],
+        "title": "EnkryptApiKeyRequest",
+        "example": {
+          "api_key": "your-enkrypt-api-key-here"
+        }
       },
       "GuardrailsUpdateRequest": {
         "properties": {
@@ -4497,6 +4688,54 @@
           "input_file"
         ],
         "title": "SystemRestoreRequest"
+      },
+      "TelemetryConfigRequest": {
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled",
+            "description": "Enable or disable telemetry"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "OpenTelemetry collector URL (e.g., http://localhost:4317)"
+          },
+          "insecure": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Insecure",
+            "description": "Use insecure connection (true/false)"
+          }
+        },
+        "type": "object",
+        "title": "TelemetryConfigRequest",
+        "description": "At least one of enabled, url, or insecure must be provided",
+        "example": {
+          "enabled": true,
+          "url": "http://localhost:4317",
+          "insecure": true
+        }
       },
       "UserCreateRequest": {
         "properties": {

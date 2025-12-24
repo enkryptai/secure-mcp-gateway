@@ -520,6 +520,13 @@ GET /api/v1/api-keys
 
 ```
 
+#### Get API Key Details
+
+```http
+GET /api/v1/api-keys/{api_key}
+
+```
+
 #### Rotate API Key
 
 ```http
@@ -606,6 +613,41 @@ Content-Type: application/json
 
 {
   "confirm": true
+}
+
+```
+
+### Settings
+
+#### Set Enkrypt API Key
+
+```http
+PUT /api/v1/settings/enkrypt-api-key
+Content-Type: application/json
+
+{
+  "api_key": "your-enkrypt-api-key"
+}
+
+```
+
+#### Get Enkrypt API Key
+
+```http
+GET /api/v1/settings/enkrypt-api-key
+
+```
+
+#### Configure Telemetry
+
+```http
+PUT /api/v1/settings/telemetry
+Content-Type: application/json
+
+{
+  "enabled": true,
+  "url": "http://localhost:4317",
+  "insecure": true
 }
 
 ```

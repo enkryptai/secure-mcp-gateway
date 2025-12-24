@@ -58,6 +58,7 @@ from secure_mcp_gateway.dependencies import __dependencies__
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 from secure_mcp_gateway.utils import (
     get_common_config,
+    is_docker,
 )
 from secure_mcp_gateway.version import __version__
 
@@ -74,7 +75,13 @@ from secure_mcp_gateway.plugins.telemetry import (
 
 # Telemetry will be initialized later with proper config
 
-if os.environ.get("SKIP_DEPENDENCY_INSTALL") != "true":
+# Default to skipping dependency install in Docker (dependencies pre-installed in image)
+skip_dep_install_env = os.environ.get("SKIP_DEPENDENCY_INSTALL")
+skip_dependency_install = skip_dep_install_env == "true" or (
+    skip_dep_install_env is None and is_docker()
+)
+
+if not skip_dependency_install:
     try:
         print("Installing dependencies...", file=sys.stderr)
         subprocess.check_call(
@@ -86,8 +93,13 @@ if os.environ.get("SKIP_DEPENDENCY_INSTALL") != "true":
     except Exception as e:
         print(f"Error installing dependencies: {e}", file=sys.stderr)
 else:
+    reason = (
+        "SKIP_DEPENDENCY_INSTALL=true"
+        if skip_dep_install_env == "true"
+        else "Docker environment detected"
+    )
     print(
-        "Skipping dependency installation (SKIP_DEPENDENCY_INSTALL=true)",
+        f"Skipping dependency installation ({reason})",
         file=sys.stderr,
     )
 
@@ -776,7 +788,15 @@ if __name__ == "__main__":
         mcp.settings.stateless_http = False
         mcp.settings.dependencies = __dependencies__
         # --------------------------------------------
-        mcp.run(transport="streamable-http", mount_path="/mcp/")
+        # Transport mode: "streamable-http" (default) or "stdio"
+        # Use MCP_TRANSPORT=stdio env var for stdio mode
+        transport_mode = os.environ.get("MCP_TRANSPORT", "streamable-http").lower()
+        if transport_mode == "stdio":
+            logger.info("Running in stdio mode")
+            mcp.run()
+        else:
+            logger.info("Running in streamable-http mode on port 8000")
+            mcp.run(transport="streamable-http", mount_path="/mcp/")
         logger.info("Enkrypt Secure MCP Gateway is running")
     except Exception as e:
         logger.error(f"Exception in mcp.run(): {e}")

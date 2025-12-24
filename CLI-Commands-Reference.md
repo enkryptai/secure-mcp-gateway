@@ -8,6 +8,7 @@
 
 2. [CONFIGURATION MANAGEMENT](#2-configuration-management)
    - [2.1 Update server input guardrails policy](#21-update-server-input-guardrails-policy)
+   - [2.2 Plugin Configuration](#22-plugin-configuration)
 
 3. [PROJECT MANAGEMENT](#3-project-management)
 
@@ -234,6 +235,44 @@ secure-mcp-gateway config remove-server --config-id "f957f1b2-c77a-4de6-a53a-3d0
 
 ```bash
 secure-mcp-gateway config remove-all-servers --config-name "development-config"
+
+```
+
+### 2.2 Plugin Configuration
+
+#### Set Enkrypt API key
+
+```bash
+# Set the Enkrypt API key for guardrails
+secure-mcp-gateway config set-enkrypt-api-key --api-key "your-enkrypt-api-key-here"
+
+```
+
+#### Get Enkrypt API key
+
+```bash
+# Get the Enkrypt API key from guardrails configuration
+secure-mcp-gateway config get-enkrypt-api-key
+
+```
+
+#### Configure OpenTelemetry
+
+```bash
+# Enable telemetry
+secure-mcp-gateway config configure-telemetry --enabled true
+
+# Disable telemetry
+secure-mcp-gateway config configure-telemetry --enabled false
+
+# Set OpenTelemetry collector URL
+secure-mcp-gateway config configure-telemetry --url "http://localhost:4317"
+
+# Set insecure connection (for local development)
+secure-mcp-gateway config configure-telemetry --insecure true
+
+# Configure multiple options at once
+secure-mcp-gateway config configure-telemetry --enabled true --url "http://localhost:4317" --insecure true
 
 ```
 
@@ -480,6 +519,13 @@ secure-mcp-gateway user list-api-keys --email "user@example.com" --project-name 
 
 ```bash
 secure-mcp-gateway user list-all-api-keys
+
+```
+
+#### Get API key details
+
+```bash
+secure-mcp-gateway user get-api-key --api-key "TJTWRRt226cfYBvqpLEJPrYZUF8BDWLakmMF2PCOhOvpa1Up"
 
 ```
 

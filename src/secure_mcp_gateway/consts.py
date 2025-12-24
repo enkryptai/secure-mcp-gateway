@@ -15,6 +15,9 @@ from secure_mcp_gateway.version import __version__
 CONFIG_NAME = "enkrypt_mcp_config.json"
 DOCKER_CONFIG_PATH = f"/app/.enkrypt/docker/{CONFIG_NAME}"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".enkrypt", CONFIG_NAME)
+HOST_DOCKER_CONFIG_PATH = os.path.join(
+    os.path.expanduser("~"), ".enkrypt", "docker", CONFIG_NAME
+)
 
 BASE_DIR = files("secure_mcp_gateway")
 EXAMPLE_CONFIG_NAME = f"example_{CONFIG_NAME}"

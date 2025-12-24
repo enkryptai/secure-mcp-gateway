@@ -21,10 +21,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from secure_mcp_gateway.cli import (
     add_config,
     add_server_to_config,
+    configure_telemetry,
     copy_config,
     export_config,
     get_config,
     get_config_server,
+    get_enkrypt_api_key,
     # Utility functions
     import_config,
     list_config_projects,
@@ -36,6 +38,7 @@ from secure_mcp_gateway.cli import (
     remove_server_from_config,
     rename_config,
     search_configs,
+    set_enkrypt_api_key,
     update_config_server,
     update_server_guardrails,
     update_server_input_guardrails,
@@ -253,6 +256,21 @@ class SystemRestoreRequest(BaseModel):
 
 class SystemResetRequest(BaseModel):
     confirm: bool = False
+
+
+# Settings Models
+class EnkryptApiKeyRequest(BaseModel):
+    api_key: str = Field(..., description="Enkrypt API key for guardrails")
+
+
+class TelemetryConfigRequest(BaseModel):
+    enabled: Optional[bool] = Field(None, description="Enable or disable telemetry")
+    url: Optional[str] = Field(
+        None, description="OpenTelemetry collector URL (e.g., http://localhost:4317)"
+    )
+    insecure: Optional[bool] = Field(
+        None, description="Use insecure connection (true/false)"
+    )
 
 
 # =============================================================================
@@ -1005,6 +1023,94 @@ async def update_server_guardrails_endpoint(
         )
 
     return SuccessResponse(message="Guardrails updated successfully")
+
+
+# =============================================================================
+# SETTINGS ENDPOINTS
+# =============================================================================
+
+
+@app.put(
+    "/api/v1/settings/enkrypt-api-key",
+    response_model=SuccessResponse,
+    tags=["Settings"],
+)
+async def set_enkrypt_api_key_endpoint(
+    request: EnkryptApiKeyRequest,
+    api_key: str = Depends(get_api_key),
+):
+    """Set Enkrypt API key in guardrails configuration."""
+    result, error = run_cli_function_with_error_handling(
+        set_enkrypt_api_key,
+        PICKED_CONFIG_PATH,
+        request.api_key,
+    )
+
+    if error:
+        raise create_http_exception(
+            400, ErrorCode.CONFIG_INVALID, error, "set_enkrypt_api_key"
+        )
+
+    return SuccessResponse(message="Enkrypt API key updated successfully")
+
+
+@app.get(
+    "/api/v1/settings/enkrypt-api-key",
+    response_model=SuccessResponse,
+    tags=["Settings"],
+)
+async def get_enkrypt_api_key_endpoint(
+    api_key: str = Depends(get_api_key),
+):
+    """Get Enkrypt API key from guardrails configuration."""
+    result, error = run_cli_function_with_error_handling(
+        get_enkrypt_api_key,
+        PICKED_CONFIG_PATH,
+    )
+
+    if error:
+        raise create_http_exception(
+            404, ErrorCode.CONFIG_NOT_FOUND, error, "get_enkrypt_api_key"
+        )
+
+    return SuccessResponse(
+        message="Enkrypt API key retrieved successfully", data=result
+    )
+
+
+@app.put(
+    "/api/v1/settings/telemetry",
+    response_model=SuccessResponse,
+    tags=["Settings"],
+)
+async def configure_telemetry_endpoint(
+    request: TelemetryConfigRequest,
+    api_key: str = Depends(get_api_key),
+):
+    """Configure OpenTelemetry settings."""
+    # Validate at least one field is provided
+    if request.enabled is None and request.url is None and request.insecure is None:
+        raise create_http_exception(
+            400,
+            ErrorCode.CONFIG_INVALID,
+            "At least one option (enabled, url, or insecure) must be provided",
+            "configure_telemetry",
+        )
+
+    result, error = run_cli_function_with_error_handling(
+        configure_telemetry,
+        PICKED_CONFIG_PATH,
+        enabled=request.enabled,
+        url=request.url,
+        insecure=request.insecure,
+    )
+
+    if error:
+        raise create_http_exception(
+            400, ErrorCode.CONFIG_INVALID, error, "configure_telemetry"
+        )
+
+    return SuccessResponse(message="Telemetry configuration updated successfully")
 
 
 # =============================================================================
