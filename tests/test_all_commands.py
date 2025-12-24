@@ -530,6 +530,20 @@ class CLITester:
 
         # Get API keys for advanced testing
         result = self.run_command(["user", "list-api-keys", "--email", "test-user-1@example.com"])
+
+        # Test get-api-key command
+        if result and result.stdout:
+            try:
+                data = json.loads(result.stdout)
+                if isinstance(data, list) and len(data) > 0:
+                    # Get full API key (not truncated) from the stored IDs
+                    for api_key in self.api_keys:
+                        self.run_command(["user", "get-api-key", "--api-key", api_key])
+                        break  # Just test with one key
+            except:
+                pass
+
+        result = self.run_command(["user", "list-api-keys", "--email", "test-user-1@example.com"])
         api_keys = []
         if result and result.stdout:
             try:
@@ -611,6 +625,10 @@ class CLITester:
         self.run_command(["config", "set-enkrypt-api-key", "--api-key", "test-enkrypt-api-key-12345"])
         self.run_command(["config", "set-enkrypt-api-key", "--api-key", "updated-enkrypt-api-key-67890"])
 
+        # Test get-enkrypt-api-key command
+        print("\n   🔑 Testing Get Enkrypt API Key...")
+        self.run_command(["config", "get-enkrypt-api-key"])
+
         # Test configure-telemetry command with various options
         print("\n   📊 Testing Telemetry Configuration...")
 
@@ -632,7 +650,9 @@ class CLITester:
         # Test help for new commands
         print("\n   📚 Testing Settings Command Help...")
         self.run_command(["config", "set-enkrypt-api-key", "--help"])
+        self.run_command(["config", "get-enkrypt-api-key", "--help"])
         self.run_command(["config", "configure-telemetry", "--help"])
+        self.run_command(["user", "get-api-key", "--help"])
 
     def test_error_scenarios(self):
         """Test error scenarios and edge cases (25+ commands)"""

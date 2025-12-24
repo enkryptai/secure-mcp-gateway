@@ -788,7 +788,15 @@ if __name__ == "__main__":
         mcp.settings.stateless_http = False
         mcp.settings.dependencies = __dependencies__
         # --------------------------------------------
-        mcp.run(transport="streamable-http", mount_path="/mcp/")
+        # Transport mode: "streamable-http" (default) or "stdio"
+        # Use MCP_TRANSPORT=stdio env var for stdio mode
+        transport_mode = os.environ.get("MCP_TRANSPORT", "streamable-http").lower()
+        if transport_mode == "stdio":
+            logger.info("Running in stdio mode")
+            mcp.run()
+        else:
+            logger.info("Running in streamable-http mode on port 8000")
+            mcp.run(transport="streamable-http", mount_path="/mcp/")
         logger.info("Enkrypt Secure MCP Gateway is running")
     except Exception as e:
         logger.error(f"Exception in mcp.run(): {e}")

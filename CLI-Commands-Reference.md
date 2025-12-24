@@ -248,6 +248,14 @@ secure-mcp-gateway config set-enkrypt-api-key --api-key "your-enkrypt-api-key-he
 
 ```
 
+#### Get Enkrypt API key
+
+```bash
+# Get the Enkrypt API key from guardrails configuration
+secure-mcp-gateway config get-enkrypt-api-key
+
+```
+
 #### Configure OpenTelemetry
 
 ```bash
@@ -511,6 +519,13 @@ secure-mcp-gateway user list-api-keys --email "user@example.com" --project-name 
 
 ```bash
 secure-mcp-gateway user list-all-api-keys
+
+```
+
+#### Get API key details
+
+```bash
+secure-mcp-gateway user get-api-key --api-key "TJTWRRt226cfYBvqpLEJPrYZUF8BDWLakmMF2PCOhOvpa1Up"
 
 ```
 

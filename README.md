@@ -1169,6 +1169,8 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkryp
   - macOS: `~/Library/Application Support/Claude`
   - Windows: `%APPDATA%\Claude`
 
+> **Note:** The generated config includes `MCP_TRANSPORT=stdio` for stdio mode communication with Claude Desktop.
+
 ```bash
 
 # On 🍎 Linux/macOS run the below
@@ -1197,6 +1199,8 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enk
         "run",
         "--rm",
         "-i",
+        "-e",
+        "MCP_TRANSPORT=stdio",
         "-v",
         "C:\\Users\\<user>\\.enkrypt:/app/.enkrypt",
         "secure-mcp-gateway"
@@ -1219,6 +1223,8 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enk
 - You can find the Cursor config location at the below locations. [For reference see Cursor docs.](https://docs.cursor.com/context/model-context-protocol#configuration-locations)
   - macOS: `~/.cursor`
   - Windows: `%USERPROFILE%\.cursor`
+
+> **Note:** The generated config includes `MCP_TRANSPORT=stdio` for stdio mode communication with Cursor.
 
 ```bash
 
@@ -1269,9 +1275,29 @@ docker run -d `
 | `ENKRYPT_GATEWAY_KEY` | API key for authentication | - | Yes |
 | `ENKRYPT_PROJECT_ID` | Project ID from config | - | Yes |
 | `ENKRYPT_USER_ID` | User ID from config | - | Yes |
+| `MCP_TRANSPORT` | Transport mode: `streamable-http` or `stdio` | `streamable-http` | No |
 | `SKIP_DEPENDENCY_INSTALL` | Skip runtime dependency installation | `true` (Docker), `false` (other) | No |
 | `HOST` | Gateway bind address | `0.0.0.0` | No |
 | `FASTAPI_HOST` | FastAPI server bind address | `0.0.0.0` | No |
+
+##### MCP_TRANSPORT
+
+The `MCP_TRANSPORT` environment variable controls the transport mode for the gateway.
+
+**Transport modes:**
+
+- **`streamable-http`** (default): HTTP server mode on port 8000. Use with `-p 8000:8000` for port mapping.
+- **`stdio`**: Standard input/output mode for MCP clients that communicate via stdin/stdout. Use with `-i` flag.
+
+**Example for stdio mode (Claude Desktop, Cursor):**
+
+```bash
+docker run --rm -i \
+  -e MCP_TRANSPORT=stdio \
+  -v ~/.enkrypt:/app/.enkrypt \
+  -e ENKRYPT_GATEWAY_KEY="your-gateway-key" \
+  secure-mcp-gateway
+```
 
 ##### SKIP_DEPENDENCY_INSTALL
 

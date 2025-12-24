@@ -26,6 +26,7 @@ from secure_mcp_gateway.cli import (
     export_config,
     get_config,
     get_config_server,
+    get_enkrypt_api_key,
     # Utility functions
     import_config,
     list_config_projects,
@@ -1051,6 +1052,30 @@ async def set_enkrypt_api_key_endpoint(
         )
 
     return SuccessResponse(message="Enkrypt API key updated successfully")
+
+
+@app.get(
+    "/api/v1/settings/enkrypt-api-key",
+    response_model=SuccessResponse,
+    tags=["Settings"],
+)
+async def get_enkrypt_api_key_endpoint(
+    api_key: str = Depends(get_api_key),
+):
+    """Get Enkrypt API key from guardrails configuration."""
+    result, error = run_cli_function_with_error_handling(
+        get_enkrypt_api_key,
+        PICKED_CONFIG_PATH,
+    )
+
+    if error:
+        raise create_http_exception(
+            404, ErrorCode.CONFIG_NOT_FOUND, error, "get_enkrypt_api_key"
+        )
+
+    return SuccessResponse(
+        message="Enkrypt API key retrieved successfully", data=result
+    )
 
 
 @app.put(

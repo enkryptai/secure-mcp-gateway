@@ -60,6 +60,8 @@ DOCKER_ARGS = [
     "run",
     "--rm",
     "-i",
+    "-e",
+    "MCP_TRANSPORT=stdio",
     "-v",
     f"{HOST_ENKRYPT_HOME}:/app/.enkrypt",
     "-e",
@@ -1252,6 +1254,31 @@ def set_enkrypt_api_key(config_path, api_key):
     print("INFO: Enkrypt API key updated successfully")
 
 
+def get_enkrypt_api_key(config_path):
+    """Get the Enkrypt API key from the guardrails plugin configuration."""
+    config = load_config(config_path)
+
+    # Check plugins section
+    if "plugins" not in config:
+        print("ERROR: 'plugins' section not found in config")
+        sys.exit(1)
+
+    # Check guardrails plugin
+    if "guardrails" not in config["plugins"]:
+        print("ERROR: 'guardrails' plugin not configured")
+        sys.exit(1)
+
+    # Get the API key
+    api_key = config["plugins"]["guardrails"].get("config", {}).get("api_key")
+
+    if not api_key:
+        print("ERROR: Enkrypt API key not set")
+        sys.exit(1)
+
+    result = {"enkrypt_api_key": api_key}
+    print(json.dumps(result, indent=2))
+
+
 def configure_telemetry(config_path, enabled=None, url=None, insecure=None):
     """Configure OpenTelemetry settings in the telemetry plugin configuration."""
     config = load_config(config_path)
@@ -2095,6 +2122,37 @@ def delete_user_api_key(config_path, api_key):
     print(f"INFO: API key '{api_key[:20]}...' deleted successfully")
 
 
+def get_api_key(config_path, api_key):
+    """Get details for a specific API key."""
+    config = load_config(config_path)
+
+    if api_key not in config.get("apikeys", {}):
+        print(f"ERROR: Error: API key '{api_key}' not found.")
+        sys.exit(1)
+
+    key_data = config["apikeys"][api_key]
+    user_data = config.get("users", {}).get(key_data.get("user_id"), {})
+    project_data = config.get("projects", {}).get(key_data.get("project_id"), {})
+    config_data = config.get("mcp_configs", {}).get(
+        project_data.get("mcp_config_id"), {}
+    )
+
+    result = {
+        "api_key": api_key,
+        "user_id": key_data.get("user_id"),
+        "user_email": user_data.get("email", "Unknown"),
+        "project_id": key_data.get("project_id"),
+        "project_name": project_data.get("project_name", "Unknown Project"),
+        "mcp_config_id": project_data.get("mcp_config_id"),
+        "mcp_config_name": config_data.get("mcp_config_name", "Unknown Config"),
+        "created_at": key_data.get("created_at"),
+        "disabled": key_data.get("disabled", False),
+        "disabled_at": key_data.get("disabled_at"),
+        "enabled_at": key_data.get("enabled_at"),
+    }
+    print(json.dumps(result, indent=2))
+
+
 def delete_all_user_api_keys(config_path, user_identifier):
     """Delete all API keys for a user."""
     config = load_config(config_path)
@@ -2785,6 +2843,11 @@ def main():
         "--api-key", required=True, help="Enkrypt API key"
     )
 
+    # config get-enkrypt-api-key
+    config_subparsers.add_parser(
+        "get-enkrypt-api-key", help="Get Enkrypt API key from guardrails configuration"
+    )
+
     # config configure-telemetry
     config_configure_telemetry_parser = config_subparsers.add_parser(
         "configure-telemetry", help="Configure OpenTelemetry settings"
@@ -2958,6 +3021,14 @@ def main():
     user_api_key_parser.add_argument("--email", help="User email")
     user_api_key_parser.add_argument("--project-name", help="Project name")
     user_api_key_parser.add_argument("--project-id", help="Project ID")
+
+    # user get-api-key
+    user_get_api_key_parser = user_subparsers.add_parser(
+        "get-api-key", help="Get API key details"
+    )
+    user_get_api_key_parser.add_argument(
+        "--api-key", required=True, help="API key to get details for"
+    )
 
     # user rotate-api-key
     user_rotate_api_key_parser = user_subparsers.add_parser(
@@ -3256,6 +3327,9 @@ def main():
         elif args.config_command == "set-enkrypt-api-key":
             set_enkrypt_api_key(PICKED_CONFIG_PATH, args.api_key)
 
+        elif args.config_command == "get-enkrypt-api-key":
+            get_enkrypt_api_key(PICKED_CONFIG_PATH)
+
         elif args.config_command == "configure-telemetry":
             configure_telemetry(
                 PICKED_CONFIG_PATH,
@@ -3386,6 +3460,8 @@ def main():
             generate_user_api_key(
                 PICKED_CONFIG_PATH, user_identifier, project_identifier
             )
+        elif args.user_command == "get-api-key":
+            get_api_key(PICKED_CONFIG_PATH, args.api_key)
         elif args.user_command == "rotate-api-key":
             rotate_user_api_key(PICKED_CONFIG_PATH, args.api_key)
         elif args.user_command == "disable-api-key":
