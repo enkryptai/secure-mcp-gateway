@@ -24,6 +24,11 @@ from secure_mcp_gateway.utils import (
 )
 from secure_mcp_gateway.version import __version__
 
+# Host-side path for Docker configs (when running CLI on host to manage Docker configs)
+HOST_DOCKER_CONFIG_PATH = os.path.join(
+    os.path.expanduser("~"), ".enkrypt", "docker", "enkrypt_mcp_config.json"
+)
+
 print(f"INFO: Initializing Enkrypt Secure MCP Gateway CLI Module v{__version__}")
 
 HOME_DIR = os.path.expanduser("~")
@@ -2572,6 +2577,15 @@ def stop_api_server(port=8001, force=False):
 
 def main():
     parser = argparse.ArgumentParser(description="Enkrypt Secure MCP Gateway CLI")
+
+    # Global options
+    parser.add_argument(
+        "--docker",
+        action="store_true",
+        default=False,
+        help="Use Docker config path (~/.enkrypt/docker/) instead of default (~/.enkrypt/)",
+    )
+
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # generate-config subcommand
@@ -3154,6 +3168,17 @@ def main():
     # =========================================================================
     args = parser.parse_args()
 
+    # Compute effective config path based on --docker flag
+    if args.docker:
+        if is_docker_running:
+            print("WARNING: --docker flag ignored when running inside Docker container")
+            config_path = PICKED_CONFIG_PATH
+        else:
+            config_path = HOST_DOCKER_CONFIG_PATH
+            print(f"INFO: Using Docker config path: {config_path}")
+    else:
+        config_path = PICKED_CONFIG_PATH
+
     # Handle missing subcommands
     if args.command == "config" and not args.config_command:
         print("ERROR: Error: Please specify a config subcommand.")
@@ -3180,42 +3205,42 @@ def main():
     # =========================================================================
     if args.command == "config":
         if args.config_command == "list":
-            list_configs(PICKED_CONFIG_PATH)
+            list_configs(config_path)
         elif args.config_command == "add":
-            add_config(PICKED_CONFIG_PATH, args.config_name)
+            add_config(config_path, args.config_name)
         elif args.config_command == "copy":
-            copy_config(PICKED_CONFIG_PATH, args.source_config, args.target_config)
+            copy_config(config_path, args.source_config, args.target_config)
         elif args.config_command == "rename":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
-            rename_config(PICKED_CONFIG_PATH, config_identifier, args.new_name)
+            rename_config(config_path, config_identifier, args.new_name)
         elif args.config_command == "list-projects":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
-            list_config_projects(PICKED_CONFIG_PATH, config_identifier)
+            list_config_projects(config_path, config_identifier)
         elif args.config_command == "list-servers":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
-            list_config_servers(PICKED_CONFIG_PATH, config_identifier)
+            list_config_servers(config_path, config_identifier)
         elif args.config_command == "get-server":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
-            get_config_server(PICKED_CONFIG_PATH, config_identifier, args.server_name)
+            get_config_server(config_path, config_identifier, args.server_name)
         elif args.config_command == "update-server":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
             update_config_server(
-                PICKED_CONFIG_PATH,
+                config_path,
                 config_identifier,
                 args.server_name,
                 args.server_command,
@@ -3230,7 +3255,7 @@ def main():
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
             add_server_to_config(
-                PICKED_CONFIG_PATH,
+                config_path,
                 config_identifier,
                 args.server_name,
                 args.server_command,
@@ -3246,50 +3271,48 @@ def main():
             if not config_identifier:
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
-            get_config(PICKED_CONFIG_PATH, config_identifier)
+            get_config(config_path, config_identifier)
         elif args.config_command == "remove-server":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
-            remove_server_from_config(
-                PICKED_CONFIG_PATH, config_identifier, args.server_name
-            )
+            remove_server_from_config(config_path, config_identifier, args.server_name)
         elif args.config_command == "remove-all-servers":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
-            remove_all_servers_from_config(PICKED_CONFIG_PATH, config_identifier)
+            remove_all_servers_from_config(config_path, config_identifier)
         elif args.config_command == "remove":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
-            remove_config(PICKED_CONFIG_PATH, config_identifier)
+            remove_config(config_path, config_identifier)
         elif args.config_command == "validate":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
-            validate_config(PICKED_CONFIG_PATH, config_identifier)
+            validate_config(config_path, config_identifier)
         elif args.config_command == "export":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
-            export_config(PICKED_CONFIG_PATH, config_identifier, args.output_file)
+            export_config(config_path, config_identifier, args.output_file)
         elif args.config_command == "import":
-            import_config(PICKED_CONFIG_PATH, args.input_file, args.config_name)
+            import_config(config_path, args.input_file, args.config_name)
         elif args.config_command == "search":
-            search_configs(PICKED_CONFIG_PATH, args.search_term)
+            search_configs(config_path, args.search_term)
         elif args.config_command == "update-server-input-guardrails":
             config_identifier = args.config_name or args.config_id
             if not config_identifier:
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
             update_server_input_guardrails(
-                PICKED_CONFIG_PATH,
+                config_path,
                 config_identifier,
                 args.server_name,
                 args.policy_file,
@@ -3302,7 +3325,7 @@ def main():
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
             update_server_output_guardrails(
-                PICKED_CONFIG_PATH,
+                config_path,
                 config_identifier,
                 args.server_name,
                 args.policy_file,
@@ -3315,7 +3338,7 @@ def main():
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
             update_server_guardrails(
-                PICKED_CONFIG_PATH,
+                config_path,
                 config_identifier,
                 args.server_name,
                 args.input_policy_file,
@@ -3325,14 +3348,14 @@ def main():
             )
 
         elif args.config_command == "set-enkrypt-api-key":
-            set_enkrypt_api_key(PICKED_CONFIG_PATH, args.api_key)
+            set_enkrypt_api_key(config_path, args.api_key)
 
         elif args.config_command == "get-enkrypt-api-key":
-            get_enkrypt_api_key(PICKED_CONFIG_PATH)
+            get_enkrypt_api_key(config_path)
 
         elif args.config_command == "configure-telemetry":
             configure_telemetry(
-                PICKED_CONFIG_PATH,
+                config_path,
                 enabled=args.enabled,
                 url=args.url,
                 insecure=args.insecure,
@@ -3345,78 +3368,74 @@ def main():
     # =========================================================================
     elif args.command == "project":
         if args.project_command == "list":
-            list_projects(PICKED_CONFIG_PATH)
+            list_projects(config_path)
         elif args.project_command == "create":
-            create_project(PICKED_CONFIG_PATH, args.project_name)
+            create_project(config_path, args.project_name)
         elif args.project_command == "assign-config":
             project_identifier = args.project_name or args.project_id
             config_identifier = args.config_name or args.config_id
             if not project_identifier or not config_identifier:
                 print("INFO: Error: Project and config identifiers are required")
                 sys.exit(1)
-            assign_config_to_project(
-                PICKED_CONFIG_PATH, project_identifier, config_identifier
-            )
+            assign_config_to_project(config_path, project_identifier, config_identifier)
         elif args.project_command == "unassign-config":
             project_identifier = args.project_name or args.project_id
             if not project_identifier:
                 print("ERROR: Either --project-name or --project-id is required")
                 sys.exit(1)
-            unassign_config_from_project(PICKED_CONFIG_PATH, project_identifier)
+            unassign_config_from_project(config_path, project_identifier)
         elif args.project_command == "get-config":
             project_identifier = args.project_name or args.project_id
             if not project_identifier:
                 print("ERROR: Either --project-name or --project-id is required")
                 sys.exit(1)
-            get_project_config(PICKED_CONFIG_PATH, project_identifier)
+            get_project_config(config_path, project_identifier)
         elif args.project_command == "list-users":
             project_identifier = args.project_name or args.project_id
             if not project_identifier:
                 print("ERROR: Either --project-name or --project-id is required")
                 sys.exit(1)
-            list_project_users(PICKED_CONFIG_PATH, project_identifier)
+            list_project_users(config_path, project_identifier)
         elif args.project_command == "add-user":
             project_identifier = args.project_name or args.project_id
             user_identifier = args.user_id or args.email
             if not project_identifier or not user_identifier:
                 print("INFO: Error: Project and user identifiers are required")
                 sys.exit(1)
-            add_user_to_project(PICKED_CONFIG_PATH, project_identifier, user_identifier)
+            add_user_to_project(config_path, project_identifier, user_identifier)
         elif args.project_command == "remove-user":
             project_identifier = args.project_name or args.project_id
             user_identifier = args.user_id or args.email
             if not project_identifier or not user_identifier:
                 print("ERROR: Error: Project and user identifiers are required")
                 sys.exit(1)
-            remove_user_from_project(
-                PICKED_CONFIG_PATH, project_identifier, user_identifier
-            )
+            remove_user_from_project(config_path, project_identifier, user_identifier)
         elif args.project_command == "remove-all-users":
             project_identifier = args.project_name or args.project_id
             if not project_identifier:
                 print("ERROR: Either --project-name or --project-id is required")
                 sys.exit(1)
-            remove_all_users_from_project(PICKED_CONFIG_PATH, project_identifier)
+            remove_all_users_from_project(config_path, project_identifier)
         elif args.project_command == "get":
             project_identifier = args.project_name or args.project_id
             if not project_identifier:
                 print("ERROR: Either --project-name or --project-id is required")
                 sys.exit(1)
-            get_project(PICKED_CONFIG_PATH, project_identifier)
+            get_project(config_path, project_identifier)
         elif args.project_command == "remove":
             project_identifier = args.project_name or args.project_id
             if not project_identifier:
                 print("ERROR: Either --project-name or --project-id is required")
                 sys.exit(1)
-            remove_project(PICKED_CONFIG_PATH, project_identifier)
+            remove_project(config_path, project_identifier)
         elif args.project_command == "export":
             project_identifier = args.project_name or args.project_id
             if not project_identifier:
                 print("ERROR: Either --project-name or --project-id is required")
                 sys.exit(1)
-            export_project(PICKED_CONFIG_PATH, project_identifier, args.output_file)
+            export_project(config_path, project_identifier, args.output_file)
         elif args.project_command == "search":
-            search_projects(PICKED_CONFIG_PATH, args.search_term)
+            search_projects(config_path, args.search_term)
         sys.exit(0)
 
     # =========================================================================
@@ -3424,69 +3443,67 @@ def main():
     # =========================================================================
     elif args.command == "user":
         if args.user_command == "list":
-            list_users(PICKED_CONFIG_PATH)
+            list_users(config_path)
         elif args.user_command == "create":
-            create_user(PICKED_CONFIG_PATH, args.email)
+            create_user(config_path, args.email)
         elif args.user_command == "update":
             user_identifier = args.user_id or args.email
             if not user_identifier:
                 print("INFO: Error: Either --user-id or --email is required")
                 sys.exit(1)
-            update_user(PICKED_CONFIG_PATH, user_identifier, args.new_email)
+            update_user(config_path, user_identifier, args.new_email)
         elif args.user_command == "get":
             user_identifier = args.user_id or args.email
             if not user_identifier:
                 print("ERROR: Error: Either --user-id or --email is required")
                 sys.exit(1)
-            get_user(PICKED_CONFIG_PATH, user_identifier)
+            get_user(config_path, user_identifier)
         elif args.user_command == "list-projects":
             user_identifier = args.user_id or args.email
             if not user_identifier:
                 print("ERROR: Error: Either --user-id or --email is required")
                 sys.exit(1)
-            list_user_projects(PICKED_CONFIG_PATH, user_identifier)
+            list_user_projects(config_path, user_identifier)
         elif args.user_command == "delete":
             user_identifier = args.user_id or args.email
             if not user_identifier:
                 print("ERROR: Error: Either --user-id or --email is required")
                 sys.exit(1)
-            delete_user(PICKED_CONFIG_PATH, user_identifier, args.force)
+            delete_user(config_path, user_identifier, args.force)
         elif args.user_command == "generate-api-key":
             user_identifier = args.user_id or args.email
             project_identifier = args.project_name or args.project_id
             if not user_identifier or not project_identifier:
                 print("ERROR: Error: User and project identifiers are required")
                 sys.exit(1)
-            generate_user_api_key(
-                PICKED_CONFIG_PATH, user_identifier, project_identifier
-            )
+            generate_user_api_key(config_path, user_identifier, project_identifier)
         elif args.user_command == "get-api-key":
-            get_api_key(PICKED_CONFIG_PATH, args.api_key)
+            get_api_key(config_path, args.api_key)
         elif args.user_command == "rotate-api-key":
-            rotate_user_api_key(PICKED_CONFIG_PATH, args.api_key)
+            rotate_user_api_key(config_path, args.api_key)
         elif args.user_command == "disable-api-key":
-            disable_user_api_key(PICKED_CONFIG_PATH, args.api_key)
+            disable_user_api_key(config_path, args.api_key)
         elif args.user_command == "enable-api-key":
-            enable_user_api_key(PICKED_CONFIG_PATH, args.api_key)
+            enable_user_api_key(config_path, args.api_key)
         elif args.user_command == "delete-api-key":
-            delete_user_api_key(PICKED_CONFIG_PATH, args.api_key)
+            delete_user_api_key(config_path, args.api_key)
         elif args.user_command == "delete-all-api-keys":
             user_identifier = args.user_id or args.email
             if not user_identifier:
                 print("ERROR: Error: Either --user-id or --email is required")
                 sys.exit(1)
-            delete_all_user_api_keys(PICKED_CONFIG_PATH, user_identifier)
+            delete_all_user_api_keys(config_path, user_identifier)
         elif args.user_command == "list-api-keys":
             user_identifier = args.user_id or args.email
             if not user_identifier:
                 print("ERROR: Error: Either --user-id or --email is required")
                 sys.exit(1)
             project_identifier = args.project_name or args.project_id
-            list_user_api_keys(PICKED_CONFIG_PATH, user_identifier, project_identifier)
+            list_user_api_keys(config_path, user_identifier, project_identifier)
         elif args.user_command == "list-all-api-keys":
-            list_all_api_keys(PICKED_CONFIG_PATH)
+            list_all_api_keys(config_path)
         elif args.user_command == "search":
-            search_users(PICKED_CONFIG_PATH, args.search_term)
+            search_users(config_path, args.search_term)
         sys.exit(0)
 
     # =========================================================================
@@ -3494,13 +3511,13 @@ def main():
     # =========================================================================
     elif args.command == "system":
         if args.system_command == "health-check":
-            system_health_check(PICKED_CONFIG_PATH)
+            system_health_check(config_path)
         elif args.system_command == "backup":
-            system_backup(PICKED_CONFIG_PATH, args.output_file)
+            system_backup(config_path, args.output_file)
         elif args.system_command == "restore":
-            system_restore(PICKED_CONFIG_PATH, args.input_file)
+            system_restore(config_path, args.input_file)
         elif args.system_command == "reset":
-            system_reset(PICKED_CONFIG_PATH, args.confirm)
+            system_reset(config_path, args.confirm)
         elif args.system_command == "start-api":
             start_api_server(args.host, args.port, args.reload)
         elif args.system_command == "stop-api":
@@ -3511,8 +3528,8 @@ def main():
     # ORIGINAL COMMAND HANDLING
     # =========================================================================
     elif args.command == "generate-config":
-        if os.path.exists(PICKED_CONFIG_PATH) and not args.overwrite:
-            print(f"INFO: Config file already exists at {PICKED_CONFIG_PATH}.")
+        if os.path.exists(config_path) and not args.overwrite:
+            print(f"INFO: Config file already exists at {config_path}.")
             print(
                 "INFO: Not overwriting. Please run install to install on Claude Desktop or Cursor."
             )
@@ -3521,37 +3538,33 @@ def main():
             )
             sys.exit(1)
 
-        if os.path.exists(PICKED_CONFIG_PATH) and args.overwrite:
+        if os.path.exists(config_path) and args.overwrite:
             # Create backup before overwriting
-            backup_filename = f"{os.path.basename(PICKED_CONFIG_PATH)}.bkp.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            backup_path = os.path.join(
-                os.path.dirname(PICKED_CONFIG_PATH), backup_filename
-            )
+            backup_filename = f"{os.path.basename(config_path)}.bkp.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            backup_path = os.path.join(os.path.dirname(config_path), backup_filename)
             try:
-                shutil.copy2(PICKED_CONFIG_PATH, backup_path)
+                shutil.copy2(config_path, backup_path)
                 print(f"INFO: Backup created at {backup_path}")
-                print(
-                    f"INFO: Overwriting existing config file at {PICKED_CONFIG_PATH}..."
-                )
+                print(f"INFO: Overwriting existing config file at {config_path}...")
             except Exception as e:
                 print(f"ERROR: Error creating backup: {e}")
                 sys.exit(1)
 
-        os.makedirs(os.path.dirname(PICKED_CONFIG_PATH), exist_ok=True)
+        os.makedirs(os.path.dirname(config_path), exist_ok=True)
         if os.name == "posix":
-            os.chmod(os.path.dirname(PICKED_CONFIG_PATH), 0o700)
+            os.chmod(os.path.dirname(config_path), 0o700)
 
         print("INFO: Generating default configuration...")
         config = generate_default_config()
-        with open(PICKED_CONFIG_PATH, "w") as f:
+        with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
 
-        print(f"SUCCESS: Generated default config at {PICKED_CONFIG_PATH}")
+        print(f"SUCCESS: Generated default config at {config_path}")
         print("INFO: Configuration file created successfully!")
         sys.exit(0)
 
     elif args.command == "install":
-        credentials = get_gateway_credentials(PICKED_CONFIG_PATH)
+        credentials = get_gateway_credentials(config_path)
         gateway_key = credentials.get("gateway_key")
         project_id = credentials.get("project_id")
         user_id = credentials.get("user_id")
@@ -3559,7 +3572,7 @@ def main():
         if not gateway_key:
             print(
                 "INFO: ",
-                f"Gateway key not found in {PICKED_CONFIG_PATH}. Please generate a new config file using 'generate-config' subcommand and try again.",
+                f"Gateway key not found in {config_path}. Please generate a new config file using 'generate-config' subcommand and try again.",
             )
             sys.exit(1)
 
