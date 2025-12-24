@@ -1227,6 +1227,76 @@ def update_server_guardrails(
     )
 
 
+def set_enkrypt_api_key(config_path, api_key):
+    """Set the Enkrypt API key in the guardrails plugin configuration."""
+    config = load_config(config_path)
+
+    # Ensure plugins section exists
+    if "plugins" not in config:
+        print("ERROR: 'plugins' section not found in config")
+        sys.exit(1)
+
+    # Ensure guardrails plugin exists
+    if "guardrails" not in config["plugins"]:
+        print("ERROR: 'guardrails' plugin not configured")
+        sys.exit(1)
+
+    # Ensure config sub-section exists
+    if "config" not in config["plugins"]["guardrails"]:
+        config["plugins"]["guardrails"]["config"] = {}
+
+    # Set the API key
+    config["plugins"]["guardrails"]["config"]["api_key"] = api_key
+
+    save_config(config_path, config)
+    print("INFO: Enkrypt API key updated successfully")
+
+
+def configure_telemetry(config_path, enabled=None, url=None, insecure=None):
+    """Configure OpenTelemetry settings in the telemetry plugin configuration."""
+    config = load_config(config_path)
+
+    # Ensure plugins section exists
+    if "plugins" not in config:
+        print("ERROR: 'plugins' section not found in config")
+        sys.exit(1)
+
+    # Ensure telemetry plugin exists
+    if "telemetry" not in config["plugins"]:
+        print("ERROR: 'telemetry' plugin not configured")
+        sys.exit(1)
+
+    # Ensure config sub-section exists
+    if "config" not in config["plugins"]["telemetry"]:
+        config["plugins"]["telemetry"]["config"] = {}
+
+    updated = []
+
+    # Update enabled if provided
+    if enabled is not None:
+        config["plugins"]["telemetry"]["config"]["enabled"] = enabled
+        updated.append(f"enabled={enabled}")
+
+    # Update url if provided
+    if url is not None:
+        config["plugins"]["telemetry"]["config"]["url"] = url
+        updated.append(f"url={url}")
+
+    # Update insecure if provided
+    if insecure is not None:
+        config["plugins"]["telemetry"]["config"]["insecure"] = insecure
+        updated.append(f"insecure={insecure}")
+
+    if not updated:
+        print(
+            "ERROR: At least one option (--enabled, --url, or --insecure) must be provided"
+        )
+        sys.exit(1)
+
+    save_config(config_path, config)
+    print(f"INFO: Telemetry configuration updated: {', '.join(updated)}")
+
+
 # =============================================================================
 # PROJECT COMMANDS (ENHANCED)
 # =============================================================================
@@ -2707,6 +2777,32 @@ def main():
         "--output-policy", help="Output policy configuration as JSON string"
     )
 
+    # config set-enkrypt-api-key
+    config_set_enkrypt_api_key_parser = config_subparsers.add_parser(
+        "set-enkrypt-api-key", help="Set Enkrypt API key in guardrails configuration"
+    )
+    config_set_enkrypt_api_key_parser.add_argument(
+        "--api-key", required=True, help="Enkrypt API key"
+    )
+
+    # config configure-telemetry
+    config_configure_telemetry_parser = config_subparsers.add_parser(
+        "configure-telemetry", help="Configure OpenTelemetry settings"
+    )
+    config_configure_telemetry_parser.add_argument(
+        "--enabled",
+        type=lambda x: x.lower() in ("true", "1", "yes"),
+        help="Enable or disable telemetry (true/false)",
+    )
+    config_configure_telemetry_parser.add_argument(
+        "--url", help="OpenTelemetry collector URL (e.g., http://localhost:4317)"
+    )
+    config_configure_telemetry_parser.add_argument(
+        "--insecure",
+        type=lambda x: x.lower() in ("true", "1", "yes"),
+        help="Use insecure connection (true/false)",
+    )
+
     # =========================================================================
     # PROJECT COMMANDS
     # =========================================================================
@@ -3155,6 +3251,17 @@ def main():
                 args.input_policy,
                 args.output_policy_file,
                 args.output_policy,
+            )
+
+        elif args.config_command == "set-enkrypt-api-key":
+            set_enkrypt_api_key(PICKED_CONFIG_PATH, args.api_key)
+
+        elif args.config_command == "configure-telemetry":
+            configure_telemetry(
+                PICKED_CONFIG_PATH,
+                enabled=args.enabled,
+                url=args.url,
+                insecure=args.insecure,
             )
 
         sys.exit(0)
