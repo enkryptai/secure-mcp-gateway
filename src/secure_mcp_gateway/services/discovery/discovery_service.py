@@ -8,7 +8,7 @@ from opentelemetry import trace
 from secure_mcp_gateway.client import forward_tool_call
 
 # Telemetry components will be obtained lazily when needed
-from secure_mcp_gateway.error_handling import create_error_response
+from secure_mcp_gateway.error_handling import create_error_response, error_logger
 from secure_mcp_gateway.exceptions import (
     ErrorCode,
     ErrorContext,
@@ -191,8 +191,6 @@ class DiscoveryService:
                 main_span.set_attribute("error", str(e))
 
                 # Use standardized error handling
-                from secure_mcp_gateway.error_handling import error_logger
-
                 context = ErrorContext(
                     operation="discovery.server_tools_discovery",
                     request_id=getattr(ctx, "request_id", None),
@@ -564,8 +562,6 @@ class DiscoveryService:
                     server_span.set_attribute("validation_error", str(e))
 
                     # Use standardized error handling
-                    from secure_mcp_gateway.error_handling import error_logger
-
                     context = ErrorContext(
                         operation="discovery.server_validation",
                         request_id=getattr(ctx, "request_id", None),
@@ -751,8 +747,6 @@ class DiscoveryService:
                 span.set_attribute("error", str(e))
 
                 # Use standardized error handling
-                from secure_mcp_gateway.error_handling import error_logger
-
                 context = ErrorContext(
                     operation="discovery.config_tools_validation",
                     request_id=getattr(ctx, "request_id", None),
@@ -933,8 +927,6 @@ class DiscoveryService:
                 span.set_attribute("error", str(e))
 
                 # Use standardized error handling
-                from secure_mcp_gateway.error_handling import error_logger
-
                 context = ErrorContext(
                     operation="discovery.tool_discovery",
                     request_id=getattr(ctx, "request_id", None),
@@ -1065,10 +1057,6 @@ class DiscoveryService:
                             )
 
                             # Return standardized error response
-                            from secure_mcp_gateway.error_handling import (
-                                create_error_response,
-                                error_logger,
-                            )
                             from secure_mcp_gateway.exceptions import (
                                 create_guardrail_error,
                             )
@@ -1121,8 +1109,6 @@ class DiscoveryService:
                             )
 
                             # Log timeout error with proper error handling
-                            from secure_mcp_gateway.error_handling import error_logger
-
                             context = ErrorContext(
                                 operation="discover.server_validation_timeout",
                                 request_id=getattr(ctx, "request_id", None),
@@ -1140,10 +1126,6 @@ class DiscoveryService:
                             server_validation_span.set_attribute("timeout_error", True)
 
                             # Return standardized error response
-                            from secure_mcp_gateway.error_handling import (
-                                create_error_response,
-                            )
-
                             error_response = create_error_response(error)
                             error_response.update(
                                 {
@@ -1160,7 +1142,6 @@ class DiscoveryService:
                             )
 
                             # Log with standardized error handling
-                            from secure_mcp_gateway.error_handling import error_logger
                             from secure_mcp_gateway.exceptions import (
                                 create_guardrail_error,
                             )
@@ -1192,10 +1173,6 @@ class DiscoveryService:
                         server_validation_span.set_attribute("server_blocked", True)
 
                         # Return standardized error response
-                        from secure_mcp_gateway.error_handling import (
-                            create_error_response,
-                        )
-
                         error_response = create_error_response(error)
                         # Add discovery-specific context
                         error_response.update(
@@ -1405,11 +1382,6 @@ class DiscoveryService:
                                     )
 
                                     # Log with standardized error handling
-                                    from secure_mcp_gateway.error_handling import (
-                                        create_error_response,
-                                        error_logger,
-                                    )
-
                                     context = ErrorContext(
                                         operation="discover.config_tool_validation_failed",
                                         request_id=getattr(ctx, "request_id", None),
@@ -1494,10 +1466,6 @@ class DiscoveryService:
                                     )
 
                                     # Log timeout error with proper error handling
-                                    from secure_mcp_gateway.error_handling import (
-                                        create_error_response,
-                                        error_logger,
-                                    )
                                     from secure_mcp_gateway.exceptions import (
                                         create_guardrail_timeout_error,
                                     )
@@ -1570,10 +1538,6 @@ class DiscoveryService:
                                 )
 
                                 # Return standardized error response for timeout
-                                from secure_mcp_gateway.error_handling import (
-                                    create_error_response,
-                                    error_logger,
-                                )
                                 from secure_mcp_gateway.exceptions import (
                                     create_guardrail_timeout_error,
                                 )
@@ -1613,11 +1577,6 @@ class DiscoveryService:
                                 )
 
                                 # Log with standardized error handling
-                                from secure_mcp_gateway.error_handling import (
-                                    create_error_response,
-                                    error_logger,
-                                )
-
                                 context = ErrorContext(
                                     operation="discover.config_tool_validation_error",
                                     request_id=getattr(ctx, "request_id", None),
@@ -1846,11 +1805,6 @@ class DiscoveryService:
                     # Fail-closed prioritization: error/timeout/blocked wins over ok/skip
                     for res in (dyn_result, stat_result):
                         if res.get("status") == "timeout":
-                            from secure_mcp_gateway.error_handling import (
-                                create_error_response,
-                                error_logger,
-                            )
-
                             context = ErrorContext(
                                 operation="discover.description_validation_timeout_parallel_config",
                                 request_id=getattr(ctx, "request_id", None),
@@ -1874,10 +1828,6 @@ class DiscoveryService:
 
                     for res in (dyn_result, stat_result):
                         if res.get("status") == "blocked":
-                            from secure_mcp_gateway.error_handling import (
-                                create_error_response,
-                                error_logger,
-                            )
                             from secure_mcp_gateway.exceptions import (
                                 create_guardrail_error,
                             )
@@ -1905,11 +1855,6 @@ class DiscoveryService:
 
                     for res in (dyn_result, stat_result):
                         if res.get("status") == "error":
-                            from secure_mcp_gateway.error_handling import (
-                                create_error_response,
-                                error_logger,
-                            )
-
                             context = ErrorContext(
                                 operation="discover.description_validation_error_parallel_config",
                                 request_id=getattr(ctx, "request_id", None),
@@ -2245,11 +2190,6 @@ class DiscoveryService:
                     # Fail-closed prioritization: error/timeout/blocked wins over ok/skip
                     for res in (dyn_result, stat_result):
                         if res.get("status") == "timeout":
-                            from secure_mcp_gateway.error_handling import (
-                                create_error_response,
-                                error_logger,
-                            )
-
                             context = ErrorContext(
                                 operation="discover.description_validation_timeout_parallel",
                                 request_id=getattr(ctx, "request_id", None),
@@ -2273,10 +2213,6 @@ class DiscoveryService:
 
                     for res in (dyn_result, stat_result):
                         if res.get("status") == "blocked":
-                            from secure_mcp_gateway.error_handling import (
-                                create_error_response,
-                                error_logger,
-                            )
                             from secure_mcp_gateway.exceptions import (
                                 create_guardrail_error,
                             )
@@ -2304,11 +2240,6 @@ class DiscoveryService:
 
                     for res in (dyn_result, stat_result):
                         if res.get("status") == "error":
-                            from secure_mcp_gateway.error_handling import (
-                                create_error_response,
-                                error_logger,
-                            )
-
                             context = ErrorContext(
                                 operation="discover.description_validation_error_parallel",
                                 request_id=getattr(ctx, "request_id", None),
@@ -2429,11 +2360,6 @@ class DiscoveryService:
                                         )
 
                                         # Log with standardized error handling
-                                        from secure_mcp_gateway.error_handling import (
-                                            create_error_response,
-                                            error_logger,
-                                        )
-
                                         context = ErrorContext(
                                             operation="discover.tool_validation_failed",
                                             request_id=getattr(ctx, "request_id", None),
@@ -2522,10 +2448,6 @@ class DiscoveryService:
                                         )
 
                                         # Log timeout error with proper error handling
-                                        from secure_mcp_gateway.error_handling import (
-                                            create_error_response,
-                                            error_logger,
-                                        )
                                         from secure_mcp_gateway.exceptions import (
                                             create_guardrail_timeout_error,
                                         )
@@ -2592,11 +2514,6 @@ class DiscoveryService:
                                 )
 
                                 # Log with standardized error handling
-                                from secure_mcp_gateway.error_handling import (
-                                    create_error_response,
-                                    error_logger,
-                                )
-
                                 context = ErrorContext(
                                     operation="discover.tool_validation_error",
                                     request_id=getattr(ctx, "request_id", None),

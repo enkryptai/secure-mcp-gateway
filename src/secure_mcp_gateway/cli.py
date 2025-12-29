@@ -65,7 +65,7 @@ DOCKER_ARGS = [
     "-e",
     "MCP_TRANSPORT=stdio",
     "-v",
-    f"{HOST_ENKRYPT_HOME}:/app/.enkrypt",
+    f"{HOST_ENKRYPT_HOME}/docker:/app/.enkrypt/docker",
     "-e",
     "ENKRYPT_GATEWAY_KEY",
     "secure-mcp-gateway",
@@ -745,7 +745,9 @@ def update_config_server(
     if command:
         server_data["config"]["command"] = command
     if args:
-        server_data["config"]["args"] = args
+        # Parse comma-separated args into list
+        args_list = [arg.strip() for arg in args.split(",")]
+        server_data["config"]["args"] = args_list
     if env:
         server_data["config"]["env"] = validate_json_input(env, "environment variables")
     if tools:
@@ -801,11 +803,14 @@ def add_server_to_config(
         else None
     )
 
+    # Parse comma-separated args into list
+    args_list = [arg.strip() for arg in args.split(",")] if args else []
+
     # Build server config
     server_config = {
         "server_name": server_name,
         "description": description,
-        "config": {"command": command, "args": args or []},
+        "config": {"command": command, "args": args_list},
         "tools": tools_data or {},
         "input_guardrails_policy": input_guardrails_data
         or {
@@ -2681,7 +2686,7 @@ def main():
     )
     config_update_server_parser.add_argument("--server-command", help="Server command")
     config_update_server_parser.add_argument(
-        "--args", nargs="*", help="Server arguments"
+        "--args", help="Server arguments (comma-separated, e.g., '-y,@org/package')"
     )
     config_update_server_parser.add_argument(
         "--env", help="Environment variables (JSON)"
@@ -2703,7 +2708,9 @@ def main():
     config_add_server_parser.add_argument(
         "--server-command", required=True, help="Server command"
     )
-    config_add_server_parser.add_argument("--args", nargs="*", help="Server arguments")
+    config_add_server_parser.add_argument(
+        "--args", help="Server arguments (comma-separated, e.g., '-y,@org/package')"
+    )
     config_add_server_parser.add_argument("--env", help="Environment variables (JSON)")
     config_add_server_parser.add_argument("--tools", help="Tools configuration (JSON)")
     config_add_server_parser.add_argument(

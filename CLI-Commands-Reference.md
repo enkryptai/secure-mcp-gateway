@@ -123,37 +123,46 @@ secure-mcp-gateway config list-servers --config-id "f957f1b2-c77a-4de6-a53a-3d09
 #### Add server to configuration
 
 ```bash
-secure-mcp-gateway config add-server --config-name "staging-config" --server-name "web-server" --server-command "python" --args "server.py" --description "Web server"
-
+secure-mcp-gateway config add-server --config-name "staging-config" --server-name "web-server" --server-command "python" --args="server.py" --description "Web server"
 ```
+
+#### Add server with multiple arguments
+
+> **Note:** Use comma-separated values in `--args="value"` to pass multiple arguments. The `=` sign is required when args start with `-`.
+
+```bash
+secure-mcp-gateway config add-server --config-name "production-config" --server-name "github-mcp" --server-command "npx" --args="-y,@modelcontextprotocol/server-github" --description "GitHub MCP Server"
+```
+
+This creates a config with `"args": ["-y", "@modelcontextprotocol/server-github"]`.
 
 #### Add server with environment variables
 
 ```bash
-secure-mcp-gateway config add-server --config-name "development-config" --server-name "db-server" --server-command "python" --args "db.py" --env '{"DB_HOST": "localhost", "DB_PORT": "5432", "DEBUG": "true"}' --description "Database server with env vars"
+secure-mcp-gateway config add-server --config-name "development-config" --server-name "db-server" --server-command "python" --args="db.py" --env '{"DB_HOST": "localhost", "DB_PORT": "5432", "DEBUG": "true"}' --description "Database server with env vars"
 
 ```
 
 #### Add server with tools configuration
 
 ```bash
-secure-mcp-gateway config add-server --config-name "development-config" --server-name "tool-server" --server-command "python" --args "tools.py" --tools '{"search": {"enabled": true}, "calculator": {"enabled": false}, "file_reader": {"enabled": true}}' --description "Tool server with specific tools"
+secure-mcp-gateway config add-server --config-name "development-config" --server-name "tool-server" --server-command "python" --args="tools.py" --tools '{"search": {"enabled": true}, "calculator": {"enabled": false}, "file_reader": {"enabled": true}}' --description "Tool server with specific tools"
 
 ```
 
 #### Add server with guardrails
 
 ```bash
-secure-mcp-gateway config add-server --config-name "production-config" --server-name "secure-input-server" --server-command "python" --args "secure.py" --input-guardrails-policy '{"enabled": true, "policy_name": "Input Security Policy", "additional_config": {"pii_redaction": true, "content_filtering": true}, "block": ["policy_violation", "injection_attack", "malicious_input"]}' --description "Server with input guardrails"
+secure-mcp-gateway config add-server --config-name "production-config" --server-name "secure-input-server" --server-command "python" --args="secure.py" --input-guardrails-policy '{"enabled": true, "policy_name": "Input Security Policy", "additional_config": {"pii_redaction": true, "content_filtering": true}, "block": ["policy_violation", "injection_attack", "malicious_input"]}' --description "Server with input guardrails"
 
-secure-mcp-gateway config add-server --config-name "production-config" --server-name "secure-output-server" --server-command "python" --args "secure_output.py" --output-guardrails-policy '{"enabled": true, "policy_name": "Output Security Policy", "additional_config": {"relevancy": true, "hallucination": true, "adherence": true, "toxicity_filter": true}, "block": ["policy_violation", "injection_attack", "harmful_content"]}' --description "Server with output guardrails"
+secure-mcp-gateway config add-server --config-name "production-config" --server-name "secure-output-server" --server-command "python" --args="secure_output.py" --output-guardrails-policy '{"enabled": true, "policy_name": "Output Security Policy", "additional_config": {"relevancy": true, "hallucination": true, "adherence": true, "toxicity_filter": true}, "block": ["policy_violation", "injection_attack", "harmful_content"]}' --description "Server with output guardrails"
 
 ```
 
 #### Add server with complex configuration
 
 ```bash
-secure-mcp-gateway config add-server --config-name "production-config" --server-name "complex-server" --server-command "python" --args "complex.py" --env '{"API_KEY": "secret", "ENVIRONMENT": "production", "LOG_LEVEL": "INFO"}' --tools '{"web_search": {"enabled": true}, "code_interpreter": {"enabled": false}, "file_system": {"enabled": true, "read_only": true}}' --input-guardrails-policy {input-guardrails} --description "Complex server configuration"
+secure-mcp-gateway config add-server --config-name "production-config" --server-name "complex-server" --server-command "python" --args="complex.py" --env '{"API_KEY": "secret", "ENVIRONMENT": "production", "LOG_LEVEL": "INFO"}' --tools '{"web_search": {"enabled": true}, "code_interpreter": {"enabled": false}, "file_system": {"enabled": true, "read_only": true}}' --input-guardrails-policy {input-guardrails} --description "Complex server configuration"
 
 ```
 
@@ -167,7 +176,7 @@ secure-mcp-gateway config get-server --config-name "development-config" --server
 #### Update server configuration
 
 ```bash
-secure-mcp-gateway config update-server --config-name "development-config" --server-name "web-server" --server-command "node" --args "app.js" --description "Updated web server"
+secure-mcp-gateway config update-server --config-name "development-config" --server-name "web-server" --server-command "node" --args="app.js" --description "Updated web server"
 secure-mcp-gateway config update-server --config-name "development-config" --server-name "tool-server" --tools '{"search": {"enabled": true}, "calculator": {"enabled": true}, "summarizer": {"enabled": false}}'
 secure-mcp-gateway config update-server --config-name "development-config" --server-name "db-server" --env '{"DB_HOST": "remote-db", "DB_PORT": "5433", "DEBUG": "false", "CACHE_ENABLED": "true"}'
 
@@ -781,7 +790,7 @@ secure-mcp-gateway config add --config-name "my-config"
 
 ```bash
 
-secure-mcp-gateway config add-server --config-name "my-config" --server-name "main-server" --server-command "python" --args "main.py" --description "Main application server"
+secure-mcp-gateway config add-server --config-name "my-config" --server-name "main-server" --server-command "python" --args="main.py" --description "Main application server"
 
 ```
 
@@ -832,7 +841,7 @@ secure-mcp-gateway config add --config-name "dev-config"
 
 ```bash
 
-secure-mcp-gateway config add-server --config-name "dev-config" --server-name "debug-server" --server-command "python" --args "debug.py" --description "Debug server"
+secure-mcp-gateway config add-server --config-name "dev-config" --server-name "debug-server" --server-command "python" --args="debug.py" --description "Debug server"
 
 ```
 
@@ -883,7 +892,7 @@ secure-mcp-gateway config add --config-name "prod-config"
 
 ```bash
 
-secure-mcp-gateway config add-server --config-name "prod-config" --server-name "prod-server" --server-command "python" --args "production.py" --input-guardrails-policy '{"enabled": true, "policy_name": "Production Policy", "additional_config": {"pii_redaction": true}, "block": ["policy_violation", "injection_attack"]}' --description "Production server"
+secure-mcp-gateway config add-server --config-name "prod-config" --server-name "prod-server" --server-command "python" --args="production.py" --input-guardrails-policy '{"enabled": true, "policy_name": "Production Policy", "additional_config": {"pii_redaction": true}, "block": ["policy_violation", "injection_attack"]}' --description "Production server"
 
 ```
 
@@ -1043,21 +1052,21 @@ secure-mcp-gateway config add --config-name "staging-config"
 
 ```bash
 
-secure-mcp-gateway config add-server --config-name "staging-config" --server-name "staging-web" --server-command "python" --args "web.py" --env '{"ENVIRONMENT": "staging", "LOG_LEVEL": "DEBUG"}' --description "Staging web server"
+secure-mcp-gateway config add-server --config-name "staging-config" --server-name "staging-web" --server-command "python" --args="web.py" --env '{"ENVIRONMENT": "staging", "LOG_LEVEL": "DEBUG"}' --description "Staging web server"
 
 ```
 
 
 ```bash
 
-secure-mcp-gateway config add-server --config-name "staging-config" --server-name "staging-tools" --server-command "python" --args "tools.py" --tools '{"web_search": {"enabled": true}, "file_system": {"enabled": true}}' --description "Staging tools server"
+secure-mcp-gateway config add-server --config-name "staging-config" --server-name "staging-tools" --server-command "python" --args="tools.py" --tools '{"web_search": {"enabled": true}, "file_system": {"enabled": true}}' --description "Staging tools server"
 
 ```
 
 
 ```bash
 
-secure-mcp-gateway config add-server --config-name "staging-config" --server-name "staging-secure" --server-command "python" --args "secure.py" --input-guardrails-policy '{"enabled": true, "policy_name": "Staging Policy", "additional_config": {"content_filtering": false}, "block": ["injection_attack"]}' --description "Staging secure server"
+secure-mcp-gateway config add-server --config-name "staging-config" --server-name "staging-secure" --server-command "python" --args="secure.py" --input-guardrails-policy '{"enabled": true, "policy_name": "Staging Policy", "additional_config": {"content_filtering": false}, "block": ["injection_attack"]}' --description "Staging secure server"
 
 ```
 
