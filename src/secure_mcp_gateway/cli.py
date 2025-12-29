@@ -17,17 +17,14 @@ BASE_DIR = files("secure_mcp_gateway")
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
+from secure_mcp_gateway.consts import HOST_DOCKER_CONFIG_PATH
 from secure_mcp_gateway.utils import (
     CONFIG_PATH,
     DOCKER_CONFIG_PATH,
+    clear_config_cache,
     is_docker,
 )
 from secure_mcp_gateway.version import __version__
-
-# Host-side path for Docker configs (when running CLI on host to manage Docker configs)
-HOST_DOCKER_CONFIG_PATH = os.path.join(
-    os.path.expanduser("~"), ".enkrypt", "docker", "enkrypt_mcp_config.json"
-)
 
 print(f"INFO: Initializing Enkrypt Secure MCP Gateway CLI Module v{__version__}")
 
@@ -110,6 +107,9 @@ def save_config(config_path, config):
             json.dump(config, f, indent=2)
         if os.name == "posix":
             os.chmod(config_path, 0o600)
+
+        # Clear config cache so next read picks up the new config
+        clear_config_cache()
     except Exception as e:
         print(f"ERROR: Error saving config file: {e}")
         sys.exit(1)

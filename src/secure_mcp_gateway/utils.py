@@ -6,8 +6,8 @@ import secrets
 import socket
 import string
 import sys
+import threading
 import time
-from functools import lru_cache
 from typing import Any, Dict, Union
 from urllib.parse import urlparse
 
@@ -186,19 +186,26 @@ def is_docker():
     return False
 
 
-@lru_cache(maxsize=16)
+# Config cache with file modification time tracking for hot-reload support
+# Thread-safe implementation for async/concurrent access
+_config_cache = {}
+_config_mtime = 0
+_config_path_cached = None
+_config_lock = threading.RLock()
+
+
 def get_common_config(print_debug=False):
     """
-    Get the common configuration for the Enkrypt Secure MCP Gateway
+    Get the common configuration for the Enkrypt Secure MCP Gateway.
+
+    Uses file modification time to detect config changes and reload automatically.
+    This enables hot-reload when config files are updated (e.g., in Docker volumes).
+    Thread-safe for concurrent access.
     """
-    config = {}
+    global _config_cache, _config_mtime, _config_path_cached
 
     # NOTE: Using sys_print here will cause a circular import between get_common_config, is_telemetry_enabled, and sys_print functions.
     # So we are using print instead.
-
-    # TODO: Fix error and use stdout
-    # print("[utils] Getting Enkrypt Common Configuration", file=sys.stderr)
-    # logger.info("[utils] Getting Enkrypt Common Configuration")
 
     if print_debug:
         logger.debug(f"[utils] config_path: {CONFIG_PATH}")
@@ -206,32 +213,84 @@ def get_common_config(print_debug=False):
         logger.debug(f"[utils] example_config_path: {EXAMPLE_CONFIG_PATH}")
 
     is_running_in_docker = is_docker()
-    # logger.debug(f"[utils] is_running_in_docker: {is_running_in_docker}")
     picked_config_path = DOCKER_CONFIG_PATH if is_running_in_docker else CONFIG_PATH
-    if does_file_exist(picked_config_path):
-        print(f"[utils] Loading {picked_config_path} file...", file=sys.stderr)
-        logger.info(f"[utils] Loading {picked_config_path} file...")
-        with open(picked_config_path, encoding="utf-8") as f:
-            config = json.load(f)
-    else:
-        logger.info("[utils] No config file found. Loading example config.")
-        if does_file_exist(EXAMPLE_CONFIG_PATH):
-            if print_debug:
-                logger.debug(f"[utils] Loading {EXAMPLE_CONFIG_NAME} file...")
-            with open(EXAMPLE_CONFIG_PATH, encoding="utf-8") as f:
-                config = json.load(f)
+
+    with _config_lock:
+        # Check if config file has been modified since last read
+        if does_file_exist(picked_config_path):
+            try:
+                current_mtime = os.path.getmtime(picked_config_path)
+            except OSError as e:
+                logger.warning(
+                    f"[utils] Error getting mtime for {picked_config_path}: {e}"
+                )
+                # Return cached config if available, otherwise use defaults
+                if _config_cache:
+                    return _config_cache
+                return {**DEFAULT_COMMON_CONFIG, "plugins": {}}
+
+            # Return cached config if file hasn't changed
+            if (
+                _config_cache
+                and _config_path_cached == picked_config_path
+                and current_mtime == _config_mtime
+            ):
+                return _config_cache
+
+            # File changed or first load - reload config
+            try:
+                print(f"[utils] Loading {picked_config_path} file...", file=sys.stderr)
+                logger.info(f"[utils] Loading {picked_config_path} file...")
+                with open(picked_config_path, encoding="utf-8") as f:
+                    config = json.load(f)
+                _config_mtime = current_mtime
+                _config_path_cached = picked_config_path
+            except (OSError, json.JSONDecodeError) as e:
+                logger.error(
+                    f"[utils] Error loading config from {picked_config_path}: {e}"
+                )
+                # Return cached config if available, otherwise use defaults
+                if _config_cache:
+                    return _config_cache
+                return {**DEFAULT_COMMON_CONFIG, "plugins": {}}
         else:
-            logger.info(
-                "[utils] Example config file not found. Using default common config."
-            )
+            logger.info("[utils] No config file found. Loading example config.")
+            if does_file_exist(EXAMPLE_CONFIG_PATH):
+                if print_debug:
+                    logger.debug(f"[utils] Loading {EXAMPLE_CONFIG_NAME} file...")
+                try:
+                    with open(EXAMPLE_CONFIG_PATH, encoding="utf-8") as f:
+                        config = json.load(f)
+                except (OSError, json.JSONDecodeError) as e:
+                    logger.error(f"[utils] Error loading example config: {e}")
+                    config = {}
+            else:
+                logger.info(
+                    "[utils] Example config file not found. Using default common config."
+                )
+                config = {}
 
-    if print_debug and config:
-        logger.debug(f"[utils] config: {config}")
+        if print_debug and config:
+            logger.debug(f"[utils] config: {config}")
 
-    common_config = config.get("common_mcp_gateway_config", {})
-    plugins_config = config.get("plugins", {})
-    # Merge with defaults to ensure all required fields exist
-    return {**DEFAULT_COMMON_CONFIG, **common_config, "plugins": plugins_config}
+        common_config = config.get("common_mcp_gateway_config", {})
+        plugins_config = config.get("plugins", {})
+        # Merge with defaults to ensure all required fields exist
+        _config_cache = {
+            **DEFAULT_COMMON_CONFIG,
+            **common_config,
+            "plugins": plugins_config,
+        }
+        return _config_cache
+
+
+def clear_config_cache():
+    """Clear the config cache to force reload on next get_common_config() call."""
+    global _config_cache, _config_mtime, _config_path_cached
+    with _config_lock:
+        _config_cache = {}
+        _config_mtime = 0
+        _config_path_cached = None
 
 
 def is_telemetry_enabled():
