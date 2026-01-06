@@ -45,3 +45,4 @@ tmp
 bandit-report.json
 
 *.md
+!hooks/cursor/hooks/README.md

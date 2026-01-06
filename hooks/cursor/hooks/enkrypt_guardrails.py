@@ -6,6 +6,7 @@ This module provides the core Enkrypt API integration used by all hooks:
 - beforeSubmitPrompt (input guardrails)
 - beforeMCPExecution (input guardrails)
 - afterMCPExecution (output guardrails)
+- afterAgentResponse (output guardrails)
 - stop
 
 Configuration is loaded from guardrails_config.json
@@ -59,6 +60,7 @@ HOOK_POLICIES = {
     "beforeSubmitPrompt": CONFIG.get("beforeSubmitPrompt", {}),
     "beforeMCPExecution": CONFIG.get("beforeMCPExecution", {}),
     "afterMCPExecution": CONFIG.get("afterMCPExecution", {}),
+    "afterAgentResponse": CONFIG.get("afterAgentResponse", {}),
 }
 
 
@@ -271,7 +273,7 @@ def check_with_enkrypt_api(text: str, hook_name: str = "beforeSubmitPrompt") -> 
 
     Args:
         text: The text to check (prompt or MCP input/output)
-        hook_name: The hook name (beforeSubmitPrompt, beforeMCPExecution, afterMCPExecution)
+        hook_name: The hook name (beforeSubmitPrompt, beforeMCPExecution, afterMCPExecution, afterAgentResponse)
 
     Returns:
         Tuple of (should_block, violations_list, full_result)
@@ -534,5 +536,6 @@ def reload_config():
         "beforeSubmitPrompt": CONFIG.get("beforeSubmitPrompt", {}),
         "beforeMCPExecution": CONFIG.get("beforeMCPExecution", {}),
         "afterMCPExecution": CONFIG.get("afterMCPExecution", {}),
+        "afterAgentResponse": CONFIG.get("afterAgentResponse", {}),
     }
     SENSITIVE_MCP_TOOLS = CONFIG.get("sensitive_mcp_tools", [])

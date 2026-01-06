@@ -37,6 +37,15 @@
       "nsfw"
     ]
   },
+  "afterAgentResponse": {
+    "enabled": false,
+    "policy_name": "Sample Airline Guardrail",
+    "block": [
+      "pii",
+      "toxicity",
+      "nsfw"
+    ]
+  },
   "sensitive_mcp_tools": [
     "execute_sql",
     "delete_",
