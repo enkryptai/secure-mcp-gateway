@@ -1,0 +1,50 @@
+{
+  "enkrypt_api": {
+    "url": "https://api.enkryptai.com/guardrails/policy/detect",
+    "api_key": "YOUR_API_KEY_HERE"
+  },
+  "beforeSubmitPrompt": {
+    "enabled": false,
+    "policy_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack",
+      "topic_detector",
+      "nsfw",
+      "toxicity",
+      "pii",
+      "keyword_detector",
+      "bias",
+      "sponge_attack"
+    ]
+  },
+  "beforeMCPExecution": {
+    "enabled": true,
+    "policy_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack",
+      "nsfw",
+      "toxicity",
+      "pii",
+      "keyword_detector"
+    ]
+  },
+  "afterMCPExecution": {
+    "enabled": true,
+    "policy_name": "Sample Airline Guardrail",
+    "block": [
+      "pii",
+      "toxicity",
+      "nsfw"
+    ]
+  },
+  "sensitive_mcp_tools": [
+    "execute_sql",
+    "delete_",
+    "remove_",
+    "drop_",
+    "write_file",
+    "run_command",
+    "shell_",
+    "exec_"
+  ]
+}
