@@ -5,7 +5,7 @@
     "ssl_verify": true,
     "timeout": 15
   },
-  "beforeSubmitPrompt": {
+  "UserPromptSubmit": {
     "enabled": false,
     "policy_name": "Sample Airline Guardrail",
     "block": [
@@ -19,7 +19,7 @@
       "sponge_attack"
     ]
   },
-  "beforeMCPExecution": {
+  "PreToolUse": {
     "enabled": true,
     "policy_name": "Sample Airline Guardrail",
     "block": [
@@ -30,7 +30,7 @@
       "keyword_detector"
     ]
   },
-  "afterMCPExecution": {
+  "PostToolUse": {
     "enabled": true,
     "policy_name": "Sample Airline Guardrail",
     "block": [
@@ -39,16 +39,11 @@
       "nsfw"
     ]
   },
-  "afterAgentResponse": {
-    "enabled": false,
-    "policy_name": "Sample Airline Guardrail",
-    "block": [
-      "pii",
-      "toxicity",
-      "nsfw"
-    ]
-  },
-  "sensitive_mcp_tools": [
+  "sensitive_tools": [
+    "Bash",
+    "Write",
+    "Edit",
+    "MultiEdit",
     "execute_sql",
     "delete_",
     "remove_",

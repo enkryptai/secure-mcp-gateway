@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 """
-stop Hook - Handles agent loop completion.
+Stop Hook - Handles agent loop completion.
+
+Claude Code Hook: Runs when the agent loop ends.
+Input: { "session_id": "...", "stop_hook_active": false }
+Output: {} (logging only)
 """
 import sys
 import json
@@ -14,31 +18,33 @@ from enkrypt_guardrails import (
     LOG_DIR
 )
 
+HOOK_NAME = "Stop"
+
 
 def main():
     try:
         data = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        log_event("stop", {"parse_error": str(e), "error_type": "JSONDecodeError"})
+        log_event(HOOK_NAME, {"parse_error": str(e), "error_type": "JSONDecodeError"})
         print(json.dumps({}))
         return
 
-    status = data.get("status", "completed")
-    loop_count = data.get("loop_count", 0)
+    session_id = data.get("session_id", "")
+    stop_hook_active = data.get("stop_hook_active", False)
+    cwd = data.get("cwd", "")
+    transcript_path = data.get("transcript_path", "")
 
     # Generate session summary
     summary = {
-        "conversation_id": data.get("conversation_id"),
-        "generation_id": data.get("generation_id"),
-        "status": status,
-        "loop_count": loop_count,
-        "model": data.get("model"),
-        "user_email": data.get("user_email"),
+        "session_id": session_id,
+        "stop_hook_active": stop_hook_active,
+        "cwd": cwd,
+        "transcript_path": transcript_path,
         "timestamp": get_timestamp(),
     }
 
-    log_event("stop", {**data, "summary": summary})
-    log_to_combined("stop", data)
+    log_event(HOOK_NAME, {**data, "summary": summary})
+    log_to_combined(HOOK_NAME, data)
 
     # Write session summary
     summary_file = LOG_DIR / "session_summaries.jsonl"

@@ -24,7 +24,8 @@ HOOK_NAME = "afterAgentResponse"
 def main():
     try:
         data = json.load(sys.stdin)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        log_event(HOOK_NAME, {"parse_error": str(e), "error_type": "JSONDecodeError"})
         print(json.dumps({}))
         return
 

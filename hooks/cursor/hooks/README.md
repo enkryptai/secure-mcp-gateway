@@ -12,6 +12,15 @@ Protect your Cursor chats and MCP tool calls using Enkrypt AI guardrails.
 |`afterAgentResponse`|After the agent produces a response|Audit the final assistant text (logging-only)|
 |`stop`|When the agent completes|Session logging / summary|
 
+### Hooks Not Supported Yet
+
+The following Cursor hooks are not yet implemented:
+
+- `beforeShellExecution` / `afterShellExecution` - Shell command control
+- `beforeReadFile` / `afterFileEdit` - File access and modification control
+- `afterAgentThought` - Agent thought tracking
+- `beforeTabFileRead` / `afterTabFileEdit` - Tab completion file operations
+
 ## 🚀 Quick start (project-level)
 
 ### Prerequisites
@@ -20,13 +29,22 @@ Protect your Cursor chats and MCP tool calls using Enkrypt AI guardrails.
 - Python 3.8+
 - An Enkrypt API key
 
-### 1) Create a Python venv for the hooks
+### 1) Create a Python venv and install dependencies
 
 From the repo root:
 
 ```bash
 cd hooks/cursor
 python -m venv venv
+
+# Activate the virtual environment
+# Windows:
+venv\Scripts\activate
+# macOS/Linux:
+source venv/bin/activate
+
+# Install dependencies
+pip install -r hooks/requirements.txt
 ```
 
 ### 2) Configure Enkrypt (guardrails_config_example.json → guardrails_config.json)
@@ -71,13 +89,17 @@ hooks/cursor/
 └── hooks/
     ├── guardrails_config_example.json  # Template config (commit-safe)
     ├── guardrails_config.json          # Local config (gitignored)
-    ├── enkrypt_guardrails.py
-    ├── before_submit_prompt.py
-    ├── before_mcp_execution.py
-    ├── after_mcp_execution.py
-    ├── after_agent_response.py
-    ├── stop.py
-    └── README.md
+    ├── enkrypt_guardrails.py           # Core module with API integration
+    ├── before_submit_prompt.py         # Prompt validation hook
+    ├── before_mcp_execution.py         # MCP tool input validation hook
+    ├── after_mcp_execution.py          # MCP tool output audit hook
+    ├── after_agent_response.py         # Agent response audit hook
+    ├── stop.py                         # Session completion hook
+    ├── requirements.txt                # Python dependencies
+    ├── README.md                       # This documentation
+    └── tests/
+        ├── __init__.py
+        └── test_enkrypt_guardrails.py  # Unit tests (61 tests)
 ```
 
 ## ⚙️ Configuration reference
@@ -91,12 +113,36 @@ Use the template at `hooks/cursor/hooks_example.json` as your starting point.
 
 ### `guardrails_config.json`
 
-Start from `guardrails_config_example.json`. Key fields:
+Start from `guardrails_config_example.json`. Full configuration reference:
 
-- `enkrypt_api.url`: Enkrypt detect endpoint
-- `enkrypt_api.api_key`: API key (or set `ENKRYPT_API_KEY`)
-- `beforeSubmitPrompt` / `beforeMCPExecution` / `afterMCPExecution` / `afterAgentResponse`: per-hook enablement + block list
-- `sensitive_mcp_tools`: prefixes/tool names that should be treated as higher risk
+#### `enkrypt_api` section
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `url` | string | `https://api.enkryptai.com/guardrails/policy/detect` | Enkrypt guardrails API endpoint |
+| `api_key` | string | `""` | Your Enkrypt API key (or set `ENKRYPT_API_KEY` env var) |
+| `ssl_verify` | boolean | `true` | Enable/disable SSL certificate verification |
+| `timeout` | integer | `15` | API request timeout in seconds |
+
+#### Hook policy sections
+
+Each hook (`beforeSubmitPrompt`, `beforeMCPExecution`, `afterMCPExecution`, `afterAgentResponse`) has:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `false` | Enable guardrails for this hook |
+| `policy_name` | string | `""` | Enkrypt policy name to use (must exist in Enkrypt dashboard) |
+| `block` | array | `[]` | List of detectors that should trigger blocking |
+
+#### `sensitive_mcp_tools` section
+
+Array of tool name prefixes/patterns that require user confirmation before execution.
+
+Example:
+
+```json
+"sensitive_mcp_tools": ["execute_sql", "delete_", "run_command"]
+```
 
 ---
 
@@ -142,6 +188,20 @@ All hook events are logged to `~/cursor/hooks_logs/`:
 |`session_summaries.jsonl`|Session completion summaries|
 |`enkrypt_api_response.jsonl`|Raw API responses (debug)|
 |`enkrypt_api_debug.jsonl`|Debug information|
+|`config_errors.log`|Configuration validation errors|
+
+### Log Retention
+
+Logs are automatically rotated after 7 days (configurable via `CURSOR_HOOKS_LOG_RETENTION_DAYS` environment variable). Old logs are archived with `.old` suffix and deleted after 14 days.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENKRYPT_API_KEY` | `""` | Enkrypt API key (overrides config file) |
+| `ENKRYPT_API_URL` | `https://api.enkryptai.com/guardrails/policy/detect` | API endpoint URL |
+| `CURSOR_HOOKS_LOG_DIR` | `~/cursor/hooks_logs` | Log directory path |
+| `CURSOR_HOOKS_LOG_RETENTION_DAYS` | `7` | Days to keep logs before archiving |
 
 ### Viewing Logs
 
@@ -154,6 +214,27 @@ Get-Content "$env:USERPROFILE\cursor\hooks_logs\security_alerts.jsonl" -Tail 5
 
 # View all audit events
 Get-Content "$env:USERPROFILE\cursor\hooks_logs\combined_audit.jsonl" -Tail 10
+```
+
+### Metrics
+
+The hooks collect performance metrics that can be accessed programmatically:
+
+```python
+from enkrypt_guardrails import get_hook_metrics, reset_metrics
+
+# Get metrics for a specific hook
+metrics = get_hook_metrics("beforeSubmitPrompt")
+print(f"Total calls: {metrics['total_calls']}")
+print(f"Blocked calls: {metrics['blocked_calls']}")
+print(f"Avg latency: {metrics['avg_latency_ms']:.2f}ms")
+
+# Get all hook metrics
+all_metrics = get_hook_metrics()
+
+# Reset metrics
+reset_metrics("beforeSubmitPrompt")  # Reset one hook
+reset_metrics()  # Reset all
 ```
 
 ---
@@ -269,7 +350,7 @@ Expected output:
 
 ## 📚 Resources
 
-- [Cursor Hooks Documentation](https://docs.cursor.com/context/hooks)
+- [Cursor Hooks Documentation](https://cursor.com/docs/agent/hooks)
 - [Enkrypt AI Documentation](https://docs.enkryptai.com)
 - [Enkrypt AI Dashboard](https://app.enkryptai.com)
 

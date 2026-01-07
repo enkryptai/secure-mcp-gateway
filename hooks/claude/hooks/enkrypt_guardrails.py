@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 """
-Enkrypt AI Guardrails - Shared Module
+Enkrypt AI Guardrails - Shared Module for Claude Code Hooks
 
 This module provides the core Enkrypt API integration used by all hooks:
-- beforeSubmitPrompt (input guardrails)
-- beforeMCPExecution (input guardrails)
-- afterMCPExecution (output guardrails)
-- afterAgentResponse (output guardrails)
-- stop
+- UserPromptSubmit (input guardrails)
+- PreToolUse (input guardrails)
+- PostToolUse (output guardrails)
+- Stop (session completion)
 
 Configuration is loaded from guardrails_config.json
 """
@@ -35,7 +34,7 @@ from urllib3.util.retry import Retry
 # PRE-COMPILED REGEX PATTERNS (20-30% faster pattern matching)
 # ============================================================================
 
-# Sensitive data patterns for MCP result analysis
+# Sensitive data patterns for tool result analysis
 SENSITIVE_PATTERNS = [
     (re.compile(r"password", re.IGNORECASE), "password reference"),
     (re.compile(r"api[_-]?key", re.IGNORECASE), "API key reference"),
@@ -137,11 +136,11 @@ class Violation:
 class GuardrailsConfig:
     """Complete guardrails configuration."""
     enkrypt_api: EnkryptApiConfig = field(default_factory=EnkryptApiConfig)
-    before_submit_prompt: HookPolicy = field(default_factory=HookPolicy)
-    before_mcp_execution: HookPolicy = field(default_factory=HookPolicy)
-    after_mcp_execution: HookPolicy = field(default_factory=HookPolicy)
-    after_agent_response: HookPolicy = field(default_factory=HookPolicy)
-    sensitive_mcp_tools: List[str] = field(default_factory=list)
+    user_prompt_submit: HookPolicy = field(default_factory=HookPolicy)
+    pre_tool_use: HookPolicy = field(default_factory=HookPolicy)
+    post_tool_use: HookPolicy = field(default_factory=HookPolicy)
+    stop: HookPolicy = field(default_factory=HookPolicy)
+    sensitive_tools: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -233,11 +232,11 @@ metrics = MetricsCollector()
 # ============================================================================
 
 CONFIG_FILE = Path(__file__).parent / "guardrails_config.json"
-LOG_DIR = Path(os.environ.get("CURSOR_HOOKS_LOG_DIR", Path.home() / "cursor" / "hooks_logs"))
+LOG_DIR = Path(os.environ.get("CLAUDE_HOOKS_LOG_DIR", Path.home() / "claude" / "hooks_logs"))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # Log retention settings
-LOG_RETENTION_DAYS = int(os.environ.get("CURSOR_HOOKS_LOG_RETENTION_DAYS", "7"))
+LOG_RETENTION_DAYS = int(os.environ.get("CLAUDE_HOOKS_LOG_RETENTION_DAYS", "7"))
 
 
 def validate_config(config: dict) -> List[str]:
@@ -262,8 +261,8 @@ def validate_config(config: dict) -> List[str]:
         if ssl_verify is not None and not isinstance(ssl_verify, bool):
             errors.append(f"enkrypt_api.ssl_verify must be a boolean, got: {type(ssl_verify).__name__}")
 
-    # Validate hook policies
-    valid_hooks = ["beforeSubmitPrompt", "beforeMCPExecution", "afterMCPExecution", "afterAgentResponse"]
+    # Validate hook policies (Claude Code hook names)
+    valid_hooks = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"]
     for hook_name in valid_hooks:
         policy = config.get(hook_name, {})
         if policy:
@@ -274,10 +273,10 @@ def validate_config(config: dict) -> List[str]:
             if "policy_name" in policy and not isinstance(policy["policy_name"], str):
                 errors.append(f"{hook_name}.policy_name must be a string")
 
-    # Validate sensitive_mcp_tools
-    sensitive_tools = config.get("sensitive_mcp_tools")
+    # Validate sensitive_tools
+    sensitive_tools = config.get("sensitive_tools")
     if sensitive_tools is not None and not isinstance(sensitive_tools, list):
-        errors.append("sensitive_mcp_tools must be a list")
+        errors.append("sensitive_tools must be a list")
 
     return errors
 
@@ -327,14 +326,14 @@ ENKRYPT_API_KEY = os.environ.get(
 ENKRYPT_SSL_VERIFY = _api_config.get("ssl_verify", True)
 ENKRYPT_TIMEOUT = _api_config.get("timeout", 15)
 
-SENSITIVE_MCP_TOOLS = CONFIG.get("sensitive_mcp_tools", [])
+SENSITIVE_TOOLS = CONFIG.get("sensitive_tools", [])
 
-# Hook-specific policies
+# Hook-specific policies (Claude Code hook names)
 HOOK_POLICIES = {
-    "beforeSubmitPrompt": CONFIG.get("beforeSubmitPrompt", {}),
-    "beforeMCPExecution": CONFIG.get("beforeMCPExecution", {}),
-    "afterMCPExecution": CONFIG.get("afterMCPExecution", {}),
-    "afterAgentResponse": CONFIG.get("afterAgentResponse", {}),
+    "UserPromptSubmit": CONFIG.get("UserPromptSubmit", {}),
+    "PreToolUse": CONFIG.get("PreToolUse", {}),
+    "PostToolUse": CONFIG.get("PostToolUse", {}),
+    "Stop": CONFIG.get("Stop", {}),
 }
 
 
@@ -512,12 +511,10 @@ def log_to_combined(hook_name: str, data: dict, result: dict = None):
     entry = {
         "timestamp": get_timestamp(),
         "hook": hook_name,
-        "conversation_id": data.get("conversation_id"),
-        "generation_id": data.get("generation_id"),
-        "model": data.get("model"),
-        "user_email": data.get("user_email"),
-        "cursor_version": data.get("cursor_version"),
-        "workspace_roots": data.get("workspace_roots"),
+        "session_id": data.get("session_id"),
+        "cwd": data.get("cwd"),
+        "transcript_path": data.get("transcript_path"),
+        "permission_mode": data.get("permission_mode"),
         "data": data,
     }
     if result is not None:
@@ -533,8 +530,7 @@ def log_security_alert(alert_type: str, details: dict, data: dict):
         "timestamp": get_timestamp(),
         "type": alert_type,
         **details,
-        "conversation_id": data.get("conversation_id"),
-        "user_email": data.get("user_email"),
+        "session_id": data.get("session_id"),
     }
     _buffered_logger.write(alert_file, json.dumps(alert) + "\n")
 
@@ -685,15 +681,15 @@ def mask_sensitive_headers(headers: dict) -> dict:
     return masked
 
 
-def check_with_enkrypt_api(text: str, hook_name: str = "beforeSubmitPrompt") -> tuple[bool, list, dict]:
+def check_with_enkrypt_api(text: str, hook_name: str = "UserPromptSubmit") -> tuple[bool, list, dict]:
     """
     Check text using Enkrypt AI Guardrails API.
 
     Uses connection pooling for 20-30% faster repeated API calls.
 
     Args:
-        text: The text to check (prompt or MCP input/output)
-        hook_name: The hook name (beforeSubmitPrompt, beforeMCPExecution, afterMCPExecution, afterAgentResponse)
+        text: The text to check (prompt or tool input/output)
+        hook_name: The hook name (UserPromptSubmit, PreToolUse, PostToolUse, Stop)
 
     Returns:
         Tuple of (should_block, violations_list, full_result)
@@ -818,7 +814,7 @@ def check_with_enkrypt_api(text: str, hook_name: str = "beforeSubmitPrompt") -> 
         return False, [], {"error": str(e)}
 
 
-def format_violation_message(violations: list, hook_name: str = "beforeSubmitPrompt") -> str:
+def format_violation_message(violations: list, hook_name: str = "UserPromptSubmit") -> str:
     """Format a user-friendly message from violations."""
     if not violations:
         return ""
@@ -836,145 +832,160 @@ def format_violation_message(violations: list, hook_name: str = "beforeSubmitPro
             if pii_found:
                 # Show actual PII types found
                 pii_items = [f"{k}" for k in list(pii_found.keys())[:3]]
-                messages.append(f"🔐 PII/Secrets detected: {', '.join(pii_items)}")
+                messages.append(f"PII/Secrets detected: {', '.join(pii_items)}")
             elif entities:
-                messages.append(f"🔐 PII/Secrets detected: {', '.join(str(e) for e in entities[:5])}")
+                messages.append(f"PII/Secrets detected: {', '.join(str(e) for e in entities[:5])}")
             else:
-                messages.append("🔐 PII/Secrets detected")
+                messages.append("PII/Secrets detected")
 
         elif detector == "injection_attack":
             attack_score = v.get("attack_score", 0)
             try:
                 score_float = float(attack_score) if attack_score else 0
                 if score_float:
-                    messages.append(f"⚠️ Injection attack detected (confidence: {score_float:.1%})")
+                    messages.append(f"Injection attack detected (confidence: {score_float:.1%})")
                 else:
-                    messages.append("⚠️ Injection attack pattern detected")
+                    messages.append("Injection attack pattern detected")
             except (ValueError, TypeError):
-                messages.append("⚠️ Injection attack pattern detected")
+                messages.append("Injection attack pattern detected")
 
         elif detector == "toxicity":
             toxicity_types = v.get("toxicity_types", [])
             score = v.get("score", "N/A")
             if toxicity_types:
-                messages.append(f"🚫 Toxic content detected: {', '.join(toxicity_types)} (score: {score})")
+                messages.append(f"Toxic content detected: {', '.join(toxicity_types)} (score: {score})")
             else:
-                messages.append(f"🚫 Toxic content detected (score: {score})")
+                messages.append(f"Toxic content detected (score: {score})")
 
         elif detector == "nsfw":
             nsfw_score = v.get("nsfw_score", 0)
             try:
                 score_float = float(nsfw_score) if nsfw_score else 0
                 if score_float:
-                    messages.append(f"🔞 NSFW content detected (confidence: {score_float:.1%})")
+                    messages.append(f"NSFW content detected (confidence: {score_float:.1%})")
                 else:
-                    messages.append("🔞 NSFW content detected")
+                    messages.append("NSFW content detected")
             except (ValueError, TypeError):
-                messages.append("🔞 NSFW content detected")
+                messages.append("NSFW content detected")
 
         elif detector == "keyword_detector":
             keywords = v.get("matched_keywords", [])
             if keywords:
-                messages.append(f"🚫 Banned keywords detected: {', '.join(keywords)}")
+                messages.append(f"Banned keywords detected: {', '.join(keywords)}")
             else:
-                messages.append("🚫 Banned keywords detected")
+                messages.append("Banned keywords detected")
 
         elif detector == "policy_violation":
             violating_policy = v.get("violating_policy", "")
             explanation = v.get("explanation", "")
             if violating_policy:
-                messages.append(f"📋 Policy violation: {violating_policy}")
+                messages.append(f"Policy violation: {violating_policy}")
             if explanation:
-                messages.append(f"   → {explanation[:150]}")
+                messages.append(f"   -> {explanation[:150]}")
 
         elif detector == "bias":
-            messages.append("⚖️ Bias detected in content")
+            messages.append("Bias detected in content")
 
         elif detector == "sponge_attack":
-            messages.append("🧽 Sponge attack detected")
+            messages.append("Sponge attack detected")
 
         elif detector == "topic_detector":
-            messages.append("📌 Off-topic or sensitive topic detected")
+            messages.append("Off-topic or sensitive topic detected")
 
         else:
-            messages.append(f"⚠️ {detector.replace('_', ' ').title()} detected")
+            messages.append(f"{detector.replace('_', ' ').title()} detected")
 
     return "\n".join(messages)
 
 
 # ============================================================================
-# MCP TOOL CHECKING
+# TOOL CHECKING (Claude Code equivalent of MCP tool checking)
 # ============================================================================
 
-def check_mcp_tool(tool_name: str, tool_input: str) -> tuple[str, str, str]:
+def check_tool(tool_name: str, tool_input: dict) -> tuple[str, str]:
     """
-    Check if an MCP tool should be allowed, blocked, or require confirmation.
+    Check if a Claude Code tool should be allowed, blocked, or require confirmation.
+
+    Args:
+        tool_name: Name of the tool (e.g., "Write", "Bash", "Edit")
+        tool_input: Tool input parameters as dict
 
     Returns:
-        Tuple of (permission, user_message, agent_message)
+        Tuple of (permission_decision, reason)
+        permission_decision: "allow", "deny", or "ask"
     """
     tool_name_lower = tool_name.lower()
 
     # Check sensitive tools from config
-    for sensitive in SENSITIVE_MCP_TOOLS:
-        if sensitive.lower() in tool_name_lower:
+    for sensitive in SENSITIVE_TOOLS:
+        # Handle wildcard patterns like "mcp__*"
+        if sensitive.endswith("*"):
+            prefix = sensitive[:-1].lower()
+            if tool_name_lower.startswith(prefix):
+                return (
+                    "ask",
+                    f"Tool '{tool_name}' requires confirmation (matches sensitive pattern '{sensitive}')"
+                )
+        elif sensitive.lower() in tool_name_lower:
             return (
                 "ask",
-                f"⚠️ MCP tool '{tool_name}' requires confirmation",
-                f"The MCP tool '{tool_name}' requires user approval before execution."
+                f"Tool '{tool_name}' requires confirmation"
             )
 
-    # Try to parse tool input and check for sensitive operations
-    try:
-        params = json.loads(tool_input) if tool_input else {}
+    # Check for sensitive operations in tool input
+    if tool_name == "Bash":
+        command = tool_input.get("command", "")
+        command_lower = command.lower()
 
-        # Check for SQL operations
-        if "query" in params or "sql" in params:
-            query = params.get("query", "") or params.get("sql", "")
-            query_upper = query.upper()
+        # Dangerous bash commands
+        dangerous_commands = ["rm -rf", "sudo", "chmod 777", "> /dev/", "mkfs", "dd if="]
+        for dangerous in dangerous_commands:
+            if dangerous in command_lower:
+                return (
+                    "ask",
+                    f"Bash command contains potentially dangerous operation: {dangerous}"
+                )
 
-            dangerous_sql = ["DROP", "DELETE", "TRUNCATE", "UPDATE", "INSERT"]
-            for keyword in dangerous_sql:
-                if keyword in query_upper:
-                    return (
-                        "ask",
-                        f"⚠️ SQL operation '{keyword}' requires confirmation",
-                        f"This SQL operation modifies data and requires user approval."
-                    )
-    except (json.JSONDecodeError, TypeError):
-        pass
+    elif tool_name in ["Write", "Edit"]:
+        file_path = tool_input.get("file_path", "")
+        # Sensitive file patterns
+        sensitive_files = [".env", ".ssh/", "credentials", "secrets", ".git/config"]
+        for sensitive in sensitive_files:
+            if sensitive in file_path.lower():
+                return (
+                    "ask",
+                    f"Operation on sensitive file: {file_path}"
+                )
 
     # Allow by default
-    return "allow", "", ""
+    return "allow", ""
 
 
-def analyze_mcp_result(tool_name: str, result_json: str) -> dict:
+def analyze_tool_result(tool_name: str, tool_response: dict) -> dict:
     """
-    Analyze MCP tool result for potential issues.
+    Analyze Claude Code tool result for potential issues.
 
     Uses pre-compiled regex patterns for 20-30% faster analysis.
     """
+    result_str = json.dumps(tool_response) if isinstance(tool_response, dict) else str(tool_response)
+
     analysis = {
         "sensitive_data_hints": [],
-        "result_size": len(result_json),
+        "result_size": len(result_str),
         "is_error": False,
     }
 
     # Use pre-compiled patterns for faster matching
     for pattern, name in SENSITIVE_PATTERNS:
-        if pattern.search(result_json):
+        if pattern.search(result_str):
             analysis["sensitive_data_hints"].append(name)
 
     # Try to detect errors in result
-    try:
-        result = json.loads(result_json)
-        if isinstance(result, dict):
-            if result.get("error") or result.get("Error"):
-                analysis["is_error"] = True
-            if result.get("status") in ["error", "failed", "failure"]:
-                analysis["is_error"] = True
-    except (json.JSONDecodeError, TypeError):
-        pass
+    if isinstance(tool_response, dict):
+        if tool_response.get("error") or tool_response.get("Error"):
+            analysis["is_error"] = True
+        if tool_response.get("status") in ["error", "failed", "failure"]:
+            analysis["is_error"] = True
 
     return analysis
 
@@ -989,7 +1000,7 @@ def reload_config():
 
     Call this to pick up config changes without restarting the hook process.
     """
-    global CONFIG, HOOK_POLICIES, SENSITIVE_MCP_TOOLS, ENKRYPT_SSL_VERIFY, ENKRYPT_TIMEOUT, ENKRYPT_API_URL, ENKRYPT_API_KEY
+    global CONFIG, HOOK_POLICIES, SENSITIVE_TOOLS, ENKRYPT_SSL_VERIFY, ENKRYPT_TIMEOUT, ENKRYPT_API_URL, ENKRYPT_API_KEY
     CONFIG = load_config()
     _api_config = CONFIG.get("enkrypt_api", {})
 
@@ -1005,14 +1016,14 @@ def reload_config():
     ENKRYPT_SSL_VERIFY = _api_config.get("ssl_verify", True)
     ENKRYPT_TIMEOUT = _api_config.get("timeout", 15)
 
-    # Update hook policies
+    # Update hook policies (Claude Code hook names)
     HOOK_POLICIES = {
-        "beforeSubmitPrompt": CONFIG.get("beforeSubmitPrompt", {}),
-        "beforeMCPExecution": CONFIG.get("beforeMCPExecution", {}),
-        "afterMCPExecution": CONFIG.get("afterMCPExecution", {}),
-        "afterAgentResponse": CONFIG.get("afterAgentResponse", {}),
+        "UserPromptSubmit": CONFIG.get("UserPromptSubmit", {}),
+        "PreToolUse": CONFIG.get("PreToolUse", {}),
+        "PostToolUse": CONFIG.get("PostToolUse", {}),
+        "Stop": CONFIG.get("Stop", {}),
     }
-    SENSITIVE_MCP_TOOLS = CONFIG.get("sensitive_mcp_tools", [])
+    SENSITIVE_TOOLS = CONFIG.get("sensitive_tools", [])
 
     log_event("config_reloaded", {
         "ssl_verify": ENKRYPT_SSL_VERIFY,
@@ -1045,7 +1056,7 @@ def reset_metrics(hook_name: Optional[str] = None):
 
 class BaseHook:
     """
-    Base class for Cursor hooks.
+    Base class for Claude Code hooks.
 
     Provides common functionality:
     - JSON input parsing with error handling
@@ -1062,7 +1073,7 @@ class BaseHook:
         Initialize the hook.
 
         Args:
-            hook_name: The name of the hook (e.g., "beforeSubmitPrompt")
+            hook_name: The name of the hook (e.g., "UserPromptSubmit")
             default_output: Default output to return on parse errors
         """
         self.hook_name = hook_name
@@ -1113,10 +1124,10 @@ class BaseHook:
         Override this method in subclasses.
 
         Args:
-            data: The parsed JSON input from Cursor
+            data: The parsed JSON input from Claude Code
 
         Returns:
-            The JSON output to send back to Cursor
+            The JSON output to send back to Claude Code
         """
         raise NotImplementedError("Subclasses must implement process()")
 
@@ -1152,7 +1163,7 @@ class BaseHook:
 
 class InputGuardrailHook(BaseHook):
     """
-    Base class for input guardrail hooks (beforeSubmitPrompt, beforeMCPExecution).
+    Base class for input guardrail hooks (UserPromptSubmit, PreToolUse).
 
     These hooks can block input before it's processed.
     """
@@ -1165,7 +1176,7 @@ class InputGuardrailHook(BaseHook):
             hook_name: The name of the hook
             text_field: The field in the input data containing text to check
         """
-        super().__init__(hook_name, {"continue": True})
+        super().__init__(hook_name, {})
         self.text_field = text_field
 
     def get_text_to_check(self, data: dict) -> str:
@@ -1180,17 +1191,17 @@ class InputGuardrailHook(BaseHook):
         text = self.get_text_to_check(data)
 
         if not text or not text.strip():
-            return {"continue": True}
+            return {}
 
         if not self.is_enabled:
             log_event(self.hook_name, {**data, "skipped": "guardrails disabled"})
-            return {"continue": True}
+            return {}
 
         start_time = time.time()
         should_block, violations, api_result = self.check_guardrails(text)
         latency_ms = (time.time() - start_time) * 1000
 
-        # Log to stderr for Cursor hooks output visibility
+        # Log to stderr for Claude Code hooks output visibility
         print(f"\n[Enkrypt Guardrails Response]\n{json.dumps(api_result, indent=2)}", file=sys.stderr)
 
         if should_block:
@@ -1199,22 +1210,26 @@ class InputGuardrailHook(BaseHook):
                 "violations": violations,
                 "text_preview": text[:200] + "..." if len(text) > 200 else text,
             }, data)
-            return {
-                "continue": False,
-                "user_message": f"⛔ Blocked by Enkrypt AI Guardrails:\n\n{violation_message}"
-            }
+            return self.create_block_response(violation_message)
 
-        return {"continue": True}
+        return {}
+
+    def create_block_response(self, reason: str) -> dict:
+        """Create a block response. Override in subclasses for hook-specific format."""
+        return {
+            "decision": "block",
+            "reason": f"Blocked by Enkrypt AI Guardrails:\n\n{reason}"
+        }
 
 
 class OutputAuditHook(BaseHook):
     """
-    Base class for output audit hooks (afterMCPExecution, afterAgentResponse).
+    Base class for output audit hooks (PostToolUse).
 
     These hooks observe output but don't block it (audit-only).
     """
 
-    def __init__(self, hook_name: str, text_field: str = "text"):
+    def __init__(self, hook_name: str, text_field: str = "tool_response"):
         """
         Initialize the output audit hook.
 
@@ -1227,7 +1242,10 @@ class OutputAuditHook(BaseHook):
 
     def get_text_to_check(self, data: dict) -> str:
         """Extract the text to check from input data."""
-        return data.get(self.text_field, "")
+        field_value = data.get(self.text_field, {})
+        if isinstance(field_value, dict):
+            return json.dumps(field_value)
+        return str(field_value) if field_value else ""
 
     def process(self, data: dict) -> dict:
         """Process output and audit (no blocking)."""
