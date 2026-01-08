@@ -3,7 +3,8 @@
     "url": "https://api.enkryptai.com/guardrails/policy/detect",
     "api_key": "YOUR_API_KEY_HERE",
     "ssl_verify": true,
-    "timeout": 15
+    "timeout": 15,
+    "fail_silently": true
   },
   "UserPromptSubmit": {
     "enabled": false,

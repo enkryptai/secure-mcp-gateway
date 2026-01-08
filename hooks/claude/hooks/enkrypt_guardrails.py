@@ -113,6 +113,7 @@ class EnkryptApiConfig:
     api_key: str = ""
     ssl_verify: bool = True
     timeout: int = 15
+    fail_silently: bool = True  # If True, allow request on API error; if False, block on error
 
 
 @dataclass
@@ -261,6 +262,10 @@ def validate_config(config: dict) -> List[str]:
         if ssl_verify is not None and not isinstance(ssl_verify, bool):
             errors.append(f"enkrypt_api.ssl_verify must be a boolean, got: {type(ssl_verify).__name__}")
 
+        fail_silently = api_config.get("fail_silently")
+        if fail_silently is not None and not isinstance(fail_silently, bool):
+            errors.append(f"enkrypt_api.fail_silently must be a boolean, got: {type(fail_silently).__name__}")
+
     # Validate hook policies (Claude Code hook names)
     valid_hooks = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"]
     for hook_name in valid_hooks:
@@ -325,6 +330,7 @@ ENKRYPT_API_KEY = os.environ.get(
 ).strip()
 ENKRYPT_SSL_VERIFY = _api_config.get("ssl_verify", True)
 ENKRYPT_TIMEOUT = _api_config.get("timeout", 15)
+ENKRYPT_FAIL_SILENTLY = _api_config.get("fail_silently", True)  # True = allow on error, False = block on error
 
 SENSITIVE_TOOLS = CONFIG.get("sensitive_tools", [])
 
@@ -767,51 +773,63 @@ def check_with_enkrypt_api(text: str, hook_name: str = "UserPromptSubmit") -> tu
 
     except requests.exceptions.Timeout as e:
         latency_ms = (time.time() - start_time) * 1000
-        metrics.record_call(hook_name, blocked=False, latency_ms=latency_ms, error=True)
+        should_block_on_error = not ENKRYPT_FAIL_SILENTLY
+        metrics.record_call(hook_name, blocked=should_block_on_error, latency_ms=latency_ms, error=True)
         error_info = {
             "error": "API request timed out",
             "error_type": "Timeout",
             "timeout_seconds": ENKRYPT_TIMEOUT,
             "url_used": ENKRYPT_API_URL,
+            "fail_silently": ENKRYPT_FAIL_SILENTLY,
+            "action": "allowed" if ENKRYPT_FAIL_SILENTLY else "blocked",
         }
         log_event("enkrypt_api_error", error_info)
-        return False, [], {"error": "timeout"}
+        return should_block_on_error, [], {"error": "timeout", "fail_silently": ENKRYPT_FAIL_SILENTLY}
 
     except requests.exceptions.ConnectionError as e:
         latency_ms = (time.time() - start_time) * 1000
-        metrics.record_call(hook_name, blocked=False, latency_ms=latency_ms, error=True)
+        should_block_on_error = not ENKRYPT_FAIL_SILENTLY
+        metrics.record_call(hook_name, blocked=should_block_on_error, latency_ms=latency_ms, error=True)
         error_info = {
             "error": "Failed to connect to API",
             "error_type": "ConnectionError",
             "url_used": ENKRYPT_API_URL,
+            "fail_silently": ENKRYPT_FAIL_SILENTLY,
+            "action": "allowed" if ENKRYPT_FAIL_SILENTLY else "blocked",
         }
         log_event("enkrypt_api_error", error_info)
-        return False, [], {"error": "connection_error"}
+        return should_block_on_error, [], {"error": "connection_error", "fail_silently": ENKRYPT_FAIL_SILENTLY}
 
     except requests.exceptions.HTTPError as e:
         latency_ms = (time.time() - start_time) * 1000
-        metrics.record_call(hook_name, blocked=False, latency_ms=latency_ms, error=True)
+        should_block_on_error = not ENKRYPT_FAIL_SILENTLY
+        metrics.record_call(hook_name, blocked=should_block_on_error, latency_ms=latency_ms, error=True)
         error_info = {
             "error": str(e),
             "error_type": "HTTPError",
             "url_used": ENKRYPT_API_URL,
+            "fail_silently": ENKRYPT_FAIL_SILENTLY,
+            "action": "allowed" if ENKRYPT_FAIL_SILENTLY else "blocked",
         }
         if e.response is not None:
             error_info["status_code"] = e.response.status_code
             error_info["response_text"] = e.response.text[:500] if e.response.text else None
         log_event("enkrypt_api_error", error_info)
-        return False, [], {"error": str(e)}
+        return should_block_on_error, [], {"error": str(e), "fail_silently": ENKRYPT_FAIL_SILENTLY}
 
     except Exception as e:
         latency_ms = (time.time() - start_time) * 1000
-        metrics.record_call(hook_name, blocked=False, latency_ms=latency_ms, error=True)
+        should_block_on_error = not ENKRYPT_FAIL_SILENTLY
+        metrics.record_call(hook_name, blocked=should_block_on_error, latency_ms=latency_ms, error=True)
         error_info = {
             "error": str(e),
             "error_type": type(e).__name__,
             "url_used": ENKRYPT_API_URL,
+            "fail_silently": ENKRYPT_FAIL_SILENTLY,
+            "action": "allowed" if ENKRYPT_FAIL_SILENTLY else "blocked",
         }
         log_event("enkrypt_api_error", error_info)
-        return False, [], {"error": str(e)}
+        return should_block_on_error, [], {"error": str(e), "fail_silently": ENKRYPT_FAIL_SILENTLY}
 
 
 def format_violation_message(violations: list, hook_name: str = "UserPromptSubmit") -> str:
@@ -1000,7 +1018,7 @@ def reload_config():
 
     Call this to pick up config changes without restarting the hook process.
     """
-    global CONFIG, HOOK_POLICIES, SENSITIVE_TOOLS, ENKRYPT_SSL_VERIFY, ENKRYPT_TIMEOUT, ENKRYPT_API_URL, ENKRYPT_API_KEY
+    global CONFIG, HOOK_POLICIES, SENSITIVE_TOOLS, ENKRYPT_SSL_VERIFY, ENKRYPT_TIMEOUT, ENKRYPT_API_URL, ENKRYPT_API_KEY, ENKRYPT_FAIL_SILENTLY
     CONFIG = load_config()
     _api_config = CONFIG.get("enkrypt_api", {})
 
@@ -1015,6 +1033,7 @@ def reload_config():
     ).strip()
     ENKRYPT_SSL_VERIFY = _api_config.get("ssl_verify", True)
     ENKRYPT_TIMEOUT = _api_config.get("timeout", 15)
+    ENKRYPT_FAIL_SILENTLY = _api_config.get("fail_silently", True)
 
     # Update hook policies (Claude Code hook names)
     HOOK_POLICIES = {
@@ -1028,6 +1047,7 @@ def reload_config():
     log_event("config_reloaded", {
         "ssl_verify": ENKRYPT_SSL_VERIFY,
         "timeout": ENKRYPT_TIMEOUT,
+        "fail_silently": ENKRYPT_FAIL_SILENTLY,
         "hooks_enabled": {k: v.get("enabled", False) for k, v in HOOK_POLICIES.items()},
     })
 
