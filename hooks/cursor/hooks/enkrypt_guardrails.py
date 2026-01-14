@@ -691,6 +691,17 @@ def mask_sensitive_headers(headers: dict) -> dict:
     return masked
 
 
+def get_source_event(hook_name: str) -> str:
+    """Map hook name to X-Enkrypt-Source-Event header value."""
+    event_mapping = {
+        "beforeSubmitPrompt": "pre-prompt",
+        "beforeMCPExecution": "pre-tool",
+        "afterMCPExecution": "post-tool",
+        "afterAgentResponse": "post-response",
+    }
+    return event_mapping.get(hook_name, hook_name)
+
+
 def check_with_enkrypt_api(text: str, hook_name: str = "beforeSubmitPrompt") -> tuple[bool, list, dict]:
     """
     Check text using Enkrypt AI Guardrails API.
@@ -745,7 +756,9 @@ def check_with_enkrypt_api(text: str, hook_name: str = "beforeSubmitPrompt") -> 
             headers={
                 "Content-Type": "application/json",
                 "apikey": ENKRYPT_API_KEY,
-                "X-Enkrypt-Policy": policy_name
+                "X-Enkrypt-Policy": policy_name,
+                "X-Enkrypt-Source-Name": "cursor-hooks",
+                "X-Enkrypt-Source-Event": get_source_event(hook_name),
             },
             json=payload,
             timeout=ENKRYPT_TIMEOUT,
