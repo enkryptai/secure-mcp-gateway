@@ -120,7 +120,7 @@ class EnkryptApiConfig:
 class HookPolicy:
     """Policy configuration for a specific hook."""
     enabled: bool = False
-    policy_name: str = ""
+    guardrail_name: str = ""
     block: List[str] = field(default_factory=list)
 
 
@@ -275,8 +275,8 @@ def validate_config(config: dict) -> List[str]:
                 errors.append(f"{hook_name}.enabled must be a boolean")
             if "block" in policy and not isinstance(policy["block"], list):
                 errors.append(f"{hook_name}.block must be a list")
-            if "policy_name" in policy and not isinstance(policy["policy_name"], str):
-                errors.append(f"{hook_name}.policy_name must be a string")
+            if "guardrail_name" in policy and not isinstance(policy["guardrail_name"], str):
+                errors.append(f"{hook_name}.guardrail_name must be a string")
 
     # Validate sensitive_tools
     sensitive_tools = config.get("sensitive_tools")
@@ -362,9 +362,9 @@ def get_hook_block_list(hook_name: str) -> list:
     return get_hook_policy(hook_name).get("block", [])
 
 
-def get_hook_policy_name(hook_name: str) -> str:
-    """Get policy name for a specific hook."""
-    return get_hook_policy(hook_name).get("policy_name", f"Default {hook_name} Policy")
+def get_hook_guardrail_name(hook_name: str) -> str:
+    """Get guardrail name for a specific hook."""
+    return get_hook_policy(hook_name).get("guardrail_name", f"Default {hook_name} Guardrail")
 
 
 # ============================================================================
@@ -721,8 +721,8 @@ def check_with_enkrypt_api(text: str, hook_name: str = "UserPromptSubmit") -> tu
     block_list = get_hook_block_list(hook_name)
 
     try:
-        # Get policy name for this hook
-        policy_name = get_hook_policy_name(hook_name)
+        # Get guardrail name for this hook
+        guardrail_name = get_hook_guardrail_name(hook_name)
 
         payload = {
             "text": text
@@ -733,7 +733,7 @@ def check_with_enkrypt_api(text: str, hook_name: str = "UserPromptSubmit") -> tu
             "url": ENKRYPT_API_URL,
             "api_key_length": len(ENKRYPT_API_KEY) if ENKRYPT_API_KEY else 0,
             "payload_text_length": len(text),
-            "policy_name": policy_name,
+            "guardrail_name": guardrail_name,
             "config_file": str(CONFIG_FILE),
             "ssl_verify": ENKRYPT_SSL_VERIFY,
             "timeout": ENKRYPT_TIMEOUT,
@@ -751,7 +751,7 @@ def check_with_enkrypt_api(text: str, hook_name: str = "UserPromptSubmit") -> tu
             headers={
                 "Content-Type": "application/json",
                 "apikey": ENKRYPT_API_KEY,
-                "X-Enkrypt-Policy": policy_name,
+                "X-Enkrypt-Policy": guardrail_name,
                 "X-Enkrypt-Source-Name": "claude-hooks",
                 "X-Enkrypt-Source-Event": get_source_event(hook_name),
             },
@@ -849,9 +849,9 @@ def format_violation_message(violations: list, hook_name: str = "UserPromptSubmi
     if not violations:
         return ""
 
-    policy_name = get_hook_policy_name(hook_name)
+    guardrail_name = get_hook_guardrail_name(hook_name)
 
-    messages = [f"Policy: {policy_name}\n"]
+    messages = [f"Guardrail: {guardrail_name}\n"]
 
     for v in violations:
         detector = v["detector"]
@@ -1183,7 +1183,7 @@ class BaseHook:
         """Log a security alert."""
         log_security_alert(alert_type, {
             "hook": self.hook_name,
-            "policy_name": get_hook_policy_name(self.hook_name),
+            "guardrail_name": get_hook_guardrail_name(self.hook_name),
             **details,
         }, data)
 

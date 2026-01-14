@@ -8,7 +8,7 @@
   },
   "UserPromptSubmit": {
     "enabled": false,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "injection_attack",
       "topic_detector",
@@ -22,7 +22,7 @@
   },
   "PreToolUse": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "injection_attack",
       "nsfw",
@@ -33,7 +33,7 @@
   },
   "PostToolUse": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "pii",
       "toxicity",

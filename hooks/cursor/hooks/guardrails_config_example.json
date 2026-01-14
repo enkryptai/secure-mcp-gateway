@@ -8,7 +8,7 @@
   },
   "beforeSubmitPrompt": {
     "enabled": false,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "injection_attack",
       "topic_detector",
@@ -22,7 +22,7 @@
   },
   "beforeMCPExecution": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "injection_attack",
       "nsfw",
@@ -33,7 +33,7 @@
   },
   "afterMCPExecution": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "pii",
       "toxicity",
@@ -42,7 +42,7 @@
   },
   "afterAgentResponse": {
     "enabled": false,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "pii",
       "toxicity",

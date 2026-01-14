@@ -20,7 +20,7 @@ from enkrypt_guardrails import (
     log_to_combined,
     log_security_alert,
     is_hook_enabled,
-    get_hook_policy_name,
+    get_hook_guardrail_name,
 )
 
 HOOK_NAME = "PreToolUse"
@@ -70,7 +70,7 @@ def main():
             reason = f"Tool input blocked by Enkrypt AI Guardrails:\n\n{violation_message}"
             log_security_alert("tool_input_blocked", {
                 "hook": HOOK_NAME,
-                "policy_name": get_hook_policy_name(HOOK_NAME),
+                "guardrail_name": get_hook_guardrail_name(HOOK_NAME),
                 "tool_name": tool_name,
                 "violations": violations,
             }, data)

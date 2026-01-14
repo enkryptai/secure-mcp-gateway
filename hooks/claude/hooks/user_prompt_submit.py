@@ -19,7 +19,7 @@ from enkrypt_guardrails import (
     log_to_combined,
     log_security_alert,
     is_hook_enabled,
-    get_hook_policy_name,
+    get_hook_guardrail_name,
 )
 
 HOOK_NAME = "UserPromptSubmit"
@@ -63,7 +63,7 @@ def main():
         }
         log_security_alert("prompt_blocked", {
             "hook": HOOK_NAME,
-            "policy_name": get_hook_policy_name(HOOK_NAME),
+            "guardrail_name": get_hook_guardrail_name(HOOK_NAME),
             "session_id": session_id,
             "violations": violations,
             "prompt_preview": prompt[:200] + "..." if len(prompt) > 200 else prompt,

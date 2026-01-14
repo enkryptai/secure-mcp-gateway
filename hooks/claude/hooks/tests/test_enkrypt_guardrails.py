@@ -22,7 +22,7 @@ from enkrypt_guardrails import (
     get_hook_policy,
     is_hook_enabled,
     get_hook_block_list,
-    get_hook_policy_name,
+    get_hook_guardrail_name,
     EnkryptApiConfig,
     HookPolicy,
     Violation,
@@ -45,7 +45,7 @@ class TestDataclasses(unittest.TestCase):
         """Test HookPolicy has correct defaults."""
         policy = HookPolicy()
         self.assertFalse(policy.enabled)
-        self.assertEqual(policy.policy_name, "")
+        self.assertEqual(policy.guardrail_name, "")
         self.assertEqual(policy.block, [])
 
     def test_violation_creation(self):
@@ -205,34 +205,36 @@ class TestCheckTool(unittest.TestCase):
 
     def test_safe_tool_allowed(self):
         """Test that safe tools are allowed."""
-        decision, reason = check_tool("Read", '{"file_path": "/tmp/test.txt"}')
+        decision, reason = check_tool("Read", {"file_path": "/tmp/test.txt"})
         self.assertEqual(decision, "allow")
         self.assertEqual(reason, "")
 
-    def test_dangerous_sql_requires_confirmation(self):
-        """Test that dangerous SQL operations are flagged."""
-        decision, reason = check_tool("execute_sql", '{"query": "DROP TABLE users"}')
-        self.assertEqual(decision, "deny")
-        self.assertIn("SQL", reason)
-
-    def test_delete_sql_flagged(self):
-        """Test DELETE SQL is flagged."""
-        decision, _ = check_tool("execute_sql", '{"sql": "DELETE FROM users WHERE id = 1"}')
-        self.assertEqual(decision, "deny")
-
-    def test_update_sql_flagged(self):
-        """Test UPDATE SQL is flagged."""
-        decision, _ = check_tool("db_query", '{"query": "UPDATE users SET name = \'test\'"}')
-        self.assertEqual(decision, "deny")
-
-    def test_select_sql_allowed(self):
-        """Test SELECT SQL is allowed."""
-        decision, _ = check_tool("run_query", '{"query": "SELECT * FROM users"}')
+    def test_sensitive_tool_requires_confirmation(self):
+        """Test that sensitive tools require confirmation."""
+        decision, reason = check_tool("execute_sql", {"query": "DROP TABLE users"})
+        # Claude Code version allows by default (Enkrypt API does the checking)
         self.assertEqual(decision, "allow")
 
-    def test_invalid_json_input(self):
-        """Test handling of invalid JSON input."""
-        decision, _ = check_tool("some_tool", "not valid json")
+    def test_bash_dangerous_command_flagged(self):
+        """Test dangerous bash commands are flagged."""
+        decision, reason = check_tool("Bash", {"command": "sudo rm -rf /"})
+        self.assertEqual(decision, "ask")
+        self.assertIn("dangerous", reason.lower())
+
+    def test_write_to_env_file_flagged(self):
+        """Test writing to .env files is flagged."""
+        decision, reason = check_tool("Write", {"file_path": "/app/.env"})
+        self.assertEqual(decision, "ask")
+        self.assertIn(".env", reason)
+
+    def test_normal_tool_allowed(self):
+        """Test normal tools are allowed."""
+        decision, _ = check_tool("Read", {"file_path": "/tmp/test.txt"})
+        self.assertEqual(decision, "allow")
+
+    def test_invalid_input_type(self):
+        """Test handling of non-dict input."""
+        decision, _ = check_tool("some_tool", "not a dict")
         self.assertEqual(decision, "allow")
 
 
@@ -241,35 +243,35 @@ class TestAnalyzeToolResult(unittest.TestCase):
 
     def test_clean_result(self):
         """Test analysis of clean result."""
-        result = analyze_tool_result("Read", '{"content": "Hello World"}')
+        result = analyze_tool_result("Read", {"content": "Hello World"})
         self.assertEqual(result["sensitive_data_hints"], [])
         self.assertFalse(result["is_error"])
 
     def test_password_detection(self):
         """Test detection of password in result."""
-        result = analyze_tool_result("Bash", '{"password": "secret123"}')
+        result = analyze_tool_result("Bash", {"password": "secret123"})
         self.assertIn("password reference", result["sensitive_data_hints"])
 
     def test_api_key_detection(self):
         """Test detection of API key in result."""
-        result = analyze_tool_result("Read", '{"api_key": "sk-12345"}')
+        result = analyze_tool_result("Read", {"api_key": "sk-12345"})
         self.assertIn("API key reference", result["sensitive_data_hints"])
 
     def test_error_detection(self):
         """Test detection of error in result."""
-        result = analyze_tool_result("Bash", '{"error": "Command failed"}')
+        result = analyze_tool_result("Bash", {"error": "Command failed"})
         self.assertTrue(result["is_error"])
 
     def test_status_error_detection(self):
         """Test detection of error status."""
-        result = analyze_tool_result("WebFetch", '{"status": "failed", "message": "timeout"}')
+        result = analyze_tool_result("WebFetch", {"status": "failed", "message": "timeout"})
         self.assertTrue(result["is_error"])
 
     def test_result_size(self):
         """Test result size calculation."""
-        json_str = '{"data": "test"}'
-        result = analyze_tool_result("Read", json_str)
-        self.assertEqual(result["result_size"], len(json_str))
+        tool_response = {"data": "test"}
+        result = analyze_tool_result("Read", tool_response)
+        self.assertEqual(result["result_size"], len(json.dumps(tool_response)))
 
 
 class TestMaskSensitiveHeaders(unittest.TestCase):

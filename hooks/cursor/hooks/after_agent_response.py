@@ -15,7 +15,7 @@ from enkrypt_guardrails import (  # noqa: E402
     log_to_combined,
     log_security_alert,
     is_hook_enabled,
-    get_hook_policy_name,
+    get_hook_guardrail_name,
 )
 
 HOOK_NAME = "afterAgentResponse"
@@ -42,7 +42,7 @@ def main():
                 "agent_response_violation",
                 {
                     "hook": HOOK_NAME,
-                    "policy_name": get_hook_policy_name(HOOK_NAME),
+                    "guardrail_name": get_hook_guardrail_name(HOOK_NAME),
                     "violations": violations,
                     "response_preview": text[:500] + "..." if len(text) > 500 else text,
                 },
@@ -64,5 +64,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
