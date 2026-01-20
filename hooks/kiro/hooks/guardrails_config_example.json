@@ -8,7 +8,7 @@
   },
   "PromptSubmit": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "injection_attack",
       "topic_detector",
@@ -22,7 +22,7 @@
   },
   "AgentStop": {
     "enabled": false,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "pii",
       "toxicity",
@@ -31,7 +31,7 @@
   },
   "FileSave": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "pii",
       "injection_attack"
@@ -39,7 +39,7 @@
   },
   "FileCreate": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "pii",
       "injection_attack"
@@ -47,12 +47,12 @@
   },
   "FileDelete": {
     "enabled": false,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": []
   },
   "Manual": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "injection_attack",
       "nsfw",

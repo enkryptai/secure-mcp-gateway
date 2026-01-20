@@ -19,7 +19,7 @@ from enkrypt_guardrails import (
     format_violation_message,
     parse_enkrypt_response,
     is_hook_enabled,
-    get_hook_policy_name,
+    get_hook_guardrail_name,
     is_sensitive_tool,
     analyze_content,
     get_metrics,

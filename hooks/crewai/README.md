@@ -146,7 +146,7 @@ Each hook (`before_llm_call`, `after_llm_call`, `before_tool_call`, `after_tool_
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | boolean | `false` | Enable guardrails for this hook |
-| `policy_name` | string | `""` | Enkrypt policy name to use (must exist in Enkrypt dashboard) |
+| `guardrail_name` | string | `""` | Enkrypt guardrail name to use (must exist in Enkrypt dashboard) |
 | `block` | array | `[]` | List of detectors that should trigger blocking |
 
 Example configuration:
@@ -162,22 +162,22 @@ Example configuration:
   },
   "before_llm_call": {
     "enabled": true,
-    "policy_name": "My Agent Policy",
+    "guardrail_name": "My Agent Policy",
     "block": ["pii", "injection_attack", "policy_violation"]
   },
   "after_llm_call": {
     "enabled": true,
-    "policy_name": "My Agent Policy",
+    "guardrail_name": "My Agent Policy",
     "block": ["pii", "policy_violation"]
   },
   "before_tool_call": {
     "enabled": true,
-    "policy_name": "My Tool Policy",
+    "guardrail_name": "My Tool Policy",
     "block": ["injection_attack"]
   },
   "after_tool_call": {
     "enabled": false,
-    "policy_name": "My Tool Policy",
+    "guardrail_name": "My Tool Policy",
     "block": []
   }
 }
@@ -456,13 +456,13 @@ OK
 
 The `"Policy not found"` error means:
 
-- The policy name in your config doesn't exist in Enkrypt dashboard
-- **Fix:** Create the policy in Enkrypt Dashboard or update `policy_name`
+- The guardrail name in your config doesn't exist in Enkrypt dashboard
+- **Fix:** Create the policy in Enkrypt Dashboard or update `guardrail_name`
 
 ```json
 "before_llm_call": {
   "enabled": true,
-  "policy_name": "Existing Policy Name"
+  "guardrail_name": "Existing Guardrail Name"
 }
 ```
 
@@ -560,7 +560,7 @@ print(f"Average latency: {metrics['avg_latency_ms']:.2f}ms")
 
 Typical latency:
 - **before_llm_call**: 50-150ms
-- **after_llm_call**: 50-150ms  
+- **after_llm_call**: 50-150ms
 - **before_tool_call**: 50-150ms
 - **after_tool_call**: 50-150ms
 

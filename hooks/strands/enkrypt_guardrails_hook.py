@@ -51,7 +51,7 @@ from enkrypt_guardrails import (
     check_with_enkrypt_api,
     format_violation_message,
     is_hook_enabled,
-    get_hook_policy_name,
+    get_hook_guardrail_name,
     is_sensitive_tool,
     analyze_content,
     log_event,

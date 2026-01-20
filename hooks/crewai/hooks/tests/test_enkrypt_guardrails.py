@@ -19,7 +19,7 @@ from enkrypt_guardrails import (
     get_hook_policy,
     is_hook_enabled,
     get_hook_block_list,
-    get_hook_policy_name,
+    get_hook_guardrail_name,
     check_with_enkrypt_api,
     check_guardrails,
     EnkryptApiConfig,
@@ -48,7 +48,7 @@ class TestDataclasses(unittest.TestCase):
         """Test HookPolicy has correct defaults."""
         policy = HookPolicy()
         self.assertFalse(policy.enabled)
-        self.assertEqual(policy.policy_name, "")
+        self.assertEqual(policy.guardrail_name, "")
         self.assertEqual(policy.block, [])
 
     def test_hook_metrics_defaults(self):
@@ -417,7 +417,7 @@ class TestConfigValidation(unittest.TestCase):
             },
             "before_llm_call": {
                 "enabled": True,
-                "policy_name": "Test Policy",
+                "guardrail_name": "Test Policy",
                 "block": ["pii"]
             }
         }
@@ -466,12 +466,12 @@ class TestConfigValidation(unittest.TestCase):
         errors = validate_config(config)
         self.assertTrue(any("block" in e for e in errors))
 
-    def test_invalid_policy_name(self):
-        """Test validation of invalid policy name."""
+    def test_invalid_guardrail_name(self):
+        """Test validation of invalid guardrail name."""
         from enkrypt_guardrails import validate_config
-        config = {"after_llm_call": {"policy_name": 123}}
+        config = {"after_llm_call": {"guardrail_name": 123}}
         errors = validate_config(config)
-        self.assertTrue(any("policy_name" in e for e in errors))
+        self.assertTrue(any("guardrail_name" in e for e in errors))
 
     def test_all_hook_names_validated(self):
         """Test all CrewAI hook names are validated."""
@@ -645,10 +645,10 @@ class TestPolicyFunctions(unittest.TestCase):
         block_list = get_hook_block_list("before_tool_call")
         self.assertIsInstance(block_list, list)
 
-    def test_get_hook_policy_name(self):
-        """Test get_hook_policy_name returns string."""
-        policy_name = get_hook_policy_name("after_llm_call")
-        self.assertIsInstance(policy_name, str)
+    def test_get_hook_guardrail_name(self):
+        """Test get_hook_guardrail_name returns string."""
+        guardrail_name = get_hook_guardrail_name("after_llm_call")
+        self.assertIsInstance(guardrail_name, str)
 
     def test_all_hooks_have_policies(self):
         """Test all CrewAI hooks have policy entries."""
@@ -690,13 +690,13 @@ class TestHookFunctions(unittest.TestCase):
     def test_check_llm_input_passes(self, mock_api):
         """Test check_llm_input when no violations."""
         mock_api.return_value = (False, [], {"summary": {}, "details": {}})
-        
+
         # Create mock context
         mock_context = Mock()
         mock_context.task = Mock()
         mock_context.task.description = "Test task"
         mock_context.agent_name = "test_agent"
-        
+
         result = check_llm_input(mock_context)
         self.assertIsNone(result)
 
@@ -704,13 +704,13 @@ class TestHookFunctions(unittest.TestCase):
     def test_check_llm_input_blocked(self, mock_api):
         """Test check_llm_input when violations detected."""
         mock_api.return_value = (True, [{"detector": "pii", "blocked": True}], {"summary": {"pii": 1}})
-        
+
         # Create mock context
         mock_context = Mock()
         mock_context.task = Mock()
         mock_context.task.description = "Test with PII data"
         mock_context.agent_name = "test_agent"
-        
+
         result = check_llm_input(mock_context)
         self.assertFalse(result)
 
@@ -718,11 +718,11 @@ class TestHookFunctions(unittest.TestCase):
     def test_check_llm_output_passes(self, mock_api):
         """Test check_llm_output when no violations."""
         mock_api.return_value = (False, [], {"summary": {}, "details": {}})
-        
+
         # Create mock context
         mock_context = Mock()
         mock_context.response = "Safe response"
-        
+
         result = check_llm_output(mock_context)
         self.assertIsNone(result)
 
@@ -730,12 +730,12 @@ class TestHookFunctions(unittest.TestCase):
     def test_check_tool_input_passes(self, mock_api):
         """Test check_tool_input when no violations."""
         mock_api.return_value = (False, [], {"summary": {}, "details": {}})
-        
+
         # Create mock context
         mock_context = Mock()
         mock_context.tool_name = "read_file"
         mock_context.tool_input = {"path": "/tmp/test.txt"}
-        
+
         result = check_tool_input(mock_context)
         self.assertIsNone(result)
 
@@ -743,12 +743,12 @@ class TestHookFunctions(unittest.TestCase):
     def test_check_tool_output_passes(self, mock_api):
         """Test check_tool_output when no violations."""
         mock_api.return_value = (False, [], {"summary": {}, "details": {}})
-        
+
         # Create mock context
         mock_context = Mock()
         mock_context.tool_name = "read_file"
         mock_context.tool_result = "File contents"
-        
+
         result = check_tool_output(mock_context)
         self.assertIsNone(result)
 
@@ -765,7 +765,7 @@ class TestContextManager(unittest.TestCase):
     def test_context_manager_registers_hooks(self):
         """Test context manager registers hooks on enter."""
         from enkrypt_guardrails import EnkryptGuardrailsContext
-        
+
         # Mock the crewai.hooks module
         mock_hooks = Mock()
         mock_hooks.register_before_llm_call_hook = Mock()
@@ -776,7 +776,7 @@ class TestContextManager(unittest.TestCase):
         mock_hooks.unregister_after_llm_call_hook = Mock()
         mock_hooks.unregister_before_tool_call_hook = Mock()
         mock_hooks.unregister_after_tool_call_hook = Mock()
-        
+
         # Mock the imports
         with patch.dict('sys.modules', {'crewai.hooks': mock_hooks}):
             try:
@@ -812,11 +812,11 @@ class TestConvenienceFunctions(unittest.TestCase):
     def test_with_guardrails_decorator(self):
         """Test with_guardrails decorator wraps function."""
         from enkrypt_guardrails import with_guardrails
-        
+
         @with_guardrails
         def test_func():
             return "test"
-        
+
         self.assertEqual(test_func.__name__, "test_func")
 
 
@@ -849,9 +849,9 @@ class TestCheckWithEnkryptApi(unittest.TestCase):
     def test_check_with_enkrypt_api_disabled_hook(self, mock_enabled):
         """Test check_with_enkrypt_api when hook is disabled."""
         mock_enabled.return_value = False
-        
+
         should_block, violations, result = check_with_enkrypt_api("test text", "before_llm_call")
-        
+
         self.assertFalse(should_block)
         self.assertEqual(violations, [])
         self.assertIn("skipped", result)
@@ -861,7 +861,7 @@ class TestCheckWithEnkryptApi(unittest.TestCase):
     def test_check_with_enkrypt_api_success(self, mock_session, mock_enabled):
         """Test check_with_enkrypt_api with successful response."""
         mock_enabled.return_value = True
-        
+
         # Mock HTTP response
         mock_response = Mock()
         mock_response.status_code = 200
@@ -870,13 +870,13 @@ class TestCheckWithEnkryptApi(unittest.TestCase):
         mock_response.url = "https://api.example.com"
         mock_response.request = Mock()
         mock_response.request.headers = {}
-        
+
         mock_session_obj = Mock()
         mock_session_obj.post.return_value = mock_response
         mock_session.return_value = mock_session_obj
-        
+
         should_block, violations, result = check_with_enkrypt_api("test text", "before_llm_call")
-        
+
         self.assertFalse(should_block)
         self.assertEqual(violations, [])
 
@@ -885,13 +885,13 @@ class TestCheckWithEnkryptApi(unittest.TestCase):
     def test_check_with_enkrypt_api_timeout(self, mock_session, mock_enabled):
         """Test check_with_enkrypt_api handles timeout."""
         mock_enabled.return_value = True
-        
+
         mock_session_obj = Mock()
         mock_session_obj.post.side_effect = Exception("Timeout")
         mock_session.return_value = mock_session_obj
-        
+
         should_block, violations, result = check_with_enkrypt_api("test text", "before_llm_call")
-        
+
         # Behavior depends on fail_silently setting
         self.assertIsInstance(should_block, bool)
         self.assertEqual(violations, [])
@@ -905,9 +905,9 @@ class TestCheckGuardrails(unittest.TestCase):
     def test_check_guardrails_passes(self, mock_api):
         """Test check_guardrails when no violations."""
         mock_api.return_value = (False, [], {"summary": {}, "details": {}})
-        
+
         result = check_guardrails("test text", "before_llm_call", {"test": "context"})
-        
+
         self.assertTrue(result["passed"])
         self.assertEqual(result["violations"], [])
         self.assertEqual(result["hook"], "before_llm_call")
@@ -916,10 +916,10 @@ class TestCheckGuardrails(unittest.TestCase):
     def test_check_guardrails_blocks(self, mock_api):
         """Test check_guardrails when violations detected."""
         mock_api.return_value = (True, [{"detector": "pii"}], {"summary": {"pii": 1}})
-        
+
         with self.assertRaises(ValueError) as ctx:
             check_guardrails("sensitive data", "before_tool_call")
-        
+
         self.assertIn("Guardrails blocked", str(ctx.exception))
 
 

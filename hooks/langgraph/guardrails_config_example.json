@@ -8,7 +8,7 @@
   },
   "pre_model_hook": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "injection_attack",
       "pii",
@@ -19,7 +19,7 @@
   },
   "post_model_hook": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "pii",
       "toxicity",
@@ -28,7 +28,7 @@
   },
   "before_tool_call": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "injection_attack",
       "pii"
@@ -36,19 +36,19 @@
   },
   "after_tool_call": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "pii"
     ]
   },
   "on_agent_action": {
     "enabled": false,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": []
   },
   "on_agent_finish": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "pii",
       "toxicity",

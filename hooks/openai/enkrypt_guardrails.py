@@ -121,7 +121,7 @@ class EnkryptApiConfig:
 class HookPolicy:
     """Policy configuration for a specific hook event."""
     enabled: bool = False
-    policy_name: str = ""
+    guardrail_name: str = ""
     block: List[str] = field(default_factory=list)
 
 
@@ -323,9 +323,9 @@ def get_hook_block_list(hook_name: str) -> list:
     return get_hook_policy(hook_name).get("block", [])
 
 
-def get_hook_policy_name(hook_name: str) -> str:
-    """Get policy name for a specific hook."""
-    return get_hook_policy(hook_name).get("policy_name", f"Default {hook_name} Policy")
+def get_hook_guardrail_name(hook_name: str) -> str:
+    """Get guardrail name for a specific hook."""
+    return get_hook_policy(hook_name).get("guardrail_name", f"Default {hook_name} Policy")
 
 
 # ============================================================================
@@ -570,14 +570,14 @@ def check_with_enkrypt_api(text: str, hook_name: str = "on_agent_start") -> tupl
     block_list = get_hook_block_list(hook_name)
 
     try:
-        policy_name = get_hook_policy_name(hook_name)
+        guardrail_name = get_hook_guardrail_name(hook_name)
         payload = {"text": text}
 
         log_event("enkrypt_api_debug", {
             "url": ENKRYPT_API_URL,
             "api_key_length": len(ENKRYPT_API_KEY) if ENKRYPT_API_KEY else 0,
             "payload_text_length": len(text),
-            "policy_name": policy_name,
+            "guardrail_name": guardrail_name,
             "hook_name": hook_name,
         })
 
@@ -591,7 +591,7 @@ def check_with_enkrypt_api(text: str, hook_name: str = "on_agent_start") -> tupl
             headers={
                 "Content-Type": "application/json",
                 "apikey": ENKRYPT_API_KEY,
-                "X-Enkrypt-Policy": policy_name,
+                "X-Enkrypt-Policy": guardrail_name,
                 "X-Enkrypt-Source-Name": "openai-agents-guardrails",
                 "X-Enkrypt-Source-Event": get_source_event(hook_name),
             },
@@ -653,8 +653,8 @@ def format_violation_message(violations: list, hook_name: str = "on_agent_start"
     if not violations:
         return ""
 
-    policy_name = get_hook_policy_name(hook_name)
-    messages = [f"Policy: {policy_name}\n"]
+    guardrail_name = get_hook_guardrail_name(hook_name)
+    messages = [f"Policy: {guardrail_name}\n"]
 
     for v in violations:
         detector = v["detector"]

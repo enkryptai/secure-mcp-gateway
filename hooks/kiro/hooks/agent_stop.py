@@ -22,7 +22,7 @@ from enkrypt_guardrails import (
     log_to_combined,
     log_security_alert,
     is_hook_enabled,
-    get_hook_policy_name,
+    get_hook_guardrail_name,
     get_timestamp,
     flush_logs,
     LOG_DIR,
@@ -66,7 +66,7 @@ def main():
                     "agent_response_violation",
                     {
                         "hook": HOOK_NAME,
-                        "policy_name": get_hook_policy_name(HOOK_NAME),
+                        "guardrail_name": get_hook_guardrail_name(HOOK_NAME),
                         "violations": violations,
                         "response_preview": agent_response[:500] + "..." if len(agent_response) > 500 else agent_response,
                     },

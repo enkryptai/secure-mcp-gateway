@@ -8,7 +8,7 @@
   },
   "MessageAdded": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "injection_attack",
       "pii",
@@ -19,22 +19,22 @@
   },
   "BeforeInvocation": {
     "enabled": false,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": []
   },
   "AfterInvocation": {
     "enabled": false,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": []
   },
   "BeforeModelCall": {
     "enabled": false,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": []
   },
   "AfterModelCall": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "pii",
       "toxicity",
@@ -43,7 +43,7 @@
   },
   "BeforeToolCall": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "injection_attack",
       "pii"
@@ -51,7 +51,7 @@
   },
   "AfterToolCall": {
     "enabled": true,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "block": [
       "pii"
     ]

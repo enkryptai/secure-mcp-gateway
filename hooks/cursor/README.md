@@ -150,7 +150,7 @@ Each hook (`beforeSubmitPrompt`, `beforeMCPExecution`, `afterMCPExecution`, `aft
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | boolean | `false` | Enable guardrails for this hook |
-| `policy_name` | string | `""` | Enkrypt policy name to use (must exist in Enkrypt dashboard) |
+| `guardrail_name` | string | `""` | Enkrypt guardrail name to use (must exist in Enkrypt dashboard) |
 | `block` | array | `[]` | List of detectors that should trigger blocking |
 
 #### `sensitive_mcp_tools` section
@@ -177,7 +177,7 @@ Example:
 |`sponge_attack`|Detects resource exhaustion attacks|`enabled`|
 |`keyword_detector`|Blocks specific keywords|`enabled`, `banned_keywords[]`|
 |`topic_detector`|Detects off-topic content|`enabled`, `topic[]`|
-|`policy_violation`|Custom policy enforcement|`enabled`, `coc_policy_name`|
+|`policy_violation`|Custom policy enforcement|`enabled`, `coc_guardrail_name`|
 |`system_prompt`|System prompt detection|`enabled`, `index`|
 |`copyright_ip`|Copyright/IP detection|`enabled`|
 

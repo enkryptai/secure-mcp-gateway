@@ -20,7 +20,7 @@ from enkrypt_guardrails import (
     get_hook_policy,
     is_hook_enabled,
     get_hook_block_list,
-    get_hook_policy_name,
+    get_hook_guardrail_name,
     is_sensitive_tool,
     analyze_content,
     EnkryptApiConfig,
@@ -46,7 +46,7 @@ class TestDataclasses(unittest.TestCase):
         """Test HookPolicy has correct defaults."""
         policy = HookPolicy()
         self.assertFalse(policy.enabled)
-        self.assertEqual(policy.policy_name, "")
+        self.assertEqual(policy.guardrail_name, "")
         self.assertEqual(policy.block, [])
 
     def test_hook_metrics_defaults(self):

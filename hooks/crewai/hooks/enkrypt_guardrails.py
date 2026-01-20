@@ -103,7 +103,7 @@ class EnkryptApiConfig:
 class HookPolicy:
     """Policy configuration for a specific hook."""
     enabled: bool = False
-    policy_name: str = ""
+    guardrail_name: str = ""
     block: List[str] = field(default_factory=list)
 
 
@@ -238,8 +238,8 @@ def validate_config(config: dict) -> List[str]:
                 errors.append(f"{hook_name}.enabled must be a boolean")
             if "block" in policy and not isinstance(policy["block"], list):
                 errors.append(f"{hook_name}.block must be a list")
-            if "policy_name" in policy and not isinstance(policy["policy_name"], str):
-                errors.append(f"{hook_name}.policy_name must be a string")
+            if "guardrail_name" in policy and not isinstance(policy["guardrail_name"], str):
+                errors.append(f"{hook_name}.guardrail_name must be a string")
 
     return errors
 
@@ -318,9 +318,9 @@ def get_hook_block_list(hook_name: str) -> list:
     return get_hook_policy(hook_name).get("block", [])
 
 
-def get_hook_policy_name(hook_name: str) -> str:
-    """Get policy name for a specific hook."""
-    return get_hook_policy(hook_name).get("policy_name", f"Default {hook_name} Policy")
+def get_hook_guardrail_name(hook_name: str) -> str:
+    """Get guardrail name for a specific hook."""
+    return get_hook_policy(hook_name).get("guardrail_name", f"Default {hook_name} Policy")
 
 
 # ============================================================================
@@ -639,8 +639,8 @@ def check_with_enkrypt_api(text: str, hook_name: str = "before_llm_call") -> tup
     block_list = get_hook_block_list(hook_name)
 
     try:
-        # Get policy name for this hook
-        policy_name = get_hook_policy_name(hook_name)
+        # Get guardrail name for this hook
+        guardrail_name = get_hook_guardrail_name(hook_name)
 
         payload = {
             "text": text
@@ -651,7 +651,7 @@ def check_with_enkrypt_api(text: str, hook_name: str = "before_llm_call") -> tup
             "url": ENKRYPT_API_URL,
             "api_key_length": len(ENKRYPT_API_KEY) if ENKRYPT_API_KEY else 0,
             "payload_text_length": len(text),
-            "policy_name": policy_name,
+            "guardrail_name": guardrail_name,
             "config_file": str(CONFIG_FILE),
             "ssl_verify": ENKRYPT_SSL_VERIFY,
             "timeout": ENKRYPT_TIMEOUT,
@@ -669,7 +669,7 @@ def check_with_enkrypt_api(text: str, hook_name: str = "before_llm_call") -> tup
             headers={
                 "Content-Type": "application/json",
                 "apikey": ENKRYPT_API_KEY,
-                "X-Enkrypt-Policy": policy_name,
+                "X-Enkrypt-Policy": guardrail_name,
                 "X-Enkrypt-Source-Name": "crewai-hooks",
                 "X-Enkrypt-Source-Event": get_source_event(hook_name),
             },
@@ -766,9 +766,9 @@ def format_violation_message(violations: list, hook_name: str = "before_llm_call
     if not violations:
         return ""
 
-    policy_name = get_hook_policy_name(hook_name)
+    guardrail_name = get_hook_guardrail_name(hook_name)
 
-    messages = [f"Policy: {policy_name}\n"]
+    messages = [f"Policy: {guardrail_name}\n"]
 
     for v in violations:
         detector = v["detector"]
@@ -913,24 +913,24 @@ def reload_config():
 def check_guardrails(text: str, hook_name: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Universal function to check text against guardrails for any hook.
-    
+
     Args:
         text: Text to check
         hook_name: Name of the hook (before_llm_call, after_llm_call, before_tool_call, after_tool_call)
         context: Additional context information
-        
+
     Returns:
         Dictionary with check results including:
         - passed: bool - Whether the check passed
         - violations: list - List of violations
         - reason: str - Reason for the result
         - hook: str - Hook name
-        
+
     Raises:
         ValueError: If check fails and violations are blocking
     """
     should_block, violations, api_result = check_with_enkrypt_api(text, hook_name)
-    
+
     if should_block:
         # Log security alert
         log_security_alert("guardrails_blocked", {
@@ -938,13 +938,13 @@ def check_guardrails(text: str, hook_name: str, context: Dict[str, Any] = None) 
             "violations": violations,
             "text_preview": text[:200] + "..." if len(text) > 200 else text,
         }, context or {})
-        
+
         # Raise exception to block the operation
         violation_msg = format_violation_message(violations, hook_name)
         raise ValueError(
             f"Guardrails blocked operation in {hook_name}:\n{violation_msg}"
         )
-    
+
     return {
         "passed": True,
         "violations": violations,
@@ -961,32 +961,32 @@ def check_llm_input(context):
     """Monitor LLM calls and run guardrails checks."""
     import time
     start_time = time.time()
-    
+
     # Run guardrails check
     try:
         # Extract text to check
         text_to_check = context.task.description if hasattr(context, 'task') else str(context)
-        
+
         # Convert context to dict for logging
         context_dict = {
             'agent_name': getattr(context, 'agent_name', 'unknown'),
             'task': str(context.task.description) if hasattr(context, 'task') else None,
             'timestamp': get_timestamp()
         }
-        
+
         # Log the check attempt
         log_event("before_llm_call_attempt", context_dict)
-        
+
         # Use single guardrails function
         guardrails_result = check_guardrails(text_to_check, 'before_llm_call', context_dict)
-        
+
         # Log successful check
         latency_ms = (time.time() - start_time) * 1000
         log_event("before_llm_call_passed", {
             **context_dict,
             "latency_ms": latency_ms
         })
-        
+
     except ValueError as e:
         # Guardrails blocked the call
         latency_ms = (time.time() - start_time) * 1000
@@ -1007,7 +1007,7 @@ def check_llm_input(context):
             "error_type": type(e).__name__,
             "latency_ms": latency_ms
         })
-    
+
     return None
 
 
@@ -1015,31 +1015,31 @@ def check_llm_output(context):
     """Monitor LLM responses and run guardrails checks."""
     import time
     start_time = time.time()
-    
+
     # Run guardrails check on output
     try:
         # Extract text to check
         text_to_check = str(context.response) if hasattr(context, 'response') else str(context)
-        
+
         # Convert context to dict for logging
         context_dict = {
             'response_preview': text_to_check[:500],  # Limit context size
             'timestamp': get_timestamp()
         }
-        
+
         # Log the check attempt
         log_event("after_llm_call_attempt", context_dict)
-        
+
         # Use single guardrails function
         guardrails_result = check_guardrails(text_to_check, 'after_llm_call', context_dict)
-        
+
         # Log successful check
         latency_ms = (time.time() - start_time) * 1000
         log_event("after_llm_call_passed", {
             **context_dict,
             "latency_ms": latency_ms
         })
-        
+
     except ValueError as e:
         # Guardrails blocked the output
         latency_ms = (time.time() - start_time) * 1000
@@ -1060,7 +1060,7 @@ def check_llm_output(context):
             "error_type": type(e).__name__,
             "latency_ms": latency_ms
         })
-    
+
     return None
 
 
@@ -1068,35 +1068,35 @@ def check_tool_input(context):
     """Monitor tool calls and run guardrails checks."""
     import time
     start_time = time.time()
-    
+
     tool_name = context.tool_name
     tool_input = context.tool_input
-    
+
     # Run guardrails check on tool call
     try:
         # Build text to check from tool name and input
         text_to_check = f"Tool: {tool_name}\nInput: {json.dumps(tool_input) if isinstance(tool_input, dict) else str(tool_input)}"
-        
+
         # Convert context to dict for logging
         context_dict = {
             'tool_name': tool_name,
             'tool_input': tool_input if isinstance(tool_input, dict) else {'input': str(tool_input)},
             'timestamp': get_timestamp()
         }
-        
+
         # Log the check attempt
         log_event("before_tool_call_attempt", context_dict)
-        
+
         # Use single guardrails function
         guardrails_result = check_guardrails(text_to_check, 'before_tool_call', context_dict)
-        
+
         # Log successful check
         latency_ms = (time.time() - start_time) * 1000
         log_event("before_tool_call_passed", {
             **context_dict,
             "latency_ms": latency_ms
         })
-        
+
     except ValueError as e:
         # Guardrails blocked the tool call
         latency_ms = (time.time() - start_time) * 1000
@@ -1117,7 +1117,7 @@ def check_tool_input(context):
             "error_type": type(e).__name__,
             "latency_ms": latency_ms
         })
-    
+
     return None
 
 
@@ -1125,32 +1125,32 @@ def check_tool_output(context):
     """Monitor tool responses and run guardrails checks."""
     import time
     start_time = time.time()
-    
+
     # Run guardrails check on tool output
     try:
         # Extract text to check
         text_to_check = str(context.tool_result) if hasattr(context, 'tool_result') else str(context)
-        
+
         # Convert context to dict for logging
         context_dict = {
             'tool_name': getattr(context, 'tool_name', 'unknown'),
             'tool_result_preview': text_to_check[:500],  # Limit context size
             'timestamp': get_timestamp()
         }
-        
+
         # Log the check attempt
         log_event("after_tool_call_attempt", context_dict)
-        
+
         # Use single guardrails function
         guardrails_result = check_guardrails(text_to_check, 'after_tool_call', context_dict)
-        
+
         # Log successful check
         latency_ms = (time.time() - start_time) * 1000
         log_event("after_tool_call_passed", {
             **context_dict,
             "latency_ms": latency_ms
         })
-        
+
     except ValueError as e:
         # Guardrails blocked the tool output
         latency_ms = (time.time() - start_time) * 1000
@@ -1171,7 +1171,7 @@ def check_tool_output(context):
             "error_type": type(e).__name__,
             "latency_ms": latency_ms
         })
-    
+
     return None
 
 
@@ -1182,29 +1182,29 @@ def check_tool_output(context):
 class EnkryptGuardrailsContext:
     """
     Context manager for enabling Enkrypt AI guardrails with automatic hook registration.
-    
+
     Usage:
         with EnkryptGuardrailsContext():
             crew = AddNumbers().crew()
             result = crew.kickoff(inputs)
     """
-    
+
     def __init__(self):
         """Initialize the context manager."""
         self._hooks_registered = False
-    
+
     def __enter__(self):
         """Enter the context - register hooks."""
         if not self._hooks_registered:
             self._register_hooks()
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Exit the context - unregister hooks."""
         if self._hooks_registered:
             self._unregister_hooks()
         return False  # Don't suppress exceptions
-    
+
     def _register_hooks(self):
         """Register all guardrails hooks with CrewAI."""
         try:
@@ -1214,22 +1214,22 @@ class EnkryptGuardrailsContext:
                 register_before_tool_call_hook,
                 register_after_tool_call_hook
             )
-            
+
             # Register each hook function
             register_before_llm_call_hook(check_llm_input)
             register_after_llm_call_hook(check_llm_output)
             register_before_tool_call_hook(check_tool_input)
             register_after_tool_call_hook(check_tool_output)
-            
+
             self._hooks_registered = True
             print("✅ Enkrypt Guardrails hooks registered successfully")
             log_event("guardrails_hooks_registered", {"timestamp": get_timestamp()})
-            
+
         except Exception as e:
             print(f"❌ Failed to register guardrails hooks: {e}")
             log_event("guardrails_hooks_registration_failed", {"error": str(e), "timestamp": get_timestamp()})
             raise
-    
+
     def _unregister_hooks(self):
         """Unregister all guardrails hooks from CrewAI."""
         try:
@@ -1239,17 +1239,17 @@ class EnkryptGuardrailsContext:
                 unregister_before_tool_call_hook,
                 unregister_after_tool_call_hook
             )
-            
+
             # Unregister each hook
             unregister_before_llm_call_hook(check_llm_input)
             unregister_after_llm_call_hook(check_llm_output)
             unregister_before_tool_call_hook(check_tool_input)
             unregister_after_tool_call_hook(check_tool_output)
-            
+
             self._hooks_registered = False
             print("✅ Enkrypt Guardrails hooks unregistered successfully")
             log_event("guardrails_hooks_unregistered", {"timestamp": get_timestamp()})
-            
+
         except Exception as e:
             print(f"❌ Failed to unregister guardrails hooks: {e}")
             log_event("guardrails_hooks_unregistration_failed", {"error": str(e), "timestamp": get_timestamp()})
@@ -1266,7 +1266,7 @@ _global_context = None
 def enable_guardrails():
     """
     Enable guardrails globally by registering hooks.
-    
+
     This registers the hooks globally and keeps them active until disable_guardrails() is called.
     For scoped usage, prefer using the EnkryptGuardrailsContext context manager.
     """
@@ -1281,7 +1281,7 @@ def enable_guardrails():
 def disable_guardrails():
     """
     Disable guardrails globally by unregistering hooks.
-    
+
     This should be called to clean up after enable_guardrails().
     """
     global _global_context
@@ -1295,23 +1295,23 @@ def disable_guardrails():
 def with_guardrails(func):
     """
     Decorator to run a function with guardrails enabled.
-    
+
     Usage:
         @with_guardrails
         def run_crew():
             crew = AddNumbers().crew()
             return crew.kickoff(inputs)
-    
+
     Args:
         func: Function to wrap
-        
+
     Returns:
         Wrapped function that runs with guardrails enabled
     """
     def wrapper(*args, **kwargs):
         with EnkryptGuardrailsContext():
             return func(*args, **kwargs)
-    
+
     # Preserve function metadata
     wrapper.__name__ = func.__name__
     wrapper.__doc__ = func.__doc__

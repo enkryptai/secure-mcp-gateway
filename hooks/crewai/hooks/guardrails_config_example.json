@@ -8,28 +8,28 @@
     },
     "before_llm_call": {
         "enabled": true,
-        "policy_name": "Sample Airline Guardrail",
+        "guardrail_name": "Sample Airline Guardrail",
         "block": [
             "policy_violation"
         ]
     },
     "after_llm_call": {
         "enabled": true,
-        "policy_name": "Sample Airline Guardrail",
+        "guardrail_name": "Sample Airline Guardrail",
         "block": [
             "policy_violation"
         ]
     },
     "before_tool_call": {
         "enabled": true,
-        "policy_name": "Sample Airline Guardrail",
+        "guardrail_name": "Sample Airline Guardrail",
         "block": [
             "policy_violation"
         ]
     },
     "after_tool_call": {
         "enabled": false,
-        "policy_name": "Sample Airline Guardrail",
+        "guardrail_name": "Sample Airline Guardrail",
         "block": [
             "policy_violation"
         ]
