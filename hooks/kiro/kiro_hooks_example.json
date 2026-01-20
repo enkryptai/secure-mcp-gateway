@@ -1,0 +1,77 @@
+{
+  "description": "Enkrypt AI Guardrails Hooks for Kiro - Copy individual hooks to your project's .kiro/hooks/ directory as .kiro.hook files",
+  "hooks": [
+    {
+      "enabled": true,
+      "name": "Enkrypt Prompt Guardrail",
+      "description": "Validate user prompts for injection attacks, PII, and policy violations",
+      "version": "1",
+      "when": {
+        "type": "promptSubmit"
+      },
+      "then": {
+        "type": "runCommand",
+        "command": "python hooks/kiro/hooks/prompt_submit.py"
+      },
+      "shortName": "before-prompt-guardrails"
+    },
+    {
+      "enabled": true,
+      "name": "Enkrypt Response Audit",
+      "description": "Audit agent responses for security issues after agent execution completes",
+      "version": "1",
+      "when": {
+        "type": "agentStop"
+      },
+      "then": {
+        "type": "runCommand",
+        "command": "python hooks/kiro/hooks/agent_stop.py"
+      },
+      "shortName": "after-agent-guardrails"
+    },
+    {
+      "enabled": true,
+      "name": "Enkrypt File Security Scan",
+      "description": "Scan saved files for secrets and sensitive data",
+      "version": "1",
+      "when": {
+        "type": "fileSave",
+        "pattern": "**/*.{py,js,ts,json,yaml,yml,env*}"
+      },
+      "then": {
+        "type": "runCommand",
+        "command": "FILE_PATH=\"${filePath}\" python hooks/kiro/hooks/file_save.py"
+      },
+      "shortName": "file-save-guardrails"
+    },
+    {
+      "enabled": true,
+      "name": "Enkrypt New File Validator",
+      "description": "Validate new files for security issues",
+      "version": "1",
+      "when": {
+        "type": "fileCreate",
+        "pattern": "**/*.{py,js,ts,json,yaml,yml,env*}"
+      },
+      "then": {
+        "type": "runCommand",
+        "command": "FILE_PATH=\"${filePath}\" python hooks/kiro/hooks/file_create.py"
+      },
+      "shortName": "file-create-guardrails"
+    },
+    {
+      "enabled": true,
+      "name": "Enkrypt Security Scanner",
+      "description": "On-demand security scanning for files and code",
+      "version": "1",
+      "when": {
+        "type": "manual"
+      },
+      "then": {
+        "type": "runCommand",
+        "command": "SCAN_TARGET=\"${workspaceFolder}\" SCAN_TYPE=directory python hooks/kiro/hooks/manual_security_scan.py"
+      },
+      "shortName": "manual-security-scan"
+    }
+  ]
+}

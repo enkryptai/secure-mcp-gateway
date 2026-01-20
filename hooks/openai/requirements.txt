@@ -1,0 +1,16 @@
+# Enkrypt AI Guardrails for OpenAI Agents SDK
+# Python 3.9+ required (OpenAI Agents SDK requirement)
+
+# Core dependencies
+requests>=2.28.0
+urllib3>=1.26.0
+
+# OpenAI Agents SDK (required)
+openai-agents>=0.1.0
+
+# Optional: OpenAI API client (if using OpenAI models directly)
+# openai>=1.0.0
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0

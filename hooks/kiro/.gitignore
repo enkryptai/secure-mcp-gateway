@@ -1,0 +1,20 @@
+# Virtual environment
+venv/
+.venv/
+
+# Local configuration (contains secrets)
+hooks/guardrails_config.json
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs (optional - comment out if you want to commit logs)
+# hooks_logs/

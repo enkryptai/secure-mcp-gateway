@@ -1,8 +1,8 @@
 {
   "enkrypt_api": {
     "url": "https://api.enkryptai.com/guardrails/policy/detect",
-    "api_key": "YOUR_API_KEY_HERE",
-    "ssl_verify": true,
+      "api_key": "YOUR_ENKRYPT_API_KEY",
+      "ssl_verify": true,
     "timeout": 15,
     "fail_silently": true
   },

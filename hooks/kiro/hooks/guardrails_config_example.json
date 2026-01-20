@@ -1,0 +1,77 @@
+{
+  "enkrypt_api": {
+    "url": "https://api.enkryptai.com/guardrails/policy/detect",
+    "api_key": "YOUR_ENKRYPT_API_KEY",
+    "ssl_verify": true,
+    "timeout": 15,
+    "fail_silently": true
+  },
+  "PromptSubmit": {
+    "enabled": true,
+    "policy_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack",
+      "topic_detector",
+      "nsfw",
+      "toxicity",
+      "pii",
+      "keyword_detector",
+      "bias",
+      "sponge_attack"
+    ]
+  },
+  "AgentStop": {
+    "enabled": false,
+    "policy_name": "Sample Airline Guardrail",
+    "block": [
+      "pii",
+      "toxicity",
+      "nsfw"
+    ]
+  },
+  "FileSave": {
+    "enabled": true,
+    "policy_name": "Sample Airline Guardrail",
+    "block": [
+      "pii",
+      "injection_attack"
+    ]
+  },
+  "FileCreate": {
+    "enabled": true,
+    "policy_name": "Sample Airline Guardrail",
+    "block": [
+      "pii",
+      "injection_attack"
+    ]
+  },
+  "FileDelete": {
+    "enabled": false,
+    "policy_name": "Sample Airline Guardrail",
+    "block": []
+  },
+  "Manual": {
+    "enabled": true,
+    "policy_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack",
+      "nsfw",
+      "toxicity",
+      "pii",
+      "keyword_detector",
+      "bias",
+      "sponge_attack"
+    ]
+  },
+  "sensitive_file_patterns": [
+    "\\.env$",
+    "\\.env\\.",
+    "secrets?\\.",
+    "credentials?\\.",
+    "\\.pem$",
+    "\\.key$",
+    "id_rsa",
+    "config\\.json$",
+    "settings\\.json$"
+  ]
+}
