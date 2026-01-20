@@ -4,13 +4,32 @@ Protect your Cursor chats and MCP tool calls using Enkrypt AI guardrails.
 
 ## 🧭 What runs when
 
-|Hook|When it runs|Purpose|
-|---|---|---|
-|`beforeSubmitPrompt`|Before your prompt is sent|Block unsafe prompts (injection/PII/etc.)|
-|`beforeMCPExecution`|Before an MCP tool executes|Block / ask / allow tool inputs|
-|`afterMCPExecution`|After an MCP tool returns|Audit tool outputs (logging-only)|
-|`afterAgentResponse`|After the agent produces a response|Audit the final assistant text (logging-only)|
-|`stop`|When the agent completes|Session logging / summary|
+| Hook | When it runs | Can Block? | Output Fields |
+|------|--------------|------------|---------------|
+| `beforeSubmitPrompt` | Before your prompt is sent | **YES** | `continue`, `user_message` |
+| `beforeMCPExecution` | Before an MCP tool executes | **YES** | `permission`, `user_message`, `agent_message` |
+| `afterMCPExecution` | After an MCP tool returns | NO (audit only) | *none* |
+| `afterAgentResponse` | After the agent produces a response | NO (audit only) | *none* |
+| `stop` | When the agent completes | NO | `followup_message` (optional) |
+
+> **Note:** Per [Cursor's hooks specification](https://cursor.com/docs/agent/hooks), only `before*` hooks support blocking. The `after*` hooks are observational—they detect violations and log security alerts but cannot prevent actions.
+
+### Blocking vs Observational Hooks
+
+Cursor hooks fall into two categories per the [official specification](https://cursor.com/docs/agent/hooks):
+
+**Blocking Hooks** - Can prevent actions from occurring:
+
+- `beforeSubmitPrompt`: Set `"continue": false` to block the prompt
+- `beforeMCPExecution`: Set `"permission": "deny"` to block the tool call
+
+**Observational Hooks** - Fire-and-forget, audit only:
+
+- `afterMCPExecution`: Logs tool outputs, cannot block
+- `afterAgentResponse`: Logs agent responses, cannot block
+- `stop`: Logs session end, optionally triggers `followup_message`
+
+When violations are detected in observational hooks, they are logged to `security_alerts.jsonl` for forensics but the action has already completed.
 
 ### Hooks Not Supported Yet
 
@@ -285,6 +304,30 @@ MCP tool completes → Hook receives output → Scan for sensitive data → Log 
 ```
 
 This hook is observability-only (doesn't block).
+
+### 4. afterAgentResponse
+
+```text
+Agent responds → Hook receives text → Scan for violations → Log alerts (no blocking)
+```
+
+**Input from Cursor:**
+
+```json
+{
+  "text": "agent's response text",
+  "conversation_id": "...",
+  "user_email": "user@example.com"
+}
+```
+
+**Output to Cursor:**
+
+```json
+{}
+```
+
+> This hook has no blocking output fields per [Cursor spec](https://cursor.com/docs/agent/hooks). Violations are logged to `security_alerts.jsonl` but cannot prevent the response from being shown.
 
 ---
 
