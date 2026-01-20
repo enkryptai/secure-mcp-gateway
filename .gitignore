@@ -47,3 +47,4 @@ bandit-report.json
 *.md
 !hooks/cursor/README.md
 !hooks/claude/README.md
+!hooks/crewai/README.md
