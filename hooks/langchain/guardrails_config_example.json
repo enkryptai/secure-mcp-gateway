@@ -1,0 +1,120 @@
+{
+  "enkrypt_api": {
+    "url": "https://api.enkryptai.com/guardrails/policy/detect",
+    "api_key": "YOUR_ENKRYPT_API_KEY",
+    "ssl_verify": true,
+    "timeout": 15,
+    "fail_silently": true
+  },
+  "on_llm_start": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack",
+      "pii",
+      "toxicity",
+      "nsfw",
+      "keyword_detector"
+    ]
+  },
+  "on_llm_end": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "pii",
+      "toxicity",
+      "nsfw"
+    ]
+  },
+  "on_chat_model_start": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack",
+      "pii",
+      "toxicity"
+    ]
+  },
+  "on_chain_start": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack",
+      "pii"
+    ]
+  },
+  "on_chain_end": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "pii",
+      "toxicity"
+    ]
+  },
+  "on_tool_start": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack",
+      "pii"
+    ]
+  },
+  "on_tool_end": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "pii"
+    ]
+  },
+  "on_agent_action": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack"
+    ]
+  },
+  "on_agent_finish": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "pii",
+      "toxicity",
+      "nsfw"
+    ]
+  },
+  "on_retriever_start": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack"
+    ]
+  },
+  "on_retriever_end": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "pii"
+    ]
+  },
+  "on_text": {
+    "enabled": false,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": []
+  },
+  "sensitive_tools": [
+    "execute_sql",
+    "run_command",
+    "shell_*",
+    "bash",
+    "delete_*",
+    "remove_*",
+    "drop_*",
+    "write_file",
+    "create_file",
+    "modify_file",
+    "send_email",
+    "http_request",
+    "python_repl",
+    "terminal"
+  ]
+}

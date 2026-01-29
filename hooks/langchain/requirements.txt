@@ -1,0 +1,22 @@
+# Enkrypt AI Guardrails for LangChain
+# Python 3.9+ required
+
+# Core dependencies
+requests>=2.28.0
+urllib3>=1.26.0
+
+# LangChain (required)
+langchain>=0.3.0
+langchain-core>=0.3.0
+
+# Model providers (at least one required for full demos)
+langchain-openai>=0.2.0
+# langchain-anthropic>=0.2.0  # Optional: For Anthropic models
+# langchain-aws>=0.2.0        # Optional: For AWS Bedrock models
+
+# Optional: For agent examples
+# langgraph>=0.2.0
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0

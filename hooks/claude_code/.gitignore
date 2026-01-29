@@ -1,0 +1,34 @@
+# Virtual environment
+venv/
+.venv/
+env/
+.env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Config with secrets
+guardrails_config.json
+
+# Logs
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Distribution
+dist/
+build/
+*.egg-info/

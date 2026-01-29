@@ -48,3 +48,12 @@ bandit-report.json
 !hooks/cursor/README.md
 !hooks/claude/README.md
 !hooks/crewai/README.md
+!hooks/kiro/README.md
+!hooks/claude_code/README.md
+!hooks/langchain/README.md
+!hooks/langgraph/README.md
+!hooks/openai/README.md
+!hooks/strands/README.md
+!hooks/vercel-ai-sdk/README.md
+
+.claude/settings.json

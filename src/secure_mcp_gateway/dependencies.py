@@ -24,8 +24,6 @@ __dependencies__ = [
     # Security and encryption
     "cryptography~=45.0.7",
     "pyjwt~=2.10.1",
-    # Async support
-    "asyncio~=4.0.0",
     # Retry logic
     "tenacity~=8.2.0",
     # MCP
