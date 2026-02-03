@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "python hooks/copilot/hooks/session_start.py",
+        "powershell": "hooks\\copilot\\venv\\Scripts\\python.exe hooks\\copilot\\hooks\\session_start.py",
+        "cwd": ".",
+        "timeoutSec": 10
+      }
+    ],
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "python hooks/copilot/hooks/user_prompt_submitted.py",
+        "powershell": "hooks\\copilot\\venv\\Scripts\\python.exe hooks\\copilot\\hooks\\user_prompt_submitted.py",
+        "cwd": ".",
+        "timeoutSec": 30
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "python hooks/copilot/hooks/pre_tool_use.py",
+        "powershell": "hooks\\copilot\\venv\\Scripts\\python.exe hooks\\copilot\\hooks\\pre_tool_use.py",
+        "cwd": ".",
+        "timeoutSec": 30
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "python hooks/copilot/hooks/post_tool_use.py",
+        "powershell": "hooks\\copilot\\venv\\Scripts\\python.exe hooks\\copilot\\hooks\\post_tool_use.py",
+        "cwd": ".",
+        "timeoutSec": 30
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "python hooks/copilot/hooks/session_end.py",
+        "powershell": "hooks\\copilot\\venv\\Scripts\\python.exe hooks\\copilot\\hooks\\session_end.py",
+        "cwd": ".",
+        "timeoutSec": 10
+      }
+    ],
+    "errorOccurred": [
+      {
+        "type": "command",
+        "bash": "python hooks/copilot/hooks/error_occurred.py",
+        "powershell": "hooks\\copilot\\venv\\Scripts\\python.exe hooks\\copilot\\hooks\\error_occurred.py",
+        "cwd": ".",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}
