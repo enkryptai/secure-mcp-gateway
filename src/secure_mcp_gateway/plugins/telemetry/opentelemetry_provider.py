@@ -488,6 +488,8 @@ class OpenTelemetryProvider(TelemetryProvider):
 
         # No-op logger
         class NoOpLogger:
+            level = 100  # High level to disable debug checks
+
             def info(self, msg, *args, **kwargs):
                 pass
 

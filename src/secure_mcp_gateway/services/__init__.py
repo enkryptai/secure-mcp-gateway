@@ -14,6 +14,8 @@ try:
 except Exception:
     # Fallback to no-op logger if telemetry manager is not available
     class NoOpLogger:
+        level = 100  # High level to disable debug checks
+
         def info(self, *args, **kwargs):
             pass
 

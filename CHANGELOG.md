@@ -2,6 +2,15 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [2.1.6] - 2025-12-23
+
+### Updates in v2.1.6
+
+- Auto-detect Docker environment and skip dependency installation by default
+- Added `config set-enkrypt-api-key` command for guardrails configuration
+- Added `config configure-telemetry` command for OpenTelemetry settings
+- Fixed Cursor config path for macOS (`~/.cursor`)
+
 ## [2.1.5] - 2025-11-10
 
 ### Updates in v2.1.5

@@ -74,6 +74,8 @@ class EnkryptInputGuardrail:
                     "X-Enkrypt-Policy": self.policy_name,
                     "apikey": self.api_key,
                     "Content-Type": "application/json",
+                    "X-Enkrypt-Source-Name": "mcp-gateway",
+                    "X-Enkrypt-Source-Event": "pre-tool",
                 }
 
                 if self.debug:
@@ -419,6 +421,8 @@ class EnkryptOutputGuardrail:
                 "X-Enkrypt-Policy": self.policy_name,
                 "apikey": self.api_key,
                 "Content-Type": "application/json",
+                "X-Enkrypt-Source-Name": "mcp-gateway",
+                "X-Enkrypt-Source-Event": "post-tool",
             }
 
             if self.debug:
@@ -448,6 +452,8 @@ class EnkryptOutputGuardrail:
             headers = {
                 "apikey": self.api_key,
                 "Content-Type": "application/json",
+                "X-Enkrypt-Source-Name": "mcp-gateway",
+                "X-Enkrypt-Source-Event": "post-tool",
             }
 
             if self.debug:
@@ -475,6 +481,8 @@ class EnkryptOutputGuardrail:
             headers = {
                 "apikey": self.api_key,
                 "Content-Type": "application/json",
+                "X-Enkrypt-Source-Name": "mcp-gateway",
+                "X-Enkrypt-Source-Event": "post-tool",
             }
 
             if self.debug:
@@ -508,6 +516,8 @@ class EnkryptOutputGuardrail:
             headers = {
                 "apikey": self.api_key,
                 "Content-Type": "application/json",
+                "X-Enkrypt-Source-Name": "mcp-gateway",
+                "X-Enkrypt-Source-Event": "post-tool",
             }
 
             if self.debug:
@@ -574,6 +584,8 @@ class EnkryptPIIHandler:
             headers = {
                 "apikey": self.api_key,
                 "Content-Type": "application/json",
+                "X-Enkrypt-Source-Name": "mcp-gateway",
+                "X-Enkrypt-Source-Event": "pii-detect",
             }
 
             async with aiohttp.ClientSession() as session:
@@ -612,6 +624,8 @@ class EnkryptPIIHandler:
             headers = {
                 "apikey": self.api_key,
                 "Content-Type": "application/json",
+                "X-Enkrypt-Source-Name": "mcp-gateway",
+                "X-Enkrypt-Source-Event": "pii-redact",
             }
 
             async with aiohttp.ClientSession() as session:
@@ -640,6 +654,8 @@ class EnkryptPIIHandler:
             headers = {
                 "apikey": self.api_key,
                 "Content-Type": "application/json",
+                "X-Enkrypt-Source-Name": "mcp-gateway",
+                "X-Enkrypt-Source-Event": "pii-restore",
             }
 
             async with aiohttp.ClientSession() as session:
@@ -1252,6 +1268,8 @@ class EnkryptServerRegistrationGuardrail:
             headers = {
                 "apikey": str(self.api_key or ""),
                 "Content-Type": "application/json",
+                "X-Enkrypt-Source-Name": "mcp-gateway",
+                "X-Enkrypt-Source-Event": "server-registration",
             }
 
             if self.debug:
