@@ -30,13 +30,35 @@ Protect your GitHub Copilot coding agent sessions with Enkrypt AI guardrails.
 
 When violations are detected in observational hooks, they are logged to `security_alerts.jsonl` for forensics but the action has already completed.
 
+## Where Hooks Work
+
+> **Important:** Copilot hooks work with specific Copilot environments, not all of them.
+
+| Environment | Hooks Support | Description |
+|-------------|---------------|-------------|
+| **Copilot Coding Agent** | ✅ YES | Cloud-based agent triggered via GitHub Issues/PRs |
+| **Copilot CLI** (`gh copilot`) | ✅ YES | Command-line interface for Copilot |
+| **VS Code Copilot Chat** | ❌ NO | The chat sidebar in VS Code does not support hooks |
+| **Copilot Inline Suggestions** | ❌ NO | Code completions/suggestions do not trigger hooks |
+
+**Official Documentation:**
+- [Copilot Coding Agent Hooks](https://docs.github.com/en/copilot/customizing-copilot/extending-the-capabilities-of-copilot-coding-agent-with-mcp/using-copilot-coding-agent-hooks)
+- [Hooks Configuration Reference](https://docs.github.com/en/copilot/reference/hooks-configuration)
+
 ## Quick start
 
 ### Prerequisites
 
 - GitHub Copilot with coding agent hooks support
 - Python 3.8+
+- **PowerShell 7+** (required for Windows - see note below)
 - An Enkrypt API key
+
+> **Windows Users:** Copilot CLI requires PowerShell 7+ (`pwsh.exe`), not Windows PowerShell 5.x. Install it via:
+> ```powershell
+> winget install Microsoft.PowerShell
+> ```
+> After installation, add `C:\Program Files\PowerShell\7` to your system PATH and restart your terminal.
 
 ### 1) Create a Python venv and install dependencies
 
@@ -65,13 +87,35 @@ pip install -r hooks/requirements.txt
 
 > `guardrails_config.json` is gitignored on purpose. Keep keys local.
 
-### 3) Configure Copilot Hooks (.github/hooks/hooks.json)
+### 3) Configure Copilot Hooks
 
-Copilot reads hooks from `.github/hooks/hooks.json` on the repository's default branch.
+The location of `hooks.json` depends on which Copilot environment you're using:
 
-- Copy `hooks/copilot/hooks_example.json` -> `.github/hooks/hooks.json`
-- If you're on macOS/Linux, the `bash` commands should work as-is; update the `powershell` paths if needed
-- If your repo is not at the project root, adjust paths accordingly
+| Environment | hooks.json Location | Notes |
+|-------------|---------------------|-------|
+| **Copilot Coding Agent** | `.github/hooks/hooks.json` | Must be on the repository's default branch |
+| **Copilot CLI** | `hooks.json` (project root) | Loaded from current working directory |
+
+**For Copilot Coding Agent:**
+```bash
+# Copy template to .github/hooks/
+mkdir -p .github/hooks
+cp hooks/copilot/hooks_example.json .github/hooks/hooks.json
+# Commit and push to default branch
+git add .github/hooks/hooks.json
+git commit -m "Add Copilot hooks configuration"
+git push
+```
+
+**For Copilot CLI:**
+```bash
+# Copy template to project root
+cp hooks/copilot/hooks_example.json hooks.json
+```
+
+- If you're on macOS/Linux, the `bash` commands should work as-is
+- On Windows, ensure PowerShell 7+ is installed and in PATH
+- Adjust paths if your repo structure differs
 
 ### 4) Test
 
@@ -93,7 +137,7 @@ Expected output:
 
 ```text
 hooks/copilot/
-├── hooks_example.json                  # Template for .github/hooks/hooks.json
+├── hooks_example.json                  # Template for hooks.json
 ├── .gitignore                          # Ignore venv and local config
 └── hooks/
     ├── guardrails_config_example.json  # Template config (commit-safe)
@@ -109,6 +153,10 @@ hooks/copilot/
     └── tests/
         ├── __init__.py
         └── test_enkrypt_guardrails.py  # Unit tests
+
+# After setup, your project will have:
+.github/hooks/hooks.json                # For Copilot Coding Agent
+hooks.json                              # For Copilot CLI (project root)
 ```
 
 ## Configuration reference
@@ -318,10 +366,31 @@ Tool completes -> Hook receives output -> Scan for sensitive data -> Log alerts
 
 ### Hooks Not Running
 
-1. Ensure `.github/hooks/hooks.json` exists on the repository's default branch
+1. Ensure hooks.json is in the correct location:
+   - **Coding Agent:** `.github/hooks/hooks.json` on the default branch
+   - **Copilot CLI:** `hooks.json` in your current working directory
 2. Verify `"version": 1` is set in hooks.json
 3. Check that Python is accessible at the configured path
 4. Validate JSON syntax of hooks.json
+
+### PowerShell 7 Not Found (Windows)
+
+If you see this error with Copilot CLI:
+```
+PowerShell 6+ (pwsh) is not available. Please install it from https://aka.ms/powershell
+```
+
+**Solution:**
+1. Install PowerShell 7+:
+   ```powershell
+   winget install Microsoft.PowerShell
+   ```
+2. Add to system PATH:
+   - Open System Properties → Environment Variables
+   - Edit the `Path` system variable
+   - Add: `C:\Program Files\PowerShell\7`
+3. Restart your terminal/IDE completely
+4. Verify: `pwsh --version` should show `PowerShell 7.x.x`
 
 ### API Returning 404
 
