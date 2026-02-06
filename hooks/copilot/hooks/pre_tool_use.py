@@ -39,7 +39,7 @@ def main():
     except json.JSONDecodeError as e:
         log_event(HOOK_NAME, {"parse_error": str(e), "error_type": "JSONDecodeError"})
         print(json.dumps({"permissionDecision": "allow"}))
-        return
+        sys.exit(0)
 
     tool_name = data.get("toolName", "")
     tool_args = data.get("toolArgs", "")
@@ -50,8 +50,8 @@ def main():
     # If allowed and this hook's guardrails are enabled, scan input with Enkrypt API
     if permission_decision == "allow" and tool_args and is_hook_enabled(HOOK_NAME):
         should_block, violations, api_result = check_with_enkrypt_api(tool_args, hook_name=HOOK_NAME)
-        # Log guardrails response to stderr
-        print(f"\n[Enkrypt Guardrails Response]\n{json.dumps(api_result, indent=2)}", file=sys.stderr)
+        # Log guardrails response to stderr (single line for cleaner output)
+        print(f"[Enkrypt Guardrails] {json.dumps(api_result)}", file=sys.stderr)
         if should_block:
             violation_message = format_violation_message(violations, hook_name=HOOK_NAME)
             permission_decision = "deny"
@@ -70,7 +70,9 @@ def main():
     log_event(HOOK_NAME, data, result)
     log_to_combined(HOOK_NAME, data, result)
 
+    # Output must be single-line JSON to stdout
     print(json.dumps(result))
+    sys.exit(0)
 
 
 if __name__ == "__main__":
