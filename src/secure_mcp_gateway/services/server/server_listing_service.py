@@ -278,7 +278,7 @@ class ServerListingService:
 
                 result = await enkrypt_authenticate(ctx)
                 if result.get("status") != "success":
-                    if logger.level <= 10:  # DEBUG level
+                    if getattr(logger, "level", 100) <= 10:  # DEBUG level
                         logger.warning(
                             "list_all_servers.auth_failed",
                             extra=build_log_extra(ctx, custom_id),

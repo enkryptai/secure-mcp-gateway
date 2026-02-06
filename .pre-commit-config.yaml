@@ -3,54 +3,81 @@
 # See https://pre-commit.com/hooks.html for more hooks
 
 repos:
-  # Standard Python hooks
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+  # Standard checks as local hooks (avoid WinError 4551 from Application Control
+  # blocking Python executables in pre-commit's virtual environments)
+  - repo: local
     hooks:
-      - id: trailing-whitespace
-        name: Remove trailing whitespace
-        description: This hook trims whitespace.
-        types: [text]
-        exclude: ^(docs/|README\.md|CHANGELOG\.md|API-Reference\.md)
+      # trailing-whitespace: handled by custom remove-trailing-whitespace hook below
+
       - id: end-of-file-fixer
         name: Fix end of files
         description: Ensures that a file is either empty or ends with one newline.
+        entry: python scripts/pre_commit/end_of_file_fixer.py
+        language: system
         types: [text]
         exclude: ^(docs/|README\.md|CHANGELOG\.md|API-Reference\.md)
+
       - id: check-yaml
         name: Check YAML syntax
         description: This hook checks yaml files for parseable syntax.
+        entry: python scripts/pre_commit/check_yaml.py
+        language: system
         types: [yaml]
         exclude: ^docs/secure-mcp-gateway-manifest-example\.yaml$
+
       - id: check-json
         name: Check JSON syntax
         description: This hook checks json files for parseable syntax.
+        entry: python scripts/pre_commit/check_json.py
+        language: system
         types: [json]
+
       - id: check-toml
         name: Check TOML syntax
         description: This hook checks toml files for parseable syntax.
+        entry: python scripts/pre_commit/check_toml.py
+        language: system
         types: [toml]
+
       - id: check-merge-conflict
         name: Check for merge conflicts
         description: Check for files that contain merge conflict strings.
+        entry: python scripts/pre_commit/check_merge_conflict.py
+        language: system
+        types: [text]
+
       - id: check-added-large-files
         name: Check for large files
         description: Prevent giant files from being committed.
+        entry: python scripts/pre_commit/check_large_files.py
+        language: system
         args: ['--maxkb=1000']
+
       - id: check-case-conflict
         name: Check for case conflicts
-        description: Check for files that would conflict in case-insensitive filesystems
+        description: Check for files that would conflict in case-insensitive filesystems.
+        entry: python scripts/pre_commit/check_case_conflict.py
+        language: system
+
       - id: check-ast
         name: Check Python AST
         description: Simply check whether files parse as valid python.
+        entry: python scripts/pre_commit/check_ast.py
+        language: system
         types: [python]
+
       - id: debug-statements
         name: Check for debugger imports and breakpoints
         description: Check for debugger imports and breakpoints.
+        entry: python scripts/pre_commit/check_debug_statements.py
+        language: system
         types: [python]
+
       - id: name-tests-test
         name: Check that tests are named correctly
         description: Ensure test files are named correctly.
+        entry: python scripts/pre_commit/check_test_names.py
+        language: system
         files: ^tests/.*\.py$
         args: [--pytest-test-first]
 

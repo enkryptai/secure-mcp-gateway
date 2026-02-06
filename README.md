@@ -1056,10 +1056,10 @@ docker build -t secure-mcp-gateway .
 ```bash
 
 # On 🍎 Linux/macOS run the below
-docker run --rm -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkrypt:/app/.enkrypt --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
+docker run --rm -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkrypt\docker:/app/.enkrypt/docker --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
 
 # On 🪟 Windows run the below
-docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt:/app/.enkrypt --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
+docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt\docker:/app/.enkrypt/docker --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
 
 # If you are using 📟 Powershell, you can use the below command
 docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt -v ${env:USERPROFILE}\.enkrypt:/app/.enkrypt --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
@@ -1169,13 +1169,15 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkryp
   - macOS: `~/Library/Application Support/Claude`
   - Windows: `%APPDATA%\Claude`
 
+> **Note:** The generated config includes `MCP_TRANSPORT=stdio` for stdio mode communication with Claude Desktop.
+
 ```bash
 
 # On 🍎 Linux/macOS run the below
-docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkrypt:/app/.enkrypt -v ~/Library/Application\ Support/Claude:/app/.claude --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
+docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkrypt\docker:/app/.enkrypt/docker -v ~/Library/Application\ Support/Claude:/app/.claude --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
 
 # On 🪟 Windows run the below
-docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt:/app/.enkrypt -v %APPDATA%\Claude:/app/.claude --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
+docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt\docker:/app/.enkrypt/docker -v %APPDATA%\Claude:/app/.claude --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
 
 # If you are using 📟 Powershell, you can use the below command
 docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt -v ${env:USERPROFILE}\.enkrypt:/app/.enkrypt -v ${env:APPDATA}\Claude:/app/.claude --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
@@ -1197,8 +1199,10 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enk
         "run",
         "--rm",
         "-i",
+        "-e",
+        "MCP_TRANSPORT=stdio",
         "-v",
-        "C:\\Users\\<user>\\.enkrypt:/app/.enkrypt",
+        "C:\\Users\\<user>\\.enkrypt\\docker:/app/.enkrypt/docker",
         "secure-mcp-gateway"
       ],
       "env": {
@@ -1220,13 +1224,15 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enk
   - macOS: `~/.cursor`
   - Windows: `%USERPROFILE%\.cursor`
 
+> **Note:** The generated config includes `MCP_TRANSPORT=stdio` for stdio mode communication with Cursor.
+
 ```bash
 
 # On 🍎 Linux/macOS run the below
-docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkrypt:/app/.enkrypt -v ~/Library/Application\ Support/Cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
+docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=~/.enkrypt -v ~/.enkrypt/docker:/app/.enkrypt/docker -v ~/.cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
 
 # On 🪟 Windows run the below
-docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt:/app/.enkrypt -v %USERPROFILE%\.cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
+docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt\docker:/app/.enkrypt/docker -v %USERPROFILE%\.cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
 
 # If you are using 📟 Powershell, you can use the below command
 docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt -v ${env:USERPROFILE}\.enkrypt:/app/.enkrypt -v ${env:USERPROFILE}\.cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
@@ -1242,7 +1248,7 @@ For advanced Docker deployments, you can run the gateway container directly with
 docker run -d \
   --name enkrypt-gateway \
   -p 8000:8000 \
-  -v ~/.enkrypt:/app/.enkrypt/docker \
+  -v ~/.enkrypt/docker:/app/.enkrypt/docker \
   -e ENKRYPT_GATEWAY_KEY="your-gateway-key" \
   -e ENKRYPT_PROJECT_ID="your-project-id" \
   -e ENKRYPT_USER_ID="your-user-id" \
@@ -1269,38 +1275,62 @@ docker run -d `
 | `ENKRYPT_GATEWAY_KEY` | API key for authentication | - | Yes |
 | `ENKRYPT_PROJECT_ID` | Project ID from config | - | Yes |
 | `ENKRYPT_USER_ID` | User ID from config | - | Yes |
-| `SKIP_DEPENDENCY_INSTALL` | Skip runtime dependency installation | `false` | No |
+| `MCP_TRANSPORT` | Transport mode: `streamable-http` or `stdio` | `streamable-http` | No |
+| `SKIP_DEPENDENCY_INSTALL` | Skip runtime dependency installation | `true` (Docker), `false` (other) | No |
 | `HOST` | Gateway bind address | `0.0.0.0` | No |
 | `FASTAPI_HOST` | FastAPI server bind address | `0.0.0.0` | No |
+
+##### MCP_TRANSPORT
+
+The `MCP_TRANSPORT` environment variable controls the transport mode for the gateway.
+
+**Transport modes:**
+
+- **`streamable-http`** (default): HTTP server mode on port 8000. Use with `-p 8000:8000` for port mapping.
+- **`stdio`**: Standard input/output mode for MCP clients that communicate via stdin/stdout. Use with `-i` flag.
+
+**Example for stdio mode (Claude Desktop, Cursor):**
+
+```bash
+docker run --rm -i \
+  -e MCP_TRANSPORT=stdio \
+  -v ~/.enkrypt/docker:/app/.enkrypt/docker \
+  -e ENKRYPT_GATEWAY_KEY="your-gateway-key" \
+  secure-mcp-gateway
+```
 
 ##### SKIP_DEPENDENCY_INSTALL
 
 The `SKIP_DEPENDENCY_INSTALL` environment variable controls whether the gateway reinstalls Python dependencies at runtime.
 
-**When to use `SKIP_DEPENDENCY_INSTALL=true`:**
+**Default behavior:**
 
-- ✅ Production deployments where dependencies are pre-installed in the Docker image
-- ✅ When using pre-built Docker images from Docker Hub
-- ✅ To reduce container startup time (faster cold starts)
-- ✅ In orchestrated environments (Kubernetes, Docker Swarm, ECS)
+- **Docker environments**: Defaults to `true` (auto-detected). Dependencies are pre-installed in the Docker image, so runtime installation is skipped automatically.
+- **Non-Docker environments**: Defaults to `false`. Dependencies are installed at startup to ensure compatibility.
 
-**When to omit (default behavior):**
+**When to explicitly set `SKIP_DEPENDENCY_INSTALL=false` in Docker:**
 
 - Development environments where you're testing new dependencies
 - When mounting source code volumes for live development
 - If you're unsure whether all dependencies are properly installed
 
+**When to explicitly set `SKIP_DEPENDENCY_INSTALL=true` outside Docker:**
+
+- Production deployments where dependencies are pre-installed
+- To reduce startup time (faster cold starts)
+- In environments where you've already run `pip install`
+
 **Example with docker-compose integration:**
 
 ```bash
 # Connect to observability stack network
+# Note: SKIP_DEPENDENCY_INSTALL defaults to true in Docker, so it's optional
 docker run -d \
   --name enkrypt-gateway \
   --network secure-mcp-gateway-infra_default \
   -p 8000:8000 \
   -p 8080:8080 \
-  -v ~/.enkrypt:/app/.enkrypt/docker \
-  -e SKIP_DEPENDENCY_INSTALL=true \
+  -v ~/.enkrypt/docker:/app/.enkrypt/docker \
   -e ENKRYPT_GATEWAY_KEY="your-gateway-key" \
   -e ENKRYPT_PROJECT_ID="your-project-id" \
   -e ENKRYPT_USER_ID="your-user-id" \
@@ -1310,13 +1340,13 @@ docker run -d \
 **Windows PowerShell:**
 
 ```powershell
+# Note: SKIP_DEPENDENCY_INSTALL defaults to true in Docker, so it's optional
 docker run -d `
   --name enkrypt-gateway `
   --network secure-mcp-gateway-infra_default `
   -p 8000:8000 `
   -p 8080:8080 `
   -v ${env:USERPROFILE}\.enkrypt:/app/.enkrypt/docker `
-  -e SKIP_DEPENDENCY_INSTALL=true `
   -e ENKRYPT_GATEWAY_KEY="your-gateway-key" `
   -e ENKRYPT_PROJECT_ID="your-project-id" `
   -e ENKRYPT_USER_ID="your-user-id" `
@@ -1333,7 +1363,7 @@ docker run -d `
 
 ##### Volume Mounts
 
-- `~/.enkrypt:/app/.enkrypt/docker` - Config file location (required)
+- `~/.enkrypt/docker:/app/.enkrypt/docker` - Config file location (required)
 - Additional mounts may be needed if your MCP servers require access to local files
 
 #### ⚠️ Important: Configuring MCP Servers When Gateway Runs in Docker

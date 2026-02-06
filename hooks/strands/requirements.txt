@@ -1,0 +1,19 @@
+# Enkrypt AI Guardrails for Strands Agents
+# Python 3.10+ required (Strands requirement)
+
+# Core dependencies
+requests>=2.28.0
+urllib3>=1.26.0
+
+# Strands Agents SDK (required)
+strands-agents>=1.0.0
+
+# Optional: For specific model providers
+# strands-agents[anthropic]
+# strands-agents[openai]
+# strands-agents[litellm]
+# strands-agents[ollama]
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0

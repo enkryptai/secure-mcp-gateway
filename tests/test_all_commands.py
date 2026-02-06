@@ -530,6 +530,20 @@ class CLITester:
 
         # Get API keys for advanced testing
         result = self.run_command(["user", "list-api-keys", "--email", "test-user-1@example.com"])
+
+        # Test get-api-key command
+        if result and result.stdout:
+            try:
+                data = json.loads(result.stdout)
+                if isinstance(data, list) and len(data) > 0:
+                    # Get full API key (not truncated) from the stored IDs
+                    for api_key in self.api_keys:
+                        self.run_command(["user", "get-api-key", "--api-key", api_key])
+                        break  # Just test with one key
+            except:
+                pass
+
+        result = self.run_command(["user", "list-api-keys", "--email", "test-user-1@example.com"])
         api_keys = []
         if result and result.stdout:
             try:
@@ -600,6 +614,46 @@ class CLITester:
         # But we can test that the command exists and parses arguments
         print("   ⚠️  Skipping 'system reset --confirm' to preserve test data")
 
+    def test_settings_commands(self):
+        """Test settings management commands (8+ commands)"""
+        print("\n" + "="*60)
+        print("⚙️  TESTING SETTINGS COMMANDS (8+ commands)")
+        print("="*60)
+
+        # Test set-enkrypt-api-key command
+        print("\n   🔑 Testing Enkrypt API Key Configuration...")
+        self.run_command(["config", "set-enkrypt-api-key", "--api-key", "test-enkrypt-api-key-12345"])
+        self.run_command(["config", "set-enkrypt-api-key", "--api-key", "updated-enkrypt-api-key-67890"])
+
+        # Test get-enkrypt-api-key command
+        print("\n   🔑 Testing Get Enkrypt API Key...")
+        self.run_command(["config", "get-enkrypt-api-key"])
+
+        # Test configure-telemetry command with various options
+        print("\n   📊 Testing Telemetry Configuration...")
+
+        # Enable telemetry
+        self.run_command(["config", "configure-telemetry", "--enabled", "true"])
+
+        # Configure URL
+        self.run_command(["config", "configure-telemetry", "--url", "http://localhost:4317"])
+
+        # Configure insecure mode
+        self.run_command(["config", "configure-telemetry", "--insecure", "true"])
+
+        # Configure multiple options at once
+        self.run_command(["config", "configure-telemetry", "--enabled", "true", "--url", "http://otel-collector:4317", "--insecure", "false"])
+
+        # Disable telemetry
+        self.run_command(["config", "configure-telemetry", "--enabled", "false"])
+
+        # Test help for new commands
+        print("\n   📚 Testing Settings Command Help...")
+        self.run_command(["config", "set-enkrypt-api-key", "--help"])
+        self.run_command(["config", "get-enkrypt-api-key", "--help"])
+        self.run_command(["config", "configure-telemetry", "--help"])
+        self.run_command(["user", "get-api-key", "--help"])
+
     def test_error_scenarios(self):
         """Test error scenarios and edge cases (25+ commands)"""
         print("\n" + "="*60)
@@ -653,6 +707,15 @@ class CLITester:
         # Test invalid API key operations (2 commands)
         self.run_command(["user", "rotate-api-key", "--api-key", "invalid-key-format"], expected_to_fail=True)
         self.run_command(["user", "delete-api-key", "--api-key", "invalid-key-format"], expected_to_fail=True)
+
+        # Test settings command errors (4 commands)
+        print("\n   ⚙️ Testing Settings Command Error Scenarios...")
+
+        # Test set-enkrypt-api-key without required argument
+        self.run_command(["config", "set-enkrypt-api-key"], expected_to_fail=True)
+
+        # Test configure-telemetry without any options (should fail - at least one required)
+        self.run_command(["config", "configure-telemetry"], expected_to_fail=True)
 
         # Test file operations with non-existent files (2 commands)
         self.run_command(["config", "import", "--input-file", "non-existent-file.json", "--config-name", "test"], expected_to_fail=True)
@@ -872,7 +935,8 @@ class CLITester:
             self.test_project_commands()       # ~20+ commands
             self.test_user_commands()          # ~30+ commands
             self.test_system_commands()        # ~5+ commands
-            self.test_error_scenarios()        # ~25+ error cases (including guardrails errors)
+            self.test_settings_commands()      # ~8+ commands (enkrypt API key, telemetry)
+            self.test_error_scenarios()        # ~27+ error cases (including guardrails and settings errors)
             self.test_complex_workflows()      # ~31+ workflow tests (including guardrails workflow)
             self.test_help_commands()          # ~13+ help commands (including guardrails help)
             self.test_cleanup_commands()       # ~36+ cleanup commands

@@ -1051,7 +1051,7 @@ class GatewayToolsTester:
         """Test 11.1: Gateway operates correctly with telemetry disabled
 
         When telemetry is disabled, the gateway logs should show:
-        - INFO [opentelemetry] Initializing OpenTelemetry provider v2.1.5...
+        - INFO [opentelemetry] Initializing OpenTelemetry provider v2.1.6...
         - INFO [opentelemetry] OpenTelemetry disabled - using no-op components
         - INFO [opentelemetry] [OK] Initialized OpenTelemetry provider
 

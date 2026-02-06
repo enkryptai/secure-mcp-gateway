@@ -63,6 +63,9 @@ from secure_mcp_gateway.cli import (
     unassign_config_from_project,
     update_user,
 )
+from secure_mcp_gateway.cli import (
+    get_api_key as get_api_key_details,
+)
 
 # Create router for additional routes
 router = APIRouter()
@@ -548,6 +551,24 @@ async def get_all_api_keys(api_key: str = Depends(get_api_key)):
         return SuccessResponse(
             message="All API keys retrieved successfully", data=all_keys
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/v1/api-keys/{api_key_param}", response_model=SuccessResponse)
+async def get_api_key_endpoint(api_key_param: str, api_key: str = Depends(get_api_key)):
+    """Get details for a specific API key."""
+    try:
+        f = io.StringIO()
+        with redirect_stdout(f):
+            get_api_key_details(PICKED_CONFIG_PATH, api_key_param)
+
+        key_details = json.loads(f.getvalue())
+        return SuccessResponse(
+            message="API key details retrieved successfully", data=key_details
+        )
+    except SystemExit:
+        raise HTTPException(status_code=404, detail="API key not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

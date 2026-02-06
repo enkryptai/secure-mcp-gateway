@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "hooks\\cursor\\venv\\Scripts\\python.exe hooks\\cursor\\hooks\\before_submit_prompt.py"
+      }
+    ],
+    "beforeMCPExecution": [
+      {
+        "command": "hooks\\cursor\\venv\\Scripts\\python.exe hooks\\cursor\\hooks\\before_mcp_execution.py"
+      }
+    ],
+    "afterMCPExecution": [
+      {
+        "command": "hooks\\cursor\\venv\\Scripts\\python.exe hooks\\cursor\\hooks\\after_mcp_execution.py"
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "hooks\\cursor\\venv\\Scripts\\python.exe hooks\\cursor\\hooks\\after_agent_response.py"
+      }
+    ],
+    "stop": [
+      {
+        "command": "hooks\\cursor\\venv\\Scripts\\python.exe hooks\\cursor\\hooks\\stop.py"
+      }
+    ]
+  }
+}

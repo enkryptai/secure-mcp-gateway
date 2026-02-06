@@ -1,4 +1,8 @@
-"""Package dependencies."""
+"""Package dependencies.
+
+NOTE: This file must be kept in sync with requirements.txt in the project root.
+When adding or updating dependencies, update both files.
+"""
 
 __dependencies__ = [
     # Core dependencies
@@ -20,8 +24,8 @@ __dependencies__ = [
     # Security and encryption
     "cryptography~=45.0.7",
     "pyjwt~=2.10.1",
-    # Async support
-    "asyncio~=4.0.0",
+    # Retry logic
+    "tenacity~=8.2.0",
     # MCP
     "mcp[cli]~=1.13.1",
     # OpenTelemetry

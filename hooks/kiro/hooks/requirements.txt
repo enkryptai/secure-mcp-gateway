@@ -1,0 +1,5 @@
+# Enkrypt AI Guardrails for Kiro Hooks
+# Python 3.8+ required
+
+requests>=2.28.0
+urllib3>=1.26.0

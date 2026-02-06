@@ -1,0 +1,78 @@
+{
+  "enkrypt_api": {
+    "url": "https://api.enkryptai.com/guardrails/policy/detect",
+    "api_key": "YOUR_ENKRYPT_API_KEY",
+    "ssl_verify": true,
+    "timeout": 15000,
+    "fail_silently": true
+  },
+  "transformParams": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack",
+      "pii",
+      "toxicity",
+      "nsfw",
+      "keyword_detector"
+    ]
+  },
+  "wrapGenerate": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "pii",
+      "toxicity",
+      "nsfw"
+    ]
+  },
+  "wrapStream": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "pii",
+      "toxicity",
+      "nsfw"
+    ]
+  },
+  "prepareStep": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack",
+      "pii"
+    ]
+  },
+  "onStepFinish": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "pii",
+      "toxicity"
+    ]
+  },
+  "onToolCall": {
+    "enabled": true,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack",
+      "pii"
+    ]
+  },
+  "sensitive_tools": [
+    "execute_sql",
+    "run_command",
+    "shell_*",
+    "bash",
+    "delete_*",
+    "remove_*",
+    "drop_*",
+    "write_file",
+    "create_file",
+    "modify_file",
+    "send_email",
+    "http_request",
+    "python_repl",
+    "terminal"
+  ]
+}

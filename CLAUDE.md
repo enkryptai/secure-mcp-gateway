@@ -1272,12 +1272,11 @@ docker-compose up -d
 ### **Add a New Server to Config**
 
 ```bash
-secure-mcp-gateway config add-server <config_id> \
+secure-mcp-gateway config add-server --config-name "<config_name>" \
   --server-name "github" \
-  --command "npx" \
-  --args "-y" "@modelcontextprotocol/server-github" \
+  --server-command "npx" \
+  --args="-y,@modelcontextprotocol/server-github" \
   --description "GitHub MCP Server"
-
 ```
 
 ### **Enable Guardrails for a Server**
