@@ -43,6 +43,20 @@ if is_docker_running:
             "ERROR: Please set them when running the Docker container:\n  docker run -e HOST_OS=<your_os> -e HOST_ENKRYPT_HOME=<path_to_enkrypt_home> ..."
         )
         sys.exit(1)
+    # Reject tilde paths - '~' is not reliably expanded inside Docker containers.
+    # os.path.expanduser() would resolve to the container's home (e.g. /root),
+    # not the host's home (e.g. /Users/keirand), producing incorrect paths
+    # in generated MCP client configs.
+    if HOST_ENKRYPT_HOME.startswith("~"):
+        print("ERROR: HOST_ENKRYPT_HOME contains '~' which cannot be resolved correctly inside Docker.")
+        print("ERROR: The '~' would expand to the container's home directory, not your host home.")
+        print("ERROR: Please use an absolute path instead:")
+        print("  macOS:   -e HOST_ENKRYPT_HOME=/Users/<username>/.enkrypt")
+        print("  Linux:   -e HOST_ENKRYPT_HOME=/home/<username>/.enkrypt")
+        print("  Windows: -e HOST_ENKRYPT_HOME=C:\\Users\\<username>\\.enkrypt")
+        print(f"\nHint: On macOS/Linux, use $HOME instead of ~:")
+        print(f"  -e HOST_ENKRYPT_HOME=$HOME/.enkrypt")
+        sys.exit(1)
     print(f"INFO: HOST_OS: {HOST_OS}")
     print(f"INFO: HOST_ENKRYPT_HOME: {HOST_ENKRYPT_HOME}")
 else:
