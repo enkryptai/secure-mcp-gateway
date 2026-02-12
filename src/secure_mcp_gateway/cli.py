@@ -17,7 +17,6 @@ BASE_DIR = files("secure_mcp_gateway")
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from secure_mcp_gateway.consts import HOST_DOCKER_CONFIG_PATH
 from secure_mcp_gateway.utils import (
     CONFIG_PATH,
     DOCKER_CONFIG_PATH,
@@ -26,12 +25,20 @@ from secure_mcp_gateway.utils import (
 )
 from secure_mcp_gateway.version import __version__
 
-print(f"INFO: Initializing Enkrypt Secure MCP Gateway CLI Module v{__version__}")
+is_docker_running = is_docker()
+
+# When --docker is passed on the host, we will delegate the entire command to
+# a Docker container.  Skip the noisy module-level initialisation so the user
+# only sees output from inside the container.
+_delegating_to_docker = "--docker" in sys.argv[1:] and not is_docker_running
+
+if not _delegating_to_docker:
+    print(f"INFO: Initializing Enkrypt Secure MCP Gateway CLI Module v{__version__}")
 
 HOME_DIR = os.path.expanduser("~")
-print(f"INFO: HOME_DIR: {HOME_DIR}")
+if not _delegating_to_docker:
+    print(f"INFO: HOME_DIR: {HOME_DIR}")
 
-is_docker_running = is_docker()
 # print(f"INFO: is_docker_running: {is_docker_running}")
 
 if is_docker_running:
@@ -66,10 +73,11 @@ else:
 GATEWAY_PY_PATH = os.path.join(BASE_DIR, "gateway.py")
 ECHO_SERVER_PATH = os.path.join(BASE_DIR, "bad_mcps", "echo_oauth_mcp.py")
 PICKED_CONFIG_PATH = DOCKER_CONFIG_PATH if is_docker_running else CONFIG_PATH
-print(f"INFO: GATEWAY_PY_PATH:  {GATEWAY_PY_PATH}")
-print(f"INFO: ECHO_SERVER_PATH:  {ECHO_SERVER_PATH}")
-print(f"INFO: PICKED_CONFIG_PATH:  {PICKED_CONFIG_PATH}")
-print("--------------------------------\n\nOUTPUT:\n\n", file=sys.stderr)
+if not _delegating_to_docker:
+    print(f"INFO: GATEWAY_PY_PATH:  {GATEWAY_PY_PATH}")
+    print(f"INFO: ECHO_SERVER_PATH:  {ECHO_SERVER_PATH}")
+    print(f"INFO: PICKED_CONFIG_PATH:  {PICKED_CONFIG_PATH}")
+    print("--------------------------------\n\nOUTPUT:\n\n", file=sys.stderr)
 
 DOCKER_COMMAND = "docker"
 DOCKER_ARGS = [
@@ -2590,6 +2598,90 @@ def stop_api_server(port=8001, force=False):
 
 
 # =============================================================================
+# DOCKER WRAPPER
+# =============================================================================
+
+
+def run_via_docker(args, original_argv):
+    """Wrap the CLI command in a docker run invocation.
+
+    When --docker is passed (and we are NOT inside a container), this function
+    builds the equivalent ``docker run`` command, executes it via subprocess,
+    and exits with its return code.  The user never has to remember the long
+    ``docker run`` incantation manually.
+    """
+    import platform
+
+    # Check Docker is available
+    try:
+        subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            check=True,
+        )
+    except FileNotFoundError:
+        print("ERROR: Docker is not installed.")
+        print("ERROR: Install Docker: https://docs.docker.com/get-docker/")
+        sys.exit(1)
+    except subprocess.CalledProcessError:
+        print("ERROR: Docker is not running. Please start Docker Desktop or the Docker daemon.")
+        sys.exit(1)
+
+    # Auto-detect host values
+    host_os = platform.system().lower()
+    if host_os == "darwin":
+        host_os = "macos"
+
+    home = os.path.expanduser("~")
+    host_enkrypt_home = os.path.join(home, ".enkrypt")
+    docker_volume_src = os.path.join(host_enkrypt_home, "docker")
+
+    # Ensure volume source directory exists so Docker doesn't create it as root
+    os.makedirs(docker_volume_src, exist_ok=True)
+
+    image = args.docker_image or "enkryptai/secure-mcp-gateway"
+
+    # Strip --docker and --docker-image from original args so the command
+    # inside the container receives only the actual CLI arguments.
+    pass_through = []
+    skip_next = False
+    for arg in original_argv[1:]:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--docker":
+            continue
+        if arg == "--docker-image":
+            skip_next = True
+            continue
+        if arg.startswith("--docker-image="):
+            continue
+        pass_through.append(arg)
+
+    docker_cmd = [
+        "docker",
+        "run",
+        "--rm",
+        "-i",
+        "-e",
+        f"HOST_OS={host_os}",
+        "-e",
+        f"HOST_ENKRYPT_HOME={host_enkrypt_home}",
+        "-v",
+        f"{docker_volume_src}:/app/.enkrypt/docker",
+        "--entrypoint",
+        "secure-mcp-gateway",
+        image,
+    ] + pass_through
+
+    print(f"INFO: Running inside Docker ({image})...")
+    print(f"INFO: > {' '.join(docker_cmd)}")
+
+    result = subprocess.run(docker_cmd)
+    sys.exit(result.returncode)
+
+
+# =============================================================================
 # MAIN FUNCTION
 # =============================================================================
 
@@ -2602,7 +2694,15 @@ def main():
         "--docker",
         action="store_true",
         default=False,
-        help="Use Docker config path (~/.enkrypt/docker/) instead of default (~/.enkrypt/)",
+        help="Run this command inside the Docker container instead of locally. "
+        "Automatically sets HOST_OS, HOST_ENKRYPT_HOME, and volume mounts. "
+        "Use --docker-image to specify a custom image.",
+    )
+    parser.add_argument(
+        "--docker-image",
+        type=str,
+        default=None,
+        help="Docker image to use with --docker (default: enkryptai/secure-mcp-gateway)",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -3189,14 +3289,14 @@ def main():
     # =========================================================================
     args = parser.parse_args()
 
-    # Compute effective config path based on --docker flag
+    # --docker: delegate the entire command to a Docker container
     if args.docker:
         if is_docker_running:
             print("WARNING: --docker flag ignored when running inside Docker container")
             config_path = PICKED_CONFIG_PATH
         else:
-            config_path = HOST_DOCKER_CONFIG_PATH
-            print(f"INFO: Using Docker config path: {config_path}")
+            run_via_docker(args, sys.argv)
+            # run_via_docker calls sys.exit(); execution never reaches here
     else:
         config_path = PICKED_CONFIG_PATH
 
