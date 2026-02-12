@@ -2,6 +2,25 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [2.1.7] - 2026-02-10
+
+### Updates in v2.1.7
+
+#### CLI Enhancements
+
+- Added `--docker` flag to auto-wrap any CLI command in a `docker run` invocation (no more verbose Docker commands)
+- Added `--docker-image` flag to specify a custom Docker image when using `--docker`
+- Added `install --client claude-code` support for direct Claude Code integration via `claude mcp add`
+- Fixed Windows `.cmd` executable resolution using `shutil.which()` for Claude Code install
+- Suppressed duplicate initialization output when delegating to Docker with `--docker`
+
+#### Documentation
+
+- Revamped CLI Quick Start Guide (Section 8) with narrative walkthrough and three guided paths (A/B/C)
+- Added Steps for setting Enkrypt API key and configuring telemetry
+- Added telemetry stack startup instructions (`docker compose up` from `infra/`)
+- Fixed bash line-continuation backslashes and markdown rendering issues across README
+
 ## [2.1.6] - 2025-12-23
 
 ### Updates in v2.1.6
