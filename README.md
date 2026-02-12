@@ -28,62 +28,26 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 ## Table of Contents
 
 - [1. Features 🚀](#1-features)
-  <!-- - [1.1 Guardrails 🔒 🚧](#11-guardrails)
-
-  - [1.2 Concepts 💡](#12-concepts) -->
-
 - [2. High level steps of how the MCP Gateway works 🪜](#2-high-level-steps-of-how-the-mcp-gateway-works)
-
 - [3. Prerequisites 🧩](#3-prerequisites)
-
 - [4. Gateway Setup 👨‍💻](#4-gateway-setup)
-  <!-- - [4.1 Local Installation with pip 📦](#41-local-installation-with-pip)
-
-  - [4.2 Local Installation with git clone 🗂️](#42-local-installation-with-git-clone)
-   - [4.2.1 Clone the repo, setup virtual environment and install dependencies 📥](#421-clone-the-repo-setup-virtual-environment-and-install-dependencies)
-   - [4.2.2 Run the setup script 📥](#422-run-the-setup-script)
-   - [4.2.3 Setup Other MCP Clients 🤖](#423-setup-other-mcp-clients)
-  - [4.3 Docker Installation 🐳](#43-docker-installation)
-  - [4.4 Remote Installation 🌐](#44-remote-installation) -->
-
 - [5. (Optional) OpenTelemetry Setup 📊](#5-optional-opentelemetry-setup)
-
 - [6. Verify Installation and check the files generated ✅](#6-verify-installation-and-check-the-files-generated)
-  <!-- - [6.1 Verify Claude Desktop 🔍](#61-verify-claude-desktop)
-
-  - [6.2 Example MCP config file generated 📄](#62-example-mcp-config-file-generated)
-  - [6.3 Restart Claude Desktop to run the Gateway 🔄](#63-restart-claude-desktop-to-run-the-gateway)
-  - [6.4 Example prompts 💬](#64-example-prompts)
-  - [6.5 Example config file generated ⚙️](#65-example-config-file-generated)
-  - [6.6 Verify Cursor 🔍](#66-verify-cursor) -->
-
 - [7. Edit the Gateway config as needed ✏️](#7-edit-the-gateway-config-as-needed)
-
-- [8. (Optional) Add GitHub MCP Server to the Gateway 🤖](#8-optional-add-github-mcp-server-to-the-gateway)
-
-- [8.1 (Optional) Connect to MCP Servers with OAuth 🔐](#81-optional-connect-to-mcp-servers-with-oauth)
-
-- [9. (Optional) Protect GitHub MCP Server and Test Echo Server 🔒](#9-optional-protect-github-mcp-server-and-test-echo-server)
-
-- [10. Recommendations for using Guardrails 💡](#10-recommendations-for-using-guardrails)
-
-- [11. Other tools available 🔧](#11-other-tools-available)
-
-- [12. Deployment Patterns 🪂](#12-deployment-patterns)
-
-- [13. Uninstall the Gateway 🗑️](#13-uninstall-the-gateway)
-
-- [14. Troubleshooting 🕵](#14-troubleshooting)
-
-- [15. Known Issues being worked on 🏗️](#15-known-issues-being-worked-on)
-
-- [16. Known Limitations ⚠️](#16-known-limitations)
-
-- [17. Contribute 🤝](#17-contribute)
-
-- [18. Testing 🧪](#18-testing)
-
-- [19. License](#19-license)
+- [8. CLI Quick Start Guide 🖥️](#8-cli-quick-start-guide)
+- [9. (Optional) Add GitHub MCP Server to the Gateway 🤖](#9-optional-add-github-mcp-server-to-the-gateway)
+- [9.1 (Optional) Connect to MCP Servers with OAuth 🔐](#91-optional-connect-to-mcp-servers-with-oauth)
+- [10. (Optional) Protect GitHub MCP Server and Test Echo Server 🔒](#10-optional-protect-github-mcp-server-and-test-echo-server)
+- [11. Recommendations for using Guardrails 💡](#11-recommendations-for-using-guardrails)
+- [12. Other tools available 🔧](#12-other-tools-available)
+- [13. Deployment Patterns 🪂](#13-deployment-patterns)
+- [14. Uninstall the Gateway 🗑️](#14-uninstall-the-gateway)
+- [15. Troubleshooting 🕵](#15-troubleshooting)
+- [16. Known Issues being worked on 🏗️](#16-known-issues-being-worked-on)
+- [17. Known Limitations ⚠️](#17-known-limitations)
+- [18. Contribute 🤝](#18-contribute)
+- [19. Testing 🧪](#19-testing)
+- [20. License](#20-license)
 
 ## 1. Features
 
@@ -749,6 +713,59 @@ Please restart Claude Desktop to use the gateway.
 
 </details>
 
+#### 4.1.7 Install the Gateway for Claude Code
+
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code) is Anthropic's CLI-based coding agent. It uses `claude mcp add` commands to configure MCP servers. Unlike Claude Desktop and Cursor which use JSON config files, Claude Code manages MCP servers through its own CLI.
+
+> **Prerequisite:** The `claude` CLI must be installed on your system. See [Claude Code docs](https://docs.anthropic.com/en/docs/claude-code) for installation.
+
+**Step 1: Install the gateway**
+
+```bash
+secure-mcp-gateway install --client claude-code
+```
+
+This automatically:
+- Reads your gateway key, project ID, and user ID from the generated config
+- Runs `claude mcp add` with the correct credentials and gateway path
+- Registers the server with `--scope user` (available across all Claude Code projects)
+
+**Step 2: Verify the server was added**
+
+```bash
+claude mcp list
+```
+
+You should see `Enkrypt-Secure-MCP-Gateway` in the list.
+
+**Step 3: Use the gateway in Claude Code**
+
+Launch Claude Code and try:
+
+```
+list all servers, get all tools available
+```
+
+<details>
+<summary><strong>Manual alternative (if you prefer to run claude mcp add directly)</strong></summary>
+<br>
+
+Get your credentials from the generated `enkrypt_mcp_config.json` and the gateway path:
+
+```bash
+python -c "import secure_mcp_gateway.gateway; print(secure_mcp_gateway.gateway.__file__)"
+```
+
+Then add the gateway manually:
+
+```bash
+claude mcp add --transport stdio --env ENKRYPT_GATEWAY_KEY=YOUR_GATEWAY_KEY --env ENKRYPT_PROJECT_ID=YOUR_PROJECT_ID --env ENKRYPT_USER_ID=YOUR_USER_ID --scope user Enkrypt-Secure-MCP-Gateway -- mcp run /path/to/secure_mcp_gateway/gateway.py
+```
+
+> **Note:** The server name must use hyphens or underscores — Claude Code does not allow spaces in names.
+
+</details>
+
 </details>
 
 ### 4.2 Local Installation with git clone
@@ -986,11 +1003,36 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 
   ![cursor-mcp-file](./docs/images/cursor-mcp-file.png)
 
-- Once the file is opened at Global or Project level, you can copy paste the same config we used in `Claude Desktop`. For reference, you can refer to [Installation - 5.2 Example MCP config file generated 📄](#52-example-mcp-config-file-generated)
+- Once the file is opened at Global or Project level, you can copy paste the same config we used in `Claude Desktop`. For reference, you can refer to [Installation - 6.2 Example MCP config file generated 📄](#62-example-mcp-config-file-generated)
 
   - *Be sure to use your own file that was generated by the `setup` script in [Installation - 4.2.2 Run the setup script 📥](#422-run-the-setup-script). Please do not copy paste the example config file in this repo.*
 
-- See [Verify Cursor](#56-verify-cursor) section to verify the MCP server is running in Cursor
+- See [Verify Cursor](#66-verify-cursor) section to verify the MCP server is running in Cursor
+
+</details>
+<details>
+<summary><strong>⬡ Claude Code </strong></summary>
+<br>
+
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) uses its own CLI to manage MCP servers instead of JSON config files
+
+- Get your credentials from the generated `enkrypt_mcp_config.json` (gateway key, project ID, user ID)
+
+- Find the gateway.py path:
+
+  ```bash
+  python -c "import secure_mcp_gateway.gateway; print(secure_mcp_gateway.gateway.__file__)"
+  ```
+
+- Add the gateway to Claude Code:
+
+  ```bash
+  claude mcp add --transport stdio --env ENKRYPT_GATEWAY_KEY=YOUR_GATEWAY_KEY --env ENKRYPT_PROJECT_ID=YOUR_PROJECT_ID --env ENKRYPT_USER_ID=YOUR_USER_ID --scope user Enkrypt-Secure-MCP-Gateway -- mcp run /path/to/secure_mcp_gateway/gateway.py
+  ```
+
+- Verify: `claude mcp list`
+
+- For detailed setup, see [4.1.7 Install the Gateway for Claude Code](#417-install-the-gateway-for-claude-code)
 
 </details>
 </details>
@@ -1053,6 +1095,14 @@ docker build -t secure-mcp-gateway .
 
 - This creates a config file in the `~/.enkrypt/docker/enkrypt_mcp_config.json` file on macOS/Linux and `%USERPROFILE%\.enkrypt\docker\enkrypt_mcp_config.json` file on Windows.
 
+> **Quick shorthand** — If you have the CLI installed locally via pip, you can use the `--docker` flag on any command and skip the verbose Docker syntax:
+> ```bash
+> secure-mcp-gateway --docker generate-config
+> ```
+
+<details>
+<summary><strong>Verbose Docker run commands (if CLI is not installed locally)</strong></summary>
+
 ```bash
 
 # On 🍎 Linux/macOS run the below
@@ -1065,6 +1115,8 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -
 docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt" -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
 
 ```
+
+</details>
 
 <details>
 <summary><strong>🐳 Example Docker config file</strong></summary>
@@ -1239,20 +1291,99 @@ docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.en
 
 ```
 
-#### 4.3.6 Running Gateway with Docker Run (Advanced)
+#### 4.3.6 Install the Gateway in Claude Code
+
+Claude Code uses its own CLI (`claude mcp add`) to manage MCP servers. When running the gateway in Docker, Claude Code connects via `npx mcp-remote` to the gateway's Streamable HTTP endpoint.
+
+> **Prerequisites:** Node.js and npm must be installed on your machine (`node -v` and `npm -v` to verify).
+
+**Step 1: Run the gateway container**
+
+Start the gateway as a background Docker container with the Streamable HTTP endpoint exposed:
+
+```bash
+# On 🍎 Linux/macOS
+docker run -d --name enkrypt-gateway -p 8000:8000 -v ~/.enkrypt/docker:/app/.enkrypt/docker secure-mcp-gateway
+
+# On 🪟 Windows (PowerShell)
+docker run -d --name enkrypt-gateway -p 8000:8000 -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" secure-mcp-gateway
+```
+
+**Step 2: Add the gateway to Claude Code**
+
+```bash
+claude mcp add --transport http --header "apikey:YOUR_GATEWAY_KEY" --header "project_id:YOUR_PROJECT_ID" --header "user_id:YOUR_USER_ID" --scope user Enkrypt-Secure-MCP-Gateway http://localhost:8000/mcp/
+```
+
+Replace `YOUR_GATEWAY_KEY`, `YOUR_PROJECT_ID`, and `YOUR_USER_ID` with the values from your `enkrypt_mcp_config.json`.
+
+<details>
+<summary><strong>Alternative: stdio mode via Docker</strong></summary>
+<br>
+
+If you prefer stdio mode (no persistent container), you can add Claude Code's MCP config using JSON directly. Create or edit `~/.claude.json` and add the server under `mcpServers`:
+
+```json
+{
+  "mcpServers": {
+    "Enkrypt Secure MCP Gateway": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-e",
+        "MCP_TRANSPORT=stdio",
+        "-v",
+        "/Users/<user>/.enkrypt/docker:/app/.enkrypt/docker",
+        "secure-mcp-gateway"
+      ],
+      "env": {
+        "ENKRYPT_GATEWAY_KEY": "YOUR_GATEWAY_KEY",
+        "ENKRYPT_PROJECT_ID": "YOUR_PROJECT_ID",
+        "ENKRYPT_USER_ID": "YOUR_USER_ID"
+      }
+    }
+  }
+}
+```
+
+Or use the Claude Code CLI:
+
+```bash
+claude mcp add-json Enkrypt-Secure-MCP-Gateway '{
+  "type": "stdio",
+  "command": "docker",
+  "args": ["run", "--rm", "-i", "-e", "MCP_TRANSPORT=stdio", "-v", "/Users/<user>/.enkrypt/docker:/app/.enkrypt/docker", "secure-mcp-gateway"],
+  "env": {
+    "ENKRYPT_GATEWAY_KEY": "YOUR_GATEWAY_KEY",
+    "ENKRYPT_PROJECT_ID": "YOUR_PROJECT_ID",
+    "ENKRYPT_USER_ID": "YOUR_USER_ID"
+  }
+}'
+```
+
+> **Note on Windows (PowerShell):** Replace `/Users/<user>/.enkrypt/docker` with your Windows path (e.g., `C:\Users\<user>\.enkrypt\docker`) and adjust the volume mount syntax accordingly.
+
+</details>
+
+**Step 3: Verify**
+
+```bash
+claude mcp list
+```
+
+**Step 4: Use in Claude Code**
+
+Launch Claude Code and try prompts like `list all servers, get all tools available`.
+
+#### 4.3.7 Running Gateway with Docker Run (Advanced)
 
 For advanced Docker deployments, you can run the gateway container directly with custom configurations:
 
 ```bash
 # Basic Docker run command
-docker run -d \
-  --name enkrypt-gateway \
-  -p 8000:8000 \
-  -v ~/.enkrypt/docker:/app/.enkrypt/docker \
-  -e ENKRYPT_GATEWAY_KEY="your-gateway-key" \
-  -e ENKRYPT_PROJECT_ID="your-project-id" \
-  -e ENKRYPT_USER_ID="your-user-id" \
-  secure-mcp-gateway:latest
+docker run -d --name enkrypt-gateway -p 8000:8000 -v ~/.enkrypt/docker:/app/.enkrypt/docker -e ENKRYPT_GATEWAY_KEY="your-gateway-key" -e ENKRYPT_PROJECT_ID="your-project-id" -e ENKRYPT_USER_ID="your-user-id" secure-mcp-gateway:latest
 ```
 
 **Windows PowerShell:**
@@ -1292,11 +1423,7 @@ The `MCP_TRANSPORT` environment variable controls the transport mode for the gat
 **Example for stdio mode (Claude Desktop, Cursor):**
 
 ```bash
-docker run --rm -i \
-  -e MCP_TRANSPORT=stdio \
-  -v ~/.enkrypt/docker:/app/.enkrypt/docker \
-  -e ENKRYPT_GATEWAY_KEY="your-gateway-key" \
-  secure-mcp-gateway
+docker run --rm -i -e MCP_TRANSPORT=stdio -v ~/.enkrypt/docker:/app/.enkrypt/docker -e ENKRYPT_GATEWAY_KEY="your-gateway-key" secure-mcp-gateway
 ```
 
 ##### SKIP_DEPENDENCY_INSTALL
@@ -1325,16 +1452,7 @@ The `SKIP_DEPENDENCY_INSTALL` environment variable controls whether the gateway 
 ```bash
 # Connect to observability stack network
 # Note: SKIP_DEPENDENCY_INSTALL defaults to true in Docker, so it's optional
-docker run -d \
-  --name enkrypt-gateway \
-  --network secure-mcp-gateway-infra_default \
-  -p 8000:8000 \
-  -p 8080:8080 \
-  -v ~/.enkrypt/docker:/app/.enkrypt/docker \
-  -e ENKRYPT_GATEWAY_KEY="your-gateway-key" \
-  -e ENKRYPT_PROJECT_ID="your-project-id" \
-  -e ENKRYPT_USER_ID="your-user-id" \
-  secure-mcp-gateway:latest
+docker run -d --name enkrypt-gateway --network secure-mcp-gateway-infra_default -p 8000:8000 -p 8080:8080 -v ~/.enkrypt/docker:/app/.enkrypt/docker -e ENKRYPT_GATEWAY_KEY="your-gateway-key" -e ENKRYPT_PROJECT_ID="your-project-id" -e ENKRYPT_USER_ID="your-user-id" secure-mcp-gateway:latest
 ```
 
 **Windows PowerShell:**
@@ -1366,7 +1484,7 @@ docker run -d `
 - `~/.enkrypt/docker:/app/.enkrypt/docker` - Config file location (required)
 - Additional mounts may be needed if your MCP servers require access to local files
 
-> **⚠️ Important:** MCP clients (Claude Desktop, Cursor) spawn Docker directly without a shell, so `~` (tilde) will **not** be expanded. Always use **absolute paths** in your MCP client config JSON files (e.g. `/Users/yourname/.enkrypt/docker:/app/.enkrypt/docker` on macOS/Linux or `C:\\Users\\yourname\\.enkrypt\\docker:/app/.enkrypt/docker` on Windows).
+> **⚠️ Important:** MCP clients (Claude Desktop, Cursor, Claude Code) spawn Docker directly without a shell, so `~` (tilde) will **not** be expanded. Always use **absolute paths** in your MCP client config JSON files (e.g. `/Users/yourname/.enkrypt/docker:/app/.enkrypt/docker` on macOS/Linux or `C:\\Users\\yourname\\.enkrypt\\docker:/app/.enkrypt/docker` on Windows).
 
 #### ⚠️ Important: Configuring MCP Servers When Gateway Runs in Docker
 
@@ -1462,7 +1580,7 @@ python gateway.py
 
 #### 4.4.2 Modify your MCP Client config to use the Gateway
 
-- You can find the Claude config location at the below locations in your system. [For reference see Claude docs.](https://modelcontextprotocol.io/quickstart/user#:~:text=This%20will%20create%20a%20configuration%20file%20at%3A)
+- You can find the Claude Desktop config location at the below locations in your system. [For reference see Claude docs.](https://modelcontextprotocol.io/quickstart/user#:~:text=This%20will%20create%20a%20configuration%20file%20at%3A)
   - macOS: `~/Library/Application Support/Claude`
   - Windows: `%APPDATA%\Claude`
 
@@ -1484,6 +1602,8 @@ python gateway.py
   - To verify, run `node -v` and `npm -v`
 
 - **NOTE: Make sure to use the trailing slash `/` in the MCP URL like `/mcp/`**
+
+**For Claude Desktop and Cursor** — add the following to your `claude_desktop_config.json` or `mcp.json`:
 
 ```json
 {
@@ -1511,6 +1631,15 @@ python gateway.py
 }
 
 ```
+
+**For Claude Code** — use the `claude mcp add` command:
+
+```bash
+# Connect Claude Code to the remote gateway via HTTP transport
+claude mcp add --transport http --header "apikey:YOUR_GATEWAY_KEY" --header "project_id:YOUR_PROJECT_ID" --header "user_id:YOUR_USER_ID" --scope user Enkrypt-Secure-MCP-Gateway https://mcp.your-domain.com/mcp/
+```
+
+> **Note:** For local testing with HTTP (not HTTPS), add `--allow-http` if required, or use `http://0.0.0.0:8000/mcp/` as the URL.
 
 </details>
 
@@ -1898,6 +2027,14 @@ The observability stack includes:
 
     ![cursor-mcp-chat](./docs/images/cursor-mcp-chat.png)
 
+### 6.7 Verify Claude Code
+
+- Run `claude mcp list` to see the gateway in the list of configured MCP servers
+
+- Launch Claude Code and run `/mcp` to check server status
+
+- Try `list all servers, get all tools available and echo test` as a prompt to verify the gateway is working
+
 </details>
 
 ## 7. Edit the Gateway config as needed
@@ -1997,7 +2134,7 @@ The observability stack includes:
   - **Important**: Keep this key secure! It provides full administrative access to the gateway.
   - Used with `Authorization: Bearer <admin_apikey>` header for REST API calls.
   - Different from regular API keys used by MCP clients to connect to the gateway.
-  - See [Section 11: REST API for Administrative Operations](#11-other-tools-available) for details.
+  - See [Section 12: REST API for Administrative Operations](#12-other-tools-available) for details.
 
 - If you want a different set of MCP servers for a separate client/user, you can add a new `mcp_config` section to the config file. Also, you can run cli commands. See [CLI-Commands-Reference.md](./CLI-Commands-Reference.md) section `2. CONFIGURATION MANAGEMENT` for details
 
@@ -2112,9 +2249,480 @@ The observability stack includes:
       - This is similar to our AI Proxy deployments config. [Refer to our docs](https://docs.enkryptai.com/deployments-api-reference/endpoint/add-deployment#body-output-guardrails-policy-block)
 
 </details>
+
 </details>
 
-## 8. (Optional) Add GitHub MCP Server to the Gateway
+## 8. CLI Quick Start Guide
+
+<details>
+<summary><strong>🖥️ CLI Quick Start Guide </strong></summary>
+
+This section walks you through managing the gateway entirely via the CLI — from first setup to adding servers, managing projects, and day-to-day operations.
+
+> **Tip:** All commands below show the **local (pip)** version. For Docker, just add `--docker` to any command — see the [Docker command pattern](#docker-command-pattern) at the bottom of this section.
+>
+> For the complete CLI reference, see [CLI-Commands-Reference.md](./CLI-Commands-Reference.md).
+
+---
+
+### Step 1: Generate your config
+
+If you haven't already, generate the default config file. This creates everything you need to get started — a config with a sample echo server, a default project, user, and API key.
+
+```bash
+secure-mcp-gateway generate-config
+
+# To overwrite an existing config and start fresh
+secure-mcp-gateway generate-config --overwrite
+```
+
+**What this creates:**
+
+| Item | Details |
+|---|---|
+| Config file | `~/.enkrypt/enkrypt_mcp_config.json` (macOS/Linux) or `%USERPROFILE%\.enkrypt\enkrypt_mcp_config.json` (Windows) |
+| Default config | `default_config` with one `echo_server` |
+| Default project | `default_project` linked to that config |
+| Default user | `default@example.com` |
+| Gateway API key | Auto-generated key for authentication |
+
+Now that your config is ready, the next step is to tell your MCP client (Claude Desktop, Cursor, or Claude Code) about the gateway. This is a one-time setup — the install command writes the connection details into your client's config so it knows how to talk to the gateway.
+
+---
+
+### Step 2: Install the gateway for your MCP client
+
+Pick the client you use and run the matching command:
+
+```bash
+# For Claude Desktop
+secure-mcp-gateway install --client claude-desktop
+
+# For Cursor
+secure-mcp-gateway install --client cursor
+
+# For Claude Code (requires the `claude` CLI — see https://docs.anthropic.com/en/docs/claude-code)
+secure-mcp-gateway install --client claude-code
+```
+
+What this does behind the scenes: the install command reads the gateway key, project ID, and user ID from your generated config and writes them into your MCP client's config file.
+
+For **Cursor** and **Claude Desktop**, you'll see output like:
+
+```
+INFO:  Updated 'Enkrypt Secure MCP Gateway' in C:\Users\<user>\.cursor\mcp.json
+INFO: Successfully configured Cursor.
+```
+
+And your client's config file (e.g. `~/.cursor/mcp.json` or `~/Library/Application Support/Claude/claude_desktop_config.json`) will now contain:
+
+```json
+{
+  "mcpServers": {
+    "Enkrypt Secure MCP Gateway": {
+      "command": "mcp",
+      "args": [
+        "run",
+        "<path-to-your-install>/secure_mcp_gateway/gateway.py"
+      ],
+      "env": {
+        "ENKRYPT_GATEWAY_KEY": "<your-auto-generated-gateway-key>",
+        "ENKRYPT_PROJECT_ID": "<your-project-id>",
+        "ENKRYPT_USER_ID": "<your-user-id>"
+      }
+    }
+  }
+}
+```
+
+For **Claude Code**, the install command runs `claude mcp add` behind the scenes and you'll see:
+
+```
+INFO: Successfully installed gateway for Claude Code
+INFO: Server name: Enkrypt-Secure-MCP-Gateway
+INFO: Scope: user (available across all Claude Code projects)
+INFO: Verify with: claude mcp list
+```
+
+Once the install finishes, **restart your MCP client** so it picks up the new configuration. After the restart, the gateway will appear as a connected MCP server and you're ready to go.
+
+At this point your setup looks like this:
+
+```
+default_project
+ └── default_config
+      └── echo_server  (a simple test server that echoes back your input)
+
+ default@example.com  ← default user
+ oQrnCFS43o-...rDjX   ← auto-generated gateway API key
+```
+
+You have one **project** (`default_project`) that points to one **config** (`default_config`), and that config has one **server** (`echo_server`). A default user and gateway API key were also created so everything works out of the box.
+
+---
+
+### Step 3: Check what you have
+
+You can verify this setup at any time:
+
+```bash
+# List all configs
+secure-mcp-gateway config list
+
+# List servers in a config
+secure-mcp-gateway config list-servers --config-name "default_config"
+
+# List projects linked to a config
+secure-mcp-gateway config list-projects --config-name "default_config"
+```
+
+---
+
+### What can you do from here?
+
+You have three paths depending on what you need. Pick the one that fits and follow the steps underneath it.
+
+> **Rule of thumb:** If you only add or remove servers within your current config, just restart your MCP client. If you switch to a different config or create a new project, you need to reinstall.
+
+---
+
+<details>
+<summary><strong>Path A — Add a server to your existing config (simplest, no reinstall needed)</strong></summary>
+<br>
+
+This is the most common path. You already have `default_config` — just add more servers to it.
+
+```
+  default_project
+   └── default_config
+        ├── echo_server       (already there)
+        └── github_server     ← you are adding this
+```
+
+**1. Add the server:**
+
+```bash
+secure-mcp-gateway config add-server --config-name "default_config" --server-name "github_server" --server-command "npx" --args="-y,@modelcontextprotocol/server-github" --env '{"GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_YOUR_TOKEN"}' --description "GitHub MCP Server"
+```
+
+**2. Verify it was added:**
+
+```bash
+secure-mcp-gateway config list-servers --config-name "default_config"
+```
+
+You should see:
+
+```
+Servers in config "default_config":
+  1. echo_server - Simple Echo Server
+  2. github_server - GitHub MCP Server
+```
+
+**3. Restart your MCP client** — no reinstall needed, just restart:
+
+| Client | How to Restart |
+|---|---|
+| **Cursor** | `Ctrl+Shift+P` (or `Cmd+Shift+P`) then "Developer: Reload Window" |
+| **Claude Desktop** | Quit the app completely, then reopen it |
+| **Claude Code** | Exit and relaunch with `claude` |
+
+**4. Update or remove a server later:**
+
+```bash
+# Update a server's description or settings
+secure-mcp-gateway config update-server --config-name "default_config" --server-name "github_server" --description "Updated GitHub Server"
+
+# Remove a server you no longer need
+secure-mcp-gateway config remove-server --config-name "default_config" --server-name "github_server"
+```
+
+</details>
+
+<details>
+<summary><strong>Path B — Create a new config under the existing project</strong></summary>
+<br>
+
+Useful when you want separate configs for different environments (e.g. dev vs. production) under the same project.
+
+```
+  default_project
+   ├── default_config         (original, untouched)
+   │    └── echo_server
+   └── production_config      ← new config you are creating
+        └── github_server
+```
+
+**1. Create the new config** — pick one of these two options:
+
+```bash
+# Option A: Create an empty config and add servers manually (Step 2 below)
+secure-mcp-gateway config add --config-name "production_config"
+
+# Option B: Copy an existing config (including all its servers) — skip Step 2
+secure-mcp-gateway config copy --source-config "default_config" --target-config "production_config"
+```
+
+> You cannot do both — `config copy` creates the target config for you. If you already ran `config add`, use Option A and add servers in Step 2.
+
+**2. Add servers to it** (skip this if you used Option B above):
+
+
+
+```bash
+secure-mcp-gateway config add-server --config-name "production_config" --server-name "github_server" --server-command "npx" --args="-y,@modelcontextprotocol/server-github" --env '{"GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_YOUR_TOKEN"}' --description "GitHub MCP Server"
+```
+
+**3. Point your project to the new config:**
+
+```bash
+secure-mcp-gateway project assign-config --project-name "default_project" --config-name "production_config"
+```
+
+**4. Reinstall the gateway for your MCP client** — this is required because the project now points to a different config:
+
+```bash
+secure-mcp-gateway install --client cursor
+# or: secure-mcp-gateway install --client claude-desktop
+# or: secure-mcp-gateway install --client claude-code
+```
+
+**5. Restart your MCP client** to pick up the changes.
+
+**Other config management commands:**
+
+```bash
+# Rename a config
+secure-mcp-gateway config rename --config-name "production_config" --new-name "staging_config"
+
+# Get full details of a config
+secure-mcp-gateway config get --config-name "production_config"
+
+# Delete a config you no longer need
+secure-mcp-gateway config remove --config-name "production_config"
+```
+
+</details>
+
+<details>
+<summary><strong>Path C — Create an entirely new project with its own config</strong></summary>
+<br>
+
+Creates a completely fresh project. Since a new project gets its own API key, your MCP client must be updated to use it.
+
+```
+  default_project              (original, untouched)
+   └── default_config
+        └── echo_server
+
+  my_new_project               ← new project you are creating
+   └── my_new_config           ← new config
+        └── github_server
+```
+
+**1. Create the new config:**
+
+```bash
+secure-mcp-gateway config add --config-name "my_new_config"
+```
+
+**2. Add servers to it:**
+
+```bash
+secure-mcp-gateway config add-server --config-name "my_new_config" --server-name "github_server" --server-command "npx" --args="-y,@modelcontextprotocol/server-github" --env '{"GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_YOUR_TOKEN"}' --description "GitHub MCP Server"
+```
+
+**3. Create the new project and link it to the config:**
+
+```bash
+# Create the project
+secure-mcp-gateway project create --project-name "my_new_project"
+
+# Link the config to the project
+secure-mcp-gateway project assign-config --project-name "my_new_project" --config-name "my_new_config"
+```
+
+**4. Add a user to the project** (or use the existing default user):
+
+```bash
+# Use existing user
+secure-mcp-gateway project add-user --project-name "my_new_project" --email "default@example.com"
+
+# Or create a new user first, then add them
+secure-mcp-gateway user create --email "alice@company.com"
+secure-mcp-gateway project add-user --project-name "my_new_project" --email "alice@company.com"
+```
+
+**5. Generate an API key for the user in this project:**
+
+```bash
+secure-mcp-gateway user generate-api-key --project-name "my_new_project" --email "alice@company.com"
+```
+
+**6. Reinstall the gateway for your MCP client** — this is **required** because the new project has a different API key. Without reinstalling, your client will still use the old project's key and won't see the new project's servers:
+
+```bash
+secure-mcp-gateway install --client cursor
+# or: secure-mcp-gateway install --client claude-desktop
+# or: secure-mcp-gateway install --client claude-code
+```
+
+**7. Restart your MCP client** to pick up the new configuration.
+
+</details>
+
+---
+
+### Step 4: Set your Enkrypt API key (for guardrails)
+
+If you want to use Enkrypt AI guardrails (input/output protection, PII redaction, toxicity filtering, etc.), you need to set your Enkrypt API key. You can get one from the [Enkrypt AI dashboard](https://app.enkryptai.com).
+
+```bash
+# Set the Enkrypt API key
+secure-mcp-gateway config set-enkrypt-api-key --api-key "YOUR_ENKRYPT_API_KEY"
+
+# Verify it was set
+secure-mcp-gateway config get-enkrypt-api-key
+```
+
+> Without this key, guardrails features won't work — but the gateway itself will still route tools normally.
+
+---
+
+### Step 5: Turn telemetry on or off
+
+The gateway ships with OpenTelemetry support for logging, tracing, and metrics. By default it's enabled but will silently skip if the collector endpoint isn't reachable. You can explicitly enable or disable it:
+
+```bash
+# Disable telemetry
+secure-mcp-gateway config configure-telemetry --enabled false
+
+# Enable telemetry with a custom collector URL
+secure-mcp-gateway config configure-telemetry --enabled true --url "http://localhost:4317"
+
+# Allow insecure (non-TLS) connections to the collector
+secure-mcp-gateway config configure-telemetry --insecure true
+```
+
+**Starting the telemetry stack:** The gateway sends telemetry data to an OpenTelemetry collector — it doesn't run one itself. The repo includes a ready-made stack (collector, Prometheus, Grafana, Jaeger, Loki) in the `infra/` directory:
+
+```bash
+cd infra
+docker compose up -d
+```
+
+| Service | URL |
+|---|---|
+| Grafana dashboards | http://localhost:3000 |
+| Jaeger trace viewer | http://localhost:16686 |
+| Prometheus metrics | http://localhost:9090 |
+| OTLP gRPC endpoint | http://localhost:4317 |
+
+Once the stack is running, the gateway will automatically start sending traces, logs, and metrics to the collector.
+
+---
+
+### Step 6: System operations
+
+```bash
+# Check gateway health
+secure-mcp-gateway system health-check
+
+# Backup your entire config
+secure-mcp-gateway system backup
+
+# Restore from a backup
+secure-mcp-gateway system restore --file <backup_file>
+
+# Reset to defaults (⚠️ destructive)
+secure-mcp-gateway system reset
+```
+
+---
+
+### Docker command pattern
+
+Add `--docker` to **any** CLI command to run it inside the Docker container automatically.
+The flag auto-detects your OS, sets `HOST_OS` and `HOST_ENKRYPT_HOME`, and mounts the
+`~/.enkrypt/docker` volume — no long `docker run` incantation needed.
+
+```bash
+# Quick (recommended) — works on macOS, Linux, and Windows (all shells)
+secure-mcp-gateway --docker <COMMAND_HERE>
+
+# Use a custom Docker image
+secure-mcp-gateway --docker --docker-image my-registry/secure-mcp-gateway:v2.1.2 <COMMAND_HERE>
+```
+
+**Examples:**
+
+```bash
+# List configs
+secure-mcp-gateway --docker config list
+
+# Add a server
+secure-mcp-gateway --docker config add-server --config-name "default_config" --server-name "my_server" --server-command "npx" --args="-y,@example/mcp-server" --description "My Server"
+
+# Generate config
+secure-mcp-gateway --docker generate-config
+
+# Health check
+secure-mcp-gateway --docker system health-check
+```
+
+---
+
+<details>
+<summary><strong>🔧 Troubleshooting — Server not showing up?</strong></summary>
+<br>
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  ❓ DIAGNOSTIC FLOWCHART                                         │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Server not showing up after restart?                            │
+│       │                                                          │
+│       ▼                                                          │
+│  Did you verify with "config list-servers"?                      │
+│       │                                                          │
+│       ├── NO → Run it. Is server listed?                         │
+│       │          │                                               │
+│       │          ├── NO → Wrong --config-name. Go to Step 3.     │
+│       │          │                                               │
+│       │          └── YES → Continue below ▼                      │
+│       │                                                          │
+│       └── YES, server IS in list-servers                         │
+│              │                                                   │
+│              ▼                                                   │
+│  Did you restart the MCP client?                                 │
+│       │                                                          │
+│       ├── NO → Restart it (Step 5)                               │
+│       │                                                          │
+│       └── YES, I restarted                                       │
+│              │                                                   │
+│              ▼                                                   │
+│  Check: does your ENKRYPT_PROJECT_ID in the                      │
+│  MCP client config match a project that uses                     │
+│  this config name?                                               │
+│       │                                                          │
+│       ├── NO → Your gateway key points to a                      │
+│       │        different config. Either:                          │
+│       │        a) Add server to the correct config, OR           │
+│       │        b) Change the project's config assignment          │
+│       │                                                          │
+│       └── YES → Check if the server's command is                 │
+│                 available in the gateway environment              │
+│                 (e.g., npx requires Node.js)                     │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+</details>
+
+</details>
+
+## 9. (Optional) Add GitHub MCP Server to the Gateway
 
 <details>
 <summary><strong>👨🏻‍💻 Configure GitHub </strong></summary>
@@ -2123,7 +2731,7 @@ The observability stack includes:
 >
 > If you're running the Enkrypt Gateway in Docker, **use the npx version** of the GitHub MCP server instead of the Docker version shown below. See the [npx-based configuration example](#github-server-configuration-npx-version) at the end of this section.
 >
-> For details on why, see [Section 4.3.6: Configuring MCP Servers When Gateway Runs in Docker](#️-important-configuring-mcp-servers-when-gateway-runs-in-docker).
+> For details on why, see [Section 4.3.7: Configuring MCP Servers When Gateway Runs in Docker](#-important-configuring-mcp-servers-when-gateway-runs-in-docker).
 
 - `GitHub MCP Server` can be run with `docker` or `npx`. The Docker version requires Docker to be installed and running on your machine.
 
@@ -2282,7 +2890,7 @@ If you're running the Enkrypt Gateway in Docker or prefer not to use Docker-in-D
 
 </details>
 
-## 8.1 (Optional) Connect to MCP Servers with OAuth
+## 9.1 (Optional) Connect to MCP Servers with OAuth
 
 <details>
 <summary><strong>🔐 Configure OAuth for Remote MCP Servers </strong></summary>
@@ -2669,20 +3277,20 @@ This confirms the OAuth token is being automatically acquired and injected into 
 
 </details>
 
-## 9. (Optional) Protect GitHub MCP Server and Test Echo Server
+## 10. (Optional) Protect GitHub MCP Server and Test Echo Server
 
 <details>
 <summary><strong>🎁 Protect with Enkrypt Guardrails for FREE </strong></summary>
 <br>
 <details>
-<summary><strong>8.1 🌐 Create a Guardrail in Enkrypt App </strong></summary>
+<summary><strong>10.1 🌐 Create a Guardrail in Enkrypt App </strong></summary>
 <br>
 
 - You can use a prompt to generate rules or generate a PDF file while you can then paste or upload while creating a policy in the App
 
 <br>
 <details>
-<summary><strong>8.1.1 🔍 Rules to copy </strong></summary>
+<summary><strong>10.1.1 🔍 Rules to copy </strong></summary>
 <br>
 
 ```text
@@ -2759,7 +3367,7 @@ Enforce strict context boundaries across repositories.
 </details>
 <br>
 <details>
-<summary><strong>9.1.2 💡 Prompt used to generate the rules </strong></summary>
+<summary><strong>10.1.2 💡 Prompt used to generate the rules </strong></summary>
 <br>
 
 - `Give numbered list of security rules in plain text for configuring AI guardrails for a GitHub server on the rules and policies it needs to follow to prevent malicious use of the GitHub services`
@@ -2815,7 +3423,7 @@ Enforce strict context boundaries across repositories.
 
 </details>
 <details>
-<summary><strong>9.2 🔑 Get Enkrypt API Key </strong></summary>
+<summary><strong>10.2 🔑 Get Enkrypt API Key </strong></summary>
 <br>
 
 - Now, we need get out FREE API Key from Enkrypt App. Hover over the left sidebar for it to expand and click on `Settings`
@@ -2830,7 +3438,7 @@ Enforce strict context boundaries across repositories.
 
 </details>
 <details>
-<summary><strong>9.3 🔑 Add API Key and the Guardrail to Config File </strong></summary>
+<summary><strong>10.3 🔑 Add API Key and the Guardrail to Config File </strong></summary>
 <br>
 
 - Now we have everything we need from the App. Let's add the API Key to the `enkrypt_mcp_config.json` file
@@ -2926,7 +3534,7 @@ Enforce strict context boundaries across repositories.
 
 </details>
 <details>
-<summary><strong>9.4 🧪 Test Guardrails </strong></summary>
+<summary><strong>10.4 🧪 Test Guardrails </strong></summary>
 <br>
 
 - **Save** the file and restart Claude Desktop for it to detect the changes
@@ -2953,7 +3561,7 @@ Enforce strict context boundaries across repositories.
 
 </details>
 <details>
-<summary><strong>8.5 🔧 Fine tune Guardrails </strong></summary>
+<summary><strong>10.5 🔧 Fine tune Guardrails </strong></summary>
 <br>
 
 - *The safe prompt `List all files from https://github.com/enkryptai/enkryptai-mcp-server` may also be blocked if you use Injection Attack Detector or Policy Violation on Output side. So, there is some fine tuning required for the guardrails to find the best combination of enabled detectors and blocks for your servers. See the next section for recommendations.*
@@ -2961,7 +3569,7 @@ Enforce strict context boundaries across repositories.
 </details>
 </details>
 
-## 10. Recommendations for using Guardrails
+## 11. Recommendations for using Guardrails
 
 <details>
 <summary><strong>⭐ Recommendations </strong></summary>
@@ -2996,9 +3604,8 @@ Enforce strict context boundaries across repositories.
   ![enkrypt-app-homepage-policies](./docs/images/enkrypt-app-homepage-policies.png)
 
 </details>
-</details>
 
-### 10.1 Per-Server Guardrail Configuration
+### 11.1 Per-Server Guardrail Configuration
 
 You can control guardrail behavior for each server individually using per-server flags in your configuration.
 
@@ -3060,7 +3667,9 @@ The gateway has three distinct levels of guardrails:
 
 **Note:** All three levels are independent and can be configured separately per server.
 
-## 11. Other Tools Available
+</details>
+
+## 12. Other Tools Available
 
 <details>
 <summary><strong>🔧 REST API for Administrative Operations </strong></summary>
@@ -3117,8 +3726,7 @@ The `admin_apikey` is automatically generated when you run `secure-mcp-gateway g
 Include the `admin_apikey` in the Authorization header for all administrative API calls:
 
 ```bash
-curl -X GET "http://localhost:8001/api/v1/users" \
-  -H "Authorization: Bearer YOUR_ADMIN_API_KEY_HERE"
+curl -X GET "http://localhost:8001/api/v1/users" -H "Authorization: Bearer YOUR_ADMIN_API_KEY_HERE"
 ```
 
 **Security Note**:
@@ -3145,8 +3753,8 @@ For complete API documentation and examples, see:
 <summary><strong>💾 Cache Management </strong></summary>
 <br>
 <details>
+<summary><strong>12.1 📊 Get Cache Status </strong></summary>
 <br>
-<summary><strong>10.1 📊 Get Cache Status </strong></summary>
 
 - The Gateway can give the summary of it's cache status by looking at the local/external cache server
 
@@ -3156,7 +3764,7 @@ For complete API documentation and examples, see:
 
 </details>
 <details>
-<summary><strong>10.2 🧹 Clear Cache </strong></summary>
+<summary><strong>12.2 🧹 Clear Cache </strong></summary>
 
 - The Gateway can clear it's cache from local/external cache server
 
@@ -3175,38 +3783,43 @@ For complete API documentation and examples, see:
 </details>
 </details>
 
-## 12. Deployment patterns
+## 13. Deployment patterns
 
-1. [Local Gateway, Local Guardrails and Local MCP Server](#111-local-gateway-local-guardrails-and-local-mcp-server)
+<details>
+<summary><strong>🪂 Deployment Patterns </strong></summary>
 
-2. [Local Gateway, Local MCP Server with Remote Guardrails](#112-local-gateway-local-mcp-server-with-remote-guardrails)
+1. [Local Gateway, Local Guardrails and Local MCP Server](#131-local-gateway-local-guardrails-and-local-mcp-server)
 
-3. [Local Gateway with Remote MCP Server and Remote Guardrails](#113-local-gateway-with-remote-mcp-server-and-remote-guardrails)
+2. [Local Gateway, Local MCP Server with Remote Guardrails](#132-local-gateway-local-mcp-server-with-remote-guardrails)
 
-4. [Remote Gateway, Remote MCP Server and Remote Guardrails](#114-remote-gateway-remote-mcp-server-and-remote-guardrails)
+3. [Local Gateway with Remote MCP Server and Remote Guardrails](#133-local-gateway-with-remote-mcp-server-and-remote-guardrails)
 
-### 12.1 Local Gateway, Local Guardrails and Local MCP Server
+4. [Remote Gateway, Remote MCP Server and Remote Guardrails](#134-remote-gateway-remote-mcp-server-and-remote-guardrails)
+
+### 13.1 Local Gateway, Local Guardrails and Local MCP Server
 
 ![Local Gateway with Local Guardrails Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20All%20Local.drawio.png)
 
-### 12.2 Local Gateway, Local MCP Server with Remote Guardrails
+### 13.2 Local Gateway, Local MCP Server with Remote Guardrails
 
 ![Local Gateway with Remote Guardrails Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20Local.drawio.png)
 
-### 12.3 Local Gateway with Remote MCP Server and Remote Guardrails
+### 13.3 Local Gateway with Remote MCP Server and Remote Guardrails
 
 ![Local Gateway with Remote Guardrails and Remote MCP Server Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20Local%20with%20Remote.drawio.png)
 
-### 12.4 Remote Gateway, Remote MCP Server and Remote Guardrails
+### 13.4 Remote Gateway, Remote MCP Server and Remote Guardrails
 
 ![Remote Gateway with Remote Guardrails and Remote MCP Server Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20Full%20Remote.drawio.png)
 
-## 13. Uninstall the Gateway
+</details>
+
+## 14. Uninstall the Gateway
 
 <details>
 <summary><strong>🗑️ Uninstall the Gateway </strong></summary>
 
-- To remove the Gateway from any MCP client, just remove the MCP server block `"Enkrypt Secure MCP Gateway": {...}` from the client's config file.
+- To remove the Gateway from any MCP client, just remove the MCP server block `"Enkrypt Secure MCP Gateway": {...}` from the client's config file. For Claude Code, run `claude mcp remove Enkrypt-Secure-MCP-Gateway`.
 
   - Restart the MCP client to apply the changes for some clients like Claude Desktop. Cursor does not require a restart.
 
@@ -3218,7 +3831,7 @@ For complete API documentation and examples, see:
 
 </details>
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 <details>
 <summary><strong>🕵 Troubleshooting </strong></summary>
@@ -3238,7 +3851,7 @@ For complete API documentation and examples, see:
 
 - If we need more detailed logs, please set the `enkrypt_log_level` to `debug` in the `enkrypt_mcp_config.json` file and restart the MCP client.
 
-### 14.1 OpenTelemetry Troubleshooting
+### 15.1 OpenTelemetry Troubleshooting
 
 1. **SSL Handshake Errors**
 
@@ -3293,15 +3906,15 @@ For complete API documentation and examples, see:
 
 </details>
 
-## 15. Known Issues being worked on
+## 16. Known Issues being worked on
 
 - Output guardrails are not being applied to non-text tool results. Support for other media types like images, audio, etc. is coming soon.
 
-## 16. Known Limitations
+## 17. Known Limitations
 
 - The Gateway does not support a scenario where the Gateway is deployed remotely but the MCP server is deployed locally (without being exposed to the internet). This is because the Gateway needs to know the MCP server's address to forward requests to it.
 
-## 17. Contribute
+## 18. Contribute
 
 - Look at the `TODO` file for the current work in progress and yet to be implemented features
 
@@ -3311,7 +3924,7 @@ For complete API documentation and examples, see:
 
 - Report or fix any bugs you encounter 😊
 
-## 18. Testing
+## 19. Testing
 
 <details>
 <summary><strong>🧪 Running Tests </strong></summary>
@@ -3465,9 +4078,9 @@ Total Duration: 45.67s
 
 </details>
 
-## 19. License
+## 20. License
 
-### 19.1 Enkrypt AI MCP Gateway Core
+### 20.1 Enkrypt AI MCP Gateway Core
 
 This project's core functionality is licensed under the MIT License.
 
@@ -3481,7 +4094,7 @@ This project's core functionality is licensed under the MIT License.
 
 For the full license text, see the `LICENSE.txt` file in this repository.
 
-### 19.2 Enkrypt AI Guardrails, Logo, and Branding
+### 20.2 Enkrypt AI Guardrails, Logo, and Branding
 
 © 2025 Enkrypt AI. All rights reserved.
 

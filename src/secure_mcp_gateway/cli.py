@@ -2722,7 +2722,7 @@ def main():
         "install", help="Install gateway for a client"
     )
     install_parser.add_argument(
-        "--client", type=str, required=True, help="Client name (e.g., claude-desktop)"
+        "--client", type=str, required=True, help="Client name (claude-desktop, cursor, or claude-code)"
     )
 
     # =========================================================================
@@ -3838,10 +3838,74 @@ def main():
             except Exception as e:
                 print(f"ERROR: Error configuring Cursor: {e!s}")
                 sys.exit(1)
+
+        elif args.client.lower() == "claude-code":
+            # Claude Code uses its own CLI (`claude mcp add`) instead of JSON config files.
+            # Resolve the full path to the `claude` binary. shutil.which() correctly
+            # handles .cmd/.bat files on Windows, unlike bare subprocess calls.
+            claude_bin = shutil.which("claude")
+            if not claude_bin:
+                print("ERROR: 'claude' CLI is not installed or not on PATH.")
+                print(
+                    "ERROR: Install Claude Code: https://docs.anthropic.com/en/docs/claude-code"
+                )
+                sys.exit(1)
+
+            try:
+                subprocess.run(
+                    [claude_bin, "--version"],
+                    capture_output=True,
+                    check=True,
+                )
+            except subprocess.CalledProcessError:
+                print("ERROR: 'claude' CLI is installed but returned an error.")
+                sys.exit(1)
+
+            server_name = "Enkrypt-Secure-MCP-Gateway"
+
+            # Remove existing server entry first (ignore errors if it doesn't exist)
+            subprocess.run(
+                [claude_bin, "mcp", "remove", server_name, "--scope", "user"],
+                capture_output=True,
+            )
+
+            cmd = [
+                claude_bin,
+                "mcp",
+                "add",
+                "--transport",
+                "stdio",
+                "--env",
+                f"ENKRYPT_GATEWAY_KEY={gateway_key}",
+                "--env",
+                f"ENKRYPT_PROJECT_ID={project_id}",
+                "--env",
+                f"ENKRYPT_USER_ID={user_id}",
+                "--scope",
+                "user",
+                server_name,
+                "--",
+                "mcp",
+                "run",
+                GATEWAY_PY_PATH,
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"ERROR: Error installing gateway for Claude Code: {result.stderr}")
+                sys.exit(1)
+            else:
+                print(f"INFO: Successfully installed gateway for Claude Code")
+                print(f"INFO: Server name: {server_name}")
+                print("INFO: Scope: user (available across all Claude Code projects)")
+                print("INFO: Verify with: claude mcp list")
+                print("INFO: Please restart Claude Code to use the gateway.")
+                sys.exit(0)
+
         else:
             print(
                 "INFO: ",
-                f"Invalid client name: {args.client}. Please use 'claude-desktop' or 'cursor'.",
+                f"Invalid client name: {args.client}. Please use 'claude-desktop', 'cursor', or 'claude-code'.",
             )
             sys.exit(1)
 
