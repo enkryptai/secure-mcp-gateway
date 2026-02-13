@@ -164,12 +164,17 @@ class CacheStatusService:
 
                 result = await enkrypt_authenticate(ctx)
                 if result.get("status") != "success":
-                    auth_span.set_attribute("error", "Authentication failed")
-                    logger.error("[get_cache_status] Not authenticated")
+                    auth_msg = result.get("message", "Unknown auth error")
+                    auth_err = result.get("error", "")
+                    detail = f"Authentication failed: {auth_msg}"
+                    if auth_err and auth_err != auth_msg:
+                        detail += f" ({auth_err})"
+                    auth_span.set_attribute("error", detail)
+                    logger.error(f"[get_cache_status] {detail}")
                     logger.error(
                         "cache_status.get_cache_status.not_authenticated",
                         extra=build_log_extra(
-                            ctx, custom_id, error="Not authenticated."
+                            ctx, custom_id, error=detail
                         ),
                     )
                     context = ErrorContext(
@@ -178,7 +183,7 @@ class CacheStatusService:
                     )
                     err = create_auth_error(
                         code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-                        message="Not authenticated.",
+                        message=detail,
                         context=context,
                     )
                     return create_error_response(err)

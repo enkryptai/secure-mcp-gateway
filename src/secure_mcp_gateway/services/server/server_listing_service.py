@@ -278,19 +278,24 @@ class ServerListingService:
 
                 result = await enkrypt_authenticate(ctx)
                 if result.get("status") != "success":
+                    auth_msg = result.get("message", "Unknown auth error")
+                    auth_err = result.get("error", "")
+                    detail = f"Authentication failed: {auth_msg}"
+                    if auth_err and auth_err != auth_msg:
+                        detail += f" ({auth_err})"
                     if getattr(logger, "level", 100) <= 10:  # DEBUG level
                         logger.warning(
                             "list_all_servers.auth_failed",
                             extra=build_log_extra(ctx, custom_id),
                         )
-                        logger.error("[list_available_servers] Not authenticated")
+                        logger.error(f"[list_available_servers] {detail}")
                     context = ErrorContext(
                         operation="list_servers.auth",
                         request_id=getattr(ctx, "request_id", None),
                     )
                     err = create_discovery_error(
                         code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-                        message="Not authenticated.",
+                        message=detail,
                         context=context,
                     )
                     return create_error_response(err)

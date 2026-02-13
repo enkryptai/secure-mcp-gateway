@@ -10,6 +10,7 @@ from secure_mcp_gateway.plugins.auth.base import (
     AuthProvider,
     AuthProviderRegistry,
     AuthResult,
+    AuthStatus,
     SessionData,
 )
 from secure_mcp_gateway.utils import logger
@@ -140,7 +141,7 @@ class AuthConfigManager:
         # Validate credentials
         if not gateway_key:
             return AuthResult(
-                status="error",
+                status=AuthStatus.INVALID_CREDENTIALS,
                 authenticated=False,
                 message="Gateway key is required",
                 error="Missing gateway_key",
@@ -150,7 +151,7 @@ class AuthConfigManager:
         local_config = await self.get_local_mcp_config(gateway_key, project_id, user_id)
         if not local_config:
             return AuthResult(
-                status="error",
+                status=AuthStatus.INVALID_CREDENTIALS,
                 authenticated=False,
                 message="No configuration found",
                 error="Configuration not found",
@@ -159,7 +160,7 @@ class AuthConfigManager:
         mcp_config_id = local_config.get("mcp_config_id")
         if not mcp_config_id:
             return AuthResult(
-                status="error",
+                status=AuthStatus.INVALID_CREDENTIALS,
                 authenticated=False,
                 message="No MCP config ID found",
                 error="Missing mcp_config_id",
@@ -175,7 +176,7 @@ class AuthConfigManager:
             logger.info("[AuthConfigManager] Already authenticated in session")
             session = self.sessions[session_key]
             return AuthResult(
-                status="success",
+                status=AuthStatus.SUCCESS,
                 authenticated=True,
                 message="Already authenticated (session)",
                 user_id=session.user_id,
@@ -194,7 +195,7 @@ class AuthConfigManager:
                 logger.info(f"[AuthConfigManager] Found cached config for ID: {id}")
                 self.create_session(session_key, cached_config)
                 return AuthResult(
-                    status="success",
+                    status=AuthStatus.SUCCESS,
                     authenticated=True,
                     message="Authentication successful (cache)",
                     user_id=cached_config.get("user_id"),
@@ -209,7 +210,7 @@ class AuthConfigManager:
         provider = self.get_provider(provider_name)
         if not provider:
             return AuthResult(
-                status="error",
+                status=AuthStatus.ERROR,
                 authenticated=False,
                 message=f"Provider '{provider_name or self.default_provider}' not found",
                 error="Provider not registered",

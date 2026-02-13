@@ -679,12 +679,11 @@ class EnkryptServerRegistrationGuardrail:
     malicious or unsafe MCP servers/tools from being registered.
     """
 
-    # Server validation detector config
-    SERVER_DETECTORS: ClassVar[Dict[str, Any]] = {
+    # Default server validation detector config (used when no tool_guardrails_policy is provided)
+    DEFAULT_SERVER_DETECTORS: ClassVar[Dict[str, Any]] = {
         "injection_attack": {"enabled": True},
         "policy_violation": {
             "enabled": True,
-            # "coc_policy_name": "Safe Server Registration Policy",
             "policy_text": "Allow only safe servers to be registered for this MCP server and find any malicious servers to be blocked",
             "need_explanation": True,
         },
@@ -697,7 +696,6 @@ class EnkryptServerRegistrationGuardrail:
                 "sudo",
                 "rm -rf",
                 "delete_all",
-                # Secret files
                 "mcp.json",
                 "claude_desktop_config.json",
                 "enkrypt_mcp_config.json",
@@ -708,18 +706,15 @@ class EnkryptServerRegistrationGuardrail:
         "nsfw": {"enabled": True},
         "topic_detector": {"enabled": False, "topic": []},
         "pii": {"enabled": False, "entities": []},
-        # "system_prompt": {"enabled": False},
-        # "copyright_ip": {"enabled": False},
         "bias": {"enabled": True},
         "sponge_attack": {"enabled": True},
     }
 
-    # Tool validation detector config
-    TOOL_DETECTORS: ClassVar[Dict[str, Any]] = {
+    # Default tool validation detector config (used when no tool_guardrails_policy is provided)
+    DEFAULT_TOOL_DETECTORS: ClassVar[Dict[str, Any]] = {
         "injection_attack": {"enabled": True},
         "policy_violation": {
             "enabled": True,
-            # "coc_policy_name": "Safe Tool Registration Policy",
             "policy_text": "Allow only safe tools to be registered for this MCP server and find any malicious tools to be blocked",
             "need_explanation": True,
         },
@@ -729,17 +724,9 @@ class EnkryptServerRegistrationGuardrail:
                 "exec",
                 "shell",
                 "eval",
-                # "system",
-                # "command",
-                # "execute",
                 "run_code",
-                # "delete",
-                # "drop",
-                # "truncate",
-                # "remove",
                 "destroy",
                 "wipe",
-                # "format",
                 "kill",
                 "terminate",
                 "exploit",
@@ -747,14 +734,10 @@ class EnkryptServerRegistrationGuardrail:
                 "crack",
                 "bypass",
                 "override",
-                # "privilege",
                 "escalate",
-                # "root",
-                # "admin",
                 "sudo",
                 "chmod",
                 "chown",
-                # Secret files
                 "mcp.json",
                 "claude_desktop_config.json",
                 "enkrypt_mcp_config.json",
@@ -768,11 +751,87 @@ class EnkryptServerRegistrationGuardrail:
             "topic": [],
         },
         "pii": {"enabled": False, "entities": []},
-        # "system_prompt": {"enabled": True},
-        # "copyright_ip": {"enabled": False},
         "bias": {"enabled": True},
         "sponge_attack": {"enabled": True},
     }
+
+    # All known detector keys with their default internal configs
+    _DETECTOR_DEFAULTS: ClassVar[Dict[str, Dict[str, Any]]] = {
+        "injection_attack": {},
+        "policy_violation": {
+            "need_explanation": True,
+        },
+        "keyword_detector": {
+            "banned_keywords": [
+                "exec",
+                "shell",
+                "eval",
+                "run_code",
+                "destroy",
+                "wipe",
+                "kill",
+                "terminate",
+                "exploit",
+                "hack",
+                "crack",
+                "bypass",
+                "override",
+                "escalate",
+                "sudo",
+                "chmod",
+                "chown",
+                "mcp.json",
+                "claude_desktop_config.json",
+                "enkrypt_mcp_config.json",
+                ".env",
+            ],
+        },
+        "toxicity": {},
+        "nsfw": {},
+        "topic_detector": {"topic": []},
+        "pii": {"entities": []},
+        "bias": {},
+        "sponge_attack": {},
+    }
+
+    @classmethod
+    def _build_detectors(
+        cls,
+        block_list: List[str],
+        policy_name: Optional[str] = None,
+        context: str = "tool",
+    ) -> Dict[str, Any]:
+        """
+        Build a detectors dict from a block list.
+
+        Only detectors in block_list are enabled; all others are disabled.
+
+        Args:
+            block_list: List of detector names to enable (e.g. ["injection_attack", "nsfw"])
+            policy_name: Optional policy name for the policy_violation detector
+            context: Either "tool" or "server" - used for default policy_text
+
+        Returns:
+            Dict of detector configs suitable for the batch API
+        """
+        detectors = {}
+        for detector_name, defaults in cls._DETECTOR_DEFAULTS.items():
+            is_enabled = detector_name in block_list
+            config = {"enabled": is_enabled, **defaults}
+
+            # Set policy_text for policy_violation
+            if detector_name == "policy_violation" and is_enabled:
+                if policy_name:
+                    config["policy_text"] = policy_name
+                else:
+                    config["policy_text"] = (
+                        f"Allow only safe {context}s to be registered for this MCP server "
+                        f"and find any malicious {context}s to be blocked"
+                    )
+
+            detectors[detector_name] = config
+
+        return detectors
 
     def __init__(self, api_key: str, base_url: str, config: Dict[str, Any] = None):
         import sys
@@ -796,15 +855,18 @@ class EnkryptServerRegistrationGuardrail:
             f"[EnkryptServerRegistrationGuardrail] enkrypt_log_level={self.config.get('enkrypt_log_level')}"
         )
 
-        # Get custom detectors from config if provided
+        # Get custom detectors from config if provided (legacy override)
         registration_config = self.config.get("registration_validation", {})
         if registration_config.get("custom_detectors"):
-            self.SERVER_DETECTORS = registration_config.get(
-                "server_detectors", self.SERVER_DETECTORS
+            self.server_detectors = registration_config.get(
+                "server_detectors", self.DEFAULT_SERVER_DETECTORS
             )
-            self.TOOL_DETECTORS = registration_config.get(
-                "tool_detectors", self.TOOL_DETECTORS
+            self.tool_detectors = registration_config.get(
+                "tool_detectors", self.DEFAULT_TOOL_DETECTORS
             )
+        else:
+            self.server_detectors = self.DEFAULT_SERVER_DETECTORS
+            self.tool_detectors = self.DEFAULT_TOOL_DETECTORS
 
     async def validate_server(
         self, request: ServerRegistrationRequest
@@ -827,9 +889,21 @@ class EnkryptServerRegistrationGuardrail:
                 )
                 logger.debug(f"[EnkryptServerRegistration] Text: {server_text}")
 
+            # Build detectors from tool_guardrails_policy if available, otherwise use defaults
+            policy = getattr(request, "tool_guardrails_policy", None) or {}
+            block_list = policy.get("block", None)
+            if block_list is not None:
+                detectors = self._build_detectors(
+                    block_list=block_list,
+                    policy_name=policy.get("policy_name"),
+                    context="server",
+                )
+            else:
+                detectors = self.server_detectors
+
             # Call Enkrypt batch API
             response = await self._call_batch_api(
-                texts=[server_text], detectors=self.SERVER_DETECTORS
+                texts=[server_text], detectors=detectors
             )
 
             if self.debug:
@@ -1025,9 +1099,21 @@ class EnkryptServerRegistrationGuardrail:
                     f"[EnkryptToolRegistration] Validating {len(texts)} tools for {request.server_name}"
                 )
 
+            # Build detectors from tool_guardrails_policy if available, otherwise use defaults
+            policy = getattr(request, "tool_guardrails_policy", None) or {}
+            block_list = policy.get("block", None)
+            if block_list is not None:
+                detectors = self._build_detectors(
+                    block_list=block_list,
+                    policy_name=policy.get("policy_name"),
+                    context="tool",
+                )
+            else:
+                detectors = self.tool_detectors
+
             # Call Enkrypt batch API
             response = await self._call_batch_api(
-                texts=texts, detectors=self.TOOL_DETECTORS
+                texts=texts, detectors=detectors
             )
 
             if self.debug:

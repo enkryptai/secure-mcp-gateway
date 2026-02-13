@@ -2,9 +2,23 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
-## [2.1.7] - 2026-02-10
+## [2.1.7] - 2026-02-13
 
 ### Updates in v2.1.7
+
+#### Bug Fixes
+
+- **Fixed AUTH_001 "Already authenticated (session)" error** -- `AuthResult` objects in `config_manager.py` used raw strings (`"success"`, `"error"`) instead of `AuthStatus` enum values, causing `is_success` to always return `False` on cached/session auth results. Every request after the first one failed with AUTH_001. Replaced all 6 occurrences with proper enum values.
+- **Fixed tools being blocked during discovery even when guardrails were disabled** -- `EnkryptServerRegistrationGuardrail` had hardcoded `SERVER_DETECTORS` and `TOOL_DETECTORS` that always ran all detectors (injection_attack, nsfw, toxicity, etc.) regardless of per-server configuration. Tools like Notion were incorrectly flagged.
+
+#### Configurable Tool Guardrails Policy
+
+- Added `tool_guardrails_policy` per-server config field, replacing the boolean `enable_tool_guardrails`
+- The `block` list in the policy controls which detectors run during tool/server registration validation at discovery time
+- Detectors not in the `block` list are disabled -- no more hardcoded always-on detectors
+- `policy_name` field is used for the policy violation detector's policy text
+- Backward compatible: existing configs with `enable_tool_guardrails: true` continue to work
+- Added `_build_detectors()` method to `EnkryptServerRegistrationGuardrail` for dynamic detector construction from policy config
 
 #### CLI Enhancements
 
@@ -13,6 +27,11 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 - Added `install --client claude-code` support for direct Claude Code integration via `claude mcp add`
 - Fixed Windows `.cmd` executable resolution using `shutil.which()` for Claude Code install
 - Suppressed duplicate initialization output when delegating to Docker with `--docker`
+- `config add-server` now generates `tool_guardrails_policy` with full block list (disabled by default)
+
+#### Auth Error Messages
+
+- Enhanced AUTH_001 error messages across all service layers to include detailed `AuthResult` message and error context instead of generic "Not authenticated."
 
 #### Documentation
 

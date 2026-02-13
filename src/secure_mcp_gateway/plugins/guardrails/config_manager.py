@@ -228,18 +228,26 @@ class GuardrailConfigManager:
         if not provider:
             return None
 
+        # Extract tool_guardrails_policy from server_config to pass through
+        tool_guardrails_policy = server_config.get("tool_guardrails_policy")
+
         request = ServerRegistrationRequest(
             server_name=server_name,
             server_config=server_config,
             server_description=server_config.get("description"),
             server_command=server_config.get("command"),
             server_metadata=server_config,
+            tool_guardrails_policy=tool_guardrails_policy,
         )
 
         return await provider.validate_server_registration(request)
 
     async def validate_tool_registration(
-        self, server_name: str, tools: List[Dict[str, Any]], mode: str = "filter"
+        self,
+        server_name: str,
+        tools: List[Dict[str, Any]],
+        mode: str = "filter",
+        tool_guardrails_policy: Optional[Dict[str, Any]] = None,
     ) -> Optional[Any]:  # GuardrailResponse
         """
         Validate and filter tools during discovery.
@@ -248,6 +256,8 @@ class GuardrailConfigManager:
             server_name: Name of the server
             tools: List of tool dictionaries
             mode: "filter" to filter unsafe tools, "block_all" to block if any unsafe
+            tool_guardrails_policy: Optional per-server tool guardrails policy with
+                "block" list and "policy_name"
 
         Returns:
             GuardrailResponse or None if no provider supports registration
@@ -261,7 +271,10 @@ class GuardrailConfigManager:
 
         logger.info(f"[GuardrailConfigManager] Using provider: {provider.get_name()}")
         request = ToolRegistrationRequest(
-            server_name=server_name, tools=tools, validation_mode=mode
+            server_name=server_name,
+            tools=tools,
+            validation_mode=mode,
+            tool_guardrails_policy=tool_guardrails_policy,
         )
 
         return await provider.validate_tool_registration(request)

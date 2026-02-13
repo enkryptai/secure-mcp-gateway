@@ -365,7 +365,21 @@ def generate_default_config():
                         },
                         "tools": {},
                         "enable_server_info_validation": False,
-                        "enable_tool_guardrails": False,
+                        "tool_guardrails_policy": {
+                            "enabled": False,
+                            "policy_name": "Sample Airline Guardrail",
+                            "block": [
+                                "policy_violation",
+                                "injection_attack",
+                                "topic_detector",
+                                "nsfw",
+                                "toxicity",
+                                "pii",
+                                "keyword_detector",
+                                "bias",
+                                "sponge_attack",
+                            ],
+                        },
                         "input_guardrails_policy": {
                             "enabled": False,
                             "policy_name": "Sample Airline Guardrail",
@@ -470,7 +484,9 @@ def add_or_update_cursor_server(config_path, server_name, command, args, env):
     if os.path.exists(config_path):
         try:
             with open(config_path) as f:
-                config = json.load(f)
+                content = f.read().strip()
+                if content:
+                    config = json.loads(content)
         except json.JSONDecodeError as e:
             print(
                 "ERROR: ",
@@ -834,6 +850,22 @@ def add_server_to_config(
         "description": description,
         "config": {"command": command, "args": args_list},
         "tools": tools_data or {},
+        "enable_server_info_validation": False,
+        "tool_guardrails_policy": {
+            "enabled": False,
+            "policy_name": "Sample Airline Guardrail",
+            "block": [
+                "policy_violation",
+                "injection_attack",
+                "topic_detector",
+                "nsfw",
+                "toxicity",
+                "pii",
+                "keyword_detector",
+                "bias",
+                "sponge_attack",
+            ],
+        },
         "input_guardrails_policy": input_guardrails_data
         or {
             "enabled": False,
@@ -3718,7 +3750,8 @@ def main():
                     )
                     with open(claude_desktop_config_path) as f:
                         try:
-                            claude_desktop_config = json.load(f)
+                            content = f.read().strip()
+                            claude_desktop_config = json.loads(content) if content else {}
                         except json.JSONDecodeError as e:
                             print(
                                 "INFO: ",
@@ -3789,7 +3822,8 @@ def main():
                     if os.path.exists(claude_desktop_config_path):
                         try:
                             with open(claude_desktop_config_path) as f:
-                                claude_desktop_config = json.load(f)
+                                content = f.read().strip()
+                                claude_desktop_config = json.loads(content) if content else {}
                                 if (
                                     "mcpServers" in claude_desktop_config
                                     and "Enkrypt Secure MCP Gateway"
