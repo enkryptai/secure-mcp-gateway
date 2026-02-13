@@ -660,10 +660,7 @@ class DiscoveryService:
 
                 # Validate config tools with guardrails
                 tool_guardrails_policy = server_info.get("tool_guardrails_policy", {})
-                enable_tool_guardrails = tool_guardrails_policy.get(
-                    "enabled",
-                    server_info.get("enable_tool_guardrails", False),
-                )
+                enable_tool_guardrails = tool_guardrails_policy.get("enabled", False)
 
                 if (
                     self.registration_validation_enabled
@@ -860,10 +857,7 @@ class DiscoveryService:
                 blocked_reasons_list = []
 
                 tool_guardrails_policy = server_info.get("tool_guardrails_policy", {})
-                enable_tool_guardrails = tool_guardrails_policy.get(
-                    "enabled",
-                    server_info.get("enable_tool_guardrails", False),
-                )
+                enable_tool_guardrails = tool_guardrails_policy.get("enabled", False)
 
                 if (
                     self.registration_validation_enabled
@@ -1306,10 +1300,7 @@ class DiscoveryService:
 
                 # NEW: Validate config tools with guardrails before returning
                 tool_guardrails_policy = server_info.get("tool_guardrails_policy", {})
-                enable_tool_guardrails = tool_guardrails_policy.get(
-                    "enabled",
-                    server_info.get("enable_tool_guardrails", False),
-                )
+                enable_tool_guardrails = tool_guardrails_policy.get("enabled", False)
                 logger.info(
                     f"[discover_server_tools] enable_tool_guardrails={enable_tool_guardrails} for {server_name}"
                 )
@@ -2312,8 +2303,7 @@ class DiscoveryService:
                         "tool_guardrails_policy", {}
                     )
                     enable_tool_guardrails = tool_guardrails_policy.get(
-                        "enabled",
-                        server_info.get("enable_tool_guardrails", False),
+                        "enabled", False
                     )
                     logger.info(
                         f"[discover_server_tools] enable_tool_guardrails={enable_tool_guardrails} for {server_name}"

@@ -17,8 +17,13 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 - The `block` list in the policy controls which detectors run during tool/server registration validation at discovery time
 - Detectors not in the `block` list are disabled -- no more hardcoded always-on detectors
 - `policy_name` field is used for the policy violation detector's policy text
-- Backward compatible: existing configs with `enable_tool_guardrails: true` continue to work
 - Added `_build_detectors()` method to `EnkryptServerRegistrationGuardrail` for dynamic detector construction from policy config
+- Removed `DEFAULT_SERVER_DETECTORS` and `DEFAULT_TOOL_DETECTORS` hardcoded fallbacks -- detectors are now **only** driven by `tool_guardrails_policy.block`
+
+#### Breaking Changes
+
+- **`enable_tool_guardrails` is no longer supported.** The boolean field has been fully replaced by the `tool_guardrails_policy` object. Existing configs using `enable_tool_guardrails: true/false` will be silently ignored (guardrails will default to disabled). **You must regenerate your config** with `secure-mcp-gateway generate-config --overwrite` or manually add the `tool_guardrails_policy` field to each server entry.
+- **Hardcoded default detectors removed.** Previously, when no policy was provided, all detectors ran with hardcoded defaults. Now, detectors only run when explicitly listed in the `block` array of `tool_guardrails_policy`. If `block` is empty or missing, no tools/servers are blocked — the gateway logs a monitor-only message and allows everything through.
 
 #### CLI Enhancements
 
