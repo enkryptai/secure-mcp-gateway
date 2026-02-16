@@ -2,6 +2,49 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [2.1.7] - 2026-02-13
+
+### Updates in v2.1.7
+
+#### Bug Fixes
+
+- **Fixed AUTH_001 "Already authenticated (session)" error** -- `AuthResult` objects in `config_manager.py` used raw strings (`"success"`, `"error"`) instead of `AuthStatus` enum values, causing `is_success` to always return `False` on cached/session auth results. Every request after the first one failed with AUTH_001. Replaced all 6 occurrences with proper enum values.
+- **Fixed tools being blocked during discovery even when guardrails were disabled** -- `EnkryptServerRegistrationGuardrail` had hardcoded `SERVER_DETECTORS` and `TOOL_DETECTORS` that always ran all detectors (injection_attack, nsfw, toxicity, etc.) regardless of per-server configuration. Tools like Notion were incorrectly flagged.
+
+#### Configurable Tool Guardrails Policy
+
+- Added `tool_guardrails_policy` per-server config field, replacing the boolean `enable_tool_guardrails`
+- The `block` list in the policy controls which detectors run during tool/server registration validation at discovery time
+- Detectors not in the `block` list are disabled -- no more hardcoded always-on detectors
+- `policy_name` field is used for the policy violation detector's policy text
+- Added `_build_detectors()` method to `EnkryptServerRegistrationGuardrail` for dynamic detector construction from policy config
+- Removed `DEFAULT_SERVER_DETECTORS` and `DEFAULT_TOOL_DETECTORS` hardcoded fallbacks -- detectors are now **only** driven by `tool_guardrails_policy.block`
+
+#### Breaking Changes
+
+- **`enable_tool_guardrails` is no longer supported.** The boolean field has been fully replaced by the `tool_guardrails_policy` object. Existing configs using `enable_tool_guardrails: true/false` will be silently ignored (guardrails will default to disabled). **You must regenerate your config** with `secure-mcp-gateway generate-config --overwrite` or manually add the `tool_guardrails_policy` field to each server entry.
+- **Hardcoded default detectors removed.** Previously, when no policy was provided, all detectors ran with hardcoded defaults. Now, detectors only run when explicitly listed in the `block` array of `tool_guardrails_policy`. If `block` is empty or missing, no tools/servers are blocked — the gateway logs a monitor-only message and allows everything through.
+
+#### CLI Enhancements
+
+- Added `--docker` flag to auto-wrap any CLI command in a `docker run` invocation (no more verbose Docker commands)
+- Added `--docker-image` flag to specify a custom Docker image when using `--docker`
+- Added `install --client claude-code` support for direct Claude Code integration via `claude mcp add`
+- Fixed Windows `.cmd` executable resolution using `shutil.which()` for Claude Code install
+- Suppressed duplicate initialization output when delegating to Docker with `--docker`
+- `config add-server` now generates `tool_guardrails_policy` with full block list (disabled by default)
+
+#### Auth Error Messages
+
+- Enhanced AUTH_001 error messages across all service layers to include detailed `AuthResult` message and error context instead of generic "Not authenticated."
+
+#### Documentation
+
+- Revamped CLI Quick Start Guide (Section 8) with narrative walkthrough and three guided paths (A/B/C)
+- Added Steps for setting Enkrypt API key and configuring telemetry
+- Added telemetry stack startup instructions (`docker compose up` from `infra/`)
+- Fixed bash line-continuation backslashes and markdown rendering issues across README
+
 ## [2.1.6] - 2025-12-23
 
 ### Updates in v2.1.6

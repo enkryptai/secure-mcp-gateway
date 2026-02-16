@@ -278,8 +278,13 @@ class SecureToolExecutionService:
 
                     result = await enkrypt_authenticate(ctx)
                     if result.get("status") != "success":
-                        auth_span.set_attribute("error", "Authentication failed")
-                        logger.error("[get_server_info] Not authenticated")
+                        auth_msg = result.get("message", "Unknown auth error")
+                        auth_err = result.get("error", "")
+                        detail = f"Authentication failed: {auth_msg}"
+                        if auth_err and auth_err != auth_msg:
+                            detail += f" ({auth_err})"
+                        auth_span.set_attribute("error", detail)
+                        logger.error(f"[secure_call_tools] {detail}")
                         logger.error(
                             "secure_tool_execution.execute_secure_tools.not_authenticated",
                             extra=build_log_extra(ctx, custom_id, server_name),
@@ -300,7 +305,7 @@ class SecureToolExecutionService:
                         )
                         err = create_auth_error(
                             code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-                            message="Not authenticated.",
+                            message=detail,
                             context=context,
                         )
                         return create_error_response(err)

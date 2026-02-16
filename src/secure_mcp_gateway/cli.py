@@ -17,7 +17,6 @@ BASE_DIR = files("secure_mcp_gateway")
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from secure_mcp_gateway.consts import HOST_DOCKER_CONFIG_PATH
 from secure_mcp_gateway.utils import (
     CONFIG_PATH,
     DOCKER_CONFIG_PATH,
@@ -26,12 +25,20 @@ from secure_mcp_gateway.utils import (
 )
 from secure_mcp_gateway.version import __version__
 
-print(f"INFO: Initializing Enkrypt Secure MCP Gateway CLI Module v{__version__}")
+is_docker_running = is_docker()
+
+# When --docker is passed on the host, we will delegate the entire command to
+# a Docker container.  Skip the noisy module-level initialisation so the user
+# only sees output from inside the container.
+_delegating_to_docker = "--docker" in sys.argv[1:] and not is_docker_running
+
+if not _delegating_to_docker:
+    print(f"INFO: Initializing Enkrypt Secure MCP Gateway CLI Module v{__version__}")
 
 HOME_DIR = os.path.expanduser("~")
-print(f"INFO: HOME_DIR: {HOME_DIR}")
+if not _delegating_to_docker:
+    print(f"INFO: HOME_DIR: {HOME_DIR}")
 
-is_docker_running = is_docker()
 # print(f"INFO: is_docker_running: {is_docker_running}")
 
 if is_docker_running:
@@ -43,6 +50,20 @@ if is_docker_running:
             "ERROR: Please set them when running the Docker container:\n  docker run -e HOST_OS=<your_os> -e HOST_ENKRYPT_HOME=<path_to_enkrypt_home> ..."
         )
         sys.exit(1)
+    # Reject tilde paths - '~' is not reliably expanded inside Docker containers.
+    # os.path.expanduser() would resolve to the container's home (e.g. /root),
+    # not the host's home (e.g. /Users/keirand), producing incorrect paths
+    # in generated MCP client configs.
+    if HOST_ENKRYPT_HOME.startswith("~"):
+        print("ERROR: HOST_ENKRYPT_HOME contains '~' which cannot be resolved correctly inside Docker.")
+        print("ERROR: The '~' would expand to the container's home directory, not your host home.")
+        print("ERROR: Please use an absolute path instead:")
+        print("  macOS:   -e HOST_ENKRYPT_HOME=/Users/<username>/.enkrypt")
+        print("  Linux:   -e HOST_ENKRYPT_HOME=/home/<username>/.enkrypt")
+        print("  Windows: -e HOST_ENKRYPT_HOME=C:\\Users\\<username>\\.enkrypt")
+        print(f"\nHint: On macOS/Linux, use $HOME instead of ~:")
+        print(f"  -e HOST_ENKRYPT_HOME=$HOME/.enkrypt")
+        sys.exit(1)
     print(f"INFO: HOST_OS: {HOST_OS}")
     print(f"INFO: HOST_ENKRYPT_HOME: {HOST_ENKRYPT_HOME}")
 else:
@@ -52,10 +73,11 @@ else:
 GATEWAY_PY_PATH = os.path.join(BASE_DIR, "gateway.py")
 ECHO_SERVER_PATH = os.path.join(BASE_DIR, "bad_mcps", "echo_oauth_mcp.py")
 PICKED_CONFIG_PATH = DOCKER_CONFIG_PATH if is_docker_running else CONFIG_PATH
-print(f"INFO: GATEWAY_PY_PATH:  {GATEWAY_PY_PATH}")
-print(f"INFO: ECHO_SERVER_PATH:  {ECHO_SERVER_PATH}")
-print(f"INFO: PICKED_CONFIG_PATH:  {PICKED_CONFIG_PATH}")
-print("--------------------------------\n\nOUTPUT:\n\n", file=sys.stderr)
+if not _delegating_to_docker:
+    print(f"INFO: GATEWAY_PY_PATH:  {GATEWAY_PY_PATH}")
+    print(f"INFO: ECHO_SERVER_PATH:  {ECHO_SERVER_PATH}")
+    print(f"INFO: PICKED_CONFIG_PATH:  {PICKED_CONFIG_PATH}")
+    print("--------------------------------\n\nOUTPUT:\n\n", file=sys.stderr)
 
 DOCKER_COMMAND = "docker"
 DOCKER_ARGS = [
@@ -343,7 +365,21 @@ def generate_default_config():
                         },
                         "tools": {},
                         "enable_server_info_validation": False,
-                        "enable_tool_guardrails": False,
+                        "tool_guardrails_policy": {
+                            "enabled": False,
+                            "policy_name": "Sample Airline Guardrail",
+                            "block": [
+                                "policy_violation",
+                                "injection_attack",
+                                "topic_detector",
+                                "nsfw",
+                                "toxicity",
+                                "pii",
+                                "keyword_detector",
+                                "bias",
+                                "sponge_attack",
+                            ],
+                        },
                         "input_guardrails_policy": {
                             "enabled": False,
                             "policy_name": "Sample Airline Guardrail",
@@ -448,7 +484,9 @@ def add_or_update_cursor_server(config_path, server_name, command, args, env):
     if os.path.exists(config_path):
         try:
             with open(config_path) as f:
-                config = json.load(f)
+                content = f.read().strip()
+                if content:
+                    config = json.loads(content)
         except json.JSONDecodeError as e:
             print(
                 "ERROR: ",
@@ -812,6 +850,22 @@ def add_server_to_config(
         "description": description,
         "config": {"command": command, "args": args_list},
         "tools": tools_data or {},
+        "enable_server_info_validation": False,
+        "tool_guardrails_policy": {
+            "enabled": False,
+            "policy_name": "Sample Airline Guardrail",
+            "block": [
+                "policy_violation",
+                "injection_attack",
+                "topic_detector",
+                "nsfw",
+                "toxicity",
+                "pii",
+                "keyword_detector",
+                "bias",
+                "sponge_attack",
+            ],
+        },
         "input_guardrails_policy": input_guardrails_data
         or {
             "enabled": False,
@@ -2576,6 +2630,90 @@ def stop_api_server(port=8001, force=False):
 
 
 # =============================================================================
+# DOCKER WRAPPER
+# =============================================================================
+
+
+def run_via_docker(args, original_argv):
+    """Wrap the CLI command in a docker run invocation.
+
+    When --docker is passed (and we are NOT inside a container), this function
+    builds the equivalent ``docker run`` command, executes it via subprocess,
+    and exits with its return code.  The user never has to remember the long
+    ``docker run`` incantation manually.
+    """
+    import platform
+
+    # Check Docker is available
+    try:
+        subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            check=True,
+        )
+    except FileNotFoundError:
+        print("ERROR: Docker is not installed.")
+        print("ERROR: Install Docker: https://docs.docker.com/get-docker/")
+        sys.exit(1)
+    except subprocess.CalledProcessError:
+        print("ERROR: Docker is not running. Please start Docker Desktop or the Docker daemon.")
+        sys.exit(1)
+
+    # Auto-detect host values
+    host_os = platform.system().lower()
+    if host_os == "darwin":
+        host_os = "macos"
+
+    home = os.path.expanduser("~")
+    host_enkrypt_home = os.path.join(home, ".enkrypt")
+    docker_volume_src = os.path.join(host_enkrypt_home, "docker")
+
+    # Ensure volume source directory exists so Docker doesn't create it as root
+    os.makedirs(docker_volume_src, exist_ok=True)
+
+    image = args.docker_image or "enkryptai/secure-mcp-gateway"
+
+    # Strip --docker and --docker-image from original args so the command
+    # inside the container receives only the actual CLI arguments.
+    pass_through = []
+    skip_next = False
+    for arg in original_argv[1:]:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--docker":
+            continue
+        if arg == "--docker-image":
+            skip_next = True
+            continue
+        if arg.startswith("--docker-image="):
+            continue
+        pass_through.append(arg)
+
+    docker_cmd = [
+        "docker",
+        "run",
+        "--rm",
+        "-i",
+        "-e",
+        f"HOST_OS={host_os}",
+        "-e",
+        f"HOST_ENKRYPT_HOME={host_enkrypt_home}",
+        "-v",
+        f"{docker_volume_src}:/app/.enkrypt/docker",
+        "--entrypoint",
+        "secure-mcp-gateway",
+        image,
+    ] + pass_through
+
+    print(f"INFO: Running inside Docker ({image})...")
+    print(f"INFO: > {' '.join(docker_cmd)}")
+
+    result = subprocess.run(docker_cmd)
+    sys.exit(result.returncode)
+
+
+# =============================================================================
 # MAIN FUNCTION
 # =============================================================================
 
@@ -2588,7 +2726,15 @@ def main():
         "--docker",
         action="store_true",
         default=False,
-        help="Use Docker config path (~/.enkrypt/docker/) instead of default (~/.enkrypt/)",
+        help="Run this command inside the Docker container instead of locally. "
+        "Automatically sets HOST_OS, HOST_ENKRYPT_HOME, and volume mounts. "
+        "Use --docker-image to specify a custom image.",
+    )
+    parser.add_argument(
+        "--docker-image",
+        type=str,
+        default=None,
+        help="Docker image to use with --docker (default: enkryptai/secure-mcp-gateway)",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -2608,7 +2754,7 @@ def main():
         "install", help="Install gateway for a client"
     )
     install_parser.add_argument(
-        "--client", type=str, required=True, help="Client name (e.g., claude-desktop)"
+        "--client", type=str, required=True, help="Client name (claude-desktop, cursor, or claude-code)"
     )
 
     # =========================================================================
@@ -3175,14 +3321,14 @@ def main():
     # =========================================================================
     args = parser.parse_args()
 
-    # Compute effective config path based on --docker flag
+    # --docker: delegate the entire command to a Docker container
     if args.docker:
         if is_docker_running:
             print("WARNING: --docker flag ignored when running inside Docker container")
             config_path = PICKED_CONFIG_PATH
         else:
-            config_path = HOST_DOCKER_CONFIG_PATH
-            print(f"INFO: Using Docker config path: {config_path}")
+            run_via_docker(args, sys.argv)
+            # run_via_docker calls sys.exit(); execution never reaches here
     else:
         config_path = PICKED_CONFIG_PATH
 
@@ -3604,7 +3750,8 @@ def main():
                     )
                     with open(claude_desktop_config_path) as f:
                         try:
-                            claude_desktop_config = json.load(f)
+                            content = f.read().strip()
+                            claude_desktop_config = json.loads(content) if content else {}
                         except json.JSONDecodeError as e:
                             print(
                                 "INFO: ",
@@ -3675,7 +3822,8 @@ def main():
                     if os.path.exists(claude_desktop_config_path):
                         try:
                             with open(claude_desktop_config_path) as f:
-                                claude_desktop_config = json.load(f)
+                                content = f.read().strip()
+                                claude_desktop_config = json.loads(content) if content else {}
                                 if (
                                     "mcpServers" in claude_desktop_config
                                     and "Enkrypt Secure MCP Gateway"
@@ -3724,10 +3872,74 @@ def main():
             except Exception as e:
                 print(f"ERROR: Error configuring Cursor: {e!s}")
                 sys.exit(1)
+
+        elif args.client.lower() == "claude-code":
+            # Claude Code uses its own CLI (`claude mcp add`) instead of JSON config files.
+            # Resolve the full path to the `claude` binary. shutil.which() correctly
+            # handles .cmd/.bat files on Windows, unlike bare subprocess calls.
+            claude_bin = shutil.which("claude")
+            if not claude_bin:
+                print("ERROR: 'claude' CLI is not installed or not on PATH.")
+                print(
+                    "ERROR: Install Claude Code: https://docs.anthropic.com/en/docs/claude-code"
+                )
+                sys.exit(1)
+
+            try:
+                subprocess.run(
+                    [claude_bin, "--version"],
+                    capture_output=True,
+                    check=True,
+                )
+            except subprocess.CalledProcessError:
+                print("ERROR: 'claude' CLI is installed but returned an error.")
+                sys.exit(1)
+
+            server_name = "Enkrypt-Secure-MCP-Gateway"
+
+            # Remove existing server entry first (ignore errors if it doesn't exist)
+            subprocess.run(
+                [claude_bin, "mcp", "remove", server_name, "--scope", "user"],
+                capture_output=True,
+            )
+
+            cmd = [
+                claude_bin,
+                "mcp",
+                "add",
+                "--transport",
+                "stdio",
+                "--env",
+                f"ENKRYPT_GATEWAY_KEY={gateway_key}",
+                "--env",
+                f"ENKRYPT_PROJECT_ID={project_id}",
+                "--env",
+                f"ENKRYPT_USER_ID={user_id}",
+                "--scope",
+                "user",
+                server_name,
+                "--",
+                "mcp",
+                "run",
+                GATEWAY_PY_PATH,
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"ERROR: Error installing gateway for Claude Code: {result.stderr}")
+                sys.exit(1)
+            else:
+                print(f"INFO: Successfully installed gateway for Claude Code")
+                print(f"INFO: Server name: {server_name}")
+                print("INFO: Scope: user (available across all Claude Code projects)")
+                print("INFO: Verify with: claude mcp list")
+                print("INFO: Please restart Claude Code to use the gateway.")
+                sys.exit(0)
+
         else:
             print(
                 "INFO: ",
-                f"Invalid client name: {args.client}. Please use 'claude-desktop' or 'cursor'.",
+                f"Invalid client name: {args.client}. Please use 'claude-desktop', 'cursor', or 'claude-code'.",
             )
             sys.exit(1)
 

@@ -1,5 +1,5 @@
 .env
-.venv
+*venv*
 .cursor
 .cursorignore
 .cursorrules

@@ -93,7 +93,7 @@ spec:
           mountPath: /app/.enkrypt
       containers:
       - name: secure-mcp-gateway
-        image: enkryptai/secure-mcp-gateway:v2.1.6
+        image: enkryptai/secure-mcp-gateway:v2.1.7
         # imagePullPolicy: Always
         command:
         - /bin/sh

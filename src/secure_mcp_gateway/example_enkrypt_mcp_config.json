@@ -92,7 +92,21 @@
           },
           "tools": {},
           "enable_server_info_validation": false,
-          "enable_tool_guardrails": false,
+          "tool_guardrails_policy": {
+            "enabled": false,
+            "policy_name": "Sample Airline Guardrail",
+            "block": [
+              "policy_violation",
+              "injection_attack",
+              "topic_detector",
+              "nsfw",
+              "toxicity",
+              "pii",
+              "keyword_detector",
+              "bias",
+              "sponge_attack"
+            ]
+          },
           "input_guardrails_policy": {
             "enabled": false,
             "policy_name": "Sample Airline Guardrail",

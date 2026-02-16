@@ -148,7 +148,7 @@ class LocalApiKeyProvider(AuthProvider):
             return AuthResult(
                 status=AuthStatus.ERROR,
                 authenticated=False,
-                message="Authentication failed",
+                message=f"Authentication failed: {e}",
                 error=str(e),
             )
 

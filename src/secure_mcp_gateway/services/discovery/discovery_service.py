@@ -257,14 +257,19 @@ class DiscoveryService:
                 result = await enkrypt_authenticate(ctx)
                 auth_span.set_attribute("auth_result", result.get("status"))
                 if result.get("status") != "success":
-                    auth_span.set_attribute("error", "Authentication failed")
+                    auth_msg = result.get("message", "Unknown auth error")
+                    auth_err = result.get("error", "")
+                    detail = f"Authentication failed: {auth_msg}"
+                    if auth_err and auth_err != auth_msg:
+                        detail += f" ({auth_err})"
+                    auth_span.set_attribute("error", detail)
                     logger.warning(
                         "enkrypt_discover_all_tools.not_authenticated",
                         extra=build_log_extra(ctx, custom_id, server_name),
                     )
                     if logger_instance and logger_instance.level <= 10:  # DEBUG level
                         logger_instance.error(
-                            "[discover_server_tools] Not authenticated"
+                            f"[discover_server_tools] {detail}"
                         )
                     context = ErrorContext(
                         operation="discover.auth",
@@ -273,7 +278,7 @@ class DiscoveryService:
                     )
                     error = create_discovery_error(
                         code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-                        message="Not authenticated.",
+                        message=detail,
                         context=context,
                     )
                     return create_error_response(error)
@@ -654,7 +659,8 @@ class DiscoveryService:
                 blocked_reasons_list = []
 
                 # Validate config tools with guardrails
-                enable_tool_guardrails = server_info.get("enable_tool_guardrails", True)
+                tool_guardrails_policy = server_info.get("tool_guardrails_policy", {})
+                enable_tool_guardrails = tool_guardrails_policy.get("enabled", False)
 
                 if (
                     self.registration_validation_enabled
@@ -690,6 +696,7 @@ class DiscoveryService:
                             server_name=server_name,
                             tools=tool_list,
                             mode="filter",
+                            tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
                         )
                     )
 
@@ -849,7 +856,8 @@ class DiscoveryService:
                 blocked_tools_count = 0
                 blocked_reasons_list = []
 
-                enable_tool_guardrails = server_info.get("enable_tool_guardrails", True)
+                tool_guardrails_policy = server_info.get("tool_guardrails_policy", {})
+                enable_tool_guardrails = tool_guardrails_policy.get("enabled", False)
 
                 if (
                     self.registration_validation_enabled
@@ -869,6 +877,7 @@ class DiscoveryService:
                             server_name=server_name,
                             tools=tool_list,
                             mode="filter",
+                            tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
                         )
                     )
 
@@ -1290,7 +1299,8 @@ class DiscoveryService:
                 blocked_reasons_list = []
 
                 # NEW: Validate config tools with guardrails before returning
-                enable_tool_guardrails = server_info.get("enable_tool_guardrails", True)
+                tool_guardrails_policy = server_info.get("tool_guardrails_policy", {})
+                enable_tool_guardrails = tool_guardrails_policy.get("enabled", False)
                 logger.info(
                     f"[discover_server_tools] enable_tool_guardrails={enable_tool_guardrails} for {server_name}"
                 )
@@ -1345,6 +1355,7 @@ class DiscoveryService:
                                 server_name=server_name,
                                 tools=tool_list,
                                 mode="filter",  # Filter unsafe tools but allow safe ones
+                                tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
                             )
 
                             if validation_response and validation_response.metadata:
@@ -1672,7 +1683,8 @@ class DiscoveryService:
                                     "annotations": {},
                                 }
                                 resp = await self.guardrail_manager.validate_tool_registration(
-                                    server_name=server_name, tools=[tool], mode="block"
+                                    server_name=server_name, tools=[tool], mode="block",
+                                    tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
                                 )
                                 if resp and resp.metadata:
                                     blocked = resp.metadata.get(
@@ -1726,7 +1738,8 @@ class DiscoveryService:
                                     "annotations": {},
                                 }
                                 resp = await self.guardrail_manager.validate_tool_registration(
-                                    server_name=server_name, tools=[tool], mode="block"
+                                    server_name=server_name, tools=[tool], mode="block",
+                                    tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
                                 )
                                 if resp and resp.metadata:
                                     if resp.metadata.get("timeout", False):
@@ -2019,6 +2032,8 @@ class DiscoveryService:
                 enable_server_info_validation = server_info.get(
                     "enable_server_info_validation", True
                 )
+                # Get tool_guardrails_policy for description validation detectors
+                tool_guardrails_policy = server_info.get("tool_guardrails_policy", {})
                 if (
                     self.registration_validation_enabled
                     and self.guardrail_manager
@@ -2058,7 +2073,8 @@ class DiscoveryService:
                                     "annotations": {},
                                 }
                                 resp = await self.guardrail_manager.validate_tool_registration(
-                                    server_name=server_name, tools=[tool], mode="block"
+                                    server_name=server_name, tools=[tool], mode="block",
+                                    tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
                                 )
                                 if resp and resp.metadata:
                                     blocked = resp.metadata.get(
@@ -2113,7 +2129,8 @@ class DiscoveryService:
                                     "annotations": {},
                                 }
                                 resp = await self.guardrail_manager.validate_tool_registration(
-                                    server_name=server_name, tools=[tool], mode="block"
+                                    server_name=server_name, tools=[tool], mode="block",
+                                    tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
                                 )
                                 if resp and resp.metadata:
                                     if resp.metadata.get("timeout", False):
@@ -2282,8 +2299,11 @@ class DiscoveryService:
                         )
 
                     # NEW: Validate tools with guardrails before caching
-                    enable_tool_guardrails = server_info.get(
-                        "enable_tool_guardrails", True
+                    tool_guardrails_policy = server_info.get(
+                        "tool_guardrails_policy", {}
+                    )
+                    enable_tool_guardrails = tool_guardrails_policy.get(
+                        "enabled", False
                     )
                     logger.info(
                         f"[discover_server_tools] enable_tool_guardrails={enable_tool_guardrails} for {server_name}"
@@ -2323,6 +2343,7 @@ class DiscoveryService:
                                     server_name=server_name,
                                     tools=tool_list,
                                     mode="filter",  # Filter unsafe tools but allow safe ones
+                                    tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
                                 )
 
                                 if validation_response and validation_response.metadata:

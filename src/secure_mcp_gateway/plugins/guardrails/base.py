@@ -77,6 +77,7 @@ class ServerRegistrationRequest:
     server_command: Optional[str] = None
     server_metadata: Optional[Dict[str, Any]] = None
     context: Optional[Dict[str, Any]] = None
+    tool_guardrails_policy: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -87,6 +88,7 @@ class ToolRegistrationRequest:
     tools: List[Dict[str, Any]]  # List of tool schemas with name, description, etc.
     validation_mode: str = "filter"  # "filter" or "block_all"
     context: Optional[Dict[str, Any]] = None
+    tool_guardrails_policy: Optional[Dict[str, Any]] = None
 
 
 @dataclass

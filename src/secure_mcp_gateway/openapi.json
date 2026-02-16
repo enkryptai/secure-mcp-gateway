@@ -3,7 +3,7 @@
   "info": {
     "title": "Enkrypt Secure MCP Gateway API",
     "description": "REST API for managing MCP configurations, projects, users, and system operations",
-    "version": "2.1.6"
+    "version": "2.1.7"
   },
   "servers": [
     {

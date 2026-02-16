@@ -218,8 +218,13 @@ class ServerInfoService:
                 result = await enkrypt_authenticate(ctx)
                 auth_span.set_attribute("auth_result", result.get("status"))
                 if result.get("status") != "success":
-                    auth_span.set_attribute("error", "Authentication failed")
-                    logger.warning("[get_server_info] Not authenticated")
+                    auth_msg = result.get("message", "Unknown auth error")
+                    auth_err = result.get("error", "")
+                    detail = f"Authentication failed: {auth_msg}"
+                    if auth_err and auth_err != auth_msg:
+                        detail += f" ({auth_err})"
+                    auth_span.set_attribute("error", detail)
+                    logger.warning(f"[get_server_info] {detail}")
                     logger.warning(
                         "get_server_info.not_authenticated",
                         extra=build_log_extra(
@@ -235,7 +240,7 @@ class ServerInfoService:
                     )
                     err = create_discovery_error(
                         code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-                        message="Not authenticated.",
+                        message=detail,
                         context=context,
                     )
                     return create_error_response(err)
