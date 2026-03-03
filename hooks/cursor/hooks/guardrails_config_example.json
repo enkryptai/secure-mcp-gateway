@@ -49,7 +49,7 @@
       "nsfw"
     ]
   },
-  "sensitive_mcp_tools": [
+  "sensitive_tools": [
     "execute_sql",
     "delete_",
     "remove_",

@@ -1,2 +1,2 @@
-include src/secure_mcp_gateway/example_*.json
-include src/secure_mcp_gateway/openapi.json
+include src/enkrypt_security/gateway/example_*.json
+include src/enkrypt_security/gateway/openapi.json

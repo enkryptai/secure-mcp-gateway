@@ -1,0 +1,141 @@
+{
+  "api": {
+    "api_key": "YOUR_ENKRYPT_API_KEY",
+    "base_url": "https://api.enkryptai.com",
+    "fail_open": true,
+    "timeout": 15.0,
+    "ssl_verify": true
+  },
+  "input_guardrails": {
+    "enabled": false,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack",
+      "topic_detector",
+      "nsfw",
+      "toxicity",
+      "pii",
+      "keyword_detector",
+      "bias",
+      "sponge_attack"
+    ],
+    "pii_redaction": false
+  },
+  "output_guardrails": {
+    "enabled": false,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "pii",
+      "toxicity",
+      "nsfw"
+    ],
+    "pii_redaction": false,
+    "additional_config": {
+      "relevancy": false,
+      "relevancy_threshold": 0.7,
+      "adherence": false,
+      "adherence_threshold": 0.8,
+      "hallucination": false
+    }
+  },
+  "telemetry": {
+    "enabled": false,
+    "exporter": "none",
+    "endpoint": "http://localhost:4317",
+    "service_name": "enkrypt-security"
+  },
+
+  "gateway": {
+    "log_level": "INFO",
+    "use_remote_config": false,
+    "cache": {
+      "use_external": false,
+      "host": "localhost",
+      "port": 6379,
+      "tool_expiration_hours": 4,
+      "config_expiration_hours": 24
+    },
+    "async_guardrails": {
+      "input": false,
+      "output": false
+    },
+    "timeout_settings": {
+      "default_timeout": 30,
+      "guardrail_timeout": 15,
+      "auth_timeout": 10,
+      "tool_execution_timeout": 60,
+      "discovery_timeout": 20,
+      "cache_timeout": 5,
+      "connectivity_timeout": 2
+    }
+  },
+
+  "sdk": {
+    "provider_keys": {
+      "OPENAI_API_KEY": "",
+      "ANTHROPIC_API_KEY": "",
+      "AWS_ACCESS_KEY_ID": "",
+      "AWS_SECRET_ACCESS_KEY": "",
+      "AWS_REGION": "",
+      "AZURE_OPENAI_API_KEY": "",
+      "AZURE_OPENAI_ENDPOINT": "",
+      "GOOGLE_API_KEY": ""
+    },
+    "checkpoints": {
+      "pre_llm": true,
+      "pre_tool": true,
+      "post_tool": false,
+      "post_llm": false
+    },
+    "frameworks": null,
+    "payload_policy": {
+      "max_str_len": 4096,
+      "max_attr_count": 64
+    }
+  },
+
+  "hooks": {
+    "cursor": {
+      "sensitive_tools": ["execute_sql", "delete_", "remove_", "drop_", "write_file", "run_command", "shell_", "exec_"],
+      "beforeSubmitPrompt": {
+        "enabled": false,
+        "guardrail_name": "Sample Airline Guardrail",
+        "block": ["injection_attack", "topic_detector", "nsfw", "toxicity", "pii", "keyword_detector", "bias", "sponge_attack"]
+      },
+      "beforeMCPExecution": {
+        "enabled": true,
+        "guardrail_name": "Sample Airline Guardrail",
+        "block": ["injection_attack", "nsfw", "toxicity", "pii", "keyword_detector"]
+      },
+      "afterMCPExecution": {
+        "enabled": true,
+        "guardrail_name": "Sample Airline Guardrail",
+        "block": ["pii", "toxicity", "nsfw"]
+      },
+      "afterAgentResponse": {
+        "enabled": false,
+        "guardrail_name": "Sample Airline Guardrail",
+        "block": ["pii", "toxicity", "nsfw"]
+      },
+      "stop": {
+        "enabled": false,
+        "guardrail_name": "Sample Airline Guardrail",
+        "block": []
+      }
+    },
+    "claude_code": {
+      "sensitive_tools": ["Bash", "Write", "Edit", "execute_sql", "delete_*", "remove_*", "drop_*", "run_command", "shell_*", "exec_*", "mcp__*__write*", "mcp__*__delete*", "mcp__*__execute*"],
+      "Setup": { "enabled": true, "guardrail_name": "Sample Airline Guardrail", "block": [] },
+      "SessionStart": { "enabled": true, "guardrail_name": "Sample Airline Guardrail", "block": [] },
+      "UserPromptSubmit": { "enabled": true, "guardrail_name": "Sample Airline Guardrail", "block": ["injection_attack", "nsfw", "toxicity"] },
+      "PreToolUse": { "enabled": true, "guardrail_name": "Sample Airline Guardrail", "block": ["injection_attack", "nsfw", "toxicity", "pii", "keyword_detector"] },
+      "PermissionRequest": { "enabled": true, "guardrail_name": "Sample Airline Guardrail", "block": ["injection_attack", "pii"] },
+      "PostToolUse": { "enabled": true, "guardrail_name": "Sample Airline Guardrail", "block": ["pii", "toxicity", "nsfw"] },
+      "SubagentStop": { "enabled": false, "guardrail_name": "Sample Airline Guardrail", "block": [] },
+      "Stop": { "enabled": false, "guardrail_name": "Sample Airline Guardrail", "block": [] },
+      "PreCompact": { "enabled": true, "guardrail_name": "Sample Airline Guardrail", "block": [] },
+      "Notification": { "enabled": true, "guardrail_name": "Sample Airline Guardrail", "block": [] },
+      "SessionEnd": { "enabled": true, "guardrail_name": "Sample Airline Guardrail", "block": [] }
+    }
+  }
+}

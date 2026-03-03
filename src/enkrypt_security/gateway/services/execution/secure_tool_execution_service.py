@@ -1,0 +1,1719 @@
+from __future__ import annotations
+
+import asyncio
+import sys
+import traceback
+from typing import Any
+
+from enkrypt_security.telemetry import (
+    SourceEvent,
+    SourceProduct,
+    SpanAttributes,
+    SpanNames,
+)
+from enkrypt_security.gateway.plugins.auth import AuthCredentials, get_auth_config_manager
+from enkrypt_security.gateway.plugins.guardrails import (
+    GuardrailAction,
+    GuardrailRequest,
+    get_guardrail_config_manager,
+)
+from enkrypt_security.gateway.plugins.telemetry import get_telemetry_config_manager
+from enkrypt_security.gateway.services.cache.cache_service import cache_service
+from enkrypt_security.gateway.services.execution.execution_utils import (
+    extract_input_text_from_args,
+)
+from enkrypt_security.gateway.services.execution.tool_execution_service import (
+    ToolExecutionService,
+)
+
+# Get tracer from telemetry manager
+telemetry_manager = get_telemetry_config_manager()
+tracer = telemetry_manager.get_tracer()
+from enkrypt_security.gateway.utils import (
+    build_log_extra,
+    generate_custom_id,
+    get_common_config,
+    get_server_info_by_name,
+    logger,
+    mask_key,
+)
+
+
+class SecureToolExecutionService:
+    """
+    Handles secure tool execution with comprehensive guardrail checks.
+
+    This service encapsulates the complex secure tool execution logic from
+    enkrypt_secure_call_tools while maintaining the same behavior, telemetry, and error handling.
+    """
+
+    def __init__(self):
+        self.auth_manager = get_auth_config_manager()
+        self.cache_service = cache_service
+        self.guardrail_manager = get_guardrail_config_manager()
+        self.tool_execution_service = ToolExecutionService()
+
+        # Load constants from common config
+        common_config = get_common_config()
+        self.ADHERENCE_THRESHOLD = common_config.get("adherence_threshold", 0.8)
+        self.ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED = common_config.get(
+            "enkrypt_async_input_guardrails_enabled", True
+        )
+        self.ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED = common_config.get(
+            "enkrypt_async_output_guardrails_enabled", True
+        )
+        self.IS_DEBUG_LOG_LEVEL = (
+            common_config.get("enkrypt_log_level", "INFO").lower() == "debug"
+        )
+        self.RELEVANCY_THRESHOLD = common_config.get("relevancy_threshold", 0.7)
+
+    async def execute_secure_tools(
+        self,
+        ctx,
+        server_name: str,
+        tool_calls: list[dict[str, Any]] = None,
+        logger=None,
+    ) -> dict[str, Any]:
+        """
+        Execute multiple tool calls securely with comprehensive guardrail checks.
+
+        Args:
+            ctx: The MCP context
+            server_name: Name of the server containing the tools
+            tool_calls: List of tool call objects
+            logger: Logger instance
+
+        Returns:
+            dict: Batch execution results with guardrails responses
+        """
+        tool_calls = tool_calls or []
+        num_tool_calls = len(tool_calls)
+        custom_id = generate_custom_id()
+
+        with tracer.start_as_current_span(
+            SpanNames.TOOL_EXECUTE
+        ) as main_span:
+            main_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            main_span.set_attribute(SpanAttributes.SOURCE_PRODUCT, SourceProduct.GATEWAY)
+            main_span.set_attribute("num_tool_calls", num_tool_calls)
+            main_span.set_attribute("request_id", ctx.request_id)
+            main_span.set_attribute("custom_id", custom_id)
+
+            logger.info(
+                f"[secure_call_tools] Starting secure batch execution for {num_tool_calls} tools for server: {server_name}"
+            )
+            logger.info(
+                "secure_tool_execution.execute_secure_tools.started",
+                extra={
+                    "request_id": ctx.request_id,
+                    "custom_id": custom_id,
+                    "server_name": server_name,
+                },
+            )
+
+            if num_tool_calls == 0:
+                logger.info(
+                    "[secure_call_tools] No tools provided. Treating this as a discovery call"
+                )
+                logger.info(
+                    "secure_tool_execution.execute_secure_tools.no_tools_provided",
+                    extra={
+                        "request_id": ctx.request_id,
+                        "custom_id": custom_id,
+                        "server_name": server_name,
+                    },
+                )
+
+            try:
+                # Authentication and setup
+                auth_result = await self._authenticate_and_setup(
+                    ctx, custom_id, server_name, main_span, logger
+                )
+                if auth_result.get("status") != "success":
+                    return auth_result
+
+                session_key = auth_result["session_key"]
+                server_info = auth_result["server_info"]
+
+                # Get guardrails policies
+                guardrails_config = self._extract_guardrails_config(
+                    server_info, main_span
+                )
+
+                # Tool discovery
+                server_config_tools = await self._handle_tool_discovery(
+                    ctx,
+                    custom_id,
+                    server_name,
+                    server_info,
+                    session_key,
+                    main_span,
+                    logger,
+                )
+                if not server_config_tools:
+                    return {
+                        "status": "error",
+                        "error": f"No tools found for {server_name} even after discovery",
+                    }
+
+                # Handle discovery-only call
+                if num_tool_calls == 0:
+                    return {
+                        "status": "success",
+                        "message": f"Successfully discovered tools for {server_name}",
+                        "tools": server_config_tools,
+                    }
+
+                # Execute tools with guardrails
+                results = await self._execute_tools_with_guardrails(
+                    ctx,
+                    custom_id,
+                    server_name,
+                    tool_calls,
+                    server_config_tools,
+                    guardrails_config,
+                    session_key,
+                    main_span,
+                    logger,
+                )
+
+                # Calculate and return summary
+                return self._build_execution_summary(
+                    ctx,
+                    custom_id,
+                    server_name,
+                    num_tool_calls,
+                    results,
+                    guardrails_config,
+                    logger,
+                )
+
+            except Exception as e:
+                main_span.record_exception(e)
+                main_span.set_attribute("error", str(e))
+                logger.error(
+                    f"[secure_call_tools] Critical error during batch execution: {e}"
+                )
+                traceback.print_exc(file=sys.stderr)
+                logger.error(
+                    "secure_tool_execution.execute_secure_tools.critical_error",
+                    extra=build_log_extra(ctx, custom_id, server_name, error=str(e)),
+                )
+                return {
+                    "status": "error",
+                    "error": f"Secure batch tool call failed: {e}",
+                }
+
+    async def _authenticate_and_setup(
+        self, ctx, custom_id, server_name, main_span, logger
+    ):
+        """Handle authentication and setup for secure tool execution."""
+        with tracer.start_as_current_span(
+            SpanNames.AUTH
+        ) as auth_span:
+            # Gather credentials
+            creds = self.auth_manager.get_gateway_credentials(ctx)
+
+            # Decide whether to use auth plugins
+            common_config = get_common_config()
+            auth_plugins = common_config.get("auth_plugins", {})
+            use_plugins = bool(auth_plugins.get("enabled", False))
+
+            if use_plugins:
+                # Authenticate via plugin manager
+                manager = get_auth_config_manager()
+                auth_result = await manager.authenticate(
+                    ctx,
+                    credentials=AuthCredentials(
+                        gateway_key=creds.get("gateway_key"),
+                        project_id=creds.get("project_id"),
+                        user_id=creds.get("user_id"),
+                    ),
+                    provider_name=auth_plugins.get("default_provider"),
+                )
+                if not auth_result.is_success:
+                    return {
+                        "status": "error",
+                        "error": f"Authentication failed: {auth_result.message}",
+                    }
+
+                # Build session and resolve server info from returned gateway_config
+                mcp_config_id = (auth_result.gateway_config or {}).get(
+                    "mcp_config_id", "not_provided"
+                )
+                session_key = f"{creds.get('gateway_key')}_{creds.get('project_id')}_{creds.get('user_id')}_{mcp_config_id}"
+                server_info = get_server_info_by_name(
+                    auth_result.gateway_config, server_name
+                )
+            else:
+                # Fallback to legacy authentication path
+                # First, get the local config to build the proper session key
+                local_config = await self.auth_manager.get_local_mcp_config(
+                    creds.get("gateway_key"),
+                    creds.get("project_id"),
+                    creds.get("user_id"),
+                )
+
+                if not local_config:
+                    auth_span.set_attribute("error", "No local config found")
+                    from enkrypt_security.gateway.error_handling import create_error_response
+                    from enkrypt_security.gateway.exceptions import (
+                        ErrorCode,
+                        ErrorContext,
+                        create_configuration_error,
+                    )
+
+                    context = ErrorContext(
+                        operation="secure_call_tools.auth.local_config",
+                        request_id=getattr(ctx, "request_id", None),
+                        server_name=server_name,
+                    )
+                    err = create_configuration_error(
+                        code=ErrorCode.CONFIG_MISSING_REQUIRED,
+                        message="Configuration not found.",
+                        context=context,
+                    )
+                    return create_error_response(err)
+
+                mcp_config_id = local_config.get("mcp_config_id", "not_provided")
+                session_key = f"{creds.get('gateway_key')}_{creds.get('project_id')}_{creds.get('user_id')}_{mcp_config_id}"
+
+                if not self.auth_manager.is_session_authenticated(session_key):
+                    auth_span.set_attribute("required_new_auth", True)
+                    from enkrypt_security.gateway.gateway import enkrypt_authenticate
+
+                    result = await enkrypt_authenticate(ctx)
+                    if result.get("status") != "success":
+                        auth_msg = result.get("message", "Unknown auth error")
+                        auth_err = result.get("error", "")
+                        detail = f"Authentication failed: {auth_msg}"
+                        if auth_err and auth_err != auth_msg:
+                            detail += f" ({auth_err})"
+                        auth_span.set_attribute("error", detail)
+                        logger.error(f"[secure_call_tools] {detail}")
+                        logger.error(
+                            "secure_tool_execution.execute_secure_tools.not_authenticated",
+                            extra=build_log_extra(ctx, custom_id, server_name),
+                        )
+                        from enkrypt_security.gateway.error_handling import (
+                            create_error_response,
+                        )
+                        from enkrypt_security.gateway.exceptions import (
+                            ErrorCode,
+                            ErrorContext,
+                            create_auth_error,
+                        )
+
+                        context = ErrorContext(
+                            operation="secure_call_tools.auth",
+                            request_id=getattr(ctx, "request_id", None),
+                            server_name=server_name,
+                        )
+                        err = create_auth_error(
+                            code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+                            message=detail,
+                            context=context,
+                        )
+                        return create_error_response(err)
+                else:
+                    auth_span.set_attribute("required_new_auth", False)
+
+                server_info = get_server_info_by_name(
+                    self.auth_manager.get_session_gateway_config(session_key),
+                    server_name,
+                )
+
+            # Validate server availability
+            if not server_info:
+                auth_span.set_attribute(
+                    "error", f"Server '{server_name}' not available"
+                )
+                logger.warning(
+                    f"[secure_call_tools] Server '{server_name}' not available",
+                )
+                logger.warning(
+                    "secure_tool_execution.execute_secure_tools.server_not_available",
+                    extra=build_log_extra(ctx, custom_id, server_name),
+                )
+                from enkrypt_security.gateway.error_handling import create_error_response
+                from enkrypt_security.gateway.exceptions import (
+                    ErrorCode,
+                    ErrorContext,
+                    create_discovery_error,
+                )
+
+                context = ErrorContext(
+                    operation="secure_call_tools.server_lookup",
+                    request_id=getattr(ctx, "request_id", None),
+                    server_name=server_name,
+                )
+                err = create_discovery_error(
+                    code=ErrorCode.DISCOVERY_SERVER_UNAVAILABLE,
+                    message=f"Server '{server_name}' not available.",
+                    context=context,
+                )
+                return create_error_response(err)
+
+            return {
+                "status": "success",
+                "session_key": session_key,
+                "server_info": server_info,
+            }
+
+    def _extract_guardrails_config(self, server_info, main_span):
+        """Extract guardrails configuration from server info."""
+        input_guardrails_policy = server_info["input_guardrails_policy"]
+        output_guardrails_policy = server_info["output_guardrails_policy"]
+
+        if self.IS_DEBUG_LOG_LEVEL:
+            logger.debug(f"Input Guardrails Policy: {input_guardrails_policy}")
+            logger.debug(f"Output Guardrails Policy: {output_guardrails_policy}")
+
+        input_policy_enabled = input_guardrails_policy["enabled"]
+        output_policy_enabled = output_guardrails_policy["enabled"]
+        input_policy_name = input_guardrails_policy["policy_name"]
+        output_policy_name = output_guardrails_policy["policy_name"]
+        input_blocks = input_guardrails_policy["block"]
+        output_blocks = output_guardrails_policy["block"]
+        pii_redaction = input_guardrails_policy["additional_config"].get(
+            "pii_redaction", False
+        )
+        relevancy = output_guardrails_policy["additional_config"].get(
+            "relevancy", False
+        )
+        adherence = output_guardrails_policy["additional_config"].get(
+            "adherence", False
+        )
+        hallucination = output_guardrails_policy["additional_config"].get(
+            "hallucination", False
+        )
+
+        # Set guardrails attributes on main span
+        main_span.set_attribute("input_guardrails_enabled", input_policy_enabled)
+        main_span.set_attribute("output_guardrails_enabled", output_policy_enabled)
+        main_span.set_attribute("pii_redaction_enabled", pii_redaction)
+        main_span.set_attribute("relevancy_enabled", relevancy)
+        main_span.set_attribute("adherence_enabled", adherence)
+        main_span.set_attribute("hallucination_enabled", hallucination)
+
+        return {
+            "input_guardrails_policy": input_guardrails_policy,
+            "output_guardrails_policy": output_guardrails_policy,
+            "input_policy_enabled": input_policy_enabled,
+            "output_policy_enabled": output_policy_enabled,
+            "input_policy_name": input_policy_name,
+            "output_policy_name": output_policy_name,
+            "input_blocks": input_blocks,
+            "output_blocks": output_blocks,
+            "pii_redaction": pii_redaction,
+            "relevancy": relevancy,
+            "adherence": adherence,
+            "hallucination": hallucination,
+        }
+
+    async def _handle_tool_discovery(
+        self, ctx, custom_id, server_name, server_info, session_key, main_span, logger
+    ):
+        """Handle tool discovery for the server."""
+        with tracer.start_as_current_span(
+            SpanNames.DISCOVERY
+        ) as discovery_span:
+            discovery_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+
+            server_config_tools = server_info.get("tools", {})
+            discovery_span.set_attribute("has_cached_tools", bool(server_config_tools))
+
+            if self.IS_DEBUG_LOG_LEVEL:
+                logger.debug(
+                    f"[secure_call_tools] Server config tools before discovery: {server_config_tools}"
+                )
+
+            if not server_config_tools:
+                id = self.auth_manager.get_session_gateway_config(session_key)["id"]
+                server_config_tools = self.cache_service.get_cached_tools(
+                    id, server_name
+                )
+                discovery_span.set_attribute("cache_hit", bool(server_config_tools))
+
+                if server_config_tools:
+                    from enkrypt_security.gateway.plugins.telemetry import (
+                        get_telemetry_config_manager,
+                    )
+
+                    telemetry_mgr = get_telemetry_config_manager()
+                    telemetry_mgr.cache_hit_counter.add(
+                        1, attributes=build_log_extra(ctx)
+                    )
+                    logger.info(
+                        "secure_tool_execution.execute_secure_tools.server_config_tools_after_get_cached_tools",
+                        extra=build_log_extra(ctx, custom_id, server_name),
+                    )
+                    logger.info(
+                        f"[enkrypt_secure_call_tools] Found cached tools for {server_name}"
+                    )
+                else:
+                    from enkrypt_security.gateway.plugins.telemetry import (
+                        get_telemetry_config_manager,
+                    )
+
+                    telemetry_mgr = get_telemetry_config_manager()
+                    telemetry_mgr.cache_miss_counter.add(
+                        1, attributes=build_log_extra(ctx)
+                    )
+                    try:
+                        discovery_span.set_attribute("discovery_required", True)
+
+                        telemetry_mgr.list_servers_call_count.add(
+                            1, attributes=build_log_extra(ctx, custom_id)
+                        )
+
+                        from enkrypt_security.gateway.gateway import (
+                            enkrypt_discover_all_tools,
+                        )
+
+                        discovery_result = await enkrypt_discover_all_tools(
+                            ctx, server_name
+                        )
+                        discovery_span.set_attribute(
+                            "discovery_success",
+                            discovery_result.get("status") == "success",
+                        )
+
+                        if discovery_result.get("status") != "success":
+                            discovery_span.set_attribute("error", "Discovery failed")
+                            logger.error(
+                                "secure_tool_execution.execute_secure_tools.discovery_failed",
+                                extra=build_log_extra(
+                                    ctx,
+                                    custom_id,
+                                    server_name,
+                                    discovery_result=discovery_result,
+                                ),
+                            )
+                            return None
+
+                        if discovery_result.get("status") == "success":
+                            server_config_tools = discovery_result.get("tools", {})
+
+                            telemetry_mgr.servers_discovered_count.add(
+                                1, attributes=build_log_extra(ctx)
+                            )
+
+                        if self.IS_DEBUG_LOG_LEVEL:
+                            logger.debug(
+                                f"[enkrypt_secure_call_tools] Discovered tools: {server_config_tools}"
+                            )
+                            logger.info(
+                                "secure_tool_execution.execute_secure_tools.discovered_tools",
+                                extra=build_log_extra(
+                                    ctx,
+                                    custom_id,
+                                    server_name,
+                                    server_config_tools=server_config_tools,
+                                ),
+                            )
+                    except Exception as e:
+                        discovery_span.record_exception(e)
+                        logger.error(
+                            "secure_tool_execution.execute_secure_tools.exception",
+                            extra=build_log_extra(
+                                ctx, custom_id, server_name, error=str(e)
+                            ),
+                        )
+                        logger.error(f"[enkrypt_secure_call_tools] Exception: {e}")
+                        traceback.print_exc(file=sys.stderr)
+                        return None
+
+            return server_config_tools
+
+    async def _execute_tools_with_guardrails(
+        self,
+        ctx,
+        custom_id,
+        server_name,
+        tool_calls,
+        server_config_tools,
+        guardrails_config,
+        session_key,
+        main_span,
+        logger,
+    ):
+        """Execute tools with comprehensive guardrail checks."""
+        gateway_config = self.auth_manager.get_session_gateway_config(session_key)
+        server_info = get_server_info_by_name(gateway_config, server_name)
+        server_config = server_info["config"]
+
+        server_command = server_config["command"]
+        server_args = server_config["args"]
+        server_env = server_config.get("env", None)
+
+        # OAuth Integration: Inject OAuth headers for remote servers
+        from enkrypt_security.gateway.services.oauth.integration import (
+            inject_oauth_into_args,
+            inject_oauth_into_env,
+            prepare_oauth_for_server,
+        )
+
+        # Extract project_id and mcp_config_id from gateway_config
+        project_id = gateway_config.get("project_id")
+        mcp_config_id = gateway_config.get("mcp_config_id")
+
+        oauth_data, oauth_error = await prepare_oauth_for_server(
+            server_name=server_name,
+            server_entry=server_info,
+            config_id=mcp_config_id,
+            project_id=project_id,
+        )
+
+        if oauth_error:
+            logger.error(
+                f"[_execute_tools_with_guardrails] OAuth preparation failed for {server_name}: {oauth_error}"
+            )
+            # Continue without OAuth - let the server handle authentication failure
+        elif oauth_data:
+            logger.info(
+                f"[_execute_tools_with_guardrails] OAuth configured for {server_name}, injecting credentials"
+            )
+            # Inject OAuth environment variables
+            server_env = inject_oauth_into_env(server_env, oauth_data)
+            # Inject OAuth header arguments for remote servers
+            server_args = inject_oauth_into_args(server_args, oauth_data)
+
+        logger.info(
+            f"[secure_call_tools] Starting secure batch call for {len(tool_calls)} tools for server: {server_name}"
+        )
+        logger.info(
+            "secure_tool_execution.execute_secure_tools.starting_secure_batch_call",
+            extra=build_log_extra(
+                ctx, custom_id, server_name, num_tool_calls=len(tool_calls)
+            ),
+        )
+
+        if self.IS_DEBUG_LOG_LEVEL:
+            logger.debug(
+                f"[secure_call_tools] Using command: {server_command} with args: {server_args}"
+            )
+            logger.info(
+                "secure_tool_execution.execute_secure_tools.using_command",
+                extra=build_log_extra(
+                    ctx, custom_id, server_name, server_command=server_command
+                ),
+            )
+
+        results = []
+
+        # Single session for all calls (managed by ToolExecutionService)
+        async with self.tool_execution_service.open_session(
+            {"command": server_command, "args": server_args, "env": server_env}
+        ) as session:
+            logger.info(
+                f"[secure_call_tools] Session initialized successfully for {server_name}"
+            )
+            logger.info(
+                "secure_tool_execution.execute_secure_tools.session_initialized",
+                extra=build_log_extra(ctx, custom_id, server_name),
+            )
+
+            # Tool execution loop
+            for i, tool_call in enumerate(tool_calls):
+                result = await self._execute_single_tool(
+                    ctx,
+                    custom_id,
+                    server_name,
+                    i,
+                    tool_call,
+                    server_config_tools,
+                    guardrails_config,
+                    session,
+                    main_span,
+                    logger,
+                )
+                results.append(result)
+
+                # Break if tool execution failed or was blocked
+                if result["status"] in [
+                    "error",
+                    "blocked_input",
+                    "blocked_output",
+                    "blocked_output_relevancy",
+                    "blocked_output_adherence",
+                    "blocked_output_hallucination",
+                ]:
+                    break
+
+        return results
+
+    async def _execute_single_tool(
+        self,
+        ctx,
+        custom_id,
+        server_name,
+        i,
+        tool_call,
+        server_config_tools,
+        guardrails_config,
+        session,
+        main_span,
+        logger,
+    ):
+        """Execute a single tool with all guardrail checks."""
+        with tracer.start_as_current_span(
+            SpanNames.TOOL_EXECUTE
+        ) as tool_span:
+            tool_name = (
+                tool_call.get("name")
+                or tool_call.get("tool_name")
+                or tool_call.get("tool")
+                or tool_call.get("function")
+                or tool_call.get("function_name")
+                or tool_call.get("function_id")
+            )
+            tool_span.set_attribute("tool_name", tool_name or "unknown")
+            tool_span.set_attribute("call_index", i)
+            tool_span.set_attribute("server_name", server_name)
+
+            try:
+                args = (
+                    tool_call.get("args", {})
+                    or tool_call.get("arguments", {})
+                    or tool_call.get("tool_arguments", {})
+                    or tool_call.get("tool_input_arguments", {})
+                    or tool_call.get("tool_args", {})
+                    or tool_call.get("tool_input_args", {})
+                    or tool_call.get("parameters", {})
+                    or tool_call.get("input", {})
+                    or tool_call.get("params", {})
+                )
+
+                if not tool_name:
+                    tool_span.set_attribute("error", "No tool_name provided")
+                    return {
+                        "status": "error",
+                        "error": "No tool_name provided",
+                        "message": "No tool_name provided",
+                        "enkrypt_mcp_data": {
+                            "call_index": i,
+                            "server_name": server_name,
+                            "tool_name": tool_name,
+                            "args": args,
+                        },
+                    }
+
+                logger.info(
+                    f"[secure_call_tools] Processing call {i}: {tool_name} with args: {args}"
+                )
+                logger.info(
+                    "secure_tool_execution.execute_secure_tools.processing_call",
+                    extra=build_log_extra(
+                        ctx,
+                        custom_id,
+                        server_name,
+                        tool_name=tool_name,
+                        tool_arguments=args,
+                    ),
+                )
+
+                # Test debug log
+                logger.debug(
+                    f"[secure_call_tools] Call {i}: Starting tool execution for {tool_name}"
+                )
+
+                # Tool validation
+                validation_result = self._validate_tool(
+                    tool_name, server_config_tools, tool_span
+                )
+                if validation_result:
+                    return validation_result
+
+                # Initialize guardrail responses
+                redaction_key = None
+                input_guardrail_response = {}
+                output_guardrail_response = {}
+                output_relevancy_response = {}
+                output_adherence_response = {}
+                output_hallucination_response = {}
+
+                # Prepare input for guardrails
+                input_text_content, input_json_string = extract_input_text_from_args(
+                    args
+                )
+
+                # Execute tool with input guardrails
+                if guardrails_config["input_policy_enabled"]:
+                    result = await self._execute_with_input_guardrails(
+                        ctx,
+                        custom_id,
+                        server_name,
+                        i,
+                        tool_name,
+                        args,
+                        input_text_content,
+                        input_json_string,
+                        guardrails_config,
+                        session,
+                        tool_span,
+                        logger,
+                    )
+                    # Extract input guardrail response from result
+                    input_guardrail_response = result.get(
+                        "input_guardrail_response", {}
+                    )
+                    logger.debug(
+                        f"[secure_call_tools] Call {i}: Input Guardrails Response: {input_guardrail_response}"
+                    )
+                else:
+                    result = await self._execute_without_input_guardrails(
+                        ctx,
+                        custom_id,
+                        server_name,
+                        i,
+                        tool_name,
+                        args,
+                        session,
+                        tool_span,
+                        logger,
+                    )
+                    # Initialize empty input guardrail response for debug logging
+                    input_guardrail_response = {}
+
+                if result.get("status") in ["blocked_input", "error"]:
+                    return result
+
+                # Process output with guardrails
+                if result.get("text_result"):
+                    output_result = await self._process_output_guardrails(
+                        ctx,
+                        custom_id,
+                        server_name,
+                        i,
+                        tool_name,
+                        args,
+                        result["text_result"],
+                        input_json_string,
+                        guardrails_config,
+                        tool_span,
+                        logger,
+                    )
+                    if output_result:
+                        # Check if it's a blocking result
+                        if output_result.get("status") in ["blocked_output", "error"]:
+                            return output_result
+                        # Extract guardrail responses
+                        output_guardrail_response = output_result.get(
+                            "output_guardrail_response", {}
+                        )
+                        output_relevancy_response = output_result.get(
+                            "output_relevancy_response", {}
+                        )
+                        output_adherence_response = output_result.get(
+                            "output_adherence_response", {}
+                        )
+                        output_hallucination_response = output_result.get(
+                            "output_hallucination_response", {}
+                        )
+                    else:
+                        # Initialize empty responses if no output guardrails
+                        output_guardrail_response = {}
+                        output_relevancy_response = {}
+                        output_adherence_response = {}
+                        output_hallucination_response = {}
+                else:
+                    # Initialize empty responses if no text result
+                    output_guardrail_response = {}
+                    output_relevancy_response = {}
+                    output_adherence_response = {}
+                    output_hallucination_response = {}
+
+                # Debug logging for guardrails responses
+                logger.debug(
+                    f"[secure_call_tools] Call {i}: Input Guardrails Response: {input_guardrail_response}"
+                )
+                logger.debug(
+                    f"[secure_call_tools] Call {i}: Output Guardrails Response: {output_guardrail_response}"
+                )
+                logger.debug(
+                    f"[secure_call_tools] Call {i}: Output Relevancy Response: {output_relevancy_response}"
+                )
+                logger.debug(
+                    f"[secure_call_tools] Call {i}: Output Adherence Response: {output_adherence_response}"
+                )
+                logger.debug(
+                    f"[secure_call_tools] Call {i}: Output Hallucination Response: {output_hallucination_response}"
+                )
+
+                # Build successful result
+                return self._build_successful_result(
+                    ctx,
+                    custom_id,
+                    i,
+                    server_name,
+                    tool_name,
+                    args,
+                    result["text_result"],
+                    guardrails_config,
+                    input_guardrail_response,
+                    output_guardrail_response,
+                    output_relevancy_response,
+                    output_adherence_response,
+                    output_hallucination_response,
+                    logger,
+                )
+
+            except Exception as tool_error:
+                from enkrypt_security.gateway.error_handling import (
+                    create_error_response,
+                    error_logger,
+                )
+                from enkrypt_security.gateway.exceptions import (
+                    ErrorCode,
+                    ErrorContext,
+                    ToolExecutionError,
+                    create_tool_execution_error,
+                )
+
+                # Create error context
+                context = ErrorContext(
+                    operation="tool_execution",
+                    request_id=custom_id,
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    additional_context={
+                        "call_index": i,
+                        "args": args,
+                    },
+                )
+
+                # Create standardized error
+                error = create_tool_execution_error(
+                    code=ErrorCode.TOOL_EXECUTION_FAILED,
+                    message=f"Tool execution failed for {tool_name}: {tool_error!s}",
+                    context=context,
+                    cause=tool_error,
+                )
+
+                # Log the error
+                error_logger.log_error(error)
+
+                tool_span.record_exception(tool_error)
+                tool_span.set_attribute("error", str(tool_error))
+                tool_span.set_attribute("correlation_id", context.correlation_id)
+                logger.error(
+                    f"[secure_call_tools] Error in call {i} ({tool_name}): {tool_error}"
+                )
+                traceback.print_exc(file=sys.stderr)
+                logger.error(
+                    "secure_tool_execution.execute_secure_tools.error_in_tool_call",
+                    extra=build_log_extra(
+                        ctx,
+                        custom_id,
+                        server_name,
+                        tool_name=tool_name,
+                        error=str(tool_error),
+                        correlation_id=context.correlation_id,
+                    ),
+                )
+
+                # Return standardized error response
+                error_response = create_error_response(error)
+                error_response["enkrypt_mcp_data"] = {
+                    "call_index": i,
+                    "server_name": server_name,
+                    "tool_name": tool_name,
+                    "args": args,
+                }
+                return error_response
+
+    def _validate_tool(self, tool_name, server_config_tools, tool_span):
+        """Validate that the tool exists and is available."""
+        with tracer.start_as_current_span(
+            SpanNames.VALIDATION
+        ) as validate_span:
+            validate_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
+
+            # Normalize possible formats and check membership
+            if isinstance(server_config_tools, tuple) and len(server_config_tools) == 2:
+                server_config_tools = server_config_tools[0]
+
+            valid_format, names = self.tool_execution_service.get_available_tool_names(
+                server_config_tools
+            )
+            if not valid_format:
+                validate_span.set_attribute("error", "Unknown tool format")
+                logger.error(
+                    f"[secure_call_tools] Unknown tool format: {type(server_config_tools)}"
+                )
+                from enkrypt_security.gateway.error_handling import create_error_response
+                from enkrypt_security.gateway.exceptions import (
+                    ErrorCode,
+                    ErrorContext,
+                    create_tool_execution_error,
+                )
+
+                context = ErrorContext(
+                    operation="secure_call_tools.validate_tool_format",
+                    tool_name=tool_name,
+                )
+                err = create_tool_execution_error(
+                    code=ErrorCode.TOOL_INVALID_ARGS,
+                    message="Unknown tool format for server tools.",
+                    context=context,
+                )
+                return create_error_response(err)
+
+            tool_found = tool_name in names
+            validate_span.set_attribute("tool_found", tool_found)
+            if not tool_found:
+                validate_span.set_attribute("error", "Tool not found")
+                logger.error(
+                    f"[enkrypt_secure_call_tools] Tool '{tool_name}' not found for this server."
+                )
+                from enkrypt_security.gateway.error_handling import create_error_response
+                from enkrypt_security.gateway.exceptions import (
+                    ErrorCode,
+                    ErrorContext,
+                    create_tool_execution_error,
+                )
+
+                context = ErrorContext(
+                    operation="secure_call_tools.validate_tool",
+                    tool_name=tool_name,
+                )
+                err = create_tool_execution_error(
+                    code=ErrorCode.TOOL_NOT_FOUND,
+                    message=f"Tool '{tool_name}' not found for this server.",
+                    context=context,
+                )
+                return create_error_response(err)
+
+        return None
+
+    async def _execute_with_input_guardrails(
+        self,
+        ctx,
+        custom_id,
+        server_name,
+        i,
+        tool_name,
+        args,
+        input_text_content,
+        input_json_string,
+        guardrails_config,
+        session,
+        tool_span,
+        logger,
+    ):
+        """Execute tool with input guardrails enabled."""
+        with tracer.start_as_current_span(
+            SpanNames.GUARDRAIL_CHECK
+        ) as input_span:
+            input_span.set_attribute(SpanAttributes.SOURCE_EVENT, SourceEvent.PRE_TOOL)
+            input_span.set_attribute(
+                "pii_redaction", guardrails_config["pii_redaction"]
+            )
+            input_span.set_attribute(
+                SpanAttributes.GUARDRAIL_NAME, guardrails_config["input_policy_name"]
+            )
+            input_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
+
+            logger.info(
+                f"[secure_call_tools] Call {i} : Input guardrails enabled for {tool_name} of server {server_name}"
+            )
+            logger.info(
+                "secure_tool_execution.execute_secure_tools.input_guardrails_enabled",
+                extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name),
+            )
+
+            # Get input guardrail from manager
+            input_guardrail = self.guardrail_manager.get_input_guardrail(
+                server_config={
+                    "input_guardrails_policy": guardrails_config[
+                        "input_guardrails_policy"
+                    ]
+                }
+            )
+
+            if input_guardrail is None:
+                # Guardrails not enabled, proceed directly
+                result = await self.tool_execution_service.call_tool(
+                    session, tool_name, args
+                )
+                text_result = self._extract_text_result(result)
+                return {
+                    "text_result": text_result,
+                    "result": result,
+                    "input_guardrail_response": {"is_safe": True, "enabled": False},
+                }
+
+            # Create guardrail request
+            request = GuardrailRequest(
+                content=input_text_content,
+                tool_name=tool_name,
+                tool_args=args,
+                server_name=server_name,
+                context={"call_index": i},
+            )
+
+            # Get timeout manager for configurable timeouts
+            from enkrypt_security.gateway.services.timeout import get_timeout_manager
+
+            timeout_manager = get_timeout_manager()
+
+            # Validate with plugin
+            if self.ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED:
+                input_span.set_attribute("async_guardrails", True)
+                # Start both guardrail and tool call tasks concurrently with timeouts
+                guardrail_task = asyncio.create_task(
+                    timeout_manager.execute_with_timeout(
+                        input_guardrail.validate, "guardrail", f"guardrail_{i}", request
+                    )
+                )
+                tool_call_task = asyncio.create_task(
+                    timeout_manager.execute_with_timeout(
+                        self.tool_execution_service.call_tool,
+                        "tool_execution",
+                        f"tool_call_{i}",
+                        session,
+                        tool_name,
+                        args,
+                    )
+                )
+                guardrail_response, result = await asyncio.gather(
+                    guardrail_task, tool_call_task
+                )
+
+                # Extract results from timeout results
+                if hasattr(guardrail_response, "result"):
+                    guardrail_response = guardrail_response.result
+                if hasattr(result, "result"):
+                    result = result.result
+            else:
+                input_span.set_attribute("async_guardrails", False)
+                guardrail_response = await timeout_manager.execute_with_timeout(
+                    input_guardrail.validate, "guardrail", f"guardrail_{i}", request
+                )
+                result = await timeout_manager.execute_with_timeout(
+                    self.tool_execution_service.call_tool,
+                    "tool_execution",
+                    f"tool_call_{i}",
+                    session,
+                    tool_name,
+                    args,
+                )
+
+                # Extract results from timeout results
+                if hasattr(guardrail_response, "result"):
+                    guardrail_response = guardrail_response.result
+                if hasattr(result, "result"):
+                    result = result.result
+
+            # Check if blocked
+            if guardrail_response is None:
+                logger.error(
+                    f"[secure_call_tools] Call {i}: Guardrail validation failed (None response) for {tool_name} of server {server_name}"
+                )
+                # Create standardized error for guardrail validation failure
+                from enkrypt_security.gateway.error_handling import error_logger
+                from enkrypt_security.gateway.exceptions import (
+                    ErrorCode,
+                    ErrorContext,
+                    create_guardrail_error,
+                )
+
+                context = ErrorContext(
+                    operation="guardrail.validation_failed",
+                    request_id=custom_id,
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    additional_context={
+                        "call_index": i,
+                        "args": args,
+                    },
+                )
+
+                error = create_guardrail_error(
+                    code=ErrorCode.GUARDRAIL_VALIDATION_FAILED,
+                    message="Guardrail validation failed - no response received",
+                    context=context,
+                )
+                error_logger.log_error(error)
+                raise error
+
+            if not guardrail_response.is_safe:
+                violation_types = [
+                    v.violation_type.value for v in guardrail_response.violations
+                ]
+                input_span.set_attribute(
+                    "error", f"Input violations: {violation_types}"
+                )
+                logger.info(
+                    f"[secure_call_tools] Call {i}: Blocked due to input guardrail violations: {violation_types} for {tool_name} of server {server_name}"
+                )
+                logger.info(
+                    "secure_tool_execution.execute_secure_tools.blocked_due_to_input_violations",
+                    extra=build_log_extra(
+                        ctx,
+                        custom_id,
+                        server_name,
+                        tool_name=tool_name,
+                        input_violations_detected=True,
+                        input_violation_types=violation_types,
+                    ),
+                )
+                return {
+                    "status": "blocked_input",
+                    "message": f"Request blocked due to input guardrail violations: {', '.join(violation_types)}",
+                    "response": "",
+                    "enkrypt_mcp_data": {
+                        "call_index": i,
+                        "server_name": server_name,
+                        "tool_name": tool_name,
+                        "args": args,
+                    },
+                    "input_guardrail_response": {
+                        "is_safe": False,
+                        "violations": [
+                            {
+                                "type": v.violation_type.value,
+                                "severity": v.severity,
+                                "message": v.message,
+                                "action": v.action.value,
+                                "metadata": v.metadata,
+                            }
+                            for v in guardrail_response.violations
+                        ],
+                        "processing_time_ms": guardrail_response.processing_time_ms,
+                        "metadata": guardrail_response.metadata,
+                    },
+                }
+
+            # Success
+            text_result = self._extract_text_result(result)
+            return {
+                "text_result": text_result,
+                "result": result,
+                "input_guardrail_response": {
+                    "is_safe": True,
+                    "processing_time_ms": guardrail_response.processing_time_ms,
+                    "metadata": guardrail_response.metadata,
+                },
+            }
+
+    async def _execute_without_input_guardrails(
+        self,
+        ctx,
+        custom_id,
+        server_name,
+        i,
+        tool_name,
+        args,
+        session,
+        tool_span,
+        logger,
+    ):
+        """Execute tool without input guardrails."""
+        with tracer.start_as_current_span(
+            SpanNames.TOOL_FORWARD
+        ) as exec_span:
+            exec_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
+            exec_span.set_attribute("async_guardrails", False)
+
+            logger.info(
+                f"[secure_call_tools] Call {i}: Input guardrails not enabled for {tool_name} of server {server_name}"
+            )
+            logger.info(
+                "secure_tool_execution.execute_secure_tools.input_guardrails_not_enabled",
+                extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name),
+            )
+
+            result = await self.tool_execution_service.call_tool(
+                session, tool_name, args
+            )
+            text_result = self._extract_text_result(result)
+            return {"text_result": text_result, "result": result}
+
+    def _extract_text_result(self, result):
+        """Extract text content from tool result."""
+        text_result = ""
+        if (
+            result
+            and hasattr(result, "content")
+            and result.content
+            and len(result.content) > 0
+        ):
+            result_type = result.content[0].type
+            if result_type == "text":
+                text_result = result.content[0].text
+        return text_result
+
+    async def _process_output_guardrails(
+        self,
+        ctx,
+        custom_id,
+        server_name,
+        i,
+        tool_name,
+        args,
+        text_result,
+        input_json_string,
+        guardrails_config,
+        tool_span,
+        logger,
+    ):
+        """Process output with guardrails."""
+        with tracer.start_as_current_span(
+            SpanNames.GUARDRAIL_CHECK
+        ) as output_span:
+            output_span.set_attribute(SpanAttributes.SOURCE_EVENT, SourceEvent.POST_TOOL)
+            output_span.set_attribute(
+                "relevancy_enabled", guardrails_config["relevancy"]
+            )
+            output_span.set_attribute(
+                "adherence_enabled", guardrails_config["adherence"]
+            )
+            output_span.set_attribute(
+                "hallucination_enabled", guardrails_config["hallucination"]
+            )
+            output_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
+
+            if not self.ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED:
+                # Sync output guardrails
+                return await self._process_sync_output_guardrails(
+                    ctx,
+                    custom_id,
+                    server_name,
+                    i,
+                    tool_name,
+                    args,
+                    text_result,
+                    input_json_string,
+                    guardrails_config,
+                    output_span,
+                    logger,
+                )
+            else:
+                # Async output guardrails
+                return await self._process_async_output_guardrails(
+                    ctx,
+                    custom_id,
+                    server_name,
+                    i,
+                    tool_name,
+                    args,
+                    text_result,
+                    input_json_string,
+                    guardrails_config,
+                    output_span,
+                    logger,
+                )
+
+    async def _process_sync_output_guardrails(
+        self,
+        ctx,
+        custom_id,
+        server_name,
+        i,
+        tool_name,
+        args,
+        text_result,
+        input_json_string,
+        guardrails_config,
+        output_span,
+        logger,
+    ):
+        """Process output guardrails synchronously."""
+        logger.info(
+            f"[secure_call_tools] Call {i}: Starting sync output guardrails for {tool_name} of server {server_name}"
+        )
+        logger.info(
+            "secure_tool_execution.execute_secure_tools.starting_sync_output_guardrails",
+            extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name),
+        )
+
+        # Initialize guardrail responses
+        output_guardrail_response = {}
+        output_relevancy_response = {}
+        output_adherence_response = {}
+        output_hallucination_response = {}
+
+        # Get output guardrail from manager
+        output_guardrail = self.guardrail_manager.get_output_guardrail(
+            server_config={
+                "output_guardrails_policy": guardrails_config[
+                    "output_guardrails_policy"
+                ]
+            }
+        )
+
+        if output_guardrail is None:
+            # No output guardrails enabled
+            return {
+                "output_guardrail_response": {},
+                "output_relevancy_response": {},
+                "output_adherence_response": {},
+                "output_hallucination_response": {},
+            }
+
+        # Create request for context
+        original_request = GuardrailRequest(
+            content=input_json_string,
+            tool_name=tool_name,
+            tool_args=args,
+            server_name=server_name,
+        )
+
+        # Validate output (includes ALL checks: policy, relevancy, adherence, hallucination)
+        guardrail_response = await output_guardrail.validate(
+            response_content=text_result, original_request=original_request
+        )
+
+        # Check if blocked
+        if not guardrail_response.is_safe:
+            violation_types = [
+                v.violation_type.value for v in guardrail_response.violations
+            ]
+
+            # Check if any are blocking violations
+            has_blocking = any(
+                v.action == GuardrailAction.BLOCK for v in guardrail_response.violations
+            )
+
+            if has_blocking:
+                output_span.set_attribute(
+                    "error", f"Output violations: {violation_types}"
+                )
+                logger.info(
+                    f"[secure_call_tools] Call {i}: Blocked due to output violations: {violation_types}"
+                )
+                logger.info(
+                    "secure_tool_execution.execute_secure_tools.blocked_due_to_output_violations",
+                    extra=build_log_extra(
+                        ctx,
+                        custom_id,
+                        server_name,
+                        tool_name=tool_name,
+                        output_violations_detected=True,
+                        output_violation_types=violation_types,
+                    ),
+                )
+                return self._build_blocked_result(
+                    "blocked_output",
+                    f"Request blocked due to output guardrail violations: {', '.join(violation_types)}",
+                    i,
+                    server_name,
+                    tool_name,
+                    args,
+                    text_result,
+                    guardrails_config,
+                    {
+                        "is_safe": False,
+                        "violations": [
+                            {
+                                "type": v.violation_type.value,
+                                "severity": v.severity,
+                                "message": v.message,
+                                "action": v.action.value,
+                            }
+                            for v in guardrail_response.violations
+                        ],
+                        "processing_time_ms": guardrail_response.processing_time_ms,
+                    },
+                    guardrail_response.metadata.get("relevancy", {}),
+                    guardrail_response.metadata.get("adherence", {}),
+                    guardrail_response.metadata.get("hallucination", {}),
+                )
+
+        # Extract individual check results from metadata
+        # (EnkryptOutputGuardrail includes these in metadata)
+        metadata = guardrail_response.metadata or {}
+
+        output_guardrail_response = {
+            "is_safe": True,
+            "processing_time_ms": guardrail_response.processing_time_ms,
+            "warnings": [
+                {
+                    "type": v.violation_type.value,
+                    "severity": v.severity,
+                    "message": v.message,
+                }
+                for v in guardrail_response.violations
+                if v.action == GuardrailAction.WARN
+            ],
+        }
+        output_relevancy_response = metadata.get("relevancy", {})
+        output_adherence_response = metadata.get("adherence", {})
+        output_hallucination_response = metadata.get("hallucination", {})
+
+        # Return guardrail responses even when no violations
+        return {
+            "output_guardrail_response": output_guardrail_response,
+            "output_relevancy_response": output_relevancy_response,
+            "output_adherence_response": output_adherence_response,
+            "output_hallucination_response": output_hallucination_response,
+        }
+
+    async def _process_async_output_guardrails(
+        self,
+        ctx,
+        custom_id,
+        server_name,
+        i,
+        tool_name,
+        args,
+        text_result,
+        input_json_string,
+        guardrails_config,
+        output_span,
+        logger,
+    ):
+        """Process output guardrails asynchronously."""
+        logger.info(
+            f"[secure_call_tools] Call {i}: Starting async output guardrails for {tool_name} of server {server_name}"
+        )
+        logger.info(
+            "secure_tool_execution.execute_secure_tools.starting_async_output_guardrails",
+            extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name),
+        )
+
+        tasks = {}
+
+        # Initialize guardrail responses
+        output_guardrail_response = {}
+        output_relevancy_response = {}
+        output_adherence_response = {}
+        output_hallucination_response = {}
+
+        # Get output guardrail from manager
+        output_guardrail = self.guardrail_manager.get_output_guardrail(
+            server_config={
+                "output_guardrails_policy": guardrails_config[
+                    "output_guardrails_policy"
+                ]
+            }
+        )
+
+        if output_guardrail is None:
+            # No output guardrails enabled
+            return {
+                "output_guardrail_response": {},
+                "output_relevancy_response": {},
+                "output_adherence_response": {},
+                "output_hallucination_response": {},
+            }
+
+        # Create request for context
+        original_request = GuardrailRequest(
+            content=input_json_string,
+            tool_name=tool_name,
+            tool_args=args,
+            server_name=server_name,
+        )
+
+        # Single call - provider handles async internally
+        guardrail_response = await output_guardrail.validate(
+            response_content=text_result, original_request=original_request
+        )
+
+        # Check if blocked
+        if not guardrail_response.is_safe:
+            violation_types = [
+                v.violation_type.value for v in guardrail_response.violations
+            ]
+
+            # Check if any are blocking violations
+            has_blocking = any(
+                v.action == GuardrailAction.BLOCK for v in guardrail_response.violations
+            )
+
+            if has_blocking:
+                return self._build_blocked_result(
+                    "blocked_output",
+                    f"Request blocked due to output guardrail violations: {', '.join(violation_types)}",
+                    i,
+                    server_name,
+                    tool_name,
+                    args,
+                    text_result,
+                    guardrails_config,
+                    {
+                        "is_safe": False,
+                        "violations": [
+                            {
+                                "type": v.violation_type.value,
+                                "severity": v.severity,
+                                "message": v.message,
+                                "action": v.action.value,
+                            }
+                            for v in guardrail_response.violations
+                        ],
+                        "processing_time_ms": guardrail_response.processing_time_ms,
+                    },
+                    guardrail_response.metadata.get("relevancy", {}),
+                    guardrail_response.metadata.get("adherence", {}),
+                    guardrail_response.metadata.get("hallucination", {}),
+                )
+
+        # Extract individual check results from metadata
+        metadata = guardrail_response.metadata or {}
+
+        output_guardrail_response = {
+            "is_safe": True,
+            "processing_time_ms": guardrail_response.processing_time_ms,
+            "warnings": [
+                {
+                    "type": v.violation_type.value,
+                    "severity": v.severity,
+                    "message": v.message,
+                }
+                for v in guardrail_response.violations
+                if v.action == GuardrailAction.WARN
+            ],
+        }
+        output_relevancy_response = metadata.get("relevancy", {})
+        output_adherence_response = metadata.get("adherence", {})
+        output_hallucination_response = metadata.get("hallucination", {})
+
+        # Return guardrail responses even when no violations
+        return {
+            "output_guardrail_response": output_guardrail_response,
+            "output_relevancy_response": output_relevancy_response,
+            "output_adherence_response": output_adherence_response,
+            "output_hallucination_response": output_hallucination_response,
+        }
+
+    def _build_blocked_result(
+        self,
+        status,
+        message,
+        i,
+        server_name,
+        tool_name,
+        args,
+        text_result,
+        guardrails_config,
+        output_guardrail_response,
+        output_relevancy_response,
+        output_adherence_response,
+        output_hallucination_response,
+    ):
+        """Build a blocked result."""
+        return {
+            "status": status,
+            "message": message,
+            "response": text_result,
+            "enkrypt_mcp_data": {
+                "call_index": i,
+                "server_name": server_name,
+                "tool_name": tool_name,
+                "args": args,
+            },
+            "enkrypt_policy_detections": {
+                "input_guardrail_policy": guardrails_config["input_guardrails_policy"],
+                "input_guardrail_response": {},
+                "output_guardrail_policy": guardrails_config[
+                    "output_guardrails_policy"
+                ],
+                "output_guardrail_response": output_guardrail_response,
+                "output_relevancy_response": output_relevancy_response,
+                "output_adherence_response": output_adherence_response,
+                "output_hallucination_response": output_hallucination_response,
+            },
+        }
+
+    def _build_successful_result(
+        self,
+        ctx,
+        custom_id,
+        i,
+        server_name,
+        tool_name,
+        args,
+        text_result,
+        guardrails_config,
+        input_guardrail_response,
+        output_guardrail_response,
+        output_relevancy_response,
+        output_adherence_response,
+        output_hallucination_response,
+        logger,
+    ):
+        """Build a successful result."""
+        logger.info(
+            f"[secure_call_tools] Call {i}: Completed successfully for {tool_name} of server {server_name}"
+        )
+        logger.info(
+            "secure_tool_execution.execute_secure_tools.completed_successfully",
+            extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name),
+        )
+
+        return {
+            "status": "success",
+            "message": "Request processed successfully",
+            "response": text_result,
+            "enkrypt_mcp_data": {
+                "call_index": i,
+                "server_name": server_name,
+                "tool_name": tool_name,
+                "args": args,
+            },
+            "enkrypt_policy_detections": {
+                "input_guardrail_policy": guardrails_config["input_guardrails_policy"],
+                "input_guardrail_response": input_guardrail_response,
+                "output_guardrail_policy": guardrails_config[
+                    "output_guardrails_policy"
+                ],
+                "output_guardrail_response": output_guardrail_response,
+                "output_relevancy_response": output_relevancy_response,
+                "output_adherence_response": output_adherence_response,
+                "output_hallucination_response": output_hallucination_response,
+            },
+        }
+
+    def _build_execution_summary(
+        self,
+        ctx,
+        custom_id,
+        server_name,
+        num_tool_calls,
+        results,
+        guardrails_config,
+        logger,
+    ):
+        """Build the final execution summary."""
+        successful_calls = len([r for r in results if r["status"] == "success"])
+        blocked_calls = len([r for r in results if r["status"].startswith("blocked")])
+        failed_calls = len([r for r in results if r["status"] == "error"])
+
+        logger.info(
+            f"[secure_call_tools] Batch execution completed: {successful_calls} successful, {blocked_calls} blocked, {failed_calls} failed"
+        )
+        logger.info(
+            "secure_tool_execution.execute_secure_tools.batch_execution_completed",
+            extra=build_log_extra(
+                ctx,
+                custom_id,
+                server_name,
+                successful_calls=successful_calls,
+                blocked_calls=blocked_calls,
+                failed_calls=failed_calls,
+            ),
+        )
+
+        return {
+            "server_name": server_name,
+            "status": "success",
+            "summary": {
+                "total_calls": num_tool_calls,
+                "successful_calls": successful_calls,
+                "blocked_calls": blocked_calls,
+                "failed_calls": failed_calls,
+            },
+            "guardrails_applied": {
+                "input_guardrails_enabled": guardrails_config["input_policy_enabled"],
+                "output_guardrails_enabled": guardrails_config["output_policy_enabled"],
+                "pii_redaction_enabled": guardrails_config["pii_redaction"],
+                "relevancy_check_enabled": guardrails_config["relevancy"],
+                "adherence_check_enabled": guardrails_config["adherence"],
+                "hallucination_check_enabled": guardrails_config["hallucination"],
+            },
+            "results": results,
+        }

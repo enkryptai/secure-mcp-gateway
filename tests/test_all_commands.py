@@ -56,7 +56,7 @@ class CLITester:
             return "python3"
 
     def get_cli_path(self):
-        return os.path.join(self.original_dir, "..", "src", "secure_mcp_gateway", "cli.py")
+        return os.path.join(self.original_dir, "..", "src", "enkrypt_security.gateway", "cli.py")
 
     def setup(self):
         """Setup test environment"""

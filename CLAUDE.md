@@ -25,7 +25,7 @@
 ```
 
 secure-mcp-gateway/
-├── src/secure_mcp_gateway/
+├── src/enkrypt_security/gateway/
 │   ├── __init__.py                    # Package initialization
 │   ├── version.py                     # Version: "2.1.2"
 │   ├── consts.py                      # Constants and defaults

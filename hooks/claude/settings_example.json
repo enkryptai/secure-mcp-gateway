@@ -3,7 +3,7 @@
     "UserPromptSubmit": [
       {
         "type": "command",
-        "command": "hooks/claude/venv/Scripts/python.exe hooks/claude/hooks/user_prompt_submit.py",
+        "command": "python -m enkrypt_security.hooks.scripts.claude.user_prompt_submit",
         "timeout": 30
       }
     ],
@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "hooks/claude/venv/Scripts/python.exe hooks/claude/hooks/pre_tool_use.py",
+            "command": "python -m enkrypt_security.hooks.scripts.claude.pre_tool_use",
             "timeout": 30
           }
         ]
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "hooks/claude/venv/Scripts/python.exe hooks/claude/hooks/post_tool_use.py",
+            "command": "python -m enkrypt_security.hooks.scripts.claude.post_tool_use",
             "timeout": 30
           }
         ]
@@ -34,7 +34,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "hooks/claude/venv/Scripts/python.exe hooks/claude/hooks/stop.py",
+        "command": "python -m enkrypt_security.hooks.scripts.claude.stop",
         "timeout": 30
       }
     ]

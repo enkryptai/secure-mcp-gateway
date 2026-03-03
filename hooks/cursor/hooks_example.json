@@ -3,27 +3,27 @@
   "hooks": {
     "beforeSubmitPrompt": [
       {
-        "command": "hooks\\cursor\\venv\\Scripts\\python.exe hooks\\cursor\\hooks\\before_submit_prompt.py"
+        "command": "python -m enkrypt_security.hooks.scripts.cursor.before_submit_prompt"
       }
     ],
     "beforeMCPExecution": [
       {
-        "command": "hooks\\cursor\\venv\\Scripts\\python.exe hooks\\cursor\\hooks\\before_mcp_execution.py"
+        "command": "python -m enkrypt_security.hooks.scripts.cursor.before_mcp_execution"
       }
     ],
     "afterMCPExecution": [
       {
-        "command": "hooks\\cursor\\venv\\Scripts\\python.exe hooks\\cursor\\hooks\\after_mcp_execution.py"
+        "command": "python -m enkrypt_security.hooks.scripts.cursor.after_mcp_execution"
       }
     ],
     "afterAgentResponse": [
       {
-        "command": "hooks\\cursor\\venv\\Scripts\\python.exe hooks\\cursor\\hooks\\after_agent_response.py"
+        "command": "python -m enkrypt_security.hooks.scripts.cursor.after_agent_response"
       }
     ],
     "stop": [
       {
-        "command": "hooks\\cursor\\venv\\Scripts\\python.exe hooks\\cursor\\hooks\\stop.py"
+        "command": "python -m enkrypt_security.hooks.scripts.cursor.stop"
       }
     ]
   }

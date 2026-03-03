@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/hooks/claude_code/hooks/setup.py\"",
+            "command": "python -m enkrypt_security.hooks.scripts.claude_code.setup",
             "timeout": 60
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/hooks/claude_code/hooks/session_start.py\"",
+            "command": "python -m enkrypt_security.hooks.scripts.claude_code.session_start",
             "timeout": 30
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/hooks/claude_code/hooks/user_prompt_submit.py\"",
+            "command": "python -m enkrypt_security.hooks.scripts.claude_code.user_prompt_submit",
             "timeout": 30
           }
         ]
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/hooks/claude_code/hooks/pre_tool_use.py\"",
+            "command": "python -m enkrypt_security.hooks.scripts.claude_code.pre_tool_use",
             "timeout": 30
           }
         ]
@@ -52,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/hooks/claude_code/hooks/permission_request.py\"",
+            "command": "python -m enkrypt_security.hooks.scripts.claude_code.permission_request",
             "timeout": 30
           }
         ]
@@ -64,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/hooks/claude_code/hooks/post_tool_use.py\"",
+            "command": "python -m enkrypt_security.hooks.scripts.claude_code.post_tool_use",
             "timeout": 30
           }
         ]
@@ -75,7 +75,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/hooks/claude_code/hooks/subagent_stop.py\"",
+            "command": "python -m enkrypt_security.hooks.scripts.claude_code.subagent_stop",
             "timeout": 30
           }
         ]
@@ -86,7 +86,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/hooks/claude_code/hooks/stop.py\"",
+            "command": "python -m enkrypt_security.hooks.scripts.claude_code.stop",
             "timeout": 30
           }
         ]
@@ -98,7 +98,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/hooks/claude_code/hooks/pre_compact.py\"",
+            "command": "python -m enkrypt_security.hooks.scripts.claude_code.pre_compact",
             "timeout": 30
           }
         ]
@@ -110,7 +110,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/hooks/claude_code/hooks/notification.py\"",
+            "command": "python -m enkrypt_security.hooks.scripts.claude_code.notification",
             "timeout": 30
           }
         ]
@@ -121,7 +121,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/hooks/claude_code/hooks/session_end.py\"",
+            "command": "python -m enkrypt_security.hooks.scripts.claude_code.session_end",
             "timeout": 30
           }
         ]

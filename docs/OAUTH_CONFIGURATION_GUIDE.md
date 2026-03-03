@@ -197,7 +197,7 @@ Secure MCP Gateway provides comprehensive OAuth 2.0/2.1 support for authenticati
 **Usage** (programmatic):
 
 ```python
-from secure_mcp_gateway.services.oauth import get_oauth_service
+from enkrypt_security.gateway.services.oauth import get_oauth_service
 
 oauth_service = get_oauth_service()
 success, error = await oauth_service.revoke_token(
@@ -357,7 +357,7 @@ HTTP_HEADER_AUTHORIZATION=Bearer <access_token>
 ### Available Metrics
 
 ```python
-from secure_mcp_gateway.services.oauth import get_oauth_service
+from enkrypt_security.gateway.services.oauth import get_oauth_service
 
 oauth_service = get_oauth_service()
 metrics = oauth_service.get_metrics()
@@ -526,7 +526,7 @@ Retrying token acquisition for server-name, attempt 2/3
 ### Check Token Cache
 
 ```python
-from secure_mcp_gateway.services.oauth import get_token_manager
+from enkrypt_security.gateway.services.oauth import get_token_manager
 
 token_manager = get_token_manager()
 token_info = token_manager.get_token_info("server-name", "config-id")
@@ -557,7 +557,7 @@ print(token_info)
 ### Invalidate Token
 
 ```python
-from secure_mcp_gateway.services.oauth import invalidate_server_oauth_token
+from enkrypt_security.gateway.services.oauth import invalidate_server_oauth_token
 
 await invalidate_server_oauth_token("server-name", "config-id")
 
@@ -566,7 +566,7 @@ await invalidate_server_oauth_token("server-name", "config-id")
 ### Force Refresh
 
 ```python
-from secure_mcp_gateway.services.oauth import refresh_server_oauth_token
+from enkrypt_security.gateway.services.oauth import refresh_server_oauth_token
 
 token, error = await refresh_server_oauth_token(
     server_name="server-name",

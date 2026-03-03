@@ -1,4 +1,4 @@
-.env
+**/.env
 *venv*
 .cursor
 .cursorignore
@@ -29,13 +29,13 @@ enkrypt_mcp_config*.json*
 scripts/flake8/backups
 
 # These get created when we run `python setup.py`
-src/secure_mcp_gateway.egg-info
+src/enkrypt_security.egg-info
 build/
 dist/
 
 docs/secure-mcp-gateway-manifest.yaml
 
-src/secure_mcp_gateway/venv
+src/enkrypt_security/venv
 
 .secure-mcp-gateway-venv
 

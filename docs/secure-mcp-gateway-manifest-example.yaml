@@ -106,7 +106,7 @@ spec:
           ls /app/.enkrypt/docker
           echo
           echo "Starting Secure MCP Gateway..."
-          python src/secure_mcp_gateway/gateway.py
+          python src/enkrypt_security/gateway/gateway.py
         ports:
         - containerPort: 8000
           name: http
