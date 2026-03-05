@@ -40,5 +40,5 @@ RUN pip install .
 EXPOSE 8000
 
 # Set the entrypoint to the script
-# ENTRYPOINT ["python", "src/enkrypt_security/gateway/gateway.py"]
-ENTRYPOINT ["mcp", "run", "src/enkrypt_security/gateway/gateway.py"]
+# ENTRYPOINT ["python", "src/enkryptai_agent_security/gateway/gateway.py"]
+ENTRYPOINT ["mcp", "run", "src/enkryptai_agent_security/gateway/gateway.py"]

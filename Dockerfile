@@ -133,5 +133,5 @@ RUN pip3 install --break-system-packages .
 EXPOSE 8000
 
 # Set the entrypoint to the script
-ENTRYPOINT ["python3", "src/enkrypt_security/gateway/gateway.py"]
-# Alternative: ENTRYPOINT ["mcp", "run", "src/enkrypt_security/gateway/gateway.py"]
+ENTRYPOINT ["python3", "src/enkryptai_agent_security/gateway/gateway.py"]
+# Alternative: ENTRYPOINT ["mcp", "run", "src/enkryptai_agent_security/gateway/gateway.py"]

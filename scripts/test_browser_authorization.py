@@ -12,8 +12,8 @@ This demonstrates the complete automatic flow:
 import asyncio
 import sys
 
-from enkrypt_security.gateway.services.oauth import OAuthConfig
-from enkrypt_security.gateway.services.oauth.browser_auth import authorize_with_browser
+from enkryptai_agent_security.gateway.services.oauth import OAuthConfig
+from enkryptai_agent_security.gateway.services.oauth.browser_auth import authorize_with_browser
 
 # Test configuration for Auth0
 TEST_CONFIG = {
@@ -77,7 +77,7 @@ async def main():
 
     # Verify token is cached
     print(f"\n[VERIFY] Checking if token is cached...")
-    from enkrypt_security.gateway.services.oauth.token_manager import get_token_manager
+    from enkryptai_agent_security.gateway.services.oauth.token_manager import get_token_manager
 
     token_manager = get_token_manager()
     cached_token = await token_manager.get_token(

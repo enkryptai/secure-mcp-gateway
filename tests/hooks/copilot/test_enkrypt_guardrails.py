@@ -2,160 +2,29 @@
 """
 Unit tests for Enkrypt AI Guardrails module (Copilot hooks).
 """
-import json
-import os
-import sys
-import tempfile
+import re
 import unittest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 
-from enkrypt_security.hooks.providers.copilot import (
-    parse_enkrypt_response,
+from enkryptai_agent_security.hooks.providers.copilot import (
     format_violation_message,
     check_tool,
     analyze_tool_result,
-    mask_sensitive_headers,
-    get_hook_policy,
     is_hook_enabled,
     get_hook_block_list,
     get_hook_guardrail_name,
-    EnkryptApiConfig,
-    HookPolicy,
-    Violation,
-    GuardrailsConfig,
+    get_source_event,
+    get_metrics,
+    get_hook_metrics,
+    reset_metrics,
+    is_sensitive_tool,
+    reload_config,
+    flush_logs,
+    get_timestamp,
+    SENSITIVE_PATTERNS,
+    BaseHook,
+    LOG_DIR,
 )
-
-
-class TestDataclasses(unittest.TestCase):
-    """Test dataclass definitions."""
-
-    def test_enkrypt_api_config_defaults(self):
-        """Test EnkryptApiConfig has correct defaults."""
-        config = EnkryptApiConfig()
-        self.assertEqual(config.url, "https://api.enkryptai.com/guardrails/policy/detect")
-        self.assertEqual(config.api_key, "")
-        self.assertTrue(config.ssl_verify)
-        self.assertEqual(config.timeout, 15)
-
-    def test_hook_policy_defaults(self):
-        """Test HookPolicy has correct defaults."""
-        policy = HookPolicy()
-        self.assertFalse(policy.enabled)
-        self.assertEqual(policy.guardrail_name, "")
-        self.assertEqual(policy.block, [])
-
-    def test_violation_creation(self):
-        """Test Violation dataclass creation."""
-        violation = Violation(detector="pii", details={"entities": ["email"]})
-        self.assertEqual(violation.detector, "pii")
-        self.assertTrue(violation.detected)
-        self.assertTrue(violation.blocked)
-        self.assertEqual(violation.details, {"entities": ["email"]})
-
-    def test_guardrails_config_defaults(self):
-        """Test GuardrailsConfig has correct defaults for Copilot hooks."""
-        config = GuardrailsConfig()
-        self.assertIsInstance(config.enkrypt_api, EnkryptApiConfig)
-        self.assertIsInstance(config.user_prompt_submitted, HookPolicy)
-        self.assertIsInstance(config.pre_tool_use, HookPolicy)
-        self.assertIsInstance(config.post_tool_use, HookPolicy)
-        self.assertIsInstance(config.error_occurred, HookPolicy)
-        self.assertEqual(config.sensitive_tools, [])
-
-
-class TestParseEnkryptResponse(unittest.TestCase):
-    """Test parsing of Enkrypt API responses."""
-
-    def test_empty_response(self):
-        """Test parsing empty response."""
-        result = parse_enkrypt_response({}, ["pii"])
-        self.assertEqual(result, [])
-
-    def test_no_violations(self):
-        """Test parsing response with no violations."""
-        response = {
-            "summary": {
-                "pii": 0,
-                "toxicity": [],
-                "nsfw": 0,
-            },
-            "details": {}
-        }
-        result = parse_enkrypt_response(response, ["pii", "toxicity", "nsfw"])
-        self.assertEqual(result, [])
-
-    def test_pii_violation(self):
-        """Test parsing PII violation."""
-        response = {
-            "summary": {"pii": 1},
-            "details": {
-                "pii": {
-                    "pii": {"email": ["test@example.com"]}
-                }
-            }
-        }
-        result = parse_enkrypt_response(response, ["pii"])
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["detector"], "pii")
-        self.assertTrue(result[0]["blocked"])
-
-    def test_toxicity_violation(self):
-        """Test parsing toxicity violation."""
-        response = {
-            "summary": {"toxicity": ["insult", "threat"]},
-            "details": {
-                "toxicity": {"toxicity": 0.85}
-            }
-        }
-        result = parse_enkrypt_response(response, ["toxicity"])
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["detector"], "toxicity")
-        self.assertEqual(result[0]["toxicity_types"], ["insult", "threat"])
-
-    def test_injection_attack_violation(self):
-        """Test parsing injection attack violation."""
-        response = {
-            "summary": {"injection_attack": 1},
-            "details": {
-                "injection_attack": {"attack": 0.95}
-            }
-        }
-        result = parse_enkrypt_response(response, ["injection_attack"])
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["detector"], "injection_attack")
-        self.assertEqual(result[0]["attack_score"], 0.95)
-
-    def test_on_topic_violation(self):
-        """Test parsing off-topic detection (on_topic=0 means violation)."""
-        response = {
-            "summary": {"on_topic": 0},
-            "details": {}
-        }
-        result = parse_enkrypt_response(response, ["topic_detector"])
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["detector"], "topic_detector")
-
-    def test_on_topic_no_violation(self):
-        """Test on_topic=1 means no violation."""
-        response = {
-            "summary": {"on_topic": 1},
-            "details": {}
-        }
-        result = parse_enkrypt_response(response, ["topic_detector"])
-        self.assertEqual(result, [])
-
-    def test_detector_not_in_block_list(self):
-        """Test that detections not in block list are ignored."""
-        response = {
-            "summary": {"pii": 1, "toxicity": ["insult"]},
-            "details": {}
-        }
-        # Only block pii, not toxicity
-        result = parse_enkrypt_response(response, ["pii"])
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["detector"], "pii")
 
 
 class TestFormatViolationMessage(unittest.TestCase):
@@ -276,66 +145,17 @@ class TestAnalyzeToolResult(unittest.TestCase):
         self.assertEqual(result["result_size"], len(json_str))
 
 
-class TestMaskSensitiveHeaders(unittest.TestCase):
-    """Test header masking functionality."""
-
-    def test_mask_apikey(self):
-        """Test masking of apikey header."""
-        headers = {"apikey": "sk-1234567890abcdef"}
-        masked = mask_sensitive_headers(headers)
-        self.assertEqual(masked["apikey"], "****cdef")
-
-    def test_mask_authorization(self):
-        """Test masking of Authorization header."""
-        headers = {"Authorization": "Bearer token123456"}
-        masked = mask_sensitive_headers(headers)
-        self.assertEqual(masked["Authorization"], "****3456")
-
-    def test_preserve_non_sensitive(self):
-        """Test that non-sensitive headers are preserved."""
-        headers = {"Content-Type": "application/json", "Accept": "*/*"}
-        masked = mask_sensitive_headers(headers)
-        self.assertEqual(masked["Content-Type"], "application/json")
-        self.assertEqual(masked["Accept"], "*/*")
-
-    def test_short_value_masked(self):
-        """Test masking of short values."""
-        headers = {"apikey": "abc"}
-        masked = mask_sensitive_headers(headers)
-        self.assertEqual(masked["apikey"], "****")
-
-    def test_empty_headers(self):
-        """Test handling of empty headers."""
-        self.assertEqual(mask_sensitive_headers({}), {})
-        self.assertIsNone(mask_sensitive_headers(None))
-
-    def test_mixed_headers(self):
-        """Test masking of mixed headers."""
-        headers = {
-            "Content-Type": "application/json",
-            "apikey": "secret-api-key-value",
-            "X-Request-ID": "12345",
-            "Authorization": "Bearer mytoken123"
-        }
-        masked = mask_sensitive_headers(headers)
-        self.assertEqual(masked["Content-Type"], "application/json")
-        self.assertEqual(masked["X-Request-ID"], "12345")
-        self.assertEqual(masked["apikey"], "****alue")
-        self.assertEqual(masked["Authorization"], "****n123")
-
-
 class TestMetricsCollector(unittest.TestCase):
     """Test metrics collection functionality."""
 
     def setUp(self):
         """Reset metrics before each test."""
-        from enkrypt_security.hooks.providers.copilot import reset_metrics
         reset_metrics()
 
     def test_record_call(self):
         """Test recording a hook call."""
-        from enkrypt_security.hooks.providers.copilot import metrics, get_hook_metrics
-        metrics.record_call("test_hook", blocked=False, latency_ms=100.0)
+        from enkryptai_agent_security.hooks.providers.copilot import _core
+        _core.metrics.record_call("test_hook", blocked=False, latency_ms=100.0)
         m = get_hook_metrics("test_hook")
         self.assertEqual(m["total_calls"], 1)
         self.assertEqual(m["allowed_calls"], 1)
@@ -343,121 +163,34 @@ class TestMetricsCollector(unittest.TestCase):
 
     def test_record_blocked_call(self):
         """Test recording a blocked call."""
-        from enkrypt_security.hooks.providers.copilot import metrics, get_hook_metrics
-        metrics.record_call("test_hook", blocked=True, latency_ms=100.0)
+        from enkryptai_agent_security.hooks.providers.copilot import _core
+        _core.metrics.record_call("test_hook", blocked=True, latency_ms=100.0)
         m = get_hook_metrics("test_hook")
         self.assertEqual(m["blocked_calls"], 1)
         self.assertEqual(m["allowed_calls"], 0)
 
     def test_record_error(self):
         """Test recording an error."""
-        from enkrypt_security.hooks.providers.copilot import metrics, get_hook_metrics
-        metrics.record_call("test_hook", blocked=False, latency_ms=100.0, error=True)
+        from enkryptai_agent_security.hooks.providers.copilot import _core
+        _core.metrics.record_call("test_hook", blocked=False, latency_ms=100.0, error=True)
         m = get_hook_metrics("test_hook")
         self.assertEqual(m["errors"], 1)
 
     def test_average_latency(self):
         """Test average latency calculation."""
-        from enkrypt_security.hooks.providers.copilot import metrics, get_hook_metrics
-        metrics.record_call("test_hook", blocked=False, latency_ms=100.0)
-        metrics.record_call("test_hook", blocked=False, latency_ms=200.0)
+        from enkryptai_agent_security.hooks.providers.copilot import _core
+        _core.metrics.record_call("test_hook", blocked=False, latency_ms=100.0)
+        _core.metrics.record_call("test_hook", blocked=False, latency_ms=200.0)
         m = get_hook_metrics("test_hook")
         self.assertEqual(m["avg_latency_ms"], 150.0)
 
     def test_reset_metrics(self):
         """Test resetting metrics."""
-        from enkrypt_security.hooks.providers.copilot import metrics, get_hook_metrics, reset_metrics
-        metrics.record_call("test_hook", blocked=False, latency_ms=100.0)
+        from enkryptai_agent_security.hooks.providers.copilot import _core
+        _core.metrics.record_call("test_hook", blocked=False, latency_ms=100.0)
         reset_metrics("test_hook")
         m = get_hook_metrics("test_hook")
         self.assertEqual(m["total_calls"], 0)
-
-
-class TestConfigValidation(unittest.TestCase):
-    """Test configuration validation."""
-
-    def test_valid_config(self):
-        """Test validation of valid config with Copilot hook names."""
-        from enkrypt_security.hooks.providers.copilot import validate_config
-        config = {
-            "enkrypt_api": {
-                "url": "https://api.example.com",
-                "timeout": 15,
-                "ssl_verify": True
-            },
-            "preToolUse": {
-                "enabled": True,
-                "block": ["pii"]
-            }
-        }
-        errors = validate_config(config)
-        self.assertEqual(errors, [])
-
-    def test_invalid_url(self):
-        """Test validation of invalid URL."""
-        from enkrypt_security.hooks.providers.copilot import validate_config
-        config = {"enkrypt_api": {"url": "not-a-url"}}
-        errors = validate_config(config)
-        self.assertTrue(any("url" in e for e in errors))
-
-    def test_invalid_timeout(self):
-        """Test validation of invalid timeout."""
-        from enkrypt_security.hooks.providers.copilot import validate_config
-        config = {"enkrypt_api": {"timeout": -5}}
-        errors = validate_config(config)
-        self.assertTrue(any("timeout" in e for e in errors))
-
-    def test_invalid_ssl_verify(self):
-        """Test validation of invalid ssl_verify."""
-        from enkrypt_security.hooks.providers.copilot import validate_config
-        config = {"enkrypt_api": {"ssl_verify": "true"}}
-        errors = validate_config(config)
-        self.assertTrue(any("ssl_verify" in e for e in errors))
-
-    def test_invalid_hook_enabled(self):
-        """Test validation of invalid enabled field for Copilot hook."""
-        from enkrypt_security.hooks.providers.copilot import validate_config
-        config = {"preToolUse": {"enabled": "yes"}}
-        errors = validate_config(config)
-        self.assertTrue(any("enabled" in e for e in errors))
-
-    def test_invalid_block_list(self):
-        """Test validation of invalid block list."""
-        from enkrypt_security.hooks.providers.copilot import validate_config
-        config = {"preToolUse": {"block": "pii"}}
-        errors = validate_config(config)
-        self.assertTrue(any("block" in e for e in errors))
-
-    def test_invalid_sensitive_tools(self):
-        """Test validation of invalid sensitive_tools."""
-        from enkrypt_security.hooks.providers.copilot import validate_config
-        config = {"sensitive_tools": "not_a_list"}
-        errors = validate_config(config)
-        self.assertTrue(any("sensitive_tools" in e for e in errors))
-
-
-class TestConnectionPooling(unittest.TestCase):
-    """Test connection pooling functionality."""
-
-    def test_session_creation(self):
-        """Test HTTP session is created."""
-        from enkrypt_security.hooks.providers.copilot import get_http_session
-        session = get_http_session()
-        self.assertIsNotNone(session)
-
-    def test_session_has_adapters(self):
-        """Test session has HTTP adapters."""
-        from enkrypt_security.hooks.providers.copilot import get_http_session
-        session = get_http_session()
-        self.assertIn("https://", session.adapters)
-        self.assertIn("http://", session.adapters)
-
-    def test_session_is_singleton(self):
-        """Test session is reused (singleton)."""
-        from enkrypt_security.hooks.providers.copilot import get_http_session
-        session1 = get_http_session()
-        session2 = get_http_session()
-        self.assertIs(session1, session2)
 
 
 class TestPrecompiledPatterns(unittest.TestCase):
@@ -465,14 +198,11 @@ class TestPrecompiledPatterns(unittest.TestCase):
 
     def test_patterns_are_compiled(self):
         """Test patterns are pre-compiled."""
-        import re
-        from enkrypt_security.hooks.providers.copilot import SENSITIVE_PATTERNS
         for pattern, name in SENSITIVE_PATTERNS:
             self.assertIsInstance(pattern, re.Pattern)
 
     def test_patterns_match_correctly(self):
         """Test patterns match expected text."""
-        from enkrypt_security.hooks.providers.copilot import SENSITIVE_PATTERNS
         test_cases = [
             ("password=secret", "password reference"),
             ("api_key=xyz", "API key reference"),
@@ -494,7 +224,6 @@ class TestBaseHookClass(unittest.TestCase):
 
     def test_base_hook_is_enabled_property(self):
         """Test is_enabled property."""
-        from enkrypt_security.hooks.providers.copilot import BaseHook
 
         class TestHook(BaseHook):
             def __init__(self):
@@ -508,84 +237,11 @@ class TestBaseHookClass(unittest.TestCase):
         self.assertFalse(hook.is_enabled)
 
 
-class TestBufferedLogger(unittest.TestCase):
-    """Test buffered logging functionality."""
-
-    def test_buffered_logger_creation(self):
-        """Test BufferedLogger can be created."""
-        from enkrypt_security.hooks.providers.copilot import BufferedLogger
-        logger = BufferedLogger(buffer_size=5, flush_interval=1.0)
-        self.assertIsNotNone(logger)
-
-    def test_buffered_logger_write_and_flush(self):
-        """Test BufferedLogger write and flush."""
-        from enkrypt_security.hooks.providers.copilot import BufferedLogger
-        import tempfile
-
-        logger = BufferedLogger(buffer_size=2, flush_interval=10.0)
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.jsonl') as f:
-            temp_path = Path(f.name)
-
-        try:
-            # Write entries (should buffer, not flush yet)
-            logger.write(temp_path, '{"test": 1}\n')
-
-            # Force flush
-            logger.flush_all()
-
-            # Check file was written
-            with open(temp_path, 'r') as f:
-                content = f.read()
-            self.assertIn('{"test": 1}', content)
-        finally:
-            if temp_path.exists():
-                temp_path.unlink()
-
-    def test_buffered_logger_auto_flush_on_buffer_full(self):
-        """Test BufferedLogger auto-flushes when buffer is full."""
-        from enkrypt_security.hooks.providers.copilot import BufferedLogger
-        import tempfile
-
-        logger = BufferedLogger(buffer_size=2, flush_interval=100.0)  # Large interval
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.jsonl') as f:
-            temp_path = Path(f.name)
-
-        try:
-            # Write 2 entries (buffer size is 2, so should auto-flush)
-            logger.write(temp_path, '{"entry": 1}\n')
-            logger.write(temp_path, '{"entry": 2}\n')
-
-            # Check file was written (auto-flushed)
-            with open(temp_path, 'r') as f:
-                content = f.read()
-            self.assertIn('{"entry": 1}', content)
-            self.assertIn('{"entry": 2}', content)
-        finally:
-            if temp_path.exists():
-                temp_path.unlink()
-
-
-class TestLogRetention(unittest.TestCase):
-    """Test log retention settings."""
-
-    def test_log_retention_days_default(self):
-        """Test LOG_RETENTION_DAYS has default value."""
-        from enkrypt_security.hooks.providers.copilot import LOG_RETENTION_DAYS
-        self.assertIsInstance(LOG_RETENTION_DAYS, int)
-        self.assertGreater(LOG_RETENTION_DAYS, 0)
-
-    def test_cleanup_old_logs_exists(self):
-        """Test cleanup_old_logs function exists."""
-        from enkrypt_security.hooks.providers.copilot import cleanup_old_logs
-        self.assertTrue(callable(cleanup_old_logs))
-
-
 class TestCopilotSpecificFunctions(unittest.TestCase):
     """Test Copilot-specific functions and configurations."""
 
     def test_get_source_event_mapping(self):
         """Test Copilot hook name to source event mapping."""
-        from enkrypt_security.hooks.providers.copilot import get_source_event
         self.assertEqual(get_source_event("userPromptSubmitted"), "pre-prompt")
         self.assertEqual(get_source_event("preToolUse"), "pre-tool")
         self.assertEqual(get_source_event("postToolUse"), "post-tool")
@@ -593,15 +249,8 @@ class TestCopilotSpecificFunctions(unittest.TestCase):
         # Unknown hook should return itself
         self.assertEqual(get_source_event("unknown"), "unknown")
 
-    def test_hook_policies_use_copilot_names(self):
-        """Test that HOOK_POLICIES dict uses Copilot event names."""
-        from enkrypt_security.hooks.providers.copilot import HOOK_POLICIES
-        expected_keys = {"userPromptSubmitted", "preToolUse", "postToolUse", "errorOccurred"}
-        self.assertEqual(set(HOOK_POLICIES.keys()), expected_keys)
-
     def test_log_dir_uses_copilot_path(self):
         """Test that LOG_DIR uses copilot path."""
-        from enkrypt_security.hooks.providers.copilot import LOG_DIR
         self.assertIn("copilot", str(LOG_DIR))
 
     def test_check_tool_returns_two_values(self):
@@ -610,24 +259,12 @@ class TestCopilotSpecificFunctions(unittest.TestCase):
         self.assertEqual(permission, "allow")
         self.assertIsInstance(reason, str)
 
-    def test_validate_config_uses_copilot_hook_names(self):
-        """Test validate_config validates Copilot hook names."""
-        from enkrypt_security.hooks.providers.copilot import validate_config
-        # Copilot hook names should be accepted
-        config = {
-            "preToolUse": {"enabled": True, "block": ["pii"]},
-            "userPromptSubmitted": {"enabled": False, "block": []},
-        }
-        errors = validate_config(config)
-        self.assertEqual(errors, [])
-
-        # Cursor hook names should be silently ignored (not validated)
-        config_cursor = {
-            "beforeSubmitPrompt": {"enabled": "invalid"},
-        }
-        errors = validate_config(config_cursor)
-        # beforeSubmitPrompt is not in Copilot's valid_hooks, so not validated
-        self.assertEqual(errors, [])
+    def test_get_timestamp(self):
+        """Test get_timestamp returns ISO format."""
+        timestamp = get_timestamp()
+        self.assertIsInstance(timestamp, str)
+        # Should be ISO format (contains T)
+        self.assertIn("T", timestamp)
 
 
 class TestDynamicReload(unittest.TestCase):
@@ -635,12 +272,10 @@ class TestDynamicReload(unittest.TestCase):
 
     def test_reload_config_function_exists(self):
         """Test reload_config function exists."""
-        from enkrypt_security.hooks.providers.copilot import reload_config
         self.assertTrue(callable(reload_config))
 
     def test_flush_logs_function_exists(self):
         """Test flush_logs function exists."""
-        from enkrypt_security.hooks.providers.copilot import flush_logs
         self.assertTrue(callable(flush_logs))
 
 

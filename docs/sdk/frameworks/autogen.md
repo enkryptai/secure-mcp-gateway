@@ -32,7 +32,7 @@ pip install pyautogen
 ## Step 2: Add Enkrypt Security
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 auto_secure(
     enkrypt_api_key="ek-your-key-here",
@@ -45,7 +45,7 @@ auto_secure(
 
 ```python
 from autogen import AssistantAgent, UserProxyAgent
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 assistant = AssistantAgent(
     name="coder",
@@ -69,9 +69,9 @@ except GuardrailBlockedError as e:
 ## Manual Adapter for Detailed Tracking
 
 ```python
-from enkrypt_security.sdk.adapters.autogen import AutoGenAdapter
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.autogen import AutoGenAdapter
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
 adapter = AutoGenAdapter(observer, agent_id="code-review-team")

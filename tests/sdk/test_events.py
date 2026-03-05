@@ -2,7 +2,7 @@
 
 import pytest
 
-from enkrypt_security.sdk.events import (
+from enkryptai_agent_security.sdk.events import (
     AgentEvent,
     EventName,
     GuardrailAction,

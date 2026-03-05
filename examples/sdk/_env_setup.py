@@ -100,11 +100,11 @@ def setup_enkrypt_guard(fail_open: bool = False):
 
     .. deprecated:: Use :func:`setup_auto_secure` instead.
     """
-    from enkrypt_security.sdk.guardrails.base import GuardrailRegistry
-    from enkrypt_security.sdk.guardrails.enkrypt_provider import EnkryptGuardrailProvider
-    from enkrypt_security.sdk.guard import GuardEngine
-    from enkrypt_security.sdk.observer import AgentObserver
-    from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+    from enkryptai_agent_security.sdk.guardrails.base import GuardrailRegistry
+    from enkryptai_agent_security.sdk.guardrails.enkrypt_provider import EnkryptGuardrailProvider
+    from enkryptai_agent_security.sdk.guard import GuardEngine
+    from enkryptai_agent_security.sdk.observer import AgentObserver
+    from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
     registry = GuardrailRegistry()
     registry.register(EnkryptGuardrailProvider(
@@ -129,7 +129,7 @@ def setup_auto_secure(fail_open: bool = False, frameworks: list[str] | None = No
     ``results`` is a dict of {framework_name: was_installed}.
     ``guard`` is the GuardEngine instance (for manual check_input/check_output calls).
     """
-    from enkrypt_security.sdk import auto_secure, get_guard_engine
+    from enkryptai_agent_security.sdk import auto_secure, get_guard_engine
 
     results = auto_secure(fail_open=fail_open, frameworks=frameworks)
     guard = get_guard_engine()
@@ -167,7 +167,7 @@ ATTACK_INPUTS = [
 ]
 
 # Export GuardrailBlockedError for convenience
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 # ---------------------------------------------------------------------------
 # Shared real tool implementations (used by all agent examples)

@@ -29,7 +29,7 @@ pip install langgraph langchain langchain-core langchain-openai
 ## Step 2: Add Enkrypt Security
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 auto_secure(
     enkrypt_api_key="ek-your-key-here",
@@ -119,9 +119,9 @@ The Enkrypt SDK applies guardrails at multiple checkpoints when executing a Lang
 If you want to use the adapter directly:
 
 ```python
-from enkrypt_security.sdk.adapters.langgraph import EnkryptLangGraphHandler
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.langgraph import EnkryptLangGraphHandler
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
 handler = EnkryptLangGraphHandler(observer, agent_id="my-graph-agent")

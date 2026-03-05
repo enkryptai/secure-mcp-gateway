@@ -11,7 +11,7 @@
       },
       "then": {
         "type": "runCommand",
-        "command": "python -m enkrypt_security.hooks.scripts.kiro.prompt_submit"
+        "command": "python -m enkryptai_agent_security.hooks.scripts.kiro.prompt_submit"
       },
       "shortName": "before-prompt-guardrails"
     },
@@ -25,7 +25,7 @@
       },
       "then": {
         "type": "runCommand",
-        "command": "python -m enkrypt_security.hooks.scripts.kiro.agent_stop"
+        "command": "python -m enkryptai_agent_security.hooks.scripts.kiro.agent_stop"
       },
       "shortName": "after-agent-guardrails"
     },
@@ -40,7 +40,7 @@
       },
       "then": {
         "type": "runCommand",
-        "command": "FILE_PATH=\"${filePath}\" python -m enkrypt_security.hooks.scripts.kiro.file_save"
+        "command": "FILE_PATH=\"${filePath}\" python -m enkryptai_agent_security.hooks.scripts.kiro.file_save"
       },
       "shortName": "file-save-guardrails"
     },
@@ -55,7 +55,7 @@
       },
       "then": {
         "type": "runCommand",
-        "command": "FILE_PATH=\"${filePath}\" python -m enkrypt_security.hooks.scripts.kiro.file_create"
+        "command": "FILE_PATH=\"${filePath}\" python -m enkryptai_agent_security.hooks.scripts.kiro.file_create"
       },
       "shortName": "file-create-guardrails"
     },
@@ -69,7 +69,7 @@
       },
       "then": {
         "type": "runCommand",
-        "command": "SCAN_TARGET=\"${workspaceFolder}\" SCAN_TYPE=directory python -m enkrypt_security.hooks.scripts.kiro.manual_security_scan"
+        "command": "SCAN_TARGET=\"${workspaceFolder}\" SCAN_TYPE=directory python -m enkryptai_agent_security.hooks.scripts.kiro.manual_security_scan"
       },
       "shortName": "manual-security-scan"
     }

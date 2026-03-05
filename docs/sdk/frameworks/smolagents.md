@@ -28,7 +28,7 @@ pip install smolagents
 ## Step 2: Add Enkrypt Security
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 auto_secure(
     enkrypt_api_key="ek-your-key-here",
@@ -41,7 +41,7 @@ auto_secure(
 
 ```python
 from smolagents import CodeAgent, HfApiModel
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 model = HfApiModel()
 agent = CodeAgent(tools=[], model=model)
@@ -66,9 +66,9 @@ The SDK automatically:
 For detailed step-by-step tracking:
 
 ```python
-from enkrypt_security.sdk.adapters.smolagents import SmolagentsAdapter
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.smolagents import SmolagentsAdapter
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
 adapter = SmolagentsAdapter(observer, agent_id="code-agent")
@@ -125,7 +125,7 @@ The SDK first tries `CodeAgent`, then falls back to `ToolCallingAgent`. Whicheve
 A `GuardrailBlockedError` is raised at the checkpoint where the violation was detected. You can catch this exception to handle blocked requests gracefully:
 
 ```python
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 try:
     result = agent.run("user task")

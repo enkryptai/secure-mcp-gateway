@@ -104,24 +104,24 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 <summary><strong>🪜 Steps </strong></summary>
 <br>
 
-1. Your MCP client connects to the Secure MCP Gateway server with API Key (handled by `src/enkrypt_security/gateway/gateway.py`).
+1. Your MCP client connects to the Secure MCP Gateway server with API Key (handled by `src/enkryptai_agent_security/gateway/gateway.py`).
 
 2. Gateway server fetches gateway config from local `enkrypt_mcp_config.json` file or remote Enkrypt Auth server *(Coming soon)*.
 
     - It caches the config locally or in an external cache server like KeyDB if configured to improve performance.
 
-3. If input guardrails are enabled, request is validated before the tool call (handled by `src/enkrypt_security/gateway/guardrail.py`).
+3. If input guardrails are enabled, request is validated before the tool call (handled by `src/enkryptai_agent_security/gateway/guardrail.py`).
    - Request is blocked if it violates any of the configured guardrails and the specific detector is configured to block.
 
-4. Requests are forwarded to the Gateway Client (handled by `src/enkrypt_security/gateway/client.py`).
+4. Requests are forwarded to the Gateway Client (handled by `src/enkryptai_agent_security/gateway/client.py`).
 
-5. The Gateway client forwards the request to the appropriate MCP server (handled by `src/enkrypt_security/gateway/client.py`).
+5. The Gateway client forwards the request to the appropriate MCP server (handled by `src/enkryptai_agent_security/gateway/client.py`).
 
 6. The MCP server processes the request and returns the response to the Gateway client.
 
 7. If it was a discover tools call, the Gateway client caches the tools locally or in an external cache server like KeyDB if configured. It then forwards the response to the Gateway server.
 
-8. The Gateway server receives the response from the Gateway client and if output guardrails are enabled, it validates the response against the configured guardrails (handled by `src/enkrypt_security/gateway/guardrail.py`).
+8. The Gateway server receives the response from the Gateway client and if output guardrails are enabled, it validates the response against the configured guardrails (handled by `src/enkryptai_agent_security/gateway/guardrail.py`).
 
     - Response is blocked if it violates any of the configured guardrails and the specific detector is configured to block.
 
@@ -306,7 +306,7 @@ Initializing Enkrypt Secure MCP Gateway Guardrail Module
 Error: Gateway key is required. Please update your mcp client config and try again.
 Getting Enkrypt Common Configuration
 config_path: C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
-example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\example_enkrypt_mcp_config.json
+example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\enkryptai_agent_security\gateway\example_enkrypt_mcp_config.json
 No enkrypt_mcp_config.json file found. Defaulting to example_enkrypt_mcp_config.json
 --------------------------------
 ENKRYPT_GATEWAY_KEY: ****NULL
@@ -370,7 +370,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
           "config": {
             "command": "python",
             "args": [
-              "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/secure_mcp_gateway/bad_mcps/echo_mcp.py"
+              "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/enkryptai_agent_security/gateway/bad_mcps/echo_mcp.py"
             ]
           },
           "tools": {},
@@ -468,7 +468,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
           "config": {
             "command": "python",
             "args": [
-              "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\bad_mcps\\echo_mcp.py"
+              "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\enkryptai_agent_security\gateway\\bad_mcps\\echo_mcp.py"
             ]
           },
           "tools": {},
@@ -561,7 +561,7 @@ Initializing Enkrypt Secure MCP Gateway Guardrail Module
 Error: Gateway key is required. Please update your mcp client config and try again.
 Getting Enkrypt Common Configuration
 config_path: C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
-example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\example_enkrypt_mcp_config.json
+example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\enkryptai_agent_security\gateway\example_enkrypt_mcp_config.json
 Loading enkrypt_mcp_config.json file...
 --------------------------------
 ENKRYPT_GATEWAY_KEY: ****NULL
@@ -578,7 +578,7 @@ enkrypt_async_input_guardrails_enabled: False
 External Cache is not enabled. Using local cache only.
 Initializing Enkrypt Secure MCP Gateway CLI Module
 CONFIG_PATH:  C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
-GATEWAY_PY_PATH:  C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\gateway.py
+GATEWAY_PY_PATH:  C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\enkryptai_agent_security\gateway\gateway.py
 client name from args:  claude-desktop
 Successfully installed gateway for claude-desktop
 Path to gateway is incorrect. Modifying the path to gateway in claude_desktop_config.json file...
@@ -604,7 +604,7 @@ Please restart Claude Desktop to use the gateway.
         "command": "mcp",
         "args": [
           "run",
-          "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/secure_mcp_gateway/gateway.py"
+          "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/enkryptai_agent_security/gateway/gateway.py"
         ],
         "env": {
           "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
@@ -630,7 +630,7 @@ Please restart Claude Desktop to use the gateway.
         "command": "mcp",
         "args": [
           "run",
-          "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\gateway.py"
+          "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\enkryptai_agent_security\gateway\\gateway.py"
         ],
         "env": {
           "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
@@ -669,7 +669,7 @@ Please restart Claude Desktop to use the gateway.
         "command": "mcp",
         "args": [
           "run",
-          "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/secure_mcp_gateway/gateway.py"
+          "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/enkryptai_agent_security/gateway/gateway.py"
         ],
         "env": {
           "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
@@ -699,7 +699,7 @@ Please restart Claude Desktop to use the gateway.
           "mcp[cli]",
           "mcp",
           "run",
-          "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\gateway.py"
+          "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\enkryptai_agent_security\gateway\\gateway.py"
         ],
         "env": {
           "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
@@ -753,13 +753,13 @@ list all servers, get all tools available
 Get your credentials from the generated `enkrypt_mcp_config.json` and the gateway path:
 
 ```bash
-python -c "import enkrypt_security.gateway.gateway; print(enkrypt_security.gateway.gateway.__file__)"
+python -c "import enkryptai_agent_security.gateway.gateway; print(enkryptai_agent_security.gateway.gateway.__file__)"
 ```
 
 Then add the gateway manually:
 
 ```bash
-claude mcp add --transport stdio --env ENKRYPT_GATEWAY_KEY=YOUR_GATEWAY_KEY --env ENKRYPT_PROJECT_ID=YOUR_PROJECT_ID --env ENKRYPT_USER_ID=YOUR_USER_ID --scope user Enkrypt-Secure-MCP-Gateway -- mcp run /path/to/secure_mcp_gateway/gateway.py
+claude mcp add --transport stdio --env ENKRYPT_GATEWAY_KEY=YOUR_GATEWAY_KEY --env ENKRYPT_PROJECT_ID=YOUR_PROJECT_ID --env ENKRYPT_USER_ID=YOUR_USER_ID --scope user Enkrypt-Secure-MCP-Gateway -- mcp run /path/to/enkryptai_agent_security/gateway/gateway.py
 ```
 
 > **Note:** The server name must use hyphens or underscores — Claude Code does not allow spaces in names.
@@ -865,7 +865,7 @@ MCP version 1.9.2
 
 <!-- - It then installs the dependencies -->
 
-- This script creates the config file at `~/.enkrypt/enkrypt_mcp_config.json` on macOS and `%USERPROFILE%\.enkrypt\enkrypt_mcp_config.json` on Windows based on `src/enkrypt_security/gateway/example_enkrypt_mcp_config.json` file
+- This script creates the config file at `~/.enkrypt/enkrypt_mcp_config.json` on macOS and `%USERPROFILE%\.enkrypt\enkrypt_mcp_config.json` on Windows based on `src/enkryptai_agent_security/gateway/example_enkrypt_mcp_config.json` file
 
 - It replaces `UNIQUE_GATEWAY_KEY` and other `UUIDs` with auto generated values and also replaces `DUMMY_MCP_FILE_PATH` with the actual path to the test MCP file `bad_mcps/echo_mcp.py`
 
@@ -900,7 +900,7 @@ Setting up Enkrypt Secure MCP Gateway enkrypt_mcp_config.json config file
         1 file(s) copied.
 Generated unique gateway key: WTZOpoU1mXJz8b_ZJQ42DuSXlQCSCtWOn3FX0jG8sO_FKYNJetjYEgSluvhtBN8_
 Generated unique uuid: 7920749a-228e-47fe-a6a9-cd2d64a2283b
-DUMMY_MCP_FILE_PATH: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\src\enkrypt_security\gateway\bad_mcps\echo_mcp.py
+DUMMY_MCP_FILE_PATH: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\src\enkryptai_agent_security\gateway\bad_mcps\echo_mcp.py
 -------------------------------
 Setup complete. Please check the enkrypt_mcp_config.json file in the ~\.enkrypt directory and update with your MCP server configs as needed.
 -------------------------------
@@ -920,7 +920,7 @@ Initializing Enkrypt Secure MCP Gateway Module
 SYSTEM INFO:
 Using Python interpreter: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Scripts\python.exe
 Python version: 3.13.3 (tags/v3.13.3:6280bb5, Apr  8 2025, 14:47:33) [MSC v.1943 64 bit (AMD64)]
-Current working directory: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\src\secure_mcp_gateway
+Current working directory: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\src\enkryptai_agent_security\gateway
 PYTHONPATH: Not set
 --------------------------------
 Installing dependencies...
@@ -929,7 +929,7 @@ Initializing Enkrypt Secure MCP Gateway Client Module
 Initializing Enkrypt Secure MCP Gateway Guardrail Module
 Getting Enkrypt Common Configuration
 config_path: C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
-example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\example_enkrypt_mcp_config.json
+example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\enkryptai_agent_security\gateway\example_enkrypt_mcp_config.json
 Loading enkrypt_mcp_config.json file...
 --------------------------------
 ENKRYPT_GATEWAY_KEY: ****BN8_
@@ -949,14 +949,14 @@ Initializing Enkrypt Secure MCP Gateway Module
 SYSTEM INFO:
 Using Python interpreter: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Scripts\python.exe
 Python version: 3.13.3 (tags/v3.13.3:6280bb5, Apr  8 2025, 14:47:33) [MSC v.1943 64 bit (AMD64)]
-Current working directory: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\src\secure_mcp_gateway
+Current working directory: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\src\enkryptai_agent_security\gateway
 PYTHONPATH: Not set
 --------------------------------
 Installing dependencies...
 All dependencies installed successfully.
 Getting Enkrypt Common Configuration
 config_path: C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
-example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\example_enkrypt_mcp_config.json
+example_config_path: C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\enkryptai_agent_security\gateway\example_enkrypt_mcp_config.json
 Loading enkrypt_mcp_config.json file...
 --------------------------------
 ENKRYPT_GATEWAY_KEY: ****BN8_
@@ -1021,13 +1021,13 @@ Installation complete. Check the claude_desktop_config.json file as per the read
 - Find the gateway.py path:
 
   ```bash
-  python -c "import enkrypt_security.gateway.gateway; print(enkrypt_security.gateway.gateway.__file__)"
+  python -c "import enkryptai_agent_security.gateway.gateway; print(enkryptai_agent_security.gateway.gateway.__file__)"
   ```
 
 - Add the gateway to Claude Code:
 
   ```bash
-  claude mcp add --transport stdio --env ENKRYPT_GATEWAY_KEY=YOUR_GATEWAY_KEY --env ENKRYPT_PROJECT_ID=YOUR_PROJECT_ID --env ENKRYPT_USER_ID=YOUR_USER_ID --scope user Enkrypt-Secure-MCP-Gateway -- mcp run /path/to/secure_mcp_gateway/gateway.py
+  claude mcp add --transport stdio --env ENKRYPT_GATEWAY_KEY=YOUR_GATEWAY_KEY --env ENKRYPT_PROJECT_ID=YOUR_PROJECT_ID --env ENKRYPT_USER_ID=YOUR_USER_ID --scope user Enkrypt-Secure-MCP-Gateway -- mcp run /path/to/enkryptai_agent_security/gateway/gateway.py
   ```
 
 - Verify: `claude mcp list`
@@ -1106,13 +1106,13 @@ docker build -t secure-mcp-gateway .
 ```bash
 
 # On 🍎 Linux/macOS run the below
-docker run --rm -e HOST_OS=macos -e HOST_ENKRYPT_HOME=$HOME/.enkrypt -v ~/.enkrypt/docker:/app/.enkrypt/docker --entrypoint python secure-mcp-gateway -m enkrypt_security.gateway.cli generate-config
+docker run --rm -e HOST_OS=macos -e HOST_ENKRYPT_HOME=$HOME/.enkrypt -v ~/.enkrypt/docker:/app/.enkrypt/docker --entrypoint python secure-mcp-gateway -m enkryptai_agent_security.gateway.cli generate-config
 
 # On 🪟 Windows (CMD) run the below
-docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt\docker:/app/.enkrypt/docker --entrypoint python secure-mcp-gateway -m enkrypt_security.gateway.cli generate-config
+docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt\docker:/app/.enkrypt/docker --entrypoint python secure-mcp-gateway -m enkryptai_agent_security.gateway.cli generate-config
 
 # On 🪟 Windows (📟 PowerShell) run the below
-docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt" -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" --entrypoint python secure-mcp-gateway -m enkrypt_security.gateway.cli generate-config
+docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt" -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" --entrypoint python secure-mcp-gateway -m enkryptai_agent_security.gateway.cli generate-config
 
 ```
 
@@ -1156,7 +1156,7 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
           "config": {
             "command": "python",
             "args": [
-              "/usr/local/lib/python3.11/site-packages/secure_mcp_gateway/bad_mcps/echo_mcp.py"
+              "/usr/local/lib/python3.11/site-packages/enkryptai_agent_security/gateway/bad_mcps/echo_mcp.py"
             ]
           },
           "tools": {},
@@ -1226,13 +1226,13 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
 ```bash
 
 # On 🍎 Linux/macOS run the below
-docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=$HOME/.enkrypt -v ~/.enkrypt/docker:/app/.enkrypt/docker -v ~/Library/Application\ Support/Claude:/app/.claude --entrypoint python secure-mcp-gateway -m enkrypt_security.gateway.cli install --client claude-desktop
+docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=$HOME/.enkrypt -v ~/.enkrypt/docker:/app/.enkrypt/docker -v ~/Library/Application\ Support/Claude:/app/.claude --entrypoint python secure-mcp-gateway -m enkryptai_agent_security.gateway.cli install --client claude-desktop
 
 # On 🪟 Windows (CMD) run the below
-docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt\docker:/app/.enkrypt/docker -v %APPDATA%\Claude:/app/.claude --entrypoint python secure-mcp-gateway -m enkrypt_security.gateway.cli install --client claude-desktop
+docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt\docker:/app/.enkrypt/docker -v %APPDATA%\Claude:/app/.claude --entrypoint python secure-mcp-gateway -m enkryptai_agent_security.gateway.cli install --client claude-desktop
 
 # On 🪟 Windows (📟 PowerShell) run the below
-docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt" -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" -v "$env:APPDATA\Claude:/app/.claude" --entrypoint python secure-mcp-gateway -m enkrypt_security.gateway.cli install --client claude-desktop
+docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt" -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" -v "$env:APPDATA\Claude:/app/.claude" --entrypoint python secure-mcp-gateway -m enkryptai_agent_security.gateway.cli install --client claude-desktop
 
 ```
 
@@ -1281,13 +1281,13 @@ docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.en
 ```bash
 
 # On 🍎 Linux/macOS run the below
-docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=$HOME/.enkrypt -v ~/.enkrypt/docker:/app/.enkrypt/docker -v ~/.cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m enkrypt_security.gateway.cli install --client cursor
+docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=$HOME/.enkrypt -v ~/.enkrypt/docker:/app/.enkrypt/docker -v ~/.cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m enkryptai_agent_security.gateway.cli install --client cursor
 
 # On 🪟 Windows (CMD) run the below
-docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt\docker:/app/.enkrypt/docker -v %USERPROFILE%\.cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m enkrypt_security.gateway.cli install --client cursor
+docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt\docker:/app/.enkrypt/docker -v %USERPROFILE%\.cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m enkryptai_agent_security.gateway.cli install --client cursor
 
 # On 🪟 Windows (📟 PowerShell) run the below
-docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt" -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" -v "$env:USERPROFILE\.cursor:/app/.cursor" --entrypoint python secure-mcp-gateway -m enkrypt_security.gateway.cli install --client cursor
+docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt" -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" -v "$env:USERPROFILE\.cursor:/app/.cursor" --entrypoint python secure-mcp-gateway -m enkryptai_agent_security.gateway.cli install --client cursor
 
 ```
 
@@ -1700,12 +1700,15 @@ The observability stack includes:
       "enkrypt_telemetry": {
         "enabled": true,
         "insecure": true,
-        "endpoint": "http://localhost:4317"
+        "endpoint": "http://localhost:4317",
+        "service_name": "secure-mcp-gateway"
       }
     },
     ...
   }
   ```
+
+  The `service_name` field sets the OpenTelemetry `service.name` resource attribute that appears in all traces, metrics, and logs. The default is `"secure-mcp-gateway"`. You can also override it with the `OTEL_SERVICE_NAME` environment variable.
 
 ### 5.5 Verification Steps
 
@@ -1814,7 +1817,7 @@ The observability stack includes:
         "command": "mcp",
         "args": [
           "run",
-          "/Users/user/enkryptai/secure-mcp-gateway/src/enkrypt_security/gateway/gateway.py"
+          "/Users/user/enkryptai/secure-mcp-gateway/src/enkryptai_agent_security/gateway/gateway.py"
         ],
         "env": {
           "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
@@ -1840,7 +1843,7 @@ The observability stack includes:
         "command": "mcp",
         "args": [
           "run",
-          "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\secure_mcp_gateway\\gateway.py"
+          "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\enkryptai_agent_security\gateway\\gateway.py"
         ],
         "env": {
           "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
@@ -1952,7 +1955,7 @@ The observability stack includes:
             "config": {
               "command": "python",
               "args": [
-                "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\secure_mcp_gateway\\bad_mcps\\echo_mcp.py"
+                "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\src\\enkryptai_agent_security\gateway\\bad_mcps\\echo_mcp.py"
               ]
             },
             "tools": {},
@@ -2323,7 +2326,7 @@ And your client's config file (e.g. `~/.cursor/mcp.json` or `~/Library/Applicati
       "command": "mcp",
       "args": [
         "run",
-        "<path-to-your-install>/secure_mcp_gateway/gateway.py"
+        "<path-to-your-install>/enkryptai_agent_security/gateway/gateway.py"
       ],
       "env": {
         "ENKRYPT_GATEWAY_KEY": "<your-auto-generated-gateway-key>",
@@ -2602,6 +2605,9 @@ secure-mcp-gateway config configure-telemetry --enabled true --url "http://local
 
 # Allow insecure (non-TLS) connections to the collector
 secure-mcp-gateway config configure-telemetry --insecure true
+
+# Set a custom service name (appears as service.name in OTel traces/metrics/logs)
+secure-mcp-gateway config configure-telemetry --service-name "my-gateway"
 ```
 
 **Starting the telemetry stack:** The gateway sends telemetry data to an OpenTelemetry collector — it doesn't run one itself. The repo includes a ready-made stack (collector, Prometheus, Grafana, Jaeger, Loki) in the `infra/` directory:
@@ -3115,7 +3121,7 @@ The echo OAuth server needs to run in HTTP mode to accept remote connections:
 export MCP_HTTP_MODE=true
 
 # Start the server
-python src/enkrypt_security/gateway/bad_mcps/echo_oauth_mcp.py
+python src/enkryptai_agent_security/gateway/bad_mcps/echo_oauth_mcp.py
 ```
 
 **Windows (PowerShell):**
@@ -3125,7 +3131,7 @@ python src/enkrypt_security/gateway/bad_mcps/echo_oauth_mcp.py
 $env:MCP_HTTP_MODE = "true"
 
 # Start the server
-python src/enkrypt_security/gateway/bad_mcps/echo_oauth_mcp.py
+python src/enkryptai_agent_security/gateway/bad_mcps/echo_oauth_mcp.py
 ```
 
 **Windows (Command Prompt):**
@@ -3135,7 +3141,7 @@ python src/enkrypt_security/gateway/bad_mcps/echo_oauth_mcp.py
 set MCP_HTTP_MODE=true
 
 # Start the server
-python src/enkrypt_security/gateway/bad_mcps/echo_oauth_mcp.py
+python src/enkryptai_agent_security/gateway/bad_mcps/echo_oauth_mcp.py
 ```
 
 The server will start on `http://localhost:8001/mcp/` and print OAuth-related headers whenever tools are called.
@@ -3968,14 +3974,14 @@ Navigate to the echo server directory and start it:
 **Windows PowerShell:**
 
 ```powershell
-cd src\enkrypt_security\gateway\bad_mcps
+cd src\enkryptai_agent_security\gateway\bad_mcps
 python .\echo_oauth_mcp.py
 ```
 
 **macOS/Linux:**
 
 ```bash
-cd src/enkrypt_security/gateway/bad_mcps
+cd src/enkryptai_agent_security/gateway/bad_mcps
 python echo_oauth_mcp.py
 ```
 

@@ -30,7 +30,7 @@ pip install haystack-ai
 ## Step 2: Add Enkrypt Security
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 auto_secure(
     enkrypt_api_key="ek-your-key-here",
@@ -44,7 +44,7 @@ auto_secure(
 ```python
 from haystack import Pipeline
 from haystack.components.generators import OpenAIGenerator
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 # Build a pipeline
 pipeline = Pipeline()
@@ -64,9 +64,9 @@ except GuardrailBlockedError as e:
 For per-component tracking:
 
 ```python
-from enkrypt_security.sdk.adapters.haystack import HaystackAdapter
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.haystack import HaystackAdapter
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
 adapter = HaystackAdapter(observer, agent_id="rag-pipeline")

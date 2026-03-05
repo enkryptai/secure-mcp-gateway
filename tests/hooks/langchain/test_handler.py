@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 from uuid import uuid4
 
 
-from enkrypt_security.hooks.wrappers.langchain_handler import (
+from enkryptai_agent_security.hooks.wrappers.langchain_handler import (
     EnkryptGuardrailsHandler,
     GuardrailsViolationError,
     SensitiveToolBlockedError,
@@ -97,8 +97,8 @@ class TestViolationHandling:
 class TestSensitiveToolBlocking:
     """Tests for sensitive tool blocking."""
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_sensitive_tool', return_value=True)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_sensitive_tool', return_value=True)
     def test_block_sensitive_tool(self, mock_sensitive, mock_enabled):
         """Test that sensitive tools are blocked."""
         handler = EnkryptGuardrailsHandler(block_sensitive_tools=True, audit_only=False)
@@ -112,8 +112,8 @@ class TestSensitiveToolBlocking:
 
         assert exc_info.value.tool_name == "execute_sql"
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_sensitive_tool', return_value=True)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_sensitive_tool', return_value=True)
     def test_allow_sensitive_tool_when_disabled(self, mock_sensitive, mock_enabled):
         """Test that sensitive tools are allowed when blocking is disabled."""
         handler = EnkryptGuardrailsHandler(block_sensitive_tools=False)
@@ -125,8 +125,8 @@ class TestSensitiveToolBlocking:
             run_id=uuid4(),
         )
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_sensitive_tool', return_value=True)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_sensitive_tool', return_value=True)
     def test_audit_only_sensitive_tool(self, mock_sensitive, mock_enabled):
         """Test that sensitive tools are logged but not blocked in audit mode."""
         handler = EnkryptGuardrailsHandler(block_sensitive_tools=True, audit_only=True)
@@ -146,7 +146,7 @@ class TestSensitiveToolBlocking:
 class TestLLMCallbacks:
     """Tests for LLM callback methods."""
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
     def test_on_llm_start_disabled(self, mock_enabled):
         """Test on_llm_start when hook is disabled."""
         handler = EnkryptGuardrailsHandler()
@@ -158,8 +158,8 @@ class TestLLMCallbacks:
             run_id=uuid4(),
         )
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.check_with_enkrypt_api')
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=True)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.check_with_enkrypt_api')
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=True)
     def test_on_llm_start_safe_prompt(self, mock_enabled, mock_check):
         """Test on_llm_start with safe prompt."""
         mock_check.return_value = (False, [], {"summary": {}})
@@ -174,8 +174,8 @@ class TestLLMCallbacks:
 
         mock_check.assert_called_once()
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.check_with_enkrypt_api')
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=True)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.check_with_enkrypt_api')
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=True)
     def test_on_llm_start_malicious_prompt(self, mock_enabled, mock_check):
         """Test on_llm_start with malicious prompt."""
         mock_check.return_value = (
@@ -192,7 +192,7 @@ class TestLLMCallbacks:
                 run_id=uuid4(),
             )
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
     def test_on_llm_end_disabled(self, mock_enabled):
         """Test on_llm_end when hook is disabled."""
         handler = EnkryptGuardrailsHandler()
@@ -221,7 +221,7 @@ class TestLLMCallbacks:
 class TestChainCallbacks:
     """Tests for chain callback methods."""
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
     def test_on_chain_start_disabled(self, mock_enabled):
         """Test on_chain_start when hook is disabled."""
         handler = EnkryptGuardrailsHandler()
@@ -232,8 +232,8 @@ class TestChainCallbacks:
             run_id=uuid4(),
         )
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.check_with_enkrypt_api')
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=True)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.check_with_enkrypt_api')
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=True)
     def test_on_chain_start_safe_input(self, mock_enabled, mock_check):
         """Test on_chain_start with safe input."""
         mock_check.return_value = (False, [], {"summary": {}})
@@ -247,7 +247,7 @@ class TestChainCallbacks:
 
         mock_check.assert_called_once()
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
     def test_on_chain_end_disabled(self, mock_enabled):
         """Test on_chain_end when hook is disabled."""
         handler = EnkryptGuardrailsHandler()
@@ -274,8 +274,8 @@ class TestChainCallbacks:
 class TestToolCallbacks:
     """Tests for tool callback methods."""
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_sensitive_tool', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_sensitive_tool', return_value=False)
     def test_on_tool_start_disabled(self, mock_sensitive, mock_enabled):
         """Test on_tool_start when hook is disabled."""
         handler = EnkryptGuardrailsHandler()
@@ -286,9 +286,9 @@ class TestToolCallbacks:
             run_id=uuid4(),
         )
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.check_with_enkrypt_api')
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=True)
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_sensitive_tool', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.check_with_enkrypt_api')
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=True)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_sensitive_tool', return_value=False)
     def test_on_tool_start_safe_input(self, mock_sensitive, mock_enabled, mock_check):
         """Test on_tool_start with safe input."""
         mock_check.return_value = (False, [], {"summary": {}})
@@ -302,7 +302,7 @@ class TestToolCallbacks:
 
         mock_check.assert_called_once()
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
     def test_on_tool_end_disabled(self, mock_enabled):
         """Test on_tool_end when hook is disabled."""
         handler = EnkryptGuardrailsHandler()
@@ -326,7 +326,7 @@ class TestToolCallbacks:
 class TestAgentCallbacks:
     """Tests for agent callback methods."""
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
     def test_on_agent_action_disabled(self, mock_enabled):
         """Test on_agent_action when hook is disabled."""
         handler = EnkryptGuardrailsHandler()
@@ -338,7 +338,7 @@ class TestAgentCallbacks:
 
         handler.on_agent_action(action=mock_action, run_id=uuid4())
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
     def test_on_agent_finish_disabled(self, mock_enabled):
         """Test on_agent_finish when hook is disabled."""
         handler = EnkryptGuardrailsHandler()
@@ -357,7 +357,7 @@ class TestAgentCallbacks:
 class TestRetrieverCallbacks:
     """Tests for retriever callback methods."""
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
     def test_on_retriever_start_disabled(self, mock_enabled):
         """Test on_retriever_start when hook is disabled."""
         handler = EnkryptGuardrailsHandler()
@@ -368,7 +368,7 @@ class TestRetrieverCallbacks:
             run_id=uuid4(),
         )
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
     def test_on_retriever_end_disabled(self, mock_enabled):
         """Test on_retriever_end when hook is disabled."""
         handler = EnkryptGuardrailsHandler()
@@ -395,7 +395,7 @@ class TestRetrieverCallbacks:
 class TestTextCallback:
     """Tests for on_text callback method."""
 
-    @patch('enkrypt_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
+    @patch('enkryptai_agent_security.hooks.wrappers.langchain_handler.is_hook_enabled', return_value=False)
     def test_on_text_disabled(self, mock_enabled):
         """Test on_text when hook is disabled."""
         handler = EnkryptGuardrailsHandler()

@@ -1,6 +1,6 @@
 """Tests for payload sanitization."""
 
-from enkrypt_security.sdk.redaction import PayloadPolicy, sanitize_attributes
+from enkryptai_agent_security.sdk.redaction import PayloadPolicy, sanitize_attributes
 
 
 class TestSanitizeAttributes:

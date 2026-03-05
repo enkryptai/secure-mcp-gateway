@@ -28,7 +28,7 @@ Sign up at [enkryptai.com](https://enkryptai.com) and create a guardrail policy 
 At the very top of your script, **before** any agent code:
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 auto_secure(
     enkrypt_api_key="ek-your-key-here",
@@ -50,7 +50,7 @@ That's it. Your existing code works unchanged -- but now:
 Wrap your agent calls in a try/except so users see a friendly message:
 
 ```python
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 try:
     result = agent.run("your user's input here")
@@ -156,7 +156,7 @@ When a checkpoint blocks, a visible message is printed and `GuardrailBlockedErro
 One line of code. The SDK auto-detects which frameworks are installed and patches them:
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 results = auto_secure(
     enkrypt_api_key="ek-your-key-here",
@@ -173,11 +173,11 @@ print(results)  # {"langchain": True, "anthropic": True, ...}
 Create the guard engine and install patches yourself:
 
 ```python
-from enkrypt_security.sdk import GuardEngine, AgentObserver
-from enkrypt_security.sdk.guardrails.base import GuardrailRegistry
-from enkrypt_security.sdk.guardrails.keyword_provider import KeywordGuardrailProvider
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
-from enkrypt_security.sdk._patch import langchain as lc_patch  # or any framework
+from enkryptai_agent_security.sdk import GuardEngine, AgentObserver
+from enkryptai_agent_security.sdk.guardrails.base import GuardrailRegistry
+from enkryptai_agent_security.sdk.guardrails.keyword_provider import KeywordGuardrailProvider
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk._patch import langchain as lc_patch  # or any framework
 
 # 1. Set up guardrails
 registry = GuardrailRegistry()
@@ -204,7 +204,7 @@ lc_patch.install(observer, guard)
 You can use the SDK without an Enkrypt API key for basic keyword blocking:
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 auto_secure(
     guardrail_policy="offline",
@@ -231,3 +231,75 @@ After this, every call through the patched frameworks automatically:
 - Optionally checks outputs at **post_llm** and **post_tool** checkpoints
 - Emits OpenTelemetry spans for observability
 - Raises `GuardrailBlockedError` when a check fails
+
+---
+
+## Customizing the Service Name (OpenTelemetry)
+
+By default, telemetry data is tagged with `service.name = "enkrypt-agent-sdk"`. You can override this to identify your specific agent or application in traces, metrics, and logs.
+
+### Via `auto_secure()`
+
+```python
+auto_secure(
+    enkrypt_api_key="ek-...",
+    guardrail_policy="My Policy",
+    block=["injection_attack"],
+    service_name="my-custom-agent",  # appears as service.name in OTel
+)
+```
+
+### Via environment variable
+
+```bash
+export OTEL_SERVICE_NAME="my-custom-agent"
+```
+
+The `OTEL_SERVICE_NAME` environment variable is the standard OpenTelemetry override and works across all layers (SDK, gateway, hooks).
+
+### Via config file
+
+In your `enkrypt_config.json`:
+
+```json
+{
+  "telemetry": {
+    "enabled": true,
+    "service_name": "my-custom-agent"
+  }
+}
+```
+
+The service name controls the `service.name` resource attribute attached to all OpenTelemetry traces, metrics, and structured logs emitted by the SDK.
+
+---
+
+## Customizing the Agent ID (Telemetry)
+
+By default, each framework patch uses its own agent identifier (e.g., `"langchain-auto"`, `"crewai-auto"`) in telemetry metrics and spans. You can override this with a meaningful name so your agents are easy to identify in dashboards.
+
+### Via `auto_secure()`
+
+```python
+auto_secure(
+    enkrypt_api_key="ek-...",
+    guardrail_policy="My Policy",
+    block=["injection_attack"],
+    agent_id="billing-agent",  # appears as agent_id in OTel metrics
+)
+```
+
+### Via `SDKConfig`
+
+```python
+from enkryptai_agent_security.sdk import auto_secure, SDKConfig
+
+auto_secure(SDKConfig(
+    enkrypt_api_key="ek-...",
+    agent_id="billing-agent",
+))
+```
+
+The `agent_id` value flows into the `agent_id` attribute on all OpenTelemetry metrics and span attributes emitted by the SDK. This is distinct from `service_name`, which controls the OTel resource-level `service.name`. Use `agent_id` to distinguish between different agents within the same service.
+
+When left empty, each framework patch uses its built-in default (e.g., `"crewai-auto"`, `"langgraph-auto"`, `"anthropic-auto"`).

@@ -32,7 +32,7 @@ pip install llama-index-llms-openai llama-index-embeddings-openai
 ## Step 2: Add Enkrypt Security
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 auto_secure(
     enkrypt_api_key="ek-your-key-here",
@@ -47,7 +47,7 @@ The SDK automatically adds the `EnkryptLlamaIndexHandler` to `Settings.callback_
 
 ```python
 from llama_index.core import VectorStoreIndex, Document
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 # Create an index from documents
 documents = [
@@ -78,9 +78,9 @@ The SDK automatically:
 If you want to use the handler directly:
 
 ```python
-from enkrypt_security.sdk.adapters.llamaindex import EnkryptLlamaIndexHandler
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.llamaindex import EnkryptLlamaIndexHandler
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 from llama_index.core import Settings
 from llama_index.core.callbacks import CallbackManager
 
@@ -142,7 +142,7 @@ Yes! LlamaIndex agents use the same callback system, so tool calls and LLM calls
 A `GuardrailBlockedError` is raised at the checkpoint where the violation was detected. You can catch this exception to handle blocked requests gracefully:
 
 ```python
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 try:
     response = agent.chat("user message")

@@ -2,22 +2,15 @@
 """
 Tests for Enkrypt AI Guardrails - OpenAI Agents SDK
 
-Run with: pytest tests/test_enkrypt_guardrails.py -v
+Run with: pytest tests/hooks/openai/test_enkrypt_guardrails.py -v
 """
-import json
-import os
-import sys
 import unittest
-from unittest.mock import patch, MagicMock
-from pathlib import Path
 
 
-from enkrypt_security.hooks.providers.openai_agents import (
+from enkryptai_agent_security.hooks.providers.openai_agents import (
     check_with_enkrypt_api,
     format_violation_message,
-    parse_enkrypt_response,
     is_hook_enabled,
-    get_hook_guardrail_name,
     is_sensitive_tool,
     analyze_content,
     get_metrics,
@@ -33,80 +26,13 @@ class TestEnkryptGuardrails(unittest.TestCase):
         """Set up test fixtures."""
         reset_metrics()
 
-    def test_parse_enkrypt_response_injection(self):
-        """Test parsing injection attack detection."""
-        response = {
-            "summary": {"injection_attack": 1},
-            "details": {"injection_attack": {"attack": 0.95}},
-        }
-        block_list = ["injection_attack"]
-
-        violations = parse_enkrypt_response(response, block_list)
-
-        self.assertEqual(len(violations), 1)
-        self.assertEqual(violations[0]["detector"], "injection_attack")
-        self.assertTrue(violations[0]["blocked"])
-
-    def test_parse_enkrypt_response_pii(self):
-        """Test parsing PII detection."""
-        response = {
-            "summary": {"pii": 1},
-            "details": {"pii": {"pii": {"email": ["test@example.com"]}}},
-        }
-        block_list = ["pii"]
-
-        violations = parse_enkrypt_response(response, block_list)
-
-        self.assertEqual(len(violations), 1)
-        self.assertEqual(violations[0]["detector"], "pii")
-        self.assertIn("email", violations[0].get("entities", []))
-
-    def test_parse_enkrypt_response_toxicity(self):
-        """Test parsing toxicity detection."""
-        response = {
-            "summary": {"toxicity": ["hate", "threat"]},
-            "details": {"toxicity": {"toxicity": 0.85}},
-        }
-        block_list = ["toxicity"]
-
-        violations = parse_enkrypt_response(response, block_list)
-
-        self.assertEqual(len(violations), 1)
-        self.assertEqual(violations[0]["detector"], "toxicity")
-        self.assertEqual(violations[0]["toxicity_types"], ["hate", "threat"])
-
-    def test_parse_enkrypt_response_no_violations(self):
-        """Test parsing when no violations detected."""
-        response = {
-            "summary": {"injection_attack": 0, "pii": 0, "toxicity": []},
-            "details": {},
-        }
-        block_list = ["injection_attack", "pii", "toxicity"]
-
-        violations = parse_enkrypt_response(response, block_list)
-
-        self.assertEqual(len(violations), 0)
-
-    def test_parse_enkrypt_response_not_in_block_list(self):
-        """Test that detected items not in block list are ignored."""
-        response = {
-            "summary": {"injection_attack": 1, "pii": 1},
-            "details": {},
-        }
-        block_list = ["injection_attack"]  # pii not in block list
-
-        violations = parse_enkrypt_response(response, block_list)
-
-        self.assertEqual(len(violations), 1)
-        self.assertEqual(violations[0]["detector"], "injection_attack")
-
     def test_format_violation_message_injection(self):
         """Test formatting injection attack violation message."""
         violations = [
             {"detector": "injection_attack", "attack_score": 0.95, "blocked": True}
         ]
 
-        message = format_violation_message(violations, hook_name="on_agent_start")
+        message = format_violation_message(violations)
 
         self.assertIn("Injection attack", message)
         self.assertIn("95.0%", message)
@@ -139,29 +65,28 @@ class TestEnkryptGuardrails(unittest.TestCase):
 
     def test_is_sensitive_tool_exact_match(self):
         """Test exact match for sensitive tools."""
-        # Temporarily set sensitive tools
-        import enkrypt_security.hooks.providers.openai_agents as enkrypt_guardrails
-        original = enkrypt_guardrails.SENSITIVE_TOOLS
-        enkrypt_guardrails.SENSITIVE_TOOLS = ["execute_sql", "bash"]
+        import enkryptai_agent_security.hooks.providers.openai_agents as mod
+        original = mod._core.sensitive_tools
+        mod._core.sensitive_tools = ["execute_sql", "bash"]
 
         self.assertTrue(is_sensitive_tool("execute_sql"))
         self.assertTrue(is_sensitive_tool("bash"))
         self.assertFalse(is_sensitive_tool("get_weather"))
 
-        enkrypt_guardrails.SENSITIVE_TOOLS = original
+        mod._core.sensitive_tools = original
 
     def test_is_sensitive_tool_wildcard(self):
         """Test wildcard matching for sensitive tools."""
-        import enkrypt_security.hooks.providers.openai_agents as enkrypt_guardrails
-        original = enkrypt_guardrails.SENSITIVE_TOOLS
-        enkrypt_guardrails.SENSITIVE_TOOLS = ["shell_*", "delete_*"]
+        import enkryptai_agent_security.hooks.providers.openai_agents as mod
+        original = mod._core.sensitive_tools
+        mod._core.sensitive_tools = ["shell_*", "delete_*"]
 
         self.assertTrue(is_sensitive_tool("shell_execute"))
         self.assertTrue(is_sensitive_tool("shell_run"))
         self.assertTrue(is_sensitive_tool("delete_file"))
         self.assertFalse(is_sensitive_tool("get_shell_info"))
 
-        enkrypt_guardrails.SENSITIVE_TOOLS = original
+        mod._core.sensitive_tools = original
 
     def test_analyze_content_detects_patterns(self):
         """Test content analysis for sensitive patterns."""
@@ -180,10 +105,8 @@ class TestEnkryptGuardrails(unittest.TestCase):
 
         self.assertEqual(len(analysis["sensitive_data_hints"]), 0)
 
-    @patch("enkrypt_security.hooks.providers.openai_agents.get_http_session")
-    def test_check_with_enkrypt_api_disabled(self, mock_session):
+    def test_check_with_enkrypt_api_disabled(self):
         """Test that disabled hooks are skipped."""
-        # This should return immediately without calling the API
         should_block, violations, result = check_with_enkrypt_api(
             "test text",
             hook_name="disabled_hook"
@@ -191,25 +114,21 @@ class TestEnkryptGuardrails(unittest.TestCase):
 
         self.assertFalse(should_block)
         self.assertEqual(len(violations), 0)
-        self.assertIn("skipped", result)
 
-    @patch("enkrypt_security.hooks.providers.openai_agents.get_http_session")
-    @patch("enkrypt_security.hooks.providers.openai_agents.is_hook_enabled")
-    def test_check_with_enkrypt_api_timeout(self, mock_enabled, mock_session):
-        """Test timeout handling."""
-        import requests
+    def test_is_hook_enabled_default(self):
+        """Test hook enabled check with default."""
+        self.assertFalse(is_hook_enabled("nonexistent_hook"))
 
-        mock_enabled.return_value = True
-        mock_response = MagicMock()
-        mock_session.return_value.post.side_effect = requests.exceptions.Timeout()
+    def test_get_metrics_returns_dict(self):
+        """Test get_metrics returns dict."""
+        m = get_metrics()
+        self.assertIsInstance(m, dict)
 
-        should_block, violations, result = check_with_enkrypt_api(
-            "test text",
-            hook_name="on_agent_start"
-        )
-
-        self.assertIn("error", result)
-        self.assertEqual(result["error"], "timeout")
+    def test_reset_metrics_works(self):
+        """Test reset_metrics works without error."""
+        reset_metrics()
+        m = get_metrics()
+        self.assertIsInstance(m, dict)
 
 
 class TestRunHooks(unittest.TestCase):
@@ -217,17 +136,16 @@ class TestRunHooks(unittest.TestCase):
 
     def test_import_hook_classes(self):
         """Test that hook classes can be imported."""
-        from enkrypt_security.hooks.wrappers.openai_hook import (
+        from enkryptai_agent_security.hooks.wrappers.openai_hook import (
             EnkryptRunHooks,
             EnkryptAgentHooks,
             EnkryptBlockingRunHooks,
             EnkryptAuditRunHooks,
-            GuardrailsViolationError,
         )
 
         # Create instances
         run_hooks = EnkryptRunHooks()
-        agent_hooks = EnkryptAgentHooks()
+        _ = EnkryptAgentHooks()
         blocking_hooks = EnkryptBlockingRunHooks()
         audit_hooks = EnkryptAuditRunHooks()
 
@@ -243,7 +161,7 @@ class TestRunHooks(unittest.TestCase):
 
     def test_guardrails_violation_error(self):
         """Test GuardrailsViolationError exception."""
-        from enkrypt_security.hooks.wrappers.openai_hook import GuardrailsViolationError
+        from enkryptai_agent_security.hooks.wrappers.openai_hook import GuardrailsViolationError
 
         violations = [{"detector": "pii", "blocked": True}]
         error = GuardrailsViolationError("Test error", violations=violations)
@@ -253,7 +171,7 @@ class TestRunHooks(unittest.TestCase):
 
     def test_run_hooks_reset(self):
         """Test resetting run hooks state."""
-        from enkrypt_security.hooks.wrappers.openai_hook import EnkryptRunHooks
+        from enkryptai_agent_security.hooks.wrappers.openai_hook import EnkryptRunHooks
 
         hooks = EnkryptRunHooks()
         hooks._current_violations = [{"test": "violation"}]
@@ -268,7 +186,7 @@ class TestRunHooks(unittest.TestCase):
 
     def test_run_hooks_get_metrics(self):
         """Test getting metrics from run hooks."""
-        from enkrypt_security.hooks.wrappers.openai_hook import EnkryptRunHooks
+        from enkryptai_agent_security.hooks.wrappers.openai_hook import EnkryptRunHooks
 
         hooks = EnkryptRunHooks()
         metrics = hooks.get_metrics()

@@ -3,27 +3,27 @@
   "hooks": {
     "beforeSubmitPrompt": [
       {
-        "command": "python -m enkrypt_security.hooks.scripts.cursor.before_submit_prompt"
+        "command": "python -m enkryptai_agent_security.hooks.scripts.cursor.before_submit_prompt"
       }
     ],
     "beforeMCPExecution": [
       {
-        "command": "python -m enkrypt_security.hooks.scripts.cursor.before_mcp_execution"
+        "command": "python -m enkryptai_agent_security.hooks.scripts.cursor.before_mcp_execution"
       }
     ],
     "afterMCPExecution": [
       {
-        "command": "python -m enkrypt_security.hooks.scripts.cursor.after_mcp_execution"
+        "command": "python -m enkryptai_agent_security.hooks.scripts.cursor.after_mcp_execution"
       }
     ],
     "afterAgentResponse": [
       {
-        "command": "python -m enkrypt_security.hooks.scripts.cursor.after_agent_response"
+        "command": "python -m enkryptai_agent_security.hooks.scripts.cursor.after_agent_response"
       }
     ],
     "stop": [
       {
-        "command": "python -m enkrypt_security.hooks.scripts.cursor.stop"
+        "command": "python -m enkryptai_agent_security.hooks.scripts.cursor.stop"
       }
     ]
   }

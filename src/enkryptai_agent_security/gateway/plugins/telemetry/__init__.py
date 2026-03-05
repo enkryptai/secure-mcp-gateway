@@ -1,0 +1,71 @@
+"""
+Telemetry Plugin System
+
+A flexible, extensible telemetry system following SOLID principles.
+
+This plugin system allows you to:
+- Switch between different telemetry providers (OpenTelemetry, Datadog, New Relic, etc.)
+- Create custom telemetry providers
+- Configure telemetry through config files
+- Use multiple telemetry backends simultaneously
+
+Quick Start:
+    ```python
+    from enkryptai_agent_security.gateway.plugins.telemetry import (
+        get_telemetry_config_manager,
+        initialize_telemetry_system,
+    )
+
+    # Initialize with config
+    manager = initialize_telemetry_system(config)
+
+    # Get logger and tracer
+    logger = manager.get_logger()
+    tracer = manager.get_tracer()
+    ```
+
+Example Config:
+    ```json
+    {
+      "plugins": {
+        "telemetry": {
+          "provider": "opentelemetry",
+          "config": {
+            "enabled": true,
+            "url": "http://localhost:4317",
+            "insecure": true
+          }
+        }
+      }
+    }
+    ```
+"""
+
+from enkryptai_agent_security.gateway.plugins.telemetry.base import (
+    TelemetryLevel,
+    TelemetryProvider,
+    TelemetryRegistry,
+    TelemetryResult,
+)
+from enkryptai_agent_security.gateway.plugins.telemetry.config_manager import (
+    TelemetryConfigManager,
+    get_telemetry_config_manager,
+    initialize_telemetry_system,
+)
+from enkryptai_agent_security.gateway.plugins.telemetry.opentelemetry_provider import (
+    OpenTelemetryProvider,
+)
+
+__all__ = [
+    # Base classes
+    "TelemetryProvider",
+    "TelemetryRegistry",
+    "TelemetryResult",
+    "TelemetryLevel",
+    # Config manager
+    "TelemetryConfigManager",
+    "get_telemetry_config_manager",
+    "initialize_telemetry_system",
+    # Providers
+    "OpenTelemetryProvider",
+]

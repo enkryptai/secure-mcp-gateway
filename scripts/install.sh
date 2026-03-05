@@ -44,7 +44,7 @@ DEPENDENCIES_STRING=$(echo "$DEPENDENCIES" | sed 's/[[:space:]]\+/ --with /g' | 
 
 echo "Dependencies string for the cli install command: $DEPENDENCIES_STRING"
 
-cd $SCRIPT_DIR/../src/enkrypt_security/gateway
+cd $SCRIPT_DIR/../src/enkryptai_agent_security/gateway
 
 CLI_CMD="mcp install gateway.py --env-var ENKRYPT_GATEWAY_KEY=$ENKRYPT_GATEWAY_KEY $DEPENDENCIES_STRING"
 

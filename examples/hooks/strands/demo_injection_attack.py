@@ -18,7 +18,7 @@ Usage:
 import os
 
 from strands import Agent
-from enkrypt_security.hooks.wrappers.strands_hook import EnkryptGuardrailsBlockingHook
+from enkryptai_agent_security.hooks.wrappers.strands_hook import EnkryptGuardrailsBlockingHook
 
 
 # Collection of known injection attack patterns

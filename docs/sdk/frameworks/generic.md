@@ -21,11 +21,11 @@ pip install -e .
 ## Step 2: Set Up the Components
 
 ```python
-from enkrypt_security.sdk.guardrails.base import GuardrailRegistry
-from enkrypt_security.sdk.guardrails.keyword_provider import KeywordGuardrailProvider
-from enkrypt_security.sdk.guard import GuardEngine
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.guardrails.base import GuardrailRegistry
+from enkryptai_agent_security.sdk.guardrails.keyword_provider import KeywordGuardrailProvider
+from enkryptai_agent_security.sdk.guard import GuardEngine
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 # 1. Create a guardrail registry and register providers
 registry = GuardrailRegistry()
@@ -50,7 +50,7 @@ The Generic Adapter has a hierarchical structure: **Run > Step > Tool Call / LLM
 ### Sync Usage
 
 ```python
-from enkrypt_security.sdk.adapters.generic import GenericAgentAdapter
+from enkryptai_agent_security.sdk.adapters.generic import GenericAgentAdapter
 
 adapter = GenericAgentAdapter(observer, guard, agent_id="my-custom-agent")
 
@@ -100,7 +100,7 @@ The Generic Adapter requires **manual guardrail checks** at checkpoints. You mus
 ### Pre-LLM Checkpoint (Before LLM Calls)
 
 ```python
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 # Wrap any LLM call with pre_llm checkpoint
 user_input = "What is the weather in Tokyo?"
@@ -202,13 +202,13 @@ Here's a complete example showing how to manually enforce guardrails at all chec
 ```python
 """Complete example with manual guardrail enforcement at all checkpoints."""
 
-from enkrypt_security.sdk.guardrails.base import GuardrailRegistry
-from enkrypt_security.sdk.guardrails.keyword_provider import KeywordGuardrailProvider
-from enkrypt_security.sdk.guard import GuardEngine
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
-from enkrypt_security.sdk.adapters.generic import GenericAgentAdapter
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.guardrails.base import GuardrailRegistry
+from enkryptai_agent_security.sdk.guardrails.keyword_provider import KeywordGuardrailProvider
+from enkryptai_agent_security.sdk.guard import GuardEngine
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.generic import GenericAgentAdapter
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 # Setup
 registry = GuardrailRegistry()
@@ -268,7 +268,7 @@ async def process_user_request(user_input: str):
 Always wrap guardrail checks with proper error handling:
 
 ```python
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 async def safe_llm_call(user_input: str):
     """Example with proper GuardrailBlockedError handling."""

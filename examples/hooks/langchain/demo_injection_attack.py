@@ -13,7 +13,7 @@ Environment:
 """
 import os
 
-from enkrypt_security.hooks.wrappers.langchain_handler import (
+from enkryptai_agent_security.hooks.wrappers.langchain_handler import (
     EnkryptGuardrailsHandler,
     GuardrailsViolationError,
     get_guardrails_metrics,

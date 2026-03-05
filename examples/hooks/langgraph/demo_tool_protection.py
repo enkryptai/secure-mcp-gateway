@@ -27,7 +27,7 @@ except ImportError:
     print("Install with: pip install langchain langchain-openai langgraph")
     sys.exit(1)
 
-from enkrypt_security.hooks.wrappers.langgraph_hook import (
+from enkryptai_agent_security.hooks.wrappers.langgraph_hook import (
     create_protected_agent,
     wrap_tools,
     EnkryptToolWrapper,
@@ -36,7 +36,7 @@ from enkrypt_security.hooks.wrappers.langgraph_hook import (
     check_tool_input,
     check_tool_output,
 )
-from enkrypt_security.hooks.providers.langgraph import is_sensitive_tool, SENSITIVE_TOOLS
+from enkryptai_agent_security.hooks.providers.langgraph import is_sensitive_tool, SENSITIVE_TOOLS
 
 
 # Define various tools with different risk levels

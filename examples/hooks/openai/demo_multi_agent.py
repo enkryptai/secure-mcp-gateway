@@ -18,7 +18,7 @@ try:
 except ImportError:
     AGENTS_AVAILABLE = False
 
-from enkrypt_security.hooks.wrappers.openai_hook import EnkryptRunHooks
+from enkryptai_agent_security.hooks.wrappers.openai_hook import EnkryptRunHooks
 
 
 # Define output types

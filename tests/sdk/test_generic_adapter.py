@@ -4,14 +4,14 @@ import asyncio
 
 import pytest
 
-from enkrypt_security.sdk.adapters.generic import GenericAgentAdapter
-from enkrypt_security.sdk.events import GuardrailAction
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
-from enkrypt_security.sdk.guard import GuardEngine
-from enkrypt_security.sdk.guardrails.base import GuardrailRegistry
-from enkrypt_security.sdk.guardrails.keyword_provider import KeywordGuardrailProvider
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpMeter, _NoOpTracer
+from enkryptai_agent_security.sdk.adapters.generic import GenericAgentAdapter
+from enkryptai_agent_security.sdk.events import GuardrailAction
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.guard import GuardEngine
+from enkryptai_agent_security.sdk.guardrails.base import GuardrailRegistry
+from enkryptai_agent_security.sdk.guardrails.keyword_provider import KeywordGuardrailProvider
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.telemetry.setup import _NoOpMeter, _NoOpTracer
 
 
 def _make_adapter(
@@ -22,14 +22,18 @@ def _make_adapter(
     if keywords is not None:
         registry = GuardrailRegistry()
         registry.register(KeywordGuardrailProvider())
+        policy = {
+            "enabled": True,
+            "policy_name": "test",
+            "block": ["keyword_detector"],
+            "blocked_keywords": keywords,
+        }
         guard = GuardEngine(
             registry,
-            input_policy={
-                "enabled": True,
-                "policy_name": "test",
-                "block": ["keyword_detector"],
-                "blocked_keywords": keywords,
-            },
+            pre_llm_policy=policy,
+            pre_tool_policy=policy,
+            post_tool_policy=policy,
+            post_llm_policy=policy,
         )
     return GenericAgentAdapter(observer, guard, agent_id="test-agent")
 

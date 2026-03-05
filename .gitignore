@@ -29,13 +29,13 @@ enkrypt_mcp_config*.json*
 scripts/flake8/backups
 
 # These get created when we run `python setup.py`
-src/enkrypt_security.egg-info
+src/enkryptai_agent_security.egg-info
 build/
 dist/
 
 docs/secure-mcp-gateway-manifest.yaml
 
-src/enkrypt_security/venv
+src/enkryptai_agent_security/venv
 
 .secure-mcp-gateway-venv
 
@@ -56,5 +56,6 @@ bandit-report.json
 !hooks/strands/README.md
 !hooks/vercel-ai-sdk/README.md
 !hooks/copilot/README.md
+!docs/*.md
 
 .claude/settings.json

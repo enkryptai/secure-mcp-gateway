@@ -21,7 +21,7 @@ pip install anthropic
 ## Step 2: Add Enkrypt Security
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 auto_secure(
     enkrypt_api_key="ek-your-key-here",
@@ -76,9 +76,9 @@ response = await client.messages.create(
 When building an agentic loop (calling Claude repeatedly with tool results), use the manual adapter for richer context:
 
 ```python
-from enkrypt_security.sdk.adapters.anthropic import AnthropicAdapter
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.anthropic import AnthropicAdapter
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
 adapter = AnthropicAdapter(observer, agent_id="my-claude-agent")
@@ -131,8 +131,8 @@ async with adapter.agentic_loop() as loop:
 ```python
 """Complete Anthropic + Enkrypt SDK example."""
 
-from enkrypt_security.sdk import auto_secure
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk import auto_secure
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 auto_secure(
     enkrypt_api_key="ek-your-key",

@@ -14,8 +14,8 @@ Requirements:
     pip install phidata openai   (or: pip install agno openai)
 
 Run:
-    cd enkrypt-in-agent-sdk
-    python examples/phidata/real_test.py
+    pip install enkryptai-agent-security[sdk]
+    python examples/sdk/phidata/real_test.py
 """
 
 import asyncio
@@ -201,7 +201,7 @@ print()
 
 print_header("PART 2A: auto_secure() — Automatic Method (recommended)")
 
-from enkrypt_security.sdk import auto_secure, get_guard_engine, unsecure
+from enkryptai_agent_security.sdk import auto_secure, get_guard_engine, unsecure
 
 auto_secure(fail_open=False)
 guard = get_guard_engine()
@@ -221,12 +221,12 @@ unsecure()
 
 print_header("PART 2B: Manual Setup — Advanced Method")
 
-from enkrypt_security.sdk.guardrails.base import GuardrailRegistry
-from enkrypt_security.sdk.guardrails.enkrypt_provider import EnkryptGuardrailProvider
-from enkrypt_security.sdk.guard import GuardEngine
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
-from enkrypt_security.sdk._patch import phidata as phi_patch
+from enkryptai_agent_security.sdk.guardrails.base import GuardrailRegistry
+from enkryptai_agent_security.sdk.guardrails.enkrypt_provider import EnkryptGuardrailProvider
+from enkryptai_agent_security.sdk.guard import GuardEngine
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk._patch import phidata as phi_patch
 
 registry = GuardrailRegistry()
 registry.register(EnkryptGuardrailProvider(

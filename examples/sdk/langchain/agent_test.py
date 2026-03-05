@@ -8,10 +8,10 @@ A simple LangChain agent with a multiply tool, secured by Enkrypt AI.
 - PART 2: Agent runs WITH Enkrypt auto_secure() (protected)
 
 Setup:
-    1. Fill in .env in the enkrypt-in-agent-sdk folder with your keys
+    1. Fill in .env in the examples/sdk folder with your keys
     2. Run:
-           cd enkrypt-in-agent-sdk
-           python examples/langchain/agent_test.py
+           pip install enkryptai-agent-security[sdk]
+           python examples/sdk/langchain/agent_test.py
 """
 
 import os
@@ -89,7 +89,7 @@ for attack_input, reason in ATTACK_INPUTS:
 
 print_header("PART 2: LangChain Agent -- WITH Enkrypt auto_secure()")
 
-from enkrypt_security.sdk import auto_secure, unsecure
+from enkryptai_agent_security.sdk import auto_secure, unsecure
 
 auto_secure(fail_open=False)
 

@@ -24,7 +24,7 @@ except ImportError:
     AGENTS_AVAILABLE = False
     print("OpenAI Agents SDK not installed. Install with: pip install openai-agents")
 
-from enkrypt_security.hooks.wrappers.openai_hook import EnkryptRunHooks, EnkryptBlockingRunHooks
+from enkryptai_agent_security.hooks.wrappers.openai_hook import EnkryptRunHooks, EnkryptBlockingRunHooks
 
 
 async def main():

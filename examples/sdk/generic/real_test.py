@@ -15,8 +15,8 @@ No auto-patch is needed -- you wrap your code with the adapter's
 run/step/tool_call/llm_call context managers.
 
 Run:
-    cd enkrypt-in-agent-sdk
-    python examples/generic/real_test.py
+    pip install enkryptai-agent-security[sdk]
+    python examples/sdk/generic/real_test.py
 """
 
 import asyncio
@@ -79,7 +79,7 @@ def calculator(expression: str) -> str:
 def run_security_tests(guard, adapter, method_name):
     """Run the standard security test suite against the current setup."""
 
-    from enkrypt_security.sdk.adapters.generic import GenericAgentAdapter
+    from enkryptai_agent_security.sdk.adapters.generic import GenericAgentAdapter
 
     print(f"  Testing safe operations ({method_name}):")
     execution_log.clear()
@@ -149,9 +149,9 @@ def run_security_tests(guard, adapter, method_name):
 # ===================================================================
 print_header("PART 1: Generic Adapter (No Security)")
 
-from enkrypt_security.sdk.adapters.generic import GenericAgentAdapter
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.generic import GenericAgentAdapter
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
 adapter = GenericAgentAdapter(observer, guard_engine=None)
@@ -198,7 +198,7 @@ print()
 
 print_header("PART 2A: auto_secure() — Automatic Method (recommended)")
 
-from enkrypt_security.sdk import auto_secure, get_guard_engine, unsecure
+from enkryptai_agent_security.sdk import auto_secure, get_guard_engine, unsecure
 
 auto_secure(fail_open=False)
 guard = get_guard_engine()
@@ -220,9 +220,9 @@ unsecure()
 
 print_header("PART 2B: Manual Setup — Advanced Method")
 
-from enkrypt_security.sdk.guardrails.base import GuardrailRegistry
-from enkrypt_security.sdk.guardrails.enkrypt_provider import EnkryptGuardrailProvider
-from enkrypt_security.sdk.guard import GuardEngine
+from enkryptai_agent_security.sdk.guardrails.base import GuardrailRegistry
+from enkryptai_agent_security.sdk.guardrails.enkrypt_provider import EnkryptGuardrailProvider
+from enkryptai_agent_security.sdk.guard import GuardEngine
 
 registry = GuardrailRegistry()
 registry.register(EnkryptGuardrailProvider(

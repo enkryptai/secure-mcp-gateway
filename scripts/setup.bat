@@ -105,7 +105,7 @@ if exist "%enkrypt_mcp_config_file%" (
 )
 
 :: Copy example config
-copy "%SCRIPT_DIR%\..\src\enkrypt_security\gateway\%example_enkrypt_mcp_config_file%" "%enkrypt_mcp_config_file%"
+copy "%SCRIPT_DIR%\..\src\enkryptai_agent_security\gateway\%example_enkrypt_mcp_config_file%" "%enkrypt_mcp_config_file%"
 
 :: Generate unique gateway key (using PowerShell for secure random generation)
 for /f "delims=" %%a in ('powershell -Command "$rng = New-Object System.Security.Cryptography.RNGCryptoServiceProvider; $bytes = New-Object byte[] 48; $rng.GetBytes($bytes); $key = [Convert]::ToBase64String($bytes); $key.Replace('+','_').Replace('/','_').Replace('=','')"') do set "unique_gateway_key=%%a"
@@ -123,8 +123,8 @@ echo Generated unique uuid: %unique_uuid%
 REM Replace UNIQUE_UUID in enkrypt_mcp_config.json
 powershell -Command "(Get-Content '%enkrypt_mcp_config_file%') -replace 'UNIQUE_UUID', '%unique_uuid%' | Set-Content '%enkrypt_mcp_config_file%'"
 
-:: Get dummy MCP path inside src/enkrypt_security/gateway
-pushd "%SCRIPT_DIR%\..\src\enkrypt_security\gateway\bad_mcps"
+:: Get dummy MCP path inside src/enkryptai_agent_security/gateway
+pushd "%SCRIPT_DIR%\..\src\enkryptai_agent_security\gateway\bad_mcps"
 set "DUMMY_MCP_DIR=%CD%"
 set "DUMMY_MCP_FILE_PATH=%DUMMY_MCP_DIR%\echo_mcp.py"
 popd

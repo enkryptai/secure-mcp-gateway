@@ -35,10 +35,10 @@ Since Bedrock Agents run remotely, guardrails must be applied manually using `Gu
 
 ```python
 import boto3
-from enkrypt_security.sdk.guardrails.base import GuardrailRegistry
-from enkrypt_security.sdk.guardrails.enkrypt_provider import EnkryptGuardrailProvider
-from enkrypt_security.sdk.guard import GuardEngine
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.guardrails.base import GuardrailRegistry
+from enkryptai_agent_security.sdk.guardrails.enkrypt_provider import EnkryptGuardrailProvider
+from enkryptai_agent_security.sdk.guard import GuardEngine
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 # Set up guardrails
 registry = GuardrailRegistry()
@@ -63,9 +63,9 @@ guard = GuardEngine(
 The `BedrockAgentsAdapter` is for **observability only** - it processes traces but does not enforce guardrails:
 
 ```python
-from enkrypt_security.sdk.adapters.bedrock_agents import BedrockAgentsAdapter
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.bedrock_agents import BedrockAgentsAdapter
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 # Set up the adapter for observability
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
@@ -162,9 +162,9 @@ adapter.process_traces(traces)
 ```python
 """Complete Bedrock Agents + Enkrypt SDK example."""
 
-from enkrypt_security.sdk.adapters.bedrock_agents import BedrockAgentsAdapter
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.bedrock_agents import BedrockAgentsAdapter
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
 adapter = BedrockAgentsAdapter(observer, agent_id="flight-agent")

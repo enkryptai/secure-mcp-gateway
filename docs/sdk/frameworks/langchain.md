@@ -29,7 +29,7 @@ pip install langchain langchain-core langchain-openai
 Add this **before** any LangChain code:
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 auto_secure(
     enkrypt_api_key="ek-your-key-here",
@@ -93,12 +93,12 @@ The callback handler captures:
 If you want full control, you can use the callback handler directly:
 
 ```python
-from enkrypt_security.sdk.adapters.langchain import EnkryptLangChainHandler
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
-from enkrypt_security.sdk.guard import GuardEngine
-from enkrypt_security.sdk.guardrails.base import GuardrailRegistry
-from enkrypt_security.sdk.guardrails.keyword_provider import KeywordGuardrailProvider
+from enkryptai_agent_security.sdk.adapters.langchain import EnkryptLangChainHandler
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.guard import GuardEngine
+from enkryptai_agent_security.sdk.guardrails.base import GuardrailRegistry
+from enkryptai_agent_security.sdk.guardrails.keyword_provider import KeywordGuardrailProvider
 
 # Set up guardrails (offline, no API key needed)
 registry = GuardrailRegistry()
@@ -130,13 +130,13 @@ Here's a complete, runnable example:
 ```python
 """Complete LangChain + Enkrypt SDK example."""
 
-from enkrypt_security.sdk.guardrails.base import GuardrailRegistry
-from enkrypt_security.sdk.guardrails.keyword_provider import KeywordGuardrailProvider
-from enkrypt_security.sdk.guard import GuardEngine
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
-from enkrypt_security.sdk._patch import langchain as lc_patch
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.guardrails.base import GuardrailRegistry
+from enkryptai_agent_security.sdk.guardrails.keyword_provider import KeywordGuardrailProvider
+from enkryptai_agent_security.sdk.guard import GuardEngine
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk._patch import langchain as lc_patch
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 # --- Setup guardrails ---
 registry = GuardrailRegistry()

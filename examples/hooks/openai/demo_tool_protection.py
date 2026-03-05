@@ -17,7 +17,7 @@ try:
 except ImportError:
     AGENTS_AVAILABLE = False
 
-from enkrypt_security.hooks.wrappers.openai_hook import EnkryptRunHooks, GuardrailsViolationError
+from enkryptai_agent_security.hooks.wrappers.openai_hook import EnkryptRunHooks, GuardrailsViolationError
 
 
 # Define some example tools

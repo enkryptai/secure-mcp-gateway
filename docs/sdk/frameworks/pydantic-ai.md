@@ -28,7 +28,7 @@ pip install pydantic-ai
 ## Step 2: Add Enkrypt Security
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 auto_secure(
     enkrypt_api_key="ek-your-key-here",
@@ -63,9 +63,9 @@ print(result.data)  # "4"
 For more control, use the `PydanticAIAdapter`:
 
 ```python
-from enkrypt_security.sdk.adapters.pydantic_ai import PydanticAIAdapter
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.pydantic_ai import PydanticAIAdapter
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
 adapter = PydanticAIAdapter(observer, agent_id="my-agent")
@@ -125,7 +125,7 @@ The replay method recognizes:
 When guardrails block execution, catch `GuardrailBlockedError`:
 
 ```python
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 try:
     result = await agent.run("User prompt here")
@@ -142,10 +142,10 @@ except GuardrailBlockedError as e:
 ```python
 """Complete PydanticAI + Enkrypt SDK example."""
 
-from enkrypt_security.sdk.adapters.pydantic_ai import PydanticAIAdapter
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.adapters.pydantic_ai import PydanticAIAdapter
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
 adapter = PydanticAIAdapter(observer, agent_id="math-agent")

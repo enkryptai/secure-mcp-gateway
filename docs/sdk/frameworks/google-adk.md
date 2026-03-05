@@ -27,7 +27,7 @@ pip install google-adk
 ## Step 2: Add Enkrypt Security
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 auto_secure(
     enkrypt_api_key="ek-your-key-here",
@@ -41,7 +41,7 @@ auto_secure(
 ```python
 from google.adk.agents import Agent
 from google.adk.runners import Runner
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 agent = Agent(
     model="gemini-2.0-flash",
@@ -65,9 +65,9 @@ except GuardrailBlockedError as e:
 For detailed control over what's tracked:
 
 ```python
-from enkrypt_security.sdk.adapters.google_adk import GoogleADKAdapter
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.google_adk import GoogleADKAdapter
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
 adapter = GoogleADKAdapter(observer, agent_id="travel-planner")
@@ -113,7 +113,7 @@ The SDK uses a **checkpoint-based enforcement** system:
 When guardrails block a request at the pre-LLM checkpoint, a `GuardrailBlockedError` is raised:
 
 ```python
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 try:
     response = await runner.run(user_id="user1", session_id="s1", new_message="...")

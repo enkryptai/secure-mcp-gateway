@@ -3,7 +3,7 @@
 A secure gateway for Model Control Protocol (MCP) that enables safe and controlled access to MCP servers.
 
 ```bash
-pip install secure-mcp-gateway
+pip install enkryptai-agent-security
 
 ```
 

@@ -33,8 +33,8 @@ pip install semantic-kernel
 Semantic Kernel uses explicit filter registration (not monkey-patching), so you need one extra line:
 
 ```python
-from enkrypt_security.sdk import auto_secure
-from enkrypt_security.sdk._patch.semantic_kernel import get_filter
+from enkryptai_agent_security.sdk import auto_secure
+from enkryptai_agent_security.sdk._patch.semantic_kernel import get_filter
 
 # Initialize the SDK
 auto_secure(
@@ -56,7 +56,7 @@ if sk_filter:
 
 ```python
 from semantic_kernel.functions import kernel_function
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 class WeatherPlugin:
     @kernel_function(description="Get the weather")
@@ -134,9 +134,9 @@ The filter enforces **pre_tool** and **post_tool** checkpoints for function invo
 ```python
 """Complete Semantic Kernel + Enkrypt SDK example."""
 
-from enkrypt_security.sdk.adapters.semantic_kernel import EnkryptSKFilter
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.semantic_kernel import EnkryptSKFilter
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 # Set up
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
@@ -176,7 +176,7 @@ print("Function invocation tracked!")
 When guardrails detect violations, `GuardrailBlockedError` is raised:
 
 ```python
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 try:
     result = await kernel.invoke(...)

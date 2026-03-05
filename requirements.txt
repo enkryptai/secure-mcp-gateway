@@ -1,4 +1,4 @@
-# NOTE: This file must be kept in sync with src/enkrypt_security/gateway/dependencies.py
+# NOTE: This file must be kept in sync with src/enkryptai_agent_security/gateway/dependencies.py
 # When adding or updating dependencies, update both files.
 
 # Core dependencies

@@ -29,7 +29,7 @@ except ImportError:
     print("Install with: pip install langchain langchain-openai langgraph")
     sys.exit(1)
 
-from enkrypt_security.hooks.wrappers.langgraph_hook import (
+from enkryptai_agent_security.hooks.wrappers.langgraph_hook import (
     create_protected_agent,
     get_current_violations,
     clear_violations,
@@ -150,7 +150,7 @@ def main():
                     results["allowed"] += 1
             else:
                 # Without model, just check the input
-                from enkrypt_security.hooks.wrappers.langgraph_hook import check_input
+                from enkryptai_agent_security.hooks.wrappers.langgraph_hook import check_input
                 should_block, violations, _ = check_input(test["prompt"])
                 if should_block:
                     print("Result: WOULD BE BLOCKED (no model available)")

@@ -37,7 +37,7 @@ src_dir = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_dir))
 
 from mcp import types
-from enkrypt_security.gateway.gateway import (
+from enkryptai_agent_security.gateway.gateway import (
     enkrypt_list_all_servers,
     enkrypt_get_server_info,
     enkrypt_discover_all_tools,
@@ -46,7 +46,7 @@ from enkrypt_security.gateway.gateway import (
     enkrypt_clear_cache,
     enkrypt_get_timeout_metrics,
 )
-from enkrypt_security.gateway.utils import get_common_config
+from enkryptai_agent_security.gateway.utils import get_common_config
 
 
 class MockContext:

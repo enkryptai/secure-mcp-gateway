@@ -33,7 +33,7 @@ except ImportError:
     print("Install with: pip install langchain langchain-openai langgraph")
     sys.exit(1)
 
-from enkrypt_security.hooks.wrappers.langgraph_hook import (
+from enkryptai_agent_security.hooks.wrappers.langgraph_hook import (
     create_protected_agent,
     get_current_violations,
     clear_violations,

@@ -31,7 +31,7 @@ pip install agno
 ## Step 2: Add Enkrypt Security
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 auto_secure(
     enkrypt_api_key="ek-your-key-here",
@@ -45,7 +45,7 @@ auto_secure(
 ```python
 from phi.agent import Agent
 from phi.tools.duckduckgo import DuckDuckGo
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 agent = Agent(
     name="Research Agent",
@@ -67,9 +67,9 @@ except GuardrailBlockedError as e:
 For detailed tracking:
 
 ```python
-from enkrypt_security.sdk.adapters.phidata import PhidataAdapter
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.phidata import PhidataAdapter
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
 adapter = PhidataAdapter(observer, agent_id="research-agent")
@@ -121,7 +121,7 @@ When `agent.run()` or `agent.print_response()` is called:
 When guardrails detect violations, `GuardrailBlockedError` is raised:
 
 ```python
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 try:
     result = agent.run("User message here")

@@ -1,1 +1,1 @@
-enkrypt-security[hooks]>=0.1.0
+enkryptai-agent-security[hooks]>=0.1.0

@@ -1,6 +1,6 @@
 """Tests for compliance mapping — ported from Sentry."""
 
-from enkrypt_security.sdk.compliance import get_all_compliance_mappings, get_compliance_mapping
+from enkryptai_agent_security.sdk.compliance import get_all_compliance_mappings, get_compliance_mapping
 
 
 class TestComplianceMapping:

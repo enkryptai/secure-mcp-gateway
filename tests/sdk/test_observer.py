@@ -1,8 +1,8 @@
 """Tests for the AgentObserver."""
 
-from enkrypt_security.sdk.events import AgentEvent, EventName, GuardrailAction, GuardrailVerdict
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpMeter, _NoOpTracer
+from enkryptai_agent_security.sdk.events import AgentEvent, EventName, GuardrailAction, GuardrailVerdict
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.telemetry.setup import _NoOpMeter, _NoOpTracer
 
 
 def _make_observer() -> AgentObserver:

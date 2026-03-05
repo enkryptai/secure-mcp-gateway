@@ -11,16 +11,15 @@ This demo shows four usage patterns:
 
 Run::
 
-    cd enkrypt-in-agent-sdk
-    pip install -e ".[dev]"
-    python examples/demo.py
+    pip install enkryptai-agent-security[sdk]
+    python examples/sdk/demo.py
 """
 
 from __future__ import annotations
 
 import asyncio
 
-from enkrypt_security.sdk import (
+from enkryptai_agent_security.sdk import (
     AgentGuard,
     GenericAgentAdapter,
     GuardEngine,
@@ -31,9 +30,9 @@ from enkrypt_security.sdk import (
     is_encoded,
     shutdown,
 )
-from enkrypt_security.sdk.guardrails.base import GuardrailRegistry
-from enkrypt_security.sdk.guardrails.keyword_provider import KeywordGuardrailProvider
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.guardrails.base import GuardrailRegistry
+from enkryptai_agent_security.sdk.guardrails.keyword_provider import KeywordGuardrailProvider
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 
 # ── Pattern 1: auto_secure() with keyword args ────────────────────────
@@ -107,8 +106,8 @@ async def demo_async_adapter():
 def demo_keyword_guardrail():
     print("\n=== Pattern 4: Keyword guardrail (wildcards, sync) ===\n")
 
-    from enkrypt_security.sdk.observer import AgentObserver
-    from enkrypt_security.sdk.otel_setup import _NoOpMeter, _NoOpTracer
+    from enkryptai_agent_security.sdk.observer import AgentObserver
+    from enkryptai_agent_security.sdk.otel_setup import _NoOpMeter, _NoOpTracer
 
     registry = GuardrailRegistry()
     registry.register(KeywordGuardrailProvider())

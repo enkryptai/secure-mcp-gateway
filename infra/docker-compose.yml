@@ -13,7 +13,7 @@ services:
   #       COPY src/ src/
   #       ENV MCP_HTTP_MODE=true
   #       EXPOSE 8001
-  #       CMD ["python", "src/enkrypt_security/gateway/bad_mcps/echo_oauth_mcp.py"]
+  #       CMD ["python", "src/enkryptai_agent_security/gateway/bad_mcps/echo_oauth_mcp.py"]
   #   ports:
   #     - "8001:8001"
   #   environment:

@@ -3,7 +3,7 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "enkrypt-security"
+name = "enkryptai-agent-security"
 version = "0.1.0"
 description = "Enkrypt AI unified security library — guardrails, config, telemetry, MCP gateway, agent SDK, and hooks."
 readme = "README_PYPI.md"
@@ -68,10 +68,10 @@ sdk = ["aiohttp>=3.8.0"]
 hooks = ["requests>=2.26.0"]
 
 # Hook framework wrappers
-hooks-langchain = ["enkrypt-security[hooks]", "langchain-core>=0.1.0"]
-hooks-langgraph = ["enkrypt-security[hooks]", "langchain-core>=0.1.0", "langgraph>=0.2.0"]
-hooks-openai-agents = ["enkrypt-security[hooks]", "openai-agents>=0.1.0"]
-hooks-strands = ["enkrypt-security[hooks]", "strands-agents>=0.1.0"]
+hooks-langchain = ["enkryptai-agent-security[hooks]", "langchain-core>=0.1.0"]
+hooks-langgraph = ["enkryptai-agent-security[hooks]", "langchain-core>=0.1.0", "langgraph>=0.2.0"]
+hooks-openai-agents = ["enkryptai-agent-security[hooks]", "openai-agents>=0.1.0"]
+hooks-strands = ["enkryptai-agent-security[hooks]", "strands-agents>=0.1.0"]
 
 # OpenTelemetry tracing + metrics
 otel = [
@@ -106,10 +106,10 @@ bedrock = ["boto3>=1.34.0"]
 
 # Bundles
 all = [
-    "enkrypt-security[gateway,sdk,hooks,otel,structlog]",
+    "enkryptai-agent-security[gateway,sdk,hooks,otel,structlog]",
 ]
 dev = [
-    "enkrypt-security[all]",
+    "enkryptai-agent-security[all]",
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
     "ruff>=0.4.0",
@@ -121,18 +121,18 @@ Repository = "https://github.com/enkryptai/secure-mcp-gateway"
 Issues = "https://github.com/enkryptai/secure-mcp-gateway/issues"
 
 [project.scripts]
-enkrypt-security = "enkrypt_security.gateway.cli:main"
-secure-mcp-gateway = "enkrypt_security.gateway.cli:main"
+enkryptai-agent-security = "enkryptai_agent_security.gateway.cli:main"
+secure-mcp-gateway = "enkryptai_agent_security.gateway.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["enkrypt_security*"]
+include = ["enkryptai_agent_security*"]
 
 [tool.setuptools.package-data]
-"enkrypt_security.gateway" = ["example_*.json", "openapi.json"]
+"enkryptai_agent_security.gateway" = ["example_*.json", "openapi.json"]
 
 # Ruff configuration
 [tool.ruff]
@@ -162,7 +162,7 @@ unfixable = []
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.lint.isort]
-known-first-party = ["enkrypt_security"]
+known-first-party = ["enkryptai_agent_security"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10

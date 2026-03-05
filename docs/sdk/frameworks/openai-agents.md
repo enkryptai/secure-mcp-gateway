@@ -27,7 +27,7 @@ pip install openai-agents
 ## Step 2: Add Enkrypt Security
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 auto_secure(
     enkrypt_api_key="ek-your-key-here",
@@ -42,7 +42,7 @@ The SDK automatically patches `Runner.run()` to inject `EnkryptRunHooks` and enf
 
 ```python
 from agents import Agent, Runner, function_tool
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 @function_tool
 def get_weather(city: str) -> str:
@@ -94,9 +94,9 @@ The SDK implements OpenAI's `RunHooks` interface with these methods:
 If you want full control:
 
 ```python
-from enkrypt_security.sdk.adapters.openai_agents import EnkryptRunHooks
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.openai_agents import EnkryptRunHooks
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
 hooks = EnkryptRunHooks(observer, agent_id="my-agent")
@@ -127,8 +127,8 @@ result = await Runner.run(triage_agent, "What's 2+2?")
 """Complete OpenAI Agents + Enkrypt SDK example."""
 
 import asyncio
-from enkrypt_security.sdk import auto_secure
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk import auto_secure
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 # Initialize Enkrypt (patches Runner.run automatically with checkpoint enforcement)
 auto_secure(

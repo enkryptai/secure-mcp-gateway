@@ -33,7 +33,7 @@ import os
 import argparse
 
 from strands import Agent
-from enkrypt_security.hooks.wrappers.strands_hook import EnkryptGuardrailsHook
+from enkryptai_agent_security.hooks.wrappers.strands_hook import EnkryptGuardrailsHook
 
 
 def get_model_for_provider(provider: str):

@@ -28,7 +28,7 @@ pip install crewai
 ## Step 2: Add Enkrypt Security
 
 ```python
-from enkrypt_security.sdk import auto_secure
+from enkryptai_agent_security.sdk import auto_secure
 
 auto_secure(
     enkrypt_api_key="ek-your-key-here",
@@ -81,9 +81,9 @@ result = crew.kickoff()  # Automatically protected by Enkrypt SDK checkpoints!
 For more granular control, use the `CrewAIAdapter` directly:
 
 ```python
-from enkrypt_security.sdk.adapters.crewai import CrewAIAdapter
-from enkrypt_security.sdk.observer import AgentObserver
-from enkrypt_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
+from enkryptai_agent_security.sdk.adapters.crewai import CrewAIAdapter
+from enkryptai_agent_security.sdk.observer import AgentObserver
+from enkryptai_agent_security.sdk.otel_setup import _NoOpTracer, _NoOpMeter
 
 observer = AgentObserver(_NoOpTracer(), _NoOpMeter())
 adapter = CrewAIAdapter(observer, agent_id="research-crew")
@@ -147,7 +147,7 @@ except RuntimeError:
 When guardrails block execution, catch `GuardrailBlockedError`:
 
 ```python
-from enkrypt_security.sdk.exceptions import GuardrailBlockedError
+from enkryptai_agent_security.sdk.exceptions import GuardrailBlockedError
 
 try:
     crew = Crew(agents=[researcher], tasks=[research_task])

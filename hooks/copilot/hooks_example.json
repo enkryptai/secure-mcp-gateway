@@ -4,8 +4,8 @@
     "sessionStart": [
       {
         "type": "command",
-        "bash": "python -m enkrypt_security.hooks.scripts.copilot.session_start",
-        "powershell": "python -m enkrypt_security.hooks.scripts.copilot.session_start",
+        "bash": "python -m enkryptai_agent_security.hooks.scripts.copilot.session_start",
+        "powershell": "python -m enkryptai_agent_security.hooks.scripts.copilot.session_start",
         "cwd": ".",
         "timeoutSec": 10
       }
@@ -13,8 +13,8 @@
     "userPromptSubmitted": [
       {
         "type": "command",
-        "bash": "python -m enkrypt_security.hooks.scripts.copilot.user_prompt_submitted",
-        "powershell": "python -m enkrypt_security.hooks.scripts.copilot.user_prompt_submitted",
+        "bash": "python -m enkryptai_agent_security.hooks.scripts.copilot.user_prompt_submitted",
+        "powershell": "python -m enkryptai_agent_security.hooks.scripts.copilot.user_prompt_submitted",
         "cwd": ".",
         "timeoutSec": 30
       }
@@ -22,8 +22,8 @@
     "preToolUse": [
       {
         "type": "command",
-        "bash": "python -m enkrypt_security.hooks.scripts.copilot.pre_tool_use",
-        "powershell": "python -m enkrypt_security.hooks.scripts.copilot.pre_tool_use",
+        "bash": "python -m enkryptai_agent_security.hooks.scripts.copilot.pre_tool_use",
+        "powershell": "python -m enkryptai_agent_security.hooks.scripts.copilot.pre_tool_use",
         "cwd": ".",
         "timeoutSec": 30
       }
@@ -31,8 +31,8 @@
     "postToolUse": [
       {
         "type": "command",
-        "bash": "python -m enkrypt_security.hooks.scripts.copilot.post_tool_use",
-        "powershell": "python -m enkrypt_security.hooks.scripts.copilot.post_tool_use",
+        "bash": "python -m enkryptai_agent_security.hooks.scripts.copilot.post_tool_use",
+        "powershell": "python -m enkryptai_agent_security.hooks.scripts.copilot.post_tool_use",
         "cwd": ".",
         "timeoutSec": 30
       }
@@ -40,8 +40,8 @@
     "sessionEnd": [
       {
         "type": "command",
-        "bash": "python -m enkrypt_security.hooks.scripts.copilot.session_end",
-        "powershell": "python -m enkrypt_security.hooks.scripts.copilot.session_end",
+        "bash": "python -m enkryptai_agent_security.hooks.scripts.copilot.session_end",
+        "powershell": "python -m enkryptai_agent_security.hooks.scripts.copilot.session_end",
         "cwd": ".",
         "timeoutSec": 10
       }
@@ -49,8 +49,8 @@
     "errorOccurred": [
       {
         "type": "command",
-        "bash": "python -m enkrypt_security.hooks.scripts.copilot.error_occurred",
-        "powershell": "python -m enkrypt_security.hooks.scripts.copilot.error_occurred",
+        "bash": "python -m enkryptai_agent_security.hooks.scripts.copilot.error_occurred",
+        "powershell": "python -m enkryptai_agent_security.hooks.scripts.copilot.error_occurred",
         "cwd": ".",
         "timeoutSec": 10
       }

@@ -1,2 +1,2 @@
-include src/enkrypt_security/gateway/example_*.json
-include src/enkrypt_security/gateway/openapi.json
+include src/enkryptai_agent_security/gateway/example_*.json
+include src/enkryptai_agent_security/gateway/openapi.json

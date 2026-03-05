@@ -1,6 +1,6 @@
 """Tests for encoding detection — ported from Sentry patterns."""
 
-from enkrypt_security.sdk.encoding import decode, decode_if_encoded, is_encoded
+from enkryptai_agent_security.sdk.encoding import decode, decode_if_encoded, is_encoded
 
 
 class TestIsEncoded:
