@@ -90,7 +90,7 @@ DOCKER_ARGS = [
     f"{HOST_ENKRYPT_HOME}/docker:/app/.enkrypt/docker",
     "-e",
     "ENKRYPT_GATEWAY_KEY",
-    "secure-mcp-gateway",
+    "enkryptai/secure-mcp-gateway",
 ]
 
 # =============================================================================
@@ -2794,7 +2794,7 @@ def run_via_docker(args, original_argv):
         "-v",
         f"{docker_volume_src}:/app/.enkrypt/docker",
         "--entrypoint",
-        "secure-mcp-gateway",
+        "enkryptai-agent-security",
         image,
     ] + pass_through
 

@@ -122,7 +122,6 @@ Issues = "https://github.com/enkryptai/secure-mcp-gateway/issues"
 
 [project.scripts]
 enkryptai-agent-security = "enkryptai_agent_security.gateway.cli:main"
-secure-mcp-gateway = "enkryptai_agent_security.gateway.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

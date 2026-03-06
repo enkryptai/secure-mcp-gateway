@@ -4,8 +4,6 @@ The `hooks` subcommand installs Enkrypt AI guardrail hooks into IDEs and agent f
 
 Hooks work **standalone** — they do not require the Enkrypt MCP Gateway to be running.
 
-> **Note**: `enkryptai-agent-security` and `secure-mcp-gateway` are two names for the same CLI. All examples below use `enkryptai-agent-security`. Substitute `secure-mcp-gateway` if that is what you installed.
-
 ---
 
 ## Prerequisites
