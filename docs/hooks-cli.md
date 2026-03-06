@@ -40,7 +40,7 @@ enkryptai-agent-security hooks status --platform cursor
 | `strands` | Framework | global | global | pip extras install |
 | `crewai` | Framework | global | global | manual install |
 
-> **Note**: `vercel-ai-sdk` is TypeScript/npm-based and must be installed manually. See `hooks/vercel-ai-sdk/README.md`.
+> **Note**: `vercel-ai-sdk` is TypeScript/npm-based and must be installed manually. See `src/enkryptai_agent_security/hooks/vercel_ai_sdk/README.md`.
 
 ### Platform Aliases
 

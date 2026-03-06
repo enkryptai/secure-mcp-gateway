@@ -939,7 +939,7 @@ def _handle_list(args: Any) -> None:
     print()
     note = (
         "Note: vercel-ai-sdk is TypeScript/npm-based and must be installed manually.\n"
-        "      See hooks/vercel-ai-sdk/README.md for instructions."
+        "      See src/enkryptai_agent_security/hooks/vercel_ai_sdk/README.md for instructions."
     )
     print(note)
 

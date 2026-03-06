@@ -1,2 +1,0 @@
-enkryptai-agent-security[hooks-langchain]>=0.1.0
-langchain-openai>=0.2.0

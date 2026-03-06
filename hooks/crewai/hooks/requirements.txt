@@ -1,2 +1,0 @@
-enkryptai-agent-security[hooks]>=0.1.0
-crewai>=0.80.0

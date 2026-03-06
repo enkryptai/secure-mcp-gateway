@@ -45,17 +45,7 @@ tmp
 bandit-report.json
 
 *.md
-!hooks/cursor/README.md
-!hooks/claude/README.md
-!hooks/crewai/README.md
-!hooks/kiro/README.md
-!hooks/claude_code/README.md
-!hooks/langchain/README.md
-!hooks/langgraph/README.md
-!hooks/openai/README.md
-!hooks/strands/README.md
-!hooks/vercel-ai-sdk/README.md
-!hooks/copilot/README.md
+!src/enkryptai_agent_security/hooks/vercel_ai_sdk/README.md
 !docs/*.md
 
 .claude/settings.json
