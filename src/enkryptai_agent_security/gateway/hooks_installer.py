@@ -69,18 +69,18 @@ def _cursor_template() -> dict:
     return {
         "version": 1,
         "hooks": {
-            "beforeSubmitPrompt": [{"command": f"python -m {m}.before_submit_prompt"}],
-            "beforeMCPExecution": [{"command": f"python -m {m}.before_mcp_execution"}],
-            "afterMCPExecution": [{"command": f"python -m {m}.after_mcp_execution"}],
-            "afterAgentResponse": [{"command": f"python -m {m}.after_agent_response"}],
-            "stop": [{"command": f"python -m {m}.stop"}],
+            "beforeSubmitPrompt": [{"command": f"{sys.executable} -m {m}.before_submit_prompt"}],
+            "beforeMCPExecution": [{"command": f"{sys.executable} -m {m}.before_mcp_execution"}],
+            "afterMCPExecution": [{"command": f"{sys.executable} -m {m}.after_mcp_execution"}],
+            "afterAgentResponse": [{"command": f"{sys.executable} -m {m}.after_agent_response"}],
+            "stop": [{"command": f"{sys.executable} -m {m}.stop"}],
         },
     }
 
 
 def _claude_template() -> dict:
     m = f"{_MOD}.claude"
-    cmd = lambda script: {"type": "command", "command": f"python -m {m}.{script}", "timeout": 30}
+    cmd = lambda script: {"type": "command", "command": f"{sys.executable} -m {m}.{script}", "timeout": 30}
     return {
         "hooks": {
             "UserPromptSubmit": [cmd("user_prompt_submit")],
@@ -93,7 +93,7 @@ def _claude_template() -> dict:
 
 def _claude_code_template() -> dict:
     m = f"{_MOD}.claude_code"
-    cmd = lambda script, timeout=30: {"type": "command", "command": f"python -m {m}.{script}", "timeout": timeout}
+    cmd = lambda script, timeout=30: {"type": "command", "command": f"{sys.executable} -m {m}.{script}", "timeout": timeout}
     return {
         "hooks": {
             "Setup": [{"matcher": "init|maintenance", "hooks": [cmd("setup", 60)]}],
@@ -117,8 +117,8 @@ def _copilot_template() -> dict:
     def entry(script: str, timeout: int = 30) -> dict:
         return {
             "type": "command",
-            "bash": f"python -m {m}.{script}",
-            "powershell": f"python -m {m}.{script}",
+            "bash": f"{sys.executable} -m {m}.{script}",
+            "powershell": f"{sys.executable} -m {m}.{script}",
             "cwd": ".",
             "timeoutSec": timeout,
         }
@@ -145,7 +145,7 @@ def _kiro_hooks_list() -> list[dict]:
             "description": "Validate user prompts for injection attacks, PII, and policy violations",
             "version": "1",
             "when": {"type": "promptSubmit"},
-            "then": {"type": "runCommand", "command": f"python -m {m}.prompt_submit"},
+            "then": {"type": "runCommand", "command": f"{sys.executable} -m {m}.prompt_submit"},
             "shortName": "before-prompt-guardrails",
         },
         {
@@ -154,7 +154,7 @@ def _kiro_hooks_list() -> list[dict]:
             "description": "Audit agent responses for security issues after agent execution completes",
             "version": "1",
             "when": {"type": "agentStop"},
-            "then": {"type": "runCommand", "command": f"python -m {m}.agent_stop"},
+            "then": {"type": "runCommand", "command": f"{sys.executable} -m {m}.agent_stop"},
             "shortName": "after-agent-guardrails",
         },
         {
@@ -163,7 +163,7 @@ def _kiro_hooks_list() -> list[dict]:
             "description": "Scan saved files for secrets and sensitive data",
             "version": "1",
             "when": {"type": "fileSave", "pattern": "**/*.{py,js,ts,json,yaml,yml,env*}"},
-            "then": {"type": "runCommand", "command": f'FILE_PATH="${{filePath}}" python -m {m}.file_save'},
+            "then": {"type": "runCommand", "command": f'FILE_PATH="${{filePath}}" {sys.executable} -m {m}.file_save'},
             "shortName": "file-save-guardrails",
         },
         {
@@ -172,7 +172,7 @@ def _kiro_hooks_list() -> list[dict]:
             "description": "Validate new files for security issues",
             "version": "1",
             "when": {"type": "fileCreate", "pattern": "**/*.{py,js,ts,json,yaml,yml,env*}"},
-            "then": {"type": "runCommand", "command": f'FILE_PATH="${{filePath}}" python -m {m}.file_create'},
+            "then": {"type": "runCommand", "command": f'FILE_PATH="${{filePath}}" {sys.executable} -m {m}.file_create'},
             "shortName": "file-create-guardrails",
         },
         {
@@ -183,7 +183,7 @@ def _kiro_hooks_list() -> list[dict]:
             "when": {"type": "manual"},
             "then": {
                 "type": "runCommand",
-                "command": f'SCAN_TARGET="${{workspaceFolder}}" SCAN_TYPE=directory python -m {m}.manual_security_scan',
+                "command": f'SCAN_TARGET="${{workspaceFolder}}" SCAN_TYPE=directory {sys.executable} -m {m}.manual_security_scan',
             },
             "shortName": "manual-security-scan",
         },
