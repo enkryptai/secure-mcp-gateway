@@ -40,7 +40,7 @@ PLATFORM_DEFAULTS: dict[str, HookPlatformConfig] = {
     "cursor": HookPlatformConfig(
         sensitive_tools=list(_SENSITIVE_IDE_TOOLS),
         policies={
-            "beforeSubmitPrompt": _p(False, _INPUT_BLOCKS),
+            "beforeSubmitPrompt": _p(True, _INPUT_BLOCKS),
             "beforeMCPExecution": _p(True, _TOOL_INPUT_BLOCKS),
             "afterMCPExecution": _p(True, _OUTPUT_BLOCKS),
             "afterAgentResponse": _p(False, _OUTPUT_BLOCKS),

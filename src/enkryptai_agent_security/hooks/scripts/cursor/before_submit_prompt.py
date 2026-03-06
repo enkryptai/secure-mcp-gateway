@@ -20,7 +20,7 @@ HOOK_NAME = "beforeSubmitPrompt"
 
 def main():
     try:
-        data = json.load(sys.stdin)
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))
     except json.JSONDecodeError as e:
         log_event(HOOK_NAME, {"parse_error": str(e), "error_type": "JSONDecodeError"})
         print(json.dumps({"continue": True}))

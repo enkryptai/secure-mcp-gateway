@@ -15,7 +15,7 @@ from enkryptai_agent_security.hooks.providers.cursor import (
 
 def main():
     try:
-        data = json.load(sys.stdin)
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))
     except json.JSONDecodeError as e:
         log_event("stop", {"parse_error": str(e), "error_type": "JSONDecodeError"})
         print(json.dumps({}))

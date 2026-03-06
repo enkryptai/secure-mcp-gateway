@@ -66,14 +66,21 @@ _MOD = "enkryptai_agent_security.hooks.scripts"
 
 def _cursor_template() -> dict:
     m = f"{_MOD}.cursor"
+    if sys.platform == "win32":
+        exe = sys.executable.replace("\\", "\\\\")
+        def _cmd(script: str) -> dict:
+            return {"command": f'powershell.exe -NoProfile -NonInteractive -Command "& \'{exe}\' -m {m}.{script}"'}
+    else:
+        def _cmd(script: str) -> dict:
+            return {"command": f"{sys.executable} -m {m}.{script}"}
     return {
         "version": 1,
         "hooks": {
-            "beforeSubmitPrompt": [{"command": f"{sys.executable} -m {m}.before_submit_prompt"}],
-            "beforeMCPExecution": [{"command": f"{sys.executable} -m {m}.before_mcp_execution"}],
-            "afterMCPExecution": [{"command": f"{sys.executable} -m {m}.after_mcp_execution"}],
-            "afterAgentResponse": [{"command": f"{sys.executable} -m {m}.after_agent_response"}],
-            "stop": [{"command": f"{sys.executable} -m {m}.stop"}],
+            "beforeSubmitPrompt": [_cmd("before_submit_prompt")],
+            "beforeMCPExecution": [_cmd("before_mcp_execution")],
+            "afterMCPExecution":  [_cmd("after_mcp_execution")],
+            "afterAgentResponse": [_cmd("after_agent_response")],
+            "stop":               [_cmd("stop")],
         },
     }
 
