@@ -305,8 +305,12 @@ def get_hooks_config_dest(platform: str, scope: str, project_dir: Path) -> Path:
     raise ValueError(f"No config dest for platform: {platform}")
 
 
-def _guardrails_config_dir(platform: str) -> Path:
-    return Path.home() / ".enkrypt" / "hooks" / platform
+def _guardrails_config_dir(
+    platform: str, use_global: bool = True, project_dir: Path | None = None
+) -> Path:
+    if use_global:
+        return Path.home() / ".enkrypt" / "hooks" / platform
+    return (project_dir or Path.cwd()) / ".enkrypt" / "hooks" / platform
 
 
 # =========================================================================
@@ -337,8 +341,14 @@ def generate_guardrails_config(platform: str, api_key: str) -> dict:
     return config
 
 
-def write_guardrails_config(platform: str, api_key: str, force: bool = False) -> Path:
-    dest_dir = _guardrails_config_dir(platform)
+def write_guardrails_config(
+    platform: str,
+    api_key: str,
+    force: bool = False,
+    use_global: bool = False,
+    project_dir: Path | None = None,
+) -> Path:
+    dest_dir = _guardrails_config_dir(platform, use_global=use_global, project_dir=project_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / "guardrails_config.json"
     if dest.exists() and not force:
@@ -413,18 +423,22 @@ def _check_existing(path: Path, force: bool, label: str) -> bool:
 # =========================================================================
 
 
-def install_cursor(api_key: str, scope: str, project_dir: Path, force: bool) -> None:
+def install_cursor(
+    api_key: str, scope: str, project_dir: Path, force: bool, use_global: bool = False
+) -> None:
     validate_scope("cursor", scope)
     dest = get_hooks_config_dest("cursor", scope, project_dir)
     _check_existing(dest, force, "Cursor hooks config")
     template = _cursor_template()
     _write_json(dest, template, backup=force)
-    write_guardrails_config("cursor", api_key, force=force)
+    write_guardrails_config("cursor", api_key, force=force, use_global=use_global, project_dir=project_dir)
     print(f"INFO: Cursor hooks installed at {dest}")
     print("INFO: Restart Cursor to activate hooks.")
 
 
-def install_claude(api_key: str, scope: str, project_dir: Path, force: bool) -> None:
+def install_claude(
+    api_key: str, scope: str, project_dir: Path, force: bool, use_global: bool = False
+) -> None:
     validate_scope("claude", scope)
     dest = get_hooks_config_dest("claude", scope, project_dir)
     template = _claude_template()
@@ -435,13 +449,13 @@ def install_claude(api_key: str, scope: str, project_dir: Path, force: bool) -> 
     else:
         dest.parent.mkdir(parents=True, exist_ok=True)
         _write_json(dest, template)
-    write_guardrails_config("claude", api_key, force=force)
+    write_guardrails_config("claude", api_key, force=force, use_global=use_global, project_dir=project_dir)
     print(f"INFO: Claude hooks installed at {dest}")
     print("INFO: Restart Claude Desktop to activate hooks.")
 
 
 def install_claude_code(
-    api_key: str, scope: str, project_dir: Path, force: bool
+    api_key: str, scope: str, project_dir: Path, force: bool, use_global: bool = False
 ) -> None:
     validate_scope("claude_code", scope)
     dest = get_hooks_config_dest("claude_code", scope, project_dir)
@@ -453,22 +467,26 @@ def install_claude_code(
     else:
         dest.parent.mkdir(parents=True, exist_ok=True)
         _write_json(dest, template)
-    write_guardrails_config("claude_code", api_key, force=force)
+    write_guardrails_config("claude_code", api_key, force=force, use_global=use_global, project_dir=project_dir)
     print(f"INFO: Claude Code hooks installed at {dest}")
     print("INFO: Restart Claude Code to activate hooks.")
 
 
-def install_copilot(api_key: str, project_dir: Path, force: bool) -> None:
+def install_copilot(
+    api_key: str, project_dir: Path, force: bool, use_global: bool = False
+) -> None:
     dest = get_hooks_config_dest("copilot", "project", project_dir)
     _check_existing(dest, force, "Copilot hooks config")
     template = _copilot_template()
     _write_json(dest, template, backup=force)
-    write_guardrails_config("copilot", api_key, force=force)
+    write_guardrails_config("copilot", api_key, force=force, use_global=use_global, project_dir=project_dir)
     print(f"INFO: Copilot hooks installed at {dest}")
     print("INFO: Restart VS Code / Copilot to activate hooks.")
 
 
-def install_kiro(api_key: str, project_dir: Path, force: bool) -> None:
+def install_kiro(
+    api_key: str, project_dir: Path, force: bool, use_global: bool = False
+) -> None:
     dest_dir = get_hooks_config_dest("kiro", "project", project_dir)
     hooks = _kiro_hooks_list()
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -480,7 +498,7 @@ def install_kiro(api_key: str, project_dir: Path, force: bool) -> None:
             print("       Use --force to overwrite.")
             sys.exit(1)
         _write_json(dest, hook, backup=force)
-    write_guardrails_config("kiro", api_key, force=force)
+    write_guardrails_config("kiro", api_key, force=force, use_global=use_global, project_dir=project_dir)
     print(f"INFO: Kiro hooks installed at {dest_dir}")
     print(f"INFO: {len(hooks)} hook files created.")
     print("INFO: Restart Kiro to activate hooks.")
@@ -547,7 +565,12 @@ def _print_framework_snippet(platform: str) -> None:
 
 
 def _install_single(
-    platform: str, api_key: str, scope: str | None, project_dir: Path, force: bool
+    platform: str,
+    api_key: str,
+    scope: str | None,
+    project_dir: Path,
+    force: bool,
+    use_global: bool = False,
 ) -> None:
     reg = PLATFORM_REGISTRY.get(platform)
     if not reg:
@@ -558,19 +581,20 @@ def _install_single(
     validate_scope(platform, effective_scope)
 
     if reg["type"] == "framework":
+        # Framework platforms are always global (pip extras)
         install_framework(platform, api_key, force)
         return
 
     if platform == "cursor":
-        install_cursor(api_key, effective_scope, project_dir, force)
+        install_cursor(api_key, effective_scope, project_dir, force, use_global=use_global)
     elif platform == "claude":
-        install_claude(api_key, effective_scope, project_dir, force)
+        install_claude(api_key, effective_scope, project_dir, force, use_global=use_global)
     elif platform == "claude_code":
-        install_claude_code(api_key, effective_scope, project_dir, force)
+        install_claude_code(api_key, effective_scope, project_dir, force, use_global=use_global)
     elif platform == "copilot":
-        install_copilot(api_key, project_dir, force)
+        install_copilot(api_key, project_dir, force, use_global=use_global)
     elif platform == "kiro":
-        install_kiro(api_key, project_dir, force)
+        install_kiro(api_key, project_dir, force, use_global=use_global)
 
 
 # =========================================================================
@@ -719,14 +743,25 @@ def uninstall_kiro(project_dir: Path) -> None:
         print(f"INFO: No Enkrypt hook files found in {dest_dir}")
 
 
-def _remove_guardrails_config(platform: str) -> None:
-    gc_dir = _guardrails_config_dir(platform)
-    gc_path = gc_dir / "guardrails_config.json"
-    if gc_path.exists():
-        gc_path.unlink()
-        _rmdir_if_empty(gc_dir)
-        print(f"INFO: Removed guardrails config at {gc_path}")
-    else:
+def _remove_guardrails_config(platform: str, project_dir: Path | None = None) -> None:
+    removed_any = False
+    # Remove local workspace config if present
+    local_dir = _guardrails_config_dir(platform, use_global=False, project_dir=project_dir)
+    local_path = local_dir / "guardrails_config.json"
+    if local_path.exists():
+        local_path.unlink()
+        _rmdir_if_empty(local_dir)
+        print(f"INFO: Removed local guardrails config at {local_path}")
+        removed_any = True
+    # Remove global config if present
+    global_dir = _guardrails_config_dir(platform, use_global=True)
+    global_path = global_dir / "guardrails_config.json"
+    if global_path.exists():
+        global_path.unlink()
+        _rmdir_if_empty(global_dir)
+        print(f"INFO: Removed global guardrails config at {global_path}")
+        removed_any = True
+    if not removed_any:
         print(f"INFO: No guardrails config found for {platform}")
 
 
@@ -756,7 +791,7 @@ def _uninstall_single(
         uninstall_kiro(project_dir)
 
     if not keep_guardrails:
-        _remove_guardrails_config(platform)
+        _remove_guardrails_config(platform, project_dir=project_dir)
 
 
 # =========================================================================
@@ -767,8 +802,13 @@ def _uninstall_single(
 def _toggle_guardrail_policies(
     platform: str, enabled: bool, hook_name: str | None
 ) -> None:
-    """Toggle ``enabled`` flag in guardrails config for a platform."""
-    gc_path = _guardrails_config_dir(platform) / "guardrails_config.json"
+    """Toggle ``enabled`` flag in guardrails config for a platform.
+
+    Checks the local workspace config first, then falls back to the global one.
+    """
+    local_path = _guardrails_config_dir(platform, use_global=False) / "guardrails_config.json"
+    global_path = _guardrails_config_dir(platform, use_global=True) / "guardrails_config.json"
+    gc_path = local_path if local_path.exists() else global_path
     if not gc_path.exists():
         print(f"ERROR: No guardrails config found for '{platform}'.")
         print("       Run `hooks install` or `hooks configure` first.")
@@ -847,8 +887,9 @@ def check_platform_status(platform: str, project_dir: Path) -> dict:
     if not reg:
         return {"platform": platform, "type": "unknown", "status": "unknown"}
 
-    gc_path = _guardrails_config_dir(platform) / "guardrails_config.json"
-    has_gc = gc_path.exists()
+    local_gc_path = _guardrails_config_dir(platform, use_global=False, project_dir=project_dir) / "guardrails_config.json"
+    global_gc_path = _guardrails_config_dir(platform, use_global=True) / "guardrails_config.json"
+    has_gc = local_gc_path.exists() or global_gc_path.exists()
 
     if reg["type"] == "ide":
         has_hooks = _ide_hooks_installed(platform, project_dir)
@@ -867,6 +908,8 @@ def check_platform_status(platform: str, project_dir: Path) -> dict:
         "type": reg["type"],
         "hooks_config": has_hooks,
         "guardrails_config": has_gc,
+        "local_gc_path": local_gc_path,
+        "global_gc_path": global_gc_path,
         "status": status,
     }
 
@@ -911,6 +954,7 @@ def _handle_install(args: Any) -> None:
     api_key = resolve_api_key(getattr(args, "api_key", None))
     scope = getattr(args, "scope", None)
     force = getattr(args, "force", False)
+    use_global = getattr(args, "use_global", False)
 
     platforms_raw = getattr(args, "platform", None) or []
     install_all = getattr(args, "install_all", False)
@@ -935,7 +979,7 @@ def _handle_install(args: Any) -> None:
             print(f"       Available: {', '.join(sorted(ALL_PLATFORMS))}")
             sys.exit(1)
         print(f"\n--- Installing hooks for: {platform} ---")
-        _install_single(platform, api_key, scope, project_dir, force)
+        _install_single(platform, api_key, scope, project_dir, force, use_global=use_global)
 
 
 def _handle_uninstall(args: Any) -> None:
@@ -1005,7 +1049,9 @@ def _handle_configure(args: Any) -> None:
         print(f"ERROR: Unknown platform: {platform}")
         sys.exit(1)
     api_key = resolve_api_key(getattr(args, "api_key", None))
-    write_guardrails_config(platform, api_key, force=True)
+    use_global = getattr(args, "use_global", False)
+    project_dir = Path(getattr(args, "project_dir", None) or os.getcwd()).resolve()
+    write_guardrails_config(platform, api_key, force=True, use_global=use_global, project_dir=project_dir)
 
 
 def _handle_list(args: Any) -> None:
@@ -1050,8 +1096,14 @@ def _handle_status(args: Any) -> None:
     print(f"Supported scopes: {', '.join(scopes)}")
     print(f"Default scope:    {reg.get('default_scope', 'n/a')}")
 
-    gc_path = _guardrails_config_dir(platform) / "guardrails_config.json"
-    print(f"Guardrails path:  {gc_path}")
+    local_gc_path = result.get("local_gc_path") or (
+        _guardrails_config_dir(platform, use_global=False, project_dir=project_dir) / "guardrails_config.json"
+    )
+    global_gc_path = result.get("global_gc_path") or (
+        _guardrails_config_dir(platform, use_global=True) / "guardrails_config.json"
+    )
+    print(f"Guardrails (local):  {local_gc_path} {'(exists)' if local_gc_path.exists() else '(not found)'}")
+    print(f"Guardrails (global): {global_gc_path} {'(exists)' if global_gc_path.exists() else '(not found)'}")
 
     if reg.get("type") == "ide":
         for scope in scopes:
@@ -1064,15 +1116,17 @@ def _handle_status(args: Any) -> None:
             except ValueError:
                 pass
 
-    # Show per-hook guardrail policy status
-    if gc_path.exists():
+    # Show per-hook guardrail policy status from whichever config is active
+    active_gc_path = local_gc_path if local_gc_path.exists() else global_gc_path
+    if active_gc_path.exists():
         try:
-            gc = json.loads(gc_path.read_text())
+            gc = json.loads(active_gc_path.read_text())
             policy_keys = [
                 k for k in gc if isinstance(gc[k], dict) and "enabled" in gc[k]
             ]
             if policy_keys:
-                print("Guardrail policies:")
+                scope_label = "local" if local_gc_path.exists() else "global"
+                print(f"Guardrail policies ({scope_label}):")
                 for key in policy_keys:
                     entry = gc[key]
                     state = "enabled" if entry.get("enabled") else "disabled"

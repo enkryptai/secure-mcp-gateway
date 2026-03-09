@@ -51,3 +51,5 @@ bandit-report.json
 .claude/settings.json
 
 **/guardrails_config.json
+
+.enkrypt/

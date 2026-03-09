@@ -3454,11 +3454,27 @@ def main():
     )
     hooks_install_parser.add_argument("--project-dir", type=str, help="Project directory (default: current directory)")
     hooks_install_parser.add_argument("--force", action="store_true", help="Overwrite existing configs (creates backup)")
+    hooks_install_parser.add_argument(
+        "--global", action="store_true", dest="use_global",
+        help=(
+            "Write guardrails_config.json to ~/.enkrypt/hooks/<platform>/ (shared across all "
+            "workspaces). Default is to write to <CWD>/.enkrypt/hooks/<platform>/ for "
+            "per-workspace isolation."
+        ),
+    )
 
     # hooks configure
     hooks_configure_parser = hooks_subparsers.add_parser("configure", help="Generate guardrails config only")
     hooks_configure_parser.add_argument("--platform", type=str, required=True, metavar="NAME", help="Target platform")
     hooks_configure_parser.add_argument("--api-key", type=str, help="Enkrypt API key")
+    hooks_configure_parser.add_argument("--project-dir", type=str, help="Project directory (default: current directory)")
+    hooks_configure_parser.add_argument(
+        "--global", action="store_true", dest="use_global",
+        help=(
+            "Write guardrails_config.json to ~/.enkrypt/hooks/<platform>/ (shared across all "
+            "workspaces). Default is to write to <CWD>/.enkrypt/hooks/<platform>/."
+        ),
+    )
 
     # hooks list
     hooks_list_parser = hooks_subparsers.add_parser("list", help="List all platforms and their installation status")

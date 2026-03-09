@@ -57,21 +57,33 @@ def find_guardrails_config(platform: str = "") -> Path:
 
     Order:
         1. ``ENKRYPT_GUARDRAILS_CONFIG`` environment variable
-        2. Current working directory ``guardrails_config.json``
-        3. ``~/.enkrypt/hooks/<platform>/guardrails_config.json``
-        4. ``~/.enkrypt/enkrypt_config.json``  (unified config)
-        5. Falls back to a non-existent path (handled by ``from_config_file``)
+        2. ``<CWD>/.enkrypt/hooks/<platform>/guardrails_config.json``  (local workspace)
+        3. ``<CWD>/guardrails_config.json``  (bare CWD, backward compat)
+        4. ``~/.enkrypt/hooks/<platform>/guardrails_config.json``  (global)
+        5. ``~/.enkrypt/enkrypt_config.json``  (unified config)
+        6. Falls back to a non-existent path (handled by ``from_config_file``)
     """
+    # 1. Explicit env var override
     env = os.environ.get("ENKRYPT_GUARDRAILS_CONFIG")
     if env:
         p = Path(env)
         if p.exists():
             return p
 
+    # 2. Local workspace .enkrypt — takes precedence over global
+    if platform:
+        local_config = (
+            Path.cwd() / ".enkrypt" / "hooks" / platform / "guardrails_config.json"
+        )
+        if local_config.exists():
+            return local_config
+
+    # 3. Bare CWD (backward compat for manually placed configs)
     cwd_config = Path.cwd() / "guardrails_config.json"
     if cwd_config.exists():
         return cwd_config
 
+    # 4. Global ~/.enkrypt
     if platform:
         home_config = (
             Path.home() / ".enkrypt" / "hooks" / platform / "guardrails_config.json"
@@ -79,6 +91,7 @@ def find_guardrails_config(platform: str = "") -> Path:
         if home_config.exists():
             return home_config
 
+    # 5. Unified config
     unified = Path.home() / ".enkrypt" / "enkrypt_config.json"
     if unified.exists():
         return unified

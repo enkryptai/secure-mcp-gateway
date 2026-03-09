@@ -112,7 +112,8 @@ enkryptai-agent-security hooks list
 ```
 
 > `generate-config` is **not required** for a hooks-only setup. `hooks install` creates
-> everything hooks need under `~/.enkrypt/hooks/<platform>/guardrails_config.json` directly.
+> everything hooks need under `<CWD>/.enkrypt/hooks/<platform>/guardrails_config.json` (local, per-workspace) by default.
+> Pass `--global` to write to `~/.enkrypt/hooks/<platform>/guardrails_config.json` instead (shared across all workspaces).
 > Only run `generate-config` if you are also setting up the MCP gateway (see
 > [First-Time Setup — Path B](#path-b--generate-config---hook-use-when-also-setting-up-the-gateway)).
 
@@ -128,12 +129,23 @@ One command writes both the IDE hook config and the guardrails config:
 enkryptai-agent-security hooks install --platform cursor --api-key ek_live_abc123
 ```
 
-After install, **update the `guardrail_name`** in the generated config to match your dashboard policy:
+By default, the guardrails config is written **locally** to the current workspace:
+
+- macOS/Linux: `.enkrypt/hooks/cursor/guardrails_config.json` (inside the current directory)
+- Windows: `.enkrypt\hooks\cursor\guardrails_config.json` (inside the current directory)
+
+To write to a **shared global location** instead (used across all workspaces), pass `--global`:
+
+```bash
+enkryptai-agent-security hooks install --platform cursor --api-key ek_live_abc123 --global
+```
+
+Global path:
 
 - macOS/Linux: `~/.enkrypt/hooks/cursor/guardrails_config.json`
 - Windows: `%USERPROFILE%\.enkrypt\hooks\cursor\guardrails_config.json`
 
-Change the `"guardrail_name"` value in that file to match your policy name exactly, then restart your IDE.
+After install, **update the `guardrail_name`** in the generated config to match your dashboard policy. Change the `"guardrail_name"` value in that file to match your policy name exactly, then restart your IDE.
 
 ### Path B — `generate-config --hook` (use when also setting up the gateway)
 
@@ -200,14 +212,27 @@ enkryptai-agent-security hooks install [OPTIONS]
 | `--scope {global,project}` | Install scope. Default depends on platform (see table above). |
 | `--project-dir DIR` | Project directory for project-scoped installs. Default: current directory. |
 | `--force` | Overwrite existing config files (creates `.bak` backup first). |
+| `--global` | Write `guardrails_config.json` to `~/.enkrypt/hooks/<platform>/` (shared). Default: write to `<CWD>/.enkrypt/hooks/<platform>/` (per-workspace). |
 
 Either `--platform` or `--all` is required.
 
 **Examples:**
 
 ```bash
-# Single platform
+# Single platform (guardrails config written to .enkrypt/ in current directory)
 enkryptai-agent-security hooks install --platform cursor
+
+# Per-workspace install — each project gets its own guardrails config
+cd /projects/finance-app
+enkryptai-agent-security hooks install --platform cursor
+# Writes: .cursor/hooks.json + .enkrypt/hooks/cursor/guardrails_config.json
+
+cd /projects/internal-tool
+enkryptai-agent-security hooks install --platform cursor
+# Writes: .cursor/hooks.json + .enkrypt/hooks/cursor/guardrails_config.json (separate)
+
+# Shared global install — one guardrails config for all workspaces
+enkryptai-agent-security hooks install --platform cursor --global
 
 # Multiple platforms
 enkryptai-agent-security hooks install --platform cursor --platform claude-code
@@ -238,14 +263,19 @@ enkryptai-agent-security hooks configure --platform NAME [OPTIONS]
 | --- | --- |
 | `--platform NAME` | Target platform (required). |
 | `--api-key KEY` | Enkrypt API key. |
+| `--project-dir DIR` | Project directory. Default: current directory. |
+| `--global` | Write `guardrails_config.json` to `~/.enkrypt/hooks/<platform>/` instead of `<CWD>/.enkrypt/hooks/<platform>/`. |
 
 **Examples:**
 
 ```bash
-# Update API key in guardrails config
+# Update API key in local workspace guardrails config
 enkryptai-agent-security hooks configure --platform cursor --api-key ek_live_new_key
 
-# Regenerate config from defaults
+# Update API key in global guardrails config
+enkryptai-agent-security hooks configure --platform cursor --api-key ek_live_new_key --global
+
+# Regenerate local config from defaults
 enkryptai-agent-security hooks configure --platform claude_code
 ```
 
@@ -440,7 +470,11 @@ All framework platforms use global scope only. Installation means:
 For each IDE platform, two things are created:
 
 1. **Hook config file** — platform-specific JSON at the location shown in the scope reference
-2. **Guardrails config** — always at:
+2. **Guardrails config** — by default, written locally to the current workspace:
+   - macOS/Linux: `<CWD>/.enkrypt/hooks/<platform>/guardrails_config.json`
+   - Windows: `<CWD>\.enkrypt\hooks\<platform>\guardrails_config.json`
+
+   Pass `--global` to write to the shared global location instead:
    - macOS/Linux: `~/.enkrypt/hooks/<platform>/guardrails_config.json`
    - Windows: `%USERPROFILE%\.enkrypt\hooks\<platform>\guardrails_config.json`
 
@@ -579,10 +613,16 @@ After install, you can update the policy name in two ways:
 **Option 1 — Edit the file directly:**
 
 ```bash
-# macOS/Linux
+# macOS/Linux (local workspace — default)
+nano .enkrypt/hooks/cursor/guardrails_config.json
+
+# macOS/Linux (global)
 nano ~/.enkrypt/hooks/cursor/guardrails_config.json
 
-# Windows PowerShell
+# Windows PowerShell (local workspace — default)
+notepad .enkrypt\hooks\cursor\guardrails_config.json
+
+# Windows PowerShell (global)
 notepad $env:USERPROFILE\.enkrypt\hooks\cursor\guardrails_config.json
 ```
 
@@ -591,8 +631,12 @@ Change every `"guardrail_name": "Sample Airline Guardrail"` to your actual polic
 **Option 2 — Regenerate with `hooks configure`:**
 
 ```bash
+# Regenerate local workspace config
 enkryptai-agent-security hooks configure --platform cursor --api-key ek_live_abc123
 # Then manually update guardrail_name in the regenerated file
+
+# Regenerate global config
+enkryptai-agent-security hooks configure --platform cursor --api-key ek_live_abc123 --global
 ```
 
 ### Config search order at runtime
@@ -600,9 +644,12 @@ enkryptai-agent-security hooks configure --platform cursor --api-key ek_live_abc
 The hooks runtime searches for `guardrails_config.json` in this order:
 
 1. `ENKRYPT_GUARDRAILS_CONFIG` environment variable (explicit path)
-2. `guardrails_config.json` in the current working directory
-3. `~/.enkrypt/hooks/<platform>/guardrails_config.json`
-4. Unified config file (`~/.enkrypt/enkrypt_config.json`)
+2. `<CWD>/.enkrypt/hooks/<platform>/guardrails_config.json` (local workspace — written by default install)
+3. `guardrails_config.json` in the current working directory (bare CWD, backward compat)
+4. `~/.enkrypt/hooks/<platform>/guardrails_config.json` (global — written with `--global`)
+5. Unified config file (`~/.enkrypt/enkrypt_config.json`)
+
+Local workspace config always takes precedence over the global one when both are present.
 
 ---
 
@@ -614,15 +661,19 @@ After running `hooks install`, confirm everything is in place before restarting 
 # 1. Check installation status for all platforms
 enkryptai-agent-security hooks list
 
-# 2. Check detailed status for a specific platform
+# 2. Check detailed status for a specific platform (shows both local and global config paths)
 enkryptai-agent-security hooks status --platform cursor
 
-# 3. Confirm guardrails config exists and inspect it
+# 3. Confirm local workspace guardrails config exists and inspect it
 # macOS/Linux:
-cat ~/.enkrypt/hooks/cursor/guardrails_config.json
+cat .enkrypt/hooks/cursor/guardrails_config.json
 
 # Windows PowerShell:
-Get-Content $env:USERPROFILE\.enkrypt\hooks\cursor\guardrails_config.json
+Get-Content .enkrypt\hooks\cursor\guardrails_config.json
+
+# If you used --global, check the global path instead:
+# macOS/Linux:
+cat ~/.enkrypt/hooks/cursor/guardrails_config.json
 ```
 
 Confirm:
@@ -642,8 +693,32 @@ Then restart your IDE. Most IDEs only read hook config files at startup.
 ```bash
 cd /path/to/project
 enkryptai-agent-security hooks install --platform cursor --api-key ek_live_abc123
-# Update guardrail_name in ~/.enkrypt/hooks/cursor/guardrails_config.json
+# Writes: .cursor/hooks.json
+#         .enkrypt/hooks/cursor/guardrails_config.json  ← update guardrail_name here
 # Restart Cursor
+```
+
+### Use different guardrail policies per workspace
+
+Each workspace gets its own `guardrails_config.json` — just run install in each project directory:
+
+```bash
+cd /projects/finance-app
+enkryptai-agent-security hooks install --platform cursor --api-key ek_live_abc123
+# Edit .enkrypt/hooks/cursor/guardrails_config.json → set guardrail_name = "Finance Strict Policy"
+
+cd /projects/internal-tool
+enkryptai-agent-security hooks install --platform cursor --api-key ek_live_abc123
+# Edit .enkrypt/hooks/cursor/guardrails_config.json → set guardrail_name = "Internal Policy"
+```
+
+### Share one guardrails config across all workspaces
+
+Pass `--global` to write to `~/.enkrypt/` instead of the local workspace directory:
+
+```bash
+enkryptai-agent-security hooks install --platform cursor --api-key ek_live_abc123 --global
+# Writes to ~/.enkrypt/hooks/cursor/guardrails_config.json — applies to all projects
 ```
 
 ### Add hooks to an existing Claude Code setup
@@ -667,7 +742,11 @@ enkryptai-agent-security hooks install --all --api-key ek_live_abc123
 ### Regenerate guardrails config with a new API key
 
 ```bash
+# Update local workspace config
 enkryptai-agent-security hooks configure --platform cursor --api-key ek_live_new_key
+
+# Update global config
+enkryptai-agent-security hooks configure --platform cursor --api-key ek_live_new_key --global
 ```
 
 ### Check which platforms are installed
