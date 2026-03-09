@@ -30,9 +30,21 @@ FRAMEWORK_PLATFORMS = {"langchain", "langgraph", "openai", "strands", "crewai"}
 ALL_PLATFORMS = IDE_PLATFORMS | FRAMEWORK_PLATFORMS
 
 PLATFORM_REGISTRY: dict[str, dict[str, Any]] = {
-    "cursor": {"type": "ide", "default_scope": "project", "scopes": ["project", "global"]},
-    "claude": {"type": "ide", "default_scope": "global", "scopes": ["global", "project"]},
-    "claude_code": {"type": "ide", "default_scope": "global", "scopes": ["global", "project"]},
+    "cursor": {
+        "type": "ide",
+        "default_scope": "project",
+        "scopes": ["project", "global"],
+    },
+    "claude": {
+        "type": "ide",
+        "default_scope": "global",
+        "scopes": ["global", "project"],
+    },
+    "claude_code": {
+        "type": "ide",
+        "default_scope": "global",
+        "scopes": ["global", "project"],
+    },
     "copilot": {"type": "ide", "default_scope": "project", "scopes": ["project"]},
     "kiro": {"type": "ide", "default_scope": "project", "scopes": ["project"]},
     "langchain": {"type": "framework", "default_scope": "global", "scopes": ["global"]},
@@ -68,26 +80,38 @@ def _cursor_template() -> dict:
     m = f"{_MOD}.cursor"
     if sys.platform == "win32":
         exe = sys.executable.replace("\\", "\\\\")
+
         def _cmd(script: str) -> dict:
-            return {"command": f'powershell.exe -NoProfile -NonInteractive -Command "& \'{exe}\' -m {m}.{script}"'}
+            return {
+                "command": f"powershell.exe -NoProfile -NonInteractive -Command \"& '{exe}' -m {m}.{script}\""
+            }
     else:
+
         def _cmd(script: str) -> dict:
             return {"command": f"{sys.executable} -m {m}.{script}"}
+
     return {
         "version": 1,
         "hooks": {
             "beforeSubmitPrompt": [_cmd("before_submit_prompt")],
             "beforeMCPExecution": [_cmd("before_mcp_execution")],
-            "afterMCPExecution":  [_cmd("after_mcp_execution")],
+            "afterMCPExecution": [_cmd("after_mcp_execution")],
             "afterAgentResponse": [_cmd("after_agent_response")],
-            "stop":               [_cmd("stop")],
+            "stop": [_cmd("stop")],
         },
     }
 
 
 def _claude_template() -> dict:
     m = f"{_MOD}.claude"
-    cmd = lambda script: {"type": "command", "command": f"{sys.executable} -m {m}.{script}", "timeout": 30}
+
+    def cmd(script):
+        return {
+            "type": "command",
+            "command": f"{sys.executable} -m {m}.{script}",
+            "timeout": 30,
+        }
+
     return {
         "hooks": {
             "UserPromptSubmit": [cmd("user_prompt_submit")],
@@ -100,19 +124,33 @@ def _claude_template() -> dict:
 
 def _claude_code_template() -> dict:
     m = f"{_MOD}.claude_code"
-    cmd = lambda script, timeout=30: {"type": "command", "command": f"{sys.executable} -m {m}.{script}", "timeout": timeout}
+
+    def cmd(script, timeout=30):
+        return {
+            "type": "command",
+            "command": f"{sys.executable} -m {m}.{script}",
+            "timeout": timeout,
+        }
+
     return {
         "hooks": {
             "Setup": [{"matcher": "init|maintenance", "hooks": [cmd("setup", 60)]}],
             "SessionStart": [{"hooks": [cmd("session_start")]}],
             "UserPromptSubmit": [{"hooks": [cmd("user_prompt_submit")]}],
             "PreToolUse": [{"matcher": "", "hooks": [cmd("pre_tool_use")]}],
-            "PermissionRequest": [{"matcher": "", "hooks": [cmd("permission_request")]}],
+            "PermissionRequest": [
+                {"matcher": "", "hooks": [cmd("permission_request")]}
+            ],
             "PostToolUse": [{"matcher": "", "hooks": [cmd("post_tool_use")]}],
             "SubagentStop": [{"hooks": [cmd("subagent_stop")]}],
             "Stop": [{"hooks": [cmd("stop")]}],
             "PreCompact": [{"matcher": "manual|auto", "hooks": [cmd("pre_compact")]}],
-            "Notification": [{"matcher": "permission_prompt|idle_prompt", "hooks": [cmd("notification")]}],
+            "Notification": [
+                {
+                    "matcher": "permission_prompt|idle_prompt",
+                    "hooks": [cmd("notification")],
+                }
+            ],
             "SessionEnd": [{"hooks": [cmd("session_end")]}],
         }
     }
@@ -152,7 +190,10 @@ def _kiro_hooks_list() -> list[dict]:
             "description": "Validate user prompts for injection attacks, PII, and policy violations",
             "version": "1",
             "when": {"type": "promptSubmit"},
-            "then": {"type": "runCommand", "command": f"{sys.executable} -m {m}.prompt_submit"},
+            "then": {
+                "type": "runCommand",
+                "command": f"{sys.executable} -m {m}.prompt_submit",
+            },
             "shortName": "before-prompt-guardrails",
         },
         {
@@ -161,7 +202,10 @@ def _kiro_hooks_list() -> list[dict]:
             "description": "Audit agent responses for security issues after agent execution completes",
             "version": "1",
             "when": {"type": "agentStop"},
-            "then": {"type": "runCommand", "command": f"{sys.executable} -m {m}.agent_stop"},
+            "then": {
+                "type": "runCommand",
+                "command": f"{sys.executable} -m {m}.agent_stop",
+            },
             "shortName": "after-agent-guardrails",
         },
         {
@@ -169,8 +213,14 @@ def _kiro_hooks_list() -> list[dict]:
             "name": "Enkrypt File Security Scan",
             "description": "Scan saved files for secrets and sensitive data",
             "version": "1",
-            "when": {"type": "fileSave", "pattern": "**/*.{py,js,ts,json,yaml,yml,env*}"},
-            "then": {"type": "runCommand", "command": f'FILE_PATH="${{filePath}}" {sys.executable} -m {m}.file_save'},
+            "when": {
+                "type": "fileSave",
+                "pattern": "**/*.{py,js,ts,json,yaml,yml,env*}",
+            },
+            "then": {
+                "type": "runCommand",
+                "command": f'FILE_PATH="${{filePath}}" {sys.executable} -m {m}.file_save',
+            },
             "shortName": "file-save-guardrails",
         },
         {
@@ -178,8 +228,14 @@ def _kiro_hooks_list() -> list[dict]:
             "name": "Enkrypt New File Validator",
             "description": "Validate new files for security issues",
             "version": "1",
-            "when": {"type": "fileCreate", "pattern": "**/*.{py,js,ts,json,yaml,yml,env*}"},
-            "then": {"type": "runCommand", "command": f'FILE_PATH="${{filePath}}" {sys.executable} -m {m}.file_create'},
+            "when": {
+                "type": "fileCreate",
+                "pattern": "**/*.{py,js,ts,json,yaml,yml,env*}",
+            },
+            "then": {
+                "type": "runCommand",
+                "command": f'FILE_PATH="${{filePath}}" {sys.executable} -m {m}.file_create',
+            },
             "shortName": "file-create-guardrails",
         },
         {
@@ -214,7 +270,9 @@ def resolve_api_key(cli_key: str | None) -> str:
     env_key = os.environ.get("ENKRYPT_API_KEY", "")
     if env_key:
         return env_key
-    print("INFO: No API key provided. Set ENKRYPT_API_KEY env var or use --api-key flag.")
+    print(
+        "INFO: No API key provided. Set ENKRYPT_API_KEY env var or use --api-key flag."
+    )
     return ""
 
 
@@ -225,7 +283,9 @@ def validate_scope(platform: str, scope: str) -> None:
         sys.exit(1)
     if scope not in reg["scopes"]:
         supported = ", ".join(reg["scopes"])
-        print(f"ERROR: Platform '{platform}' does not support scope '{scope}'. Supported: {supported}")
+        print(
+            f"ERROR: Platform '{platform}' does not support scope '{scope}'. Supported: {supported}"
+        )
         sys.exit(1)
 
 
@@ -277,12 +337,18 @@ def generate_guardrails_config(platform: str, api_key: str) -> dict:
     return config
 
 
-def write_guardrails_config(platform: str, api_key: str) -> Path:
+def write_guardrails_config(platform: str, api_key: str, force: bool = False) -> Path:
     dest_dir = _guardrails_config_dir(platform)
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / "guardrails_config.json"
+    if dest.exists() and not force:
+        print(
+            f"INFO: Guardrails config already exists at {dest} -- skipping (use --force to overwrite)."
+        )
+        return dest
     config = generate_guardrails_config(platform, api_key)
-    dest.write_text(json.dumps(config, indent=2) + "\n")
+    _write_json(dest, config, backup=force)
+    print(f"INFO: Guardrails config written to {dest}")
     return dest
 
 
@@ -314,7 +380,11 @@ def _merge_settings_hooks(existing: dict, new_hooks: dict) -> dict:
                 if isinstance(entry, dict):
                     cmd = entry.get("command", "")
                     if not cmd and "hooks" in entry:
-                        cmd = entry["hooks"][0].get("command", "") if entry["hooks"] else ""
+                        cmd = (
+                            entry["hooks"][0].get("command", "")
+                            if entry["hooks"]
+                            else ""
+                        )
                 if cmd not in existing_cmds:
                     result["hooks"][event_name].append(entry)
     return result
@@ -349,9 +419,8 @@ def install_cursor(api_key: str, scope: str, project_dir: Path, force: bool) -> 
     _check_existing(dest, force, "Cursor hooks config")
     template = _cursor_template()
     _write_json(dest, template, backup=force)
-    gc_path = write_guardrails_config("cursor", api_key)
+    write_guardrails_config("cursor", api_key, force=force)
     print(f"INFO: Cursor hooks installed at {dest}")
-    print(f"INFO: Guardrails config written to {gc_path}")
     print("INFO: Restart Cursor to activate hooks.")
 
 
@@ -366,13 +435,14 @@ def install_claude(api_key: str, scope: str, project_dir: Path, force: bool) -> 
     else:
         dest.parent.mkdir(parents=True, exist_ok=True)
         _write_json(dest, template)
-    gc_path = write_guardrails_config("claude", api_key)
+    write_guardrails_config("claude", api_key, force=force)
     print(f"INFO: Claude hooks installed at {dest}")
-    print(f"INFO: Guardrails config written to {gc_path}")
     print("INFO: Restart Claude Desktop to activate hooks.")
 
 
-def install_claude_code(api_key: str, scope: str, project_dir: Path, force: bool) -> None:
+def install_claude_code(
+    api_key: str, scope: str, project_dir: Path, force: bool
+) -> None:
     validate_scope("claude_code", scope)
     dest = get_hooks_config_dest("claude_code", scope, project_dir)
     template = _claude_code_template()
@@ -383,9 +453,8 @@ def install_claude_code(api_key: str, scope: str, project_dir: Path, force: bool
     else:
         dest.parent.mkdir(parents=True, exist_ok=True)
         _write_json(dest, template)
-    gc_path = write_guardrails_config("claude_code", api_key)
+    write_guardrails_config("claude_code", api_key, force=force)
     print(f"INFO: Claude Code hooks installed at {dest}")
-    print(f"INFO: Guardrails config written to {gc_path}")
     print("INFO: Restart Claude Code to activate hooks.")
 
 
@@ -394,9 +463,8 @@ def install_copilot(api_key: str, project_dir: Path, force: bool) -> None:
     _check_existing(dest, force, "Copilot hooks config")
     template = _copilot_template()
     _write_json(dest, template, backup=force)
-    gc_path = write_guardrails_config("copilot", api_key)
+    write_guardrails_config("copilot", api_key, force=force)
     print(f"INFO: Copilot hooks installed at {dest}")
-    print(f"INFO: Guardrails config written to {gc_path}")
     print("INFO: Restart VS Code / Copilot to activate hooks.")
 
 
@@ -412,21 +480,21 @@ def install_kiro(api_key: str, project_dir: Path, force: bool) -> None:
             print("       Use --force to overwrite.")
             sys.exit(1)
         _write_json(dest, hook, backup=force)
-    gc_path = write_guardrails_config("kiro", api_key)
+    write_guardrails_config("kiro", api_key, force=force)
     print(f"INFO: Kiro hooks installed at {dest_dir}")
     print(f"INFO: {len(hooks)} hook files created.")
-    print(f"INFO: Guardrails config written to {gc_path}")
     print("INFO: Restart Kiro to activate hooks.")
 
 
-def install_framework(platform: str, api_key: str) -> None:
+def install_framework(platform: str, api_key: str, force: bool = False) -> None:
     extras = FRAMEWORK_EXTRAS.get(platform)
     if extras:
         pkg = f"enkryptai-agent-security[{extras}]"
         print(f"INFO: Installing {pkg}...")
         result = subprocess.run(
             [sys.executable, "-m", "pip", "install", pkg],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if result.returncode != 0:
             print(f"ERROR: pip install failed:\n{result.stderr}")
@@ -434,10 +502,9 @@ def install_framework(platform: str, api_key: str) -> None:
         print(f"INFO: Successfully installed {pkg}")
     else:
         print(f"INFO: No pip extras available for '{platform}'.")
-        print(f"INFO: Install manually: pip install enkryptai-agent-security")
+        print("INFO: Install manually: pip install enkryptai-agent-security")
 
-    gc_path = write_guardrails_config(platform, api_key)
-    print(f"INFO: Guardrails config written to {gc_path}")
+    write_guardrails_config(platform, api_key, force=force)
     _print_framework_snippet(platform)
 
 
@@ -479,8 +546,9 @@ def _print_framework_snippet(platform: str) -> None:
 # =========================================================================
 
 
-def _install_single(platform: str, api_key: str, scope: str | None,
-                    project_dir: Path, force: bool) -> None:
+def _install_single(
+    platform: str, api_key: str, scope: str | None, project_dir: Path, force: bool
+) -> None:
     reg = PLATFORM_REGISTRY.get(platform)
     if not reg:
         print(f"ERROR: Unknown platform: {platform}")
@@ -490,7 +558,7 @@ def _install_single(platform: str, api_key: str, scope: str | None,
     validate_scope(platform, effective_scope)
 
     if reg["type"] == "framework":
-        install_framework(platform, api_key)
+        install_framework(platform, api_key, force)
         return
 
     if platform == "cursor":
@@ -544,8 +612,11 @@ def _remove_hooks_from_settings(path: Path) -> bool:
             # Nested format: {"matcher": "...", "hooks": [{"command": "..."}]}
             inner_hooks = entry.get("hooks")
             if isinstance(inner_hooks, list):
-                kept = [h for h in inner_hooks
-                        if not (isinstance(h, dict) and _MARKER in h.get("command", ""))]
+                kept = [
+                    h
+                    for h in inner_hooks
+                    if not (isinstance(h, dict) and _MARKER in h.get("command", ""))
+                ]
                 if len(kept) < len(inner_hooks):
                     changed = True
                 if kept:
@@ -659,8 +730,9 @@ def _remove_guardrails_config(platform: str) -> None:
         print(f"INFO: No guardrails config found for {platform}")
 
 
-def _uninstall_single(platform: str, scope: str | None,
-                      project_dir: Path, keep_guardrails: bool) -> None:
+def _uninstall_single(
+    platform: str, scope: str | None, project_dir: Path, keep_guardrails: bool
+) -> None:
     reg = PLATFORM_REGISTRY.get(platform)
     if not reg:
         print(f"ERROR: Unknown platform: {platform}")
@@ -670,8 +742,8 @@ def _uninstall_single(platform: str, scope: str | None,
     validate_scope(platform, effective_scope)
 
     if reg["type"] == "framework":
-        print(f"INFO: Framework hooks are installed as pip packages.")
-        print(f"      To uninstall: pip uninstall enkryptai-agent-security")
+        print("INFO: Framework hooks are installed as pip packages.")
+        print("      To uninstall: pip uninstall enkryptai-agent-security")
     elif platform == "cursor":
         uninstall_cursor(effective_scope, project_dir)
     elif platform == "claude":
@@ -692,8 +764,9 @@ def _uninstall_single(platform: str, scope: str | None,
 # =========================================================================
 
 
-def _toggle_guardrail_policies(platform: str, enabled: bool,
-                               hook_name: str | None) -> None:
+def _toggle_guardrail_policies(
+    platform: str, enabled: bool, hook_name: str | None
+) -> None:
     """Toggle ``enabled`` flag in guardrails config for a platform."""
     gc_path = _guardrails_config_dir(platform) / "guardrails_config.json"
     if not gc_path.exists():
@@ -704,8 +777,9 @@ def _toggle_guardrail_policies(platform: str, enabled: bool,
     config = json.loads(gc_path.read_text())
 
     # Identify policy keys (dicts with an "enabled" field)
-    policy_keys = [k for k in config
-                   if isinstance(config[k], dict) and "enabled" in config[k]]
+    policy_keys = [
+        k for k in config if isinstance(config[k], dict) and "enabled" in config[k]
+    ]
 
     if not policy_keys:
         print(f"INFO: No guardrail policies found in config for '{platform}'.")
@@ -826,7 +900,9 @@ def handle_hooks_command(args: Any) -> None:
     elif cmd == "status":
         _handle_status(args)
     else:
-        print("ERROR: Please specify a hooks subcommand: install, uninstall, configure, enable, disable, list, status")
+        print(
+            "ERROR: Please specify a hooks subcommand: install, uninstall, configure, enable, disable, list, status"
+        )
         sys.exit(1)
 
 
@@ -929,20 +1005,23 @@ def _handle_configure(args: Any) -> None:
         print(f"ERROR: Unknown platform: {platform}")
         sys.exit(1)
     api_key = resolve_api_key(getattr(args, "api_key", None))
-    gc_path = write_guardrails_config(platform, api_key)
-    print(f"INFO: Guardrails config written to {gc_path}")
+    write_guardrails_config(platform, api_key, force=True)
 
 
 def _handle_list(args: Any) -> None:
     project_dir = Path(getattr(args, "project_dir", None) or os.getcwd()).resolve()
     results = list_all_platforms(project_dir)
 
-    print(f"\n{'Platform':<15} {'Type':<12} {'Hooks':<10} {'Guardrails':<12} {'Status'}")
+    print(
+        f"\n{'Platform':<15} {'Type':<12} {'Hooks':<10} {'Guardrails':<12} {'Status'}"
+    )
     print("-" * 63)
     for r in results:
         hooks_icon = "yes" if r["hooks_config"] else "no"
         gc_icon = "yes" if r["guardrails_config"] else "no"
-        print(f"{r['platform']:<15} {r['type']:<12} {hooks_icon:<10} {gc_icon:<12} {r['status']}")
+        print(
+            f"{r['platform']:<15} {r['type']:<12} {hooks_icon:<10} {gc_icon:<12} {r['status']}"
+        )
     print()
     note = (
         "Note: vercel-ai-sdk is TypeScript/npm-based and must be installed manually.\n"
@@ -979,7 +1058,9 @@ def _handle_status(args: Any) -> None:
             try:
                 dest = get_hooks_config_dest(platform, scope, project_dir)
                 exists = dest.exists() if platform != "kiro" else dest.is_dir()
-                print(f"Hooks path ({scope:>7}): {dest} {'(exists)' if exists else '(not found)'}")
+                print(
+                    f"Hooks path ({scope:>7}): {dest} {'(exists)' if exists else '(not found)'}"
+                )
             except ValueError:
                 pass
 
@@ -987,15 +1068,20 @@ def _handle_status(args: Any) -> None:
     if gc_path.exists():
         try:
             gc = json.loads(gc_path.read_text())
-            policy_keys = [k for k in gc
-                           if isinstance(gc[k], dict) and "enabled" in gc[k]]
+            policy_keys = [
+                k for k in gc if isinstance(gc[k], dict) and "enabled" in gc[k]
+            ]
             if policy_keys:
                 print("Guardrail policies:")
                 for key in policy_keys:
                     entry = gc[key]
                     state = "enabled" if entry.get("enabled") else "disabled"
                     blocks = entry.get("block", [])
-                    block_str = f"  [{', '.join(blocks)}]" if blocks and entry.get("enabled") else ""
+                    block_str = (
+                        f"  [{', '.join(blocks)}]"
+                        if blocks and entry.get("enabled")
+                        else ""
+                    )
                     print(f"  {key:<25} {state}{block_str}")
         except (json.JSONDecodeError, OSError):
             print("WARNING: Could not parse guardrails config")
