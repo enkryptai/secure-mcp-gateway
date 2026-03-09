@@ -49,3 +49,5 @@ bandit-report.json
 !docs/*.md
 
 .claude/settings.json
+
+**/guardrails_config.json
