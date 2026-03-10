@@ -23,8 +23,7 @@ SK uses a **filter protocol** instead of callbacks. The SDK provides `EnkryptSKF
 ## Step 1: Install Dependencies
 
 ```bash
-cd enkrypt-in-agent-sdk
-pip install -e .
+pip install enkryptai-agent-security
 pip install semantic-kernel
 ```
 

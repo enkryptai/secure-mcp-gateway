@@ -508,18 +508,18 @@ Creates `.kiro/hooks/` directory with 5 individual `.kiro.hook` files:
 
 | Platform    | pip extras                                        | Integration module                                              |
 | ----------- | ------------------------------------------------- | --------------------------------------------------------------- |
-| `langchain` | `enkryptai-agent-security[hooks-langchain]`       | `enkryptai_agent_security.hooks.wrappers.langchain_handler`     |
-| `langgraph` | `enkryptai-agent-security[hooks-langgraph]`       | `enkryptai_agent_security.hooks.wrappers.langgraph_hook`        |
-| `openai`    | `enkryptai-agent-security[hooks-openai-agents]`   | `enkryptai_agent_security.hooks.wrappers.openai_hook`           |
-| `strands`   | `enkryptai-agent-security[hooks-strands]`         | `enkryptai_agent_security.hooks.wrappers.strands_hook`          |
-| `crewai`    | none (manual)                                     | `enkryptai_agent_security.hooks.providers.crewai`               |
+| `langchain` | `enkryptai-agent-security[hooks-langchain]`       | `enkryptai_agent_security.sdk.framework_hooks.langchain_handler`     |
+| `langgraph` | `enkryptai-agent-security[hooks-langgraph]`       | `enkryptai_agent_security.sdk.framework_hooks.langgraph_hook`        |
+| `openai`    | `enkryptai-agent-security[hooks-openai-agents]`   | `enkryptai_agent_security.sdk.framework_hooks.openai_hook`           |
+| `strands`   | `enkryptai-agent-security[hooks-strands]`         | `enkryptai_agent_security.sdk.framework_hooks.strands_hook`          |
+| `crewai`    | none (manual)                                     | `enkryptai_agent_security.sdk.framework_hooks.crewai`               |
 
 After `hooks install`, the CLI prints an integration snippet for each framework. Add it to your agent code:
 
 **LangChain:**
 
 ```python
-from enkryptai_agent_security.hooks.wrappers.langchain_handler import EnkryptGuardrailsHandler
+from enkryptai_agent_security.sdk.framework_hooks.langchain_handler import EnkryptGuardrailsHandler
 handler = EnkryptGuardrailsHandler()
 # Pass handler as callback to your LangChain chain/agent
 ```
@@ -527,7 +527,7 @@ handler = EnkryptGuardrailsHandler()
 **LangGraph:**
 
 ```python
-from enkryptai_agent_security.hooks.wrappers.langgraph_hook import EnkryptLangGraphHook
+from enkryptai_agent_security.sdk.framework_hooks.langgraph_hook import EnkryptLangGraphHook
 hook = EnkryptLangGraphHook()
 # Pass hook as callback to your LangGraph agent
 ```
@@ -535,7 +535,7 @@ hook = EnkryptLangGraphHook()
 **OpenAI Agents:**
 
 ```python
-from enkryptai_agent_security.hooks.wrappers.openai_hook import EnkryptOpenAIHook
+from enkryptai_agent_security.sdk.framework_hooks.openai_hook import EnkryptOpenAIHook
 hook = EnkryptOpenAIHook()
 # Wrap your OpenAI Agents runner with hook
 ```
@@ -543,7 +543,7 @@ hook = EnkryptOpenAIHook()
 **Strands:**
 
 ```python
-from enkryptai_agent_security.hooks.wrappers.strands_hook import EnkryptStrandsHook
+from enkryptai_agent_security.sdk.framework_hooks.strands_hook import EnkryptStrandsHook
 hook = EnkryptStrandsHook()
 # Pass hook as callback to your Strands agent
 ```
@@ -551,7 +551,7 @@ hook = EnkryptStrandsHook()
 **CrewAI:**
 
 ```python
-from enkryptai_agent_security.hooks.providers.crewai import EnkryptCrewAIProvider
+from enkryptai_agent_security.sdk.framework_hooks.crewai import EnkryptCrewAIProvider
 provider = EnkryptCrewAIProvider()
 # Integrate provider with your CrewAI crew
 ```

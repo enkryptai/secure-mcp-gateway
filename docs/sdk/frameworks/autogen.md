@@ -24,8 +24,7 @@ Key concepts:
 ## Step 1: Install Dependencies
 
 ```bash
-cd enkrypt-in-agent-sdk
-pip install -e .
+pip install enkryptai-agent-security
 pip install pyautogen
 ```
 

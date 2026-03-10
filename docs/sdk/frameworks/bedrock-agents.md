@@ -24,8 +24,7 @@ Security is handled via the **GenericAgentAdapter** directly, and **manual integ
 ## Step 1: Install Dependencies
 
 ```bash
-cd enkrypt-in-agent-sdk
-pip install -e .
+pip install enkryptai-agent-security
 pip install boto3
 ```
 

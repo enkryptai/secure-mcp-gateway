@@ -13,8 +13,7 @@ The Anthropic SDK (`anthropic`) is the official Python client for Claude, Anthro
 ## Step 1: Install Dependencies
 
 ```bash
-cd enkrypt-in-agent-sdk
-pip install -e .
+pip install enkryptai-agent-security
 pip install anthropic
 ```
 

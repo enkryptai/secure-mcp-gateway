@@ -57,6 +57,7 @@ _REGISTRY: dict[str, tuple[str, str]] = {
     "haystack": ("haystack", "enkryptai_agent_security.sdk._patch.haystack"),
     "smolagents": ("smolagents", "enkryptai_agent_security.sdk._patch.smolagents"),
     "phidata": ("phi", "enkryptai_agent_security.sdk._patch.phidata"),
+    "strands": ("strands", "enkryptai_agent_security.sdk._patch.strands"),
 }
 
 

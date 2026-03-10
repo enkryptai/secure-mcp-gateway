@@ -22,8 +22,7 @@ Key concepts:
 ## Step 1: Install Dependencies
 
 ```bash
-cd enkrypt-in-agent-sdk
-pip install -e .
+pip install enkryptai-agent-security
 pip install llama-index-core
 # Plus your choice of LLM and embedding providers:
 pip install llama-index-llms-openai llama-index-embeddings-openai

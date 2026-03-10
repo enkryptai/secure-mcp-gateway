@@ -19,8 +19,7 @@ On top of everything the LangChain integration provides, the LangGraph adapter a
 
 ```bash
 # Install the Enkrypt SDK
-cd enkrypt-in-agent-sdk
-pip install -e .
+pip install enkryptai-agent-security
 
 # Install LangGraph + LangChain
 pip install langgraph langchain langchain-core langchain-openai

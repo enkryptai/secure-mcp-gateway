@@ -19,8 +19,7 @@ The OpenAI Agents SDK (package name: `openai-agents`) is OpenAI's official frame
 ## Step 1: Install Dependencies
 
 ```bash
-cd enkrypt-in-agent-sdk
-pip install -e .
+pip install enkryptai-agent-security
 pip install openai-agents
 ```
 

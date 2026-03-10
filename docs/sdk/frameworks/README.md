@@ -13,7 +13,7 @@ If you've never used the Enkrypt SDK before, follow these steps:
 ### 1. Install the SDK
 
 ```bash
-cd enkrypt-in-agent-sdk
+pip install enkryptai-agent-security
 pip install -e .
 ```
 

@@ -529,29 +529,28 @@ def install_framework(platform: str, api_key: str, force: bool = False) -> None:
 def _print_framework_snippet(platform: str) -> None:
     snippets = {
         "langchain": (
-            "from enkryptai_agent_security.hooks.wrappers.langchain_handler import EnkryptGuardrailsHandler\n"
+            "from enkryptai_agent_security.sdk.framework_hooks.langchain_handler import EnkryptGuardrailsHandler\n"
             "handler = EnkryptGuardrailsHandler()\n"
             "# Pass handler as callback to your LangChain chain/agent"
         ),
         "langgraph": (
-            "from enkryptai_agent_security.hooks.wrappers.langgraph_hook import EnkryptLangGraphHook\n"
+            "from enkryptai_agent_security.sdk.framework_hooks.langgraph_hook import EnkryptLangGraphHook\n"
             "hook = EnkryptLangGraphHook()\n"
             "# Pass hook as callback to your LangGraph agent"
         ),
         "openai": (
-            "from enkryptai_agent_security.hooks.wrappers.openai_hook import EnkryptOpenAIHook\n"
+            "from enkryptai_agent_security.sdk.framework_hooks.openai_hook import EnkryptOpenAIHook\n"
             "hook = EnkryptOpenAIHook()\n"
             "# Wrap your OpenAI Agents runner with hook"
         ),
         "strands": (
-            "from enkryptai_agent_security.hooks.wrappers.strands_hook import EnkryptStrandsHook\n"
-            "hook = EnkryptStrandsHook()\n"
+            "from enkryptai_agent_security.sdk.framework_hooks.strands_hook import EnkryptGuardrailsHook\n"
+            "hook = EnkryptGuardrailsHook()\n"
             "# Pass hook as callback to your Strands agent"
         ),
         "crewai": (
-            "from enkryptai_agent_security.hooks.providers.crewai import EnkryptCrewAIProvider\n"
-            "provider = EnkryptCrewAIProvider()\n"
-            "# Integrate provider with your CrewAI crew"
+            "from enkryptai_agent_security.sdk.framework_hooks.crewai import EnkryptGuardrailsContext\n"
+            "# Use EnkryptGuardrailsContext as a context manager around your CrewAI crew"
         ),
     }
     snippet = snippets.get(platform, "")
@@ -848,11 +847,11 @@ def _toggle_guardrail_policies(
 # =========================================================================
 
 _FRAMEWORK_SPEC_MAP = {
-    "langchain": "enkryptai_agent_security.hooks.wrappers.langchain_handler",
-    "langgraph": "enkryptai_agent_security.hooks.wrappers.langgraph_hook",
-    "openai": "enkryptai_agent_security.hooks.wrappers.openai_hook",
-    "strands": "enkryptai_agent_security.hooks.wrappers.strands_hook",
-    "crewai": "enkryptai_agent_security.hooks.providers.crewai",
+    "langchain": "enkryptai_agent_security.sdk.framework_hooks.langchain_handler",
+    "langgraph": "enkryptai_agent_security.sdk.framework_hooks.langgraph_hook",
+    "openai": "enkryptai_agent_security.sdk.framework_hooks.openai_hook",
+    "strands": "enkryptai_agent_security.sdk.framework_hooks.strands_hook",
+    "crewai": "enkryptai_agent_security.sdk.framework_hooks.crewai",
 }
 
 

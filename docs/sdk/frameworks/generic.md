@@ -14,8 +14,7 @@ The Generic Adapter provides **sync and async context managers** that let you ma
 ## Step 1: Install the SDK
 
 ```bash
-cd enkrypt-in-agent-sdk
-pip install -e .
+pip install enkryptai-agent-security
 ```
 
 ## Step 2: Set Up the Components

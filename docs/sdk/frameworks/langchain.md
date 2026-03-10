@@ -17,8 +17,7 @@ When you add the Enkrypt SDK to your LangChain app, it:
 
 ```bash
 # Install the Enkrypt SDK
-cd enkrypt-in-agent-sdk
-pip install -e .
+pip install enkryptai-agent-security
 
 # Install LangChain
 pip install langchain langchain-core langchain-openai

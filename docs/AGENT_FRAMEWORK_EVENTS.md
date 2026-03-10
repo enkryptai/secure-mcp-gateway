@@ -41,8 +41,8 @@ This document maps every hook/callback event available in each supported agent f
 
 ### LangChain
 
-> Provider: `src/enkryptai_agent_security/hooks/providers/langchain.py`
-> Wrapper: `src/enkryptai_agent_security/hooks/wrappers/langchain_handler.py`
+> Provider: `src/enkryptai_agent_security/sdk/framework_hooks/langchain.py`
+> Wrapper: `src/enkryptai_agent_security/sdk/framework_hooks/langchain_handler.py`
 
 | Event | Status | Description |
 |-------|--------|-------------|
@@ -69,8 +69,8 @@ This document maps every hook/callback event available in each supported agent f
 
 ### LangGraph
 
-> Provider: `src/enkryptai_agent_security/hooks/providers/langgraph.py`
-> Wrapper: `src/enkryptai_agent_security/hooks/wrappers/langgraph_hook.py`
+> Provider: `src/enkryptai_agent_security/sdk/framework_hooks/langgraph.py`
+> Wrapper: `src/enkryptai_agent_security/sdk/framework_hooks/langgraph_hook.py`
 
 | Event | Status | Description |
 |-------|--------|-------------|
@@ -87,8 +87,8 @@ This document maps every hook/callback event available in each supported agent f
 
 ### OpenAI Agents SDK
 
-> Provider: `src/enkryptai_agent_security/hooks/providers/openai_agents.py`
-> Wrapper: `src/enkryptai_agent_security/hooks/wrappers/openai_hook.py`
+> Provider: `src/enkryptai_agent_security/sdk/framework_hooks/openai_agents.py`
+> Wrapper: `src/enkryptai_agent_security/sdk/framework_hooks/openai_hook.py`
 
 **EnkryptRunHooks** (global, applies to entire run):
 
@@ -124,8 +124,8 @@ This document maps every hook/callback event available in each supported agent f
 
 ### Strands
 
-> Provider: `src/enkryptai_agent_security/hooks/providers/strands.py`
-> Wrapper: `src/enkryptai_agent_security/hooks/wrappers/strands_hook.py`
+> Provider: `src/enkryptai_agent_security/sdk/framework_hooks/strands.py`
+> Wrapper: `src/enkryptai_agent_security/sdk/framework_hooks/strands_hook.py`
 
 | Event | Status | Description |
 |-------|--------|-------------|
@@ -141,7 +141,7 @@ This document maps every hook/callback event available in each supported agent f
 
 ### CrewAI
 
-> Provider: `src/enkryptai_agent_security/hooks/providers/crewai.py`
+> Provider: `src/enkryptai_agent_security/sdk/framework_hooks/crewai.py`
 > No separate wrapper file -- provider functions are called directly.
 
 | Event | Status | Description |

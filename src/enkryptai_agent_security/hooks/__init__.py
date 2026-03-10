@@ -1,8 +1,7 @@
-"""Enkrypt hooks — shared infrastructure and platform providers.
+"""Enkrypt hooks — shared infrastructure and IDE platform providers.
 
 Centralises config loading, API calls, response parsing, logging,
-and metrics that were previously duplicated across 11 hook providers
-(~7,000 lines total).
+and metrics for IDE platform hooks (Claude, Claude Code, Copilot, Cursor, Kiro).
 
 **Core (shared)**::
 
@@ -10,14 +9,16 @@ and metrics that were previously duplicated across 11 hook providers
     core = HooksCore.from_config_file("guardrails_config.json")
     should_block, violations, raw = core.check(text, hook_name="on_llm_start")
 
-**Providers** (platform-specific thin wrappers)::
+**Providers** (IDE platform-specific thin wrappers)::
 
     from enkryptai_agent_security.hooks.providers import cursor, claude, copilot, ...
 
-**Framework wrappers** (LangChain, LangGraph, OpenAI Agents, Strands)::
+For agent framework integrations (LangChain, LangGraph, OpenAI Agents, Strands, CrewAI),
+use ``sdk.framework_hooks`` instead::
 
-    from enkryptai_agent_security.hooks.wrappers.langchain_handler import EnkryptGuardrailsHandler
-    from enkryptai_agent_security.hooks.wrappers.openai_hook import EnkryptRunHooks
+    from enkryptai_agent_security.sdk.framework_hooks.langchain_handler import EnkryptGuardrailsHandler
+    from enkryptai_agent_security.sdk.framework_hooks.openai_hook import EnkryptRunHooks
+    from enkryptai_agent_security.sdk.framework_hooks.strands_hook import EnkryptGuardrailsHook
 """
 
 from enkryptai_agent_security.hooks.core import (
