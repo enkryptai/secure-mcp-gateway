@@ -56,5 +56,7 @@ bandit-report.json
 !hooks/strands/README.md
 !hooks/vercel-ai-sdk/README.md
 !hooks/copilot/README.md
+!CONTRIBUTING.md
+!CLA.md
 
 .claude/settings.json
