@@ -3916,6 +3916,8 @@ For complete API documentation and examples, see:
 
 ## 18. Contribute
 
+We welcome contributions. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for how to submit changes and our [Contributor License Agreement (CLA)](CLA.md), which you agree to by submitting a pull request.
+
 - Look at the `TODO` file for the current work in progress and yet to be implemented features
 
 - Install the gateway locally to test your changes
