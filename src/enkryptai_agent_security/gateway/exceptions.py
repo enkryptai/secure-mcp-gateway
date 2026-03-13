@@ -349,7 +349,7 @@ class SystemError(MCPGatewayError):
         )
 
 
-class TimeoutError(MCPGatewayError):
+class GatewayTimeoutError(MCPGatewayError):
     """Timeout-related errors with specific timeout handling."""
 
     def __init__(
@@ -495,9 +495,9 @@ def create_timeout_error(
     timeout_type: str,
     context: Optional[ErrorContext] = None,
     cause: Optional[Exception] = None,
-) -> TimeoutError:
+) -> GatewayTimeoutError:
     """Create a timeout error with specific timeout details."""
-    return TimeoutError(
+    return GatewayTimeoutError(
         code=code,
         message=message,
         timeout_duration=timeout_duration,
@@ -511,7 +511,7 @@ def create_guardrail_timeout_error(
     timeout_duration: float,
     context: Optional[ErrorContext] = None,
     cause: Optional[Exception] = None,
-) -> TimeoutError:
+) -> GatewayTimeoutError:
     """Create a guardrail timeout error."""
     return create_timeout_error(
         code=ErrorCode.GUARDRAIL_TIMEOUT,
@@ -528,7 +528,7 @@ def create_tool_timeout_error(
     tool_name: Optional[str] = None,
     context: Optional[ErrorContext] = None,
     cause: Optional[Exception] = None,
-) -> TimeoutError:
+) -> GatewayTimeoutError:
     """Create a tool execution timeout error."""
     message = f"Tool execution timed out after {timeout_duration}s"
     if tool_name:
@@ -549,7 +549,7 @@ def create_network_timeout_error(
     endpoint: Optional[str] = None,
     context: Optional[ErrorContext] = None,
     cause: Optional[Exception] = None,
-) -> TimeoutError:
+) -> GatewayTimeoutError:
     """Create a network timeout error."""
     message = f"Network request timed out after {timeout_duration}s"
     if endpoint:
@@ -570,7 +570,7 @@ def create_auth_timeout_error(
     timeout_duration: float,
     context: Optional[ErrorContext] = None,
     cause: Optional[Exception] = None,
-) -> TimeoutError:
+) -> GatewayTimeoutError:
     """Create an authentication timeout error."""
     return create_timeout_error(
         code=ErrorCode.AUTH_TIMEOUT,

@@ -750,9 +750,9 @@ class EnkryptServerRegistrationGuardrail:
         """Standardized error handling for tool validation failures."""
         cfg_enabled = bool(self.config.get("enkrypt_guardrails_enabled", True))
 
-        from enkryptai_agent_security.gateway.exceptions import TimeoutError as GWTimeoutError
+        from enkryptai_agent_security.gateway.exceptions import GatewayTimeoutError
 
-        if isinstance(e, GWTimeoutError) or "GUARDRAIL_TIMEOUT:" in str(e) or "timed out" in str(e).lower():
+        if isinstance(e, GatewayTimeoutError) or "GUARDRAIL_TIMEOUT:" in str(e) or "timed out" in str(e).lower():
             timeout_duration = getattr(e, "timeout_duration", "unknown")
             return GuardrailResponse(
                 is_safe=False,

@@ -1,7 +1,5 @@
+import logging
 import sys
-
-# TODO: Fix error and use stdout
-# print("Initializing Enkrypt Secure MCP Gateway", file=sys.stderr)
 
 # Gateway deps (redis, flask, etc.) are only available when installed with
 # the [gateway] extra. Guard these imports so that hooks-only installs can
@@ -10,5 +8,7 @@ try:
     from enkryptai_agent_security.gateway.client import *
     from enkryptai_agent_security.gateway.gateway import *
     from enkryptai_agent_security.gateway.utils import *
-except ImportError:
-    pass
+except ImportError as _exc:
+    logging.getLogger(__name__).debug(
+        "Gateway modules not available (missing optional dependencies): %s", _exc
+    )

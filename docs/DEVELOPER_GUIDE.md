@@ -146,6 +146,50 @@ The other 10 frameworks (Anthropic, AutoGen, Bedrock, Google ADK, Haystack, Llam
 
 ---
 
+## Streaming Guardrails (`guardrails/streaming.py`)
+
+**What it does:** Real-time guardrail checks on streaming LLM responses. For clients who use LLMs directly (OpenAI, Anthropic, etc.) and stream responses to end-users. Checks run in the background on a sliding window of accumulated text while chunks continue flowing to the client.
+
+**Not part of the Agent SDK** — lives in the shared `guardrails/` module alongside the core client. Zero dependency on `sdk/`.
+
+**Key components:**
+
+| Component | Purpose |
+| --- | --- |
+| Stream Interceptor | `StreamGuard` class — wraps `AsyncIterable[str]` / `Iterable[str]` |
+| Chunk Buffer & Windowing | Sliding window + sentence boundary detection for check timing |
+| GR Engine | `EnkryptGuardrailClient` — runs `acheck_output()` in background tasks |
+| Block & Cancellation Handler | `StreamViolationError` raised on BLOCK; WARN continues + logs |
+| Post-Stream Accumulator | `finish()` — full-response check after stream ends |
+
+**Three verdicts:** PASS (continue), FLAG/WARN (continue + log), BLOCK (stop + raise error)
+
+**Usage (OpenAI example):**
+
+```python
+from enkryptai_agent_security.guardrails.streaming import StreamGuard, StreamViolationError
+
+guard = StreamGuard(
+    api_key="ek-...",
+    guardrail_policy="My Policy",
+    block=["injection_attack", "toxicity"],
+    original_input=prompt,
+)
+
+async def text_chunks(openai_stream):
+    async for chunk in openai_stream:
+        if chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
+
+try:
+    async for text in guard.shield(text_chunks(stream)):
+        await websocket.send(text)
+except StreamViolationError as e:
+    await websocket.send_clear(e.violation)
+```
+
+---
+
 ## The two SDK integration paths
 
 ### Path A: `auto_secure()` — recommended, works for all 15 frameworks
@@ -194,10 +238,10 @@ No `auto_secure()` needed. The handler reads config from environment variables o
 
 | Framework | `sdk/adapters/` | `sdk/_patch/` | `sdk/framework_hooks/` | Unit tests | Examples |
 | --- | --- | --- | --- | --- | --- |
-| LangChain | ✅ | ✅ | ✅ handler + provider | ✅ | ✅ `langchain/` + `langchain_hooks/` |
-| LangGraph | ✅ | ✅ | ✅ hook + provider | ✅ | ✅ `langgraph/` + `langgraph_hooks/` |
-| OpenAI Agents | ✅ | ✅ | ✅ hook + provider | ✅ | ✅ `openai_agents/` + `openai_hooks/` |
-| Strands | ✅ | ✅ | ✅ hook + provider | ✅ | ✅ `strands/` + `strands_hooks/` |
+| LangChain | ✅ | ✅ | ✅ handler + provider | ✅ | ✅ `examples/sdk/langchain/` + `examples/hooks/langchain/` |
+| LangGraph | ✅ | ✅ | ✅ hook + provider | ✅ | ✅ `examples/sdk/langgraph/` + `examples/hooks/langgraph/` |
+| OpenAI Agents | ✅ | ✅ | ✅ hook + provider | ✅ | ✅ `examples/sdk/openai_agents/` + `examples/hooks/openai/` |
+| Strands | ✅ | ✅ | ✅ hook + provider | ✅ | ✅ `examples/sdk/strands/` + `examples/hooks/strands/` |
 | CrewAI | ✅ | ✅ | ✅ provider | ✅ | ✅ `crewai/` |
 | Anthropic | ✅ | ✅ | — | — | ✅ `anthropic/` |
 | AutoGen | ✅ | ✅ | — | — | ✅ `autogen/` |
@@ -323,9 +367,10 @@ src/enkryptai_agent_security/
 │       ├── semantic_kernel.py     # install()/uninstall() for Semantic Kernel
 │       └── smolagents.py          # install()/uninstall() for SmolaAgents
 │
-├── guardrails/                    # 🔑 Core guardrail client (shared by hooks/ and sdk/)
+├── guardrails/                    # 🔑 Core guardrail client (shared by all sub-systems)
 │   ├── client.py                  # EnkryptGuardrailClient — raw HTTP API wrapper
 │   ├── parser.py                  # Response parser
+│   ├── streaming.py               # StreamGuard — real-time guardrails for LLM streams
 │   └── types.py                   # GuardrailResult, Violation, etc.
 │
 └── config/                        # Package-level config helpers
@@ -338,7 +383,7 @@ src/enkryptai_agent_security/
 ```
 tests/
 ├── gateway/                       # Gateway tests
-├── guardrails/                    # Core guardrail client tests
+├── guardrails/                    # Core guardrail client + streaming tests
 ├── hooks/                         # IDE platform hook tests (claude, claude_code, copilot, cursor, kiro)
 ├── sdk/                           # SDK core tests
 │   ├── test_auto.py               # auto_secure() integration
@@ -386,14 +431,20 @@ examples/
     ├── semantic_kernel/real_test.py
     ├── smolagents/real_test.py
     │
-    # framework_hooks manual integration examples (4 frameworks)
-    ├── langchain_hooks/           # basic_usage.py, demo_injection_attack.py, ...
-    ├── langgraph_hooks/           # basic_agent.py, demo_injection_attack.py, ...
-    ├── openai_hooks/              # basic_agent.py, demo_injection_attack.py, ...
-    └── strands_hooks/             # basic_agent.py, demo_injection_attack.py, ...
+    └── smolagents/real_test.py
 ```
 
-Note: `<fw>/real_test.py` demos use `auto_secure()`. `<fw>_hooks/` demos use `sdk.framework_hooks` classes directly. The `strands/real_test.py` shows both approaches side by side.
+framework_hooks manual integration examples live in `examples/hooks/`:
+
+```
+examples/hooks/
+    ├── langchain/             # basic_usage.py, demo_injection_attack.py, ...
+    ├── langgraph/             # basic_agent.py, demo_injection_attack.py, ...
+    ├── openai/                # basic_agent.py, demo_injection_attack.py, ...
+    └── strands/               # basic_agent.py, demo_injection_attack.py, ...
+```
+
+Note: `examples/sdk/<fw>/real_test.py` demos use `auto_secure()`. `examples/hooks/<fw>/` demos use `sdk.framework_hooks` classes directly. The `strands/real_test.py` shows both approaches side by side.
 
 ---
 
@@ -484,4 +535,20 @@ from enkryptai_agent_security.sdk.framework_hooks.langchain_handler import Enkry
 
 handler = EnkryptGuardrailsHandler()
 llm = ChatOpenAI(callbacks=[handler])
+```
+
+**Streaming Guardrails** — protect streaming LLM responses:
+
+```python
+from enkryptai_agent_security.guardrails.streaming import StreamGuard
+
+guard = StreamGuard(
+    api_key="ek-...",
+    guardrail_policy="My Policy",
+    block=["injection_attack", "toxicity"],
+    original_input=user_prompt,
+)
+
+async for chunk in guard.shield(text_chunks(llm_stream)):
+    await send_to_client(chunk)
 ```

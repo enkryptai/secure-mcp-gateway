@@ -45,7 +45,6 @@ def demo_auto_secure():
         #   enkrypt_api_key="ek-...",
         #   guardrail_policy="Sample Airline Guardrail",
         #   block=["injection_attack", "toxicity"],
-        #   pii_redaction=True,
     )
     print(f"  Framework instrumentation results: {results}")
     shutdown()

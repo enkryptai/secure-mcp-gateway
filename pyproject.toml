@@ -175,3 +175,6 @@ line-ending = "auto"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: tests that require external API keys (Anthropic, Enkrypt)",
+]
