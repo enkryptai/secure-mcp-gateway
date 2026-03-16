@@ -15,17 +15,9 @@ For documentation and usage instructions, please visit our GitHub repository:
 
 ### Enkrypt AI MCP Gateway Core
 
-This project's core functionality is licensed under the MIT License.
+This project's core functionality is licensed under the Apache License, Version 2.0.
 
-<!-- In addition to the MIT License, the following additional terms apply:
-
-- You can freely use, modify, and distribute this software as part of your commercial product
-
-- You can use this as part of your commercial product if your product is not an MCP gateway or gateway-based service
-
-- You cannot sell this gateway as a standalone product -->
-
-For the full license text, see the `LICENSE.txt` file in the repository.
+For the full license text, see the `LICENSE` file in the repository.
 
 ### Enkrypt AI Guardrails, Logo, and Branding
 

@@ -330,4 +330,4 @@ resetMetrics();
 
 ## License
 
-MIT
+Apache License 2.0 - See [LICENSE](../../LICENSE) file for details.
