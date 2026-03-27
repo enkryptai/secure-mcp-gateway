@@ -4,18 +4,17 @@ afterAgentResponse Hook - Audits the agent's final response text using Enkrypt A
 
 Per Cursor hooks spec, this hook is observability-only (no blocking output fields supported).
 """
-import sys
 import json
-import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from enkrypt_guardrails import (  # noqa: E402
+from enkrypt_guardrails import (
     check_with_enkrypt_api,
-    log_event,
-    log_to_combined,
-    log_security_alert,
-    is_hook_enabled,
     get_hook_guardrail_name,
+    is_hook_enabled,
+    log_event,
+    log_security_alert,
+    log_to_combined,
 )
 
 HOOK_NAME = "afterAgentResponse"
@@ -23,7 +22,7 @@ HOOK_NAME = "afterAgentResponse"
 
 def main():
     try:
-        data = json.load(sys.stdin)
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))
     except json.JSONDecodeError as e:
         log_event(HOOK_NAME, {"parse_error": str(e), "error_type": "JSONDecodeError"})
         print(json.dumps({}))
@@ -35,8 +34,10 @@ def main():
     api_result = None
     if is_hook_enabled(HOOK_NAME) and text and text.strip():
         should_alert, violations, api_result = check_with_enkrypt_api(text, hook_name=HOOK_NAME)
-        # Log guardrails response to stderr (visible in Cursor hooks output)
-        print(f"\n[Enkrypt Guardrails Response]\n{json.dumps(api_result, indent=2)}", file=sys.stderr)
+        print(
+            f"\n[Enkrypt Guardrails Response]\n{json.dumps(api_result, indent=2)}",
+            file=sys.stderr,
+        )
         if should_alert:
             log_security_alert(
                 "agent_response_violation",
@@ -58,7 +59,6 @@ def main():
     log_event(HOOK_NAME, log_data)
     log_to_combined(HOOK_NAME, log_data)
 
-    # afterAgentResponse has no supported output fields; return empty object.
     print(json.dumps({}))
 
 

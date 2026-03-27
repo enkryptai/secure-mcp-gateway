@@ -621,6 +621,35 @@ def read_hook_input() -> Dict[str, Any]:
         return {}
 
 
+MAX_FILE_CHARS = 8000
+
+
+def _read_file_safe(path: str, max_chars: int = MAX_FILE_CHARS) -> Optional[str]:
+    """Read file contents as text, returning None for binary/unreadable files."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="strict") as f:
+            return f.read(max_chars)
+    except (UnicodeDecodeError, ValueError):
+        try:
+            with open(path, "r", encoding="latin-1") as f:
+                return f.read(max_chars)
+        except Exception:
+            return None
+    except (OSError, IOError):
+        return None
+
+
+def extract_file_content_for_read(tool_input: Dict[str, Any]) -> Optional[str]:
+    """Read actual file contents from disk when tool_name is Read.
+
+    Returns the file text (up to MAX_FILE_CHARS) or None if unreadable.
+    """
+    file_path = tool_input.get("file_path", "")
+    if not file_path:
+        return None
+    return _read_file_safe(file_path)
+
+
 def extract_text_from_tool_input(tool_name: str, tool_input: Dict[str, Any]) -> str:
     """Extract text content from tool input for guardrails check."""
     text_parts = []

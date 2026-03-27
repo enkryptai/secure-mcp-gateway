@@ -33,10 +33,16 @@ Environment Variables:
 - CLAUDE_ENV_FILE: Path to file for persisting env vars (like SessionStart)
 """
 
-import sys
-import os
-import json
 import datetime
+import json
+import os
+import sys
+
+os.environ.setdefault(
+    "ENKRYPT_GUARDRAILS_CONFIG",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "guardrails_config.json"),
+)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from enkrypt_guardrails import (
     read_hook_input,

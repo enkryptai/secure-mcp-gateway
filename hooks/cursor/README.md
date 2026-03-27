@@ -11,8 +11,10 @@ Protect your Cursor chats and MCP tool calls using Enkrypt AI guardrails.
 | `afterMCPExecution` | After an MCP tool returns | NO (audit only) | *none* |
 | `afterAgentResponse` | After the agent produces a response | NO (audit only) | *none* |
 | `stop` | When the agent completes | NO | `followup_message` (optional) |
+| `beforeReadFile` | Before the agent reads a file | **YES** | `permission`, `user_message` |
+| `afterFileEdit` | After the agent edits a file | NO (audit only) | *none* |
 
-> **Note:** Per [Cursor's hooks specification](https://cursor.com/docs/agent/hooks), only `before*` hooks support blocking. The `after*` hooks are observational—they detect violations and log security alerts but cannot prevent actions.
+> **Note:** Per [Cursor's hooks specification](https://cursor.com/docs/agent/hooks), only `before*` hooks that support blocking can deny an action. `afterFileEdit` is observational (audit/logging only), like `afterMCPExecution` and `afterAgentResponse`.
 
 ### Blocking vs Observational Hooks
 
@@ -33,12 +35,13 @@ When violations are detected in observational hooks, they are logged to `securit
 
 ### Hooks Not Supported Yet
 
-The following Cursor hooks are not yet implemented:
+The following Cursor hooks are not yet implemented here:
 
 - `beforeShellExecution` / `afterShellExecution` - Shell command control
-- `beforeReadFile` / `afterFileEdit` - File access and modification control
 - `afterAgentThought` - Agent thought tracking
 - `beforeTabFileRead` / `afterTabFileEdit` - Tab completion file operations
+
+**Implemented file hooks:** `beforeReadFile` (can block reads) and `afterFileEdit` (audit-only). Enable them in `guardrails_config.json` and register commands in `.cursor/hooks.json` (see `hooks_example.json`).
 
 ## 🚀 Quick start (project-level)
 

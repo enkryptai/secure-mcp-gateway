@@ -268,7 +268,14 @@ def validate_config(config: dict) -> List[str]:
             errors.append(f"enkrypt_api.fail_silently must be a boolean, got: {type(fail_silently).__name__}")
 
     # Validate hook policies
-    valid_hooks = ["beforeSubmitPrompt", "beforeMCPExecution", "afterMCPExecution", "afterAgentResponse"]
+    valid_hooks = [
+        "beforeSubmitPrompt",
+        "beforeMCPExecution",
+        "afterMCPExecution",
+        "afterAgentResponse",
+        "beforeReadFile",
+        "afterFileEdit",
+    ]
     for hook_name in valid_hooks:
         policy = config.get(hook_name, {})
         if policy:
@@ -341,6 +348,8 @@ HOOK_POLICIES = {
     "beforeMCPExecution": CONFIG.get("beforeMCPExecution", {}),
     "afterMCPExecution": CONFIG.get("afterMCPExecution", {}),
     "afterAgentResponse": CONFIG.get("afterAgentResponse", {}),
+    "beforeReadFile": CONFIG.get("beforeReadFile", {}),
+    "afterFileEdit": CONFIG.get("afterFileEdit", {}),
 }
 
 
@@ -698,6 +707,8 @@ def get_source_event(hook_name: str) -> str:
         "beforeMCPExecution": "pre-tool",
         "afterMCPExecution": "post-tool",
         "afterAgentResponse": "post-response",
+        "beforeReadFile": "pre-file-read",
+        "afterFileEdit": "post-file-edit",
     }
     return event_mapping.get(hook_name, hook_name)
 
@@ -1043,6 +1054,8 @@ def reload_config():
         "beforeMCPExecution": CONFIG.get("beforeMCPExecution", {}),
         "afterMCPExecution": CONFIG.get("afterMCPExecution", {}),
         "afterAgentResponse": CONFIG.get("afterAgentResponse", {}),
+        "beforeReadFile": CONFIG.get("beforeReadFile", {}),
+        "afterFileEdit": CONFIG.get("afterFileEdit", {}),
     }
     SENSITIVE_MCP_TOOLS = CONFIG.get("sensitive_mcp_tools", [])
 
