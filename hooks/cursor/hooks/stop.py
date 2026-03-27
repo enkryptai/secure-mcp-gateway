@@ -2,22 +2,21 @@
 """
 stop Hook - Handles agent loop completion.
 """
-import sys
 import json
-import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from enkrypt_guardrails import (
+    LOG_DIR,
     get_timestamp,
     log_event,
     log_to_combined,
-    LOG_DIR
 )
 
 
 def main():
     try:
-        data = json.load(sys.stdin)
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))
     except json.JSONDecodeError as e:
         log_event("stop", {"parse_error": str(e), "error_type": "JSONDecodeError"})
         print(json.dumps({}))
@@ -26,7 +25,6 @@ def main():
     status = data.get("status", "completed")
     loop_count = data.get("loop_count", 0)
 
-    # Generate session summary
     summary = {
         "conversation_id": data.get("conversation_id"),
         "generation_id": data.get("generation_id"),
@@ -40,7 +38,6 @@ def main():
     log_event("stop", {**data, "summary": summary})
     log_to_combined("stop", data)
 
-    # Write session summary
     summary_file = LOG_DIR / "session_summaries.jsonl"
     with open(summary_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(summary) + "\n")

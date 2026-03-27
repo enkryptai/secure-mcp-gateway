@@ -49,6 +49,28 @@
       "nsfw"
     ]
   },
+  "beforeReadFile": {
+    "enabled": false,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "injection_attack",
+      "pii",
+      "keyword_detector",
+      "policy_violation",
+      "nsfw",
+      "toxicity"
+    ]
+  },
+  "afterFileEdit": {
+    "enabled": false,
+    "guardrail_name": "Sample Airline Guardrail",
+    "block": [
+      "pii",
+      "toxicity",
+      "nsfw",
+      "policy_violation"
+    ]
+  },
   "sensitive_mcp_tools": [
     "execute_sql",
     "delete_",

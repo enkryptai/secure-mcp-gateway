@@ -21,6 +21,16 @@
         "command": "hooks\\cursor\\venv\\Scripts\\python.exe hooks\\cursor\\hooks\\after_agent_response.py"
       }
     ],
+    "beforeReadFile": [
+      {
+        "command": "hooks\\cursor\\venv\\Scripts\\python.exe hooks\\cursor\\hooks\\before_read_file.py"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "hooks\\cursor\\venv\\Scripts\\python.exe hooks\\cursor\\hooks\\after_file_edit.py"
+      }
+    ],
     "stop": [
       {
         "command": "hooks\\cursor\\venv\\Scripts\\python.exe hooks\\cursor\\hooks\\stop.py"

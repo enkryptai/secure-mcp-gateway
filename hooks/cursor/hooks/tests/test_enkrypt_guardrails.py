@@ -607,5 +607,15 @@ class TestDynamicReload(unittest.TestCase):
         self.assertTrue(callable(flush_logs))
 
 
+class TestGetSourceEvent(unittest.TestCase):
+    """API header mapping for Cursor hooks."""
+
+    def test_file_hook_events(self):
+        from enkrypt_guardrails import get_source_event
+
+        self.assertEqual(get_source_event("beforeReadFile"), "pre-file-read")
+        self.assertEqual(get_source_event("afterFileEdit"), "post-file-edit")
+
+
 if __name__ == "__main__":
     unittest.main()
