@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import os
 import socket
 import sys
-
-# Avoid circular import; we'll use a module-local logger
-import sys as python_sys
-
-logger = logging.getLogger("enkrypt.telemetry")
 from typing import Any
 from urllib.parse import urlparse
+
+import structlog
+
+from secure_mcp_gateway.log import get_logger
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    METRIC_DESCRIPTIONS,
+    MetricNames,
+)
+
+logger = get_logger("enkrypt.telemetry")
 
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
@@ -58,6 +64,8 @@ class OpenTelemetryProvider(TelemetryProvider):
         self._meter = None
         self._resource = None
         self._is_telemetry_enabled = None
+        self._tracer_provider = None
+        self._meter_provider = None
 
         # Initialize all metrics as None
         self._initialize_metric_vars()
@@ -323,46 +331,41 @@ class OpenTelemetryProvider(TelemetryProvider):
         )
 
         # ---------- LOGGING SETUP ----------
-        # Don't modify root logger to avoid duplication
-        # Only set up telemetry-specific logging
-
-        # Set up OTLP logging for telemetry data only
+        # Attach OTLP log handler to the stdlib *root* logger so that all
+        # structlog events (which are bridged through stdlib) are exported.
         otlp_exporter = OTLPLogExporter(endpoint=endpoint, insecure=insecure)
         logger_provider = LoggerProvider(resource=self._resource)
         logger_provider.add_log_record_processor(BatchLogRecordProcessor(otlp_exporter))
 
-        # Create telemetry-specific logger
-        self._logger = logging.getLogger(service_name)
-        # log level from common config (enkrypt_log_level)
-        from secure_mcp_gateway.utils import get_common_config
-
-        common_config = get_common_config()
-        log_level = common_config.get("enkrypt_log_level", "INFO").upper()
-        self._logger.setLevel(getattr(logging, log_level))
-
-        # Only add OTLP handler for telemetry data export
         otlp_handler = LoggingHandler(
-            level=logging.INFO, logger_provider=logger_provider
+            level=logging.DEBUG, logger_provider=logger_provider
         )
-        self._logger.addHandler(otlp_handler)
+        logging.getLogger().addHandler(otlp_handler)
+        self._logger = get_logger(service_name)
 
         # ---------- TRACING SETUP ----------
-        trace.set_tracer_provider(TracerProvider(resource=self._resource))
+        self._tracer_provider = TracerProvider(resource=self._resource)
+        trace.set_tracer_provider(self._tracer_provider)
         self._tracer = trace.get_tracer(__name__)
 
         otlp_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=insecure)
         span_processor = BatchSpanProcessor(otlp_exporter)
-        trace.get_tracer_provider().add_span_processor(span_processor)
+        self._tracer_provider.add_span_processor(span_processor)
 
         # ---------- METRICS SETUP ----------
         otlp_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=insecure)
         reader = PeriodicExportingMetricReader(
             otlp_exporter, export_interval_millis=5000
         )
-        provider = MeterProvider(resource=self._resource, metric_readers=[reader])
-        metrics.set_meter_provider(provider)
+        self._meter_provider = MeterProvider(
+            resource=self._resource, metric_readers=[reader]
+        )
+        metrics.set_meter_provider(self._meter_provider)
 
         self._meter = metrics.get_meter("enkrypt.meter")
+
+        # Flush buffered spans/metrics on process exit
+        atexit.register(self.shutdown)
 
         # Create all metrics
         self._create_metrics()
@@ -371,139 +374,88 @@ class OpenTelemetryProvider(TelemetryProvider):
         self._create_timeout_metrics()
 
     def _create_metrics(self):
-        """Create all metrics."""
-        # Basic Counters
+        """Create all metrics using canonical names from conventions."""
+        M = MetricNames
+        D = METRIC_DESCRIPTIONS
+
         self.list_servers_call_count = self._meter.create_counter(
-            "enkrypt_list_all_servers_calls",
-            description="Number of times enkrypt_list_all_servers was called",
+            M.DISCOVERY_LIST, description=D[M.DISCOVERY_LIST],
         )
         self.servers_discovered_count = self._meter.create_counter(
-            "enkrypt_servers_discovered",
-            description="Total number of servers discovered with tools",
+            M.DISCOVERY_FOUND, description=D[M.DISCOVERY_FOUND],
         )
         self.cache_hit_counter = self._meter.create_counter(
-            name="enkrypt_cache_hits_total",
-            description="Total number of cache hits",
-            unit="1",
+            M.CACHE_HITS, description=D[M.CACHE_HITS], unit="1",
         )
         self.cache_miss_counter = self._meter.create_counter(
-            name="enkrypt_cache_misses_total",
-            description="Total number of cache misses",
-            unit="1",
+            M.CACHE_MISSES, description=D[M.CACHE_MISSES], unit="1",
         )
         self.tool_call_counter = self._meter.create_counter(
-            name="enkrypt_tool_calls_total",
-            description="Total number of tool calls",
-            unit="1",
+            M.TOOL_CALLS, description=D[M.TOOL_CALLS], unit="1",
         )
         self.guardrail_api_request_counter = self._meter.create_counter(
-            name="enkrypt_api_requests_total",
-            description="Total number of API requests",
-            unit="1",
+            M.GUARDRAIL_CHECKS, description=D[M.GUARDRAIL_CHECKS], unit="1",
         )
         self.guardrail_api_request_duration = self._meter.create_histogram(
-            name="enkrypt_api_request_duration_seconds",
-            description="Duration of API requests in seconds",
-            unit="s",
+            M.GUARDRAIL_DURATION, description=D[M.GUARDRAIL_DURATION], unit="s",
         )
         self.guardrail_violation_counter = self._meter.create_counter(
-            name="enkrypt_guardrail_violations_total",
-            description="Total number of guardrail violations",
-            unit="1",
+            M.GUARDRAIL_BLOCKS, description=D[M.GUARDRAIL_BLOCKS], unit="1",
         )
         self.tool_call_duration = self._meter.create_histogram(
-            name="enkrypt_tool_call_duration_seconds",
-            description="Duration of tool calls in seconds",
-            unit="s",
+            M.TOOL_DURATION, description=D[M.TOOL_DURATION], unit="s",
         )
-
-        # Advanced Metrics
         self.tool_call_success_counter = self._meter.create_counter(
-            "enkrypt_tool_call_success_total",
-            description="Total successful tool calls",
-            unit="1",
+            M.TOOL_SUCCESS, description=D[M.TOOL_SUCCESS], unit="1",
         )
         self.tool_call_failure_counter = self._meter.create_counter(
-            "enkrypt_tool_call_failure_total",
-            description="Total failed tool calls",
-            unit="1",
+            M.TOOL_FAILURES, description=D[M.TOOL_FAILURES], unit="1",
         )
         self.tool_call_error_counter = self._meter.create_counter(
-            "enkrypt_tool_call_errors_total",
-            description="Total tool call errors",
-            unit="1",
+            M.TOOL_ERRORS, description=D[M.TOOL_ERRORS], unit="1",
         )
         self.auth_success_counter = self._meter.create_counter(
-            "enkrypt_auth_success_total",
-            description="Total successful authentications",
-            unit="1",
+            M.AUTH_SUCCESS, description=D[M.AUTH_SUCCESS], unit="1",
         )
         self.auth_failure_counter = self._meter.create_counter(
-            "enkrypt_auth_failure_total",
-            description="Total failed authentications",
-            unit="1",
+            M.AUTH_FAILURE, description=D[M.AUTH_FAILURE], unit="1",
         )
         self.active_sessions_gauge = self._meter.create_up_down_counter(
-            "enkrypt_active_sessions", description="Current active sessions", unit="1"
+            M.SESSION_ACTIVE, description=D[M.SESSION_ACTIVE], unit="1",
         )
         self.active_users_gauge = self._meter.create_up_down_counter(
-            "enkrypt_active_users", description="Current active users", unit="1"
+            M.USERS_ACTIVE, description=D[M.USERS_ACTIVE], unit="1",
         )
         self.pii_redactions_counter = self._meter.create_counter(
-            "enkrypt_pii_redactions_total", description="Total PII redactions", unit="1"
+            M.PII_REDACTIONS, description=D[M.PII_REDACTIONS], unit="1",
         )
         self.tool_call_blocked_counter = self._meter.create_counter(
-            "enkrypt_tool_call_blocked_total",
-            description="Total blocked tool calls (guardrail blocks)",
-            unit="1",
+            M.TOOL_BLOCKED, description=D[M.TOOL_BLOCKED], unit="1",
         )
         self.input_guardrail_violation_counter = self._meter.create_counter(
-            "enkrypt_input_guardrail_violations_total",
-            description="Input guardrail violations",
-            unit="1",
+            M.GUARDRAIL_INPUT_BLOCKS, description=D[M.GUARDRAIL_INPUT_BLOCKS], unit="1",
         )
         self.output_guardrail_violation_counter = self._meter.create_counter(
-            "enkrypt_output_guardrail_violations_total",
-            description="Output guardrail violations",
-            unit="1",
+            M.GUARDRAIL_OUTPUT_BLOCKS, description=D[M.GUARDRAIL_OUTPUT_BLOCKS], unit="1",
         )
         self.relevancy_violation_counter = self._meter.create_counter(
-            "enkrypt_relevancy_violations_total",
-            description="Relevancy guardrail violations",
-            unit="1",
+            M.GUARDRAIL_RELEVANCY_BLOCKS, description=D[M.GUARDRAIL_RELEVANCY_BLOCKS], unit="1",
         )
         self.adherence_violation_counter = self._meter.create_counter(
-            "enkrypt_adherence_violations_total",
-            description="Adherence guardrail violations",
-            unit="1",
+            M.GUARDRAIL_ADHERENCE_BLOCKS, description=D[M.GUARDRAIL_ADHERENCE_BLOCKS], unit="1",
         )
         self.hallucination_violation_counter = self._meter.create_counter(
-            "enkrypt_hallucination_violations_total",
-            description="Hallucination guardrail violations",
-            unit="1",
+            M.GUARDRAIL_HALLUCINATION_BLOCKS, description=D[M.GUARDRAIL_HALLUCINATION_BLOCKS], unit="1",
         )
 
     def _setup_disabled_telemetry(self):
-        """Setup no-op telemetry when disabled."""
+        """Setup no-op telemetry when disabled.
 
-        # No-op logger
-        class NoOpLogger:
-            level = 100  # High level to disable debug checks
-
-            def info(self, msg, *args, **kwargs):
-                pass
-
-            def debug(self, msg, *args, **kwargs):
-                pass
-
-            def warning(self, msg, *args, **kwargs):
-                pass
-
-            def error(self, msg, *args, **kwargs):
-                pass
-
-            def critical(self, msg, *args, **kwargs):
-                pass
+        The logger is still a real structlog logger routed to the console
+        handler set up by ``configure_logging()``.  Only OTLP export is
+        skipped.
+        """
+        self._logger = get_logger("secure-mcp-gateway")
 
         # No-op tracer components
         class NoOpSpan:
@@ -559,7 +511,6 @@ class OpenTelemetryProvider(TelemetryProvider):
             def record(self, amount, attributes=None):
                 pass
 
-        self._logger = NoOpLogger()
         self._tracer = NoOpTracer()
         self._meter = NoOpMeter()
         self._resource = None
@@ -590,10 +541,10 @@ class OpenTelemetryProvider(TelemetryProvider):
         self.pii_redactions_counter = NoOpCounter()
 
     def create_logger(self, name: str) -> Any:
-        """Create a logger instance."""
+        """Create a logger instance (structlog-backed)."""
         if not self._initialized:
             raise RuntimeError("Provider not initialized. Call initialize() first.")
-        return self._logger
+        return get_logger(name)
 
     def create_tracer(self, name: str) -> Any:
         """Create a tracer instance."""
@@ -608,50 +559,44 @@ class OpenTelemetryProvider(TelemetryProvider):
         return self._meter
 
     def _create_timeout_metrics(self):
-        """Create timeout-specific metrics."""
-        # Timeout operation counters
+        """Create timeout-specific metrics using canonical names."""
+        M = MetricNames
+        D = METRIC_DESCRIPTIONS
+
         self.timeout_operations_total = self._meter.create_counter(
-            "enkrypt_timeout_operations_total",
-            description="Total number of timeout operations",
+            M.TIMEOUT_OPERATIONS, description=D[M.TIMEOUT_OPERATIONS],
         )
         self.timeout_operations_successful = self._meter.create_counter(
-            "enkrypt_timeout_operations_successful",
-            description="Number of successful timeout operations",
+            M.TIMEOUT_SUCCESS, description=D[M.TIMEOUT_SUCCESS],
         )
         self.timeout_operations_timed_out = self._meter.create_counter(
-            "enkrypt_timeout_operations_timed_out",
-            description="Number of operations that timed out",
+            M.TIMEOUT_TIMED_OUT, description=D[M.TIMEOUT_TIMED_OUT],
         )
         self.timeout_operations_cancelled = self._meter.create_counter(
-            "enkrypt_timeout_operations_cancelled",
-            description="Number of operations that were cancelled",
+            M.TIMEOUT_CANCELLED, description=D[M.TIMEOUT_CANCELLED],
         )
-
-        # Timeout escalation counters
         self.timeout_escalation_warn = self._meter.create_counter(
-            "enkrypt_timeout_escalation_warn",
-            description="Number of timeout escalation warnings",
+            M.TIMEOUT_ESCALATION_WARN, description=D[M.TIMEOUT_ESCALATION_WARN],
         )
         self.timeout_escalation_timeout = self._meter.create_counter(
-            "enkrypt_timeout_escalation_timeout",
-            description="Number of timeout escalations",
+            M.TIMEOUT_ESCALATION_TIMEOUT, description=D[M.TIMEOUT_ESCALATION_TIMEOUT],
         )
         self.timeout_escalation_fail = self._meter.create_counter(
-            "enkrypt_timeout_escalation_fail",
-            description="Number of timeout escalation failures",
+            M.TIMEOUT_ESCALATION_FAIL, description=D[M.TIMEOUT_ESCALATION_FAIL],
         )
-
-        # Timeout duration histogram
         self.timeout_operation_duration = self._meter.create_histogram(
-            "enkrypt_timeout_operation_duration_seconds",
-            description="Duration of timeout operations in seconds",
+            M.TIMEOUT_DURATION, description=D[M.TIMEOUT_DURATION],
+        )
+        self.timeout_active_operations = self._meter.create_up_down_counter(
+            M.TIMEOUT_ACTIVE, description=D[M.TIMEOUT_ACTIVE],
         )
 
-        # Active operations gauge
-        self.timeout_active_operations = self._meter.create_up_down_counter(
-            "enkrypt_timeout_active_operations",
-            description="Number of currently active timeout operations",
-        )
+    def shutdown(self) -> None:
+        """Flush and shut down OTel providers so buffered data is not lost."""
+        if self._tracer_provider and hasattr(self._tracer_provider, "shutdown"):
+            self._tracer_provider.shutdown()
+        if self._meter_provider and hasattr(self._meter_provider, "shutdown"):
+            self._meter_provider.shutdown()
 
     def is_initialized(self) -> bool:
         """Check if provider is initialized"""

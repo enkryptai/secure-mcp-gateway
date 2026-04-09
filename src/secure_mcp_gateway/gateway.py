@@ -53,6 +53,9 @@ if src_dir not in sys.path:
 # print(f"root_dir: {root_dir}", file=sys.stderr)
 # print("--------------------------------", file=sys.stderr)
 
+    json_output=os.environ.get("ENKRYPT_LOG_FORMAT", "").lower() == "json",
+)
+_boot_logger = get_logger("secure_mcp_gateway.gateway")
 
 from secure_mcp_gateway.dependencies import __dependencies__
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
@@ -62,18 +65,13 @@ from secure_mcp_gateway.utils import (
 )
 from secure_mcp_gateway.version import __version__
 
-print(
-    f"Successfully imported secure_mcp_gateway v{__version__} in gateway module",
-    file=sys.stderr,
-)
+_boot_logger.info("imported secure_mcp_gateway", version=__version__)
 
 # Initialize telemetry system with plugin-based architecture
 from secure_mcp_gateway.plugins.telemetry import (
     get_telemetry_config_manager,
     initialize_telemetry_system,
 )
-
-# Telemetry will be initialized later with proper config
 
 # Default to skipping dependency install in Docker (dependencies pre-installed in image)
 skip_dep_install_env = os.environ.get("SKIP_DEPENDENCY_INSTALL")
@@ -83,27 +81,22 @@ skip_dependency_install = skip_dep_install_env == "true" or (
 
 if not skip_dependency_install:
     try:
-        print("Installing dependencies...", file=sys.stderr)
+        _boot_logger.info("installing dependencies")
         subprocess.check_call(
             [sys.executable, "-m", "pip", "install", *__dependencies__],
-            stdout=subprocess.DEVNULL,  # Suppress output
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        print("All dependencies installed successfully.", file=sys.stderr)
+        _boot_logger.info("dependencies installed successfully")
     except Exception as e:
-        print(f"Error installing dependencies: {e}", file=sys.stderr)
+        _boot_logger.error("error installing dependencies", error=str(e))
 else:
     reason = (
         "SKIP_DEPENDENCY_INSTALL=true"
         if skip_dep_install_env == "true"
         else "Docker environment detected"
     )
-    print(
-        f"Skipping dependency installation ({reason})",
-        file=sys.stderr,
-    )
-
-import traceback
+    _boot_logger.info("skipping dependency installation", reason=reason)
 
 from mcp.server.fastmcp import Context, FastMCP
 
@@ -142,9 +135,9 @@ initialize_auth_system(common_config)
 
 # Initialize telemetry system based on plugin configuration
 telemetry_manager = initialize_telemetry_system(common_config)
-logger = telemetry_manager.get_logger()
+logger = get_logger("secure_mcp_gateway.gateway")
 tracer = telemetry_manager.get_tracer()
-logger.info(f"Telemetry providers: {telemetry_manager.list_providers()}")
+logger.info("telemetry providers loaded", providers=telemetry_manager.list_providers())
 
 # Initialize timeout management system
 from secure_mcp_gateway.services.timeout import initialize_timeout_manager
@@ -799,6 +792,5 @@ if __name__ == "__main__":
             mcp.run(transport="streamable-http", mount_path="/mcp/")
         logger.info("Enkrypt Secure MCP Gateway is running")
     except Exception as e:
-        logger.error(f"Exception in mcp.run(): {e}")
-        traceback.print_exc(file=sys.stderr)
+        logger.error("fatal error in mcp.run()", error=str(e), exc_info=True)
         sys.exit(1)

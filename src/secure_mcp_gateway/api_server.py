@@ -7,6 +7,14 @@ import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+# --- Logging must be configured before any module that uses `logger` ---
+from secure_mcp_gateway.log import configure_logging
+
+configure_logging(
+    level=os.environ.get("ENKRYPT_LOG_LEVEL", "INFO"),
+    json_output=os.environ.get("ENKRYPT_LOG_FORMAT", "").lower() == "json",
+)
+
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +22,6 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
-# Add the current directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import all CLI functions

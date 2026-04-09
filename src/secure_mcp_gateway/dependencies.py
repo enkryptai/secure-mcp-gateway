@@ -19,7 +19,6 @@ __dependencies__ = [
     "pydantic[email]~=2.11.0",
     "email-validator~=2.2.0",
     # Logging and utilities
-    "python-json-logger~=3.3.0",
     "python-dateutil~=2.9.0.post0",
     "psutil~=6.1.0",
     # Security and encryption

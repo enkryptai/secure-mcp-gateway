@@ -5,12 +5,14 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict
 
+from secure_mcp_gateway.log import get_logger
 from secure_mcp_gateway.plugins.telemetry.base import (
     TelemetryLevel,
     TelemetryProvider,
     TelemetryResult,
 )
-from secure_mcp_gateway.utils import logger
+
+logger = get_logger(__name__)
 
 # ============================================================================
 # Console Provider (Simple Logging)
@@ -70,8 +72,8 @@ class ConsoleTelemetryProvider(TelemetryProvider):
             )
 
     def create_logger(self, name: str) -> Any:
-        """Return the logger"""
-        return self._logger
+        """Return a structlog logger (console output handled by root handler)."""
+        return get_logger(name)
 
     def create_tracer(self, name: str) -> Any:
         """Console provider doesn't support tracing"""
@@ -159,9 +161,7 @@ class DatadogTelemetryProvider(TelemetryProvider):
 
     def create_logger(self, name: str) -> Any:
         """Create Datadog logger"""
-        import logging
-
-        return logging.getLogger(name)
+        return get_logger(name)
 
     def create_tracer(self, name: str) -> Any:
         """Return Datadog tracer"""
@@ -240,9 +240,7 @@ class NewRelicTelemetryProvider(TelemetryProvider):
 
     def create_logger(self, name: str) -> Any:
         """Create logger"""
-        import logging
-
-        return logging.getLogger(name)
+        return get_logger(name)
 
     def create_tracer(self, name: str) -> Any:
         """New Relic uses decorators, not explicit tracers"""
@@ -317,9 +315,7 @@ class PrometheusTelemetryProvider(TelemetryProvider):
 
     def create_logger(self, name: str) -> Any:
         """Create logger"""
-        import logging
-
-        return logging.getLogger(name)
+        return get_logger(name)
 
     def create_tracer(self, name: str) -> Any:
         """Prometheus doesn't use tracers"""
@@ -394,10 +390,7 @@ class CustomTelemetryProvider(TelemetryProvider):
 
         This should return an object compatible with Python's logging interface.
         """
-        # TODO: Implement logger creation
-        import logging
-
-        return logging.getLogger(name)
+        return get_logger(name)
 
     def create_tracer(self, name: str) -> Any:
         """

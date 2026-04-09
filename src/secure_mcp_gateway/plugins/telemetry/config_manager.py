@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any, Dict
 
+from secure_mcp_gateway.log import get_logger
 from secure_mcp_gateway.plugins.telemetry.base import (
     TelemetryProvider,
     TelemetryRegistry,
     TelemetryResult,
 )
 
-logger = logging.getLogger("enkrypt.telemetry")
+logger = get_logger("enkrypt.telemetry")
 
 
 class TelemetryConfigManager:

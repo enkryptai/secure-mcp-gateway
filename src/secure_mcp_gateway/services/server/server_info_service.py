@@ -9,6 +9,7 @@ from secure_mcp_gateway.exceptions import (
     create_discovery_error,
 )
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
+from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes, SpanNames
 from secure_mcp_gateway.utils import (
     build_log_extra,
     get_server_info_by_name,
@@ -90,19 +91,19 @@ class ServerInfoService:
         enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
         session_key = f"{enkrypt_gateway_key}_{enkrypt_project_id}_{enkrypt_user_id}_{enkrypt_mcp_config_id}"
 
-        with tracer.start_as_current_span("enkrypt_get_server_info") as main_span:
-            main_span.set_attribute("server_name", server_name)
-            main_span.set_attribute("job", "enkrypt")
-            main_span.set_attribute("env", "dev")
-            main_span.set_attribute("custom_id", custom_id)
+        with tracer.start_as_current_span(SpanNames.SERVER_INFO) as main_span:
+            main_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            main_span.set_attribute(SpanAttributes.JOB, "enkrypt")
+            main_span.set_attribute(SpanAttributes.ENV, "dev")
+            main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             main_span.set_attribute(
                 "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
             )
-            main_span.set_attribute("enkrypt_project_id", enkrypt_project_id)
-            main_span.set_attribute("enkrypt_user_id", enkrypt_user_id)
-            main_span.set_attribute("enkrypt_mcp_config_id", enkrypt_mcp_config_id)
-            main_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
-            main_span.set_attribute("enkrypt_email", enkrypt_email)
+            main_span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
+            main_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
+            main_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
+            main_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            main_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
 
             try:
                 # Authentication check
@@ -151,7 +152,7 @@ class ServerInfoService:
                 )
 
                 # Success tracking
-                main_span.set_attribute("success", True)
+                main_span.set_attribute(SpanAttributes.SUCCESS, True)
 
                 # Mask sensitive data before returning
                 masked_server_info = mask_server_config_sensitive_data(
@@ -166,7 +167,7 @@ class ServerInfoService:
 
             except Exception as e:
                 main_span.record_exception(e)
-                main_span.set_attribute("error", str(e))
+                main_span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
                 logger.error(f"[get_server_info] Exception: {e}")
                 logger.error(
                     "get_server_info.exception",
@@ -201,29 +202,29 @@ class ServerInfoService:
         server_name,
     ):
         """Check authentication and return error if needed."""
-        with tracer.start_as_current_span("check_server_auth") as auth_span:
-            auth_span.set_attribute("custom_id", custom_id)
+        with tracer.start_as_current_span(SpanNames.SERVER_INFO_AUTH) as auth_span:
+            auth_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             auth_span.set_attribute(
                 "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
             )
 
             # Add authentication status tracking
             is_authenticated = await self.auth_manager.is_authenticated(ctx)
-            auth_span.set_attribute("is_authenticated", is_authenticated)
+            auth_span.set_attribute(SpanAttributes.IS_AUTHENTICATED, is_authenticated)
 
             if not is_authenticated:
                 # Import here to avoid circular imports
                 from secure_mcp_gateway.gateway import enkrypt_authenticate
 
                 result = await enkrypt_authenticate(ctx)
-                auth_span.set_attribute("auth_result", result.get("status"))
+                auth_span.set_attribute(SpanAttributes.AUTH_RESULT, result.get("status"))
                 if result.get("status") != "success":
                     auth_msg = result.get("message", "Unknown auth error")
                     auth_err = result.get("error", "")
                     detail = f"Authentication failed: {auth_msg}"
                     if auth_err and auth_err != auth_msg:
                         detail += f" ({auth_err})"
-                    auth_span.set_attribute("error", detail)
+                    auth_span.set_attribute(SpanAttributes.ERROR_MESSAGE, detail)
                     logger.warning(f"[get_server_info] {detail}")
                     logger.warning(
                         "get_server_info.not_authenticated",
@@ -250,16 +251,16 @@ class ServerInfoService:
         self, session_key, server_name, tracer, custom_id, logger
     ):
         """Get server info and check if server exists."""
-        with tracer.start_as_current_span("check_server_exists") as server_span:
-            server_span.set_attribute("server_name", server_name)
+        with tracer.start_as_current_span(SpanNames.SERVER_INFO_CHECK) as server_span:
+            server_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
             server_info = get_server_info_by_name(
                 self.auth_manager.get_session_gateway_config(session_key), server_name
             )
-            server_span.set_attribute("server_found", server_info is not None)
+            server_span.set_attribute(SpanAttributes.TOOL_FOUND, server_info is not None)
 
             if not server_info:
                 server_span.set_attribute(
-                    "error", f"Server '{server_name}' not available"
+                    SpanAttributes.ERROR_MESSAGE, f"Server '{server_name}' not available"
                 )
                 logger.warning(
                     f"[get_server_info] Server '{server_name}' not available"
@@ -288,8 +289,8 @@ class ServerInfoService:
         cache_client,
     ):
         """Get latest server info with all attributes."""
-        with tracer.start_as_current_span("get_latest_server_info") as info_span:
-            info_span.set_attribute("server_name", server_name)
+        with tracer.start_as_current_span(SpanNames.SERVER_INFO_LATEST) as info_span:
+            info_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
             info_span.set_attribute(
                 "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
             )
@@ -300,8 +301,8 @@ class ServerInfoService:
             info_span.set_attribute("project_id", enkrypt_project_id)
             info_span.set_attribute("user_id", enkrypt_user_id)
             info_span.set_attribute("mcp_config_id", enkrypt_mcp_config_id)
-            info_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
-            info_span.set_attribute("enkrypt_email", enkrypt_email)
+            info_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            info_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
 
             from secure_mcp_gateway.services.cache.cache_service import CacheService
 

@@ -16,6 +16,7 @@ from secure_mcp_gateway.exceptions import (
 )
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
+from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes, SpanNames
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 from secure_mcp_gateway.utils import (
     build_log_extra,
@@ -86,12 +87,12 @@ class DiscoveryService:
         )
 
         with tracer_obj.start_as_current_span(
-            "enkrypt_discover_all_tools"
+            SpanNames.DISCOVERY
         ) as main_span:
-            main_span.set_attribute("server_name", server_name or "all")
-            main_span.set_attribute("custom_id", custom_id)
-            main_span.set_attribute("job", "enkrypt")
-            main_span.set_attribute("env", "dev")
+            main_span.set_attribute(SpanAttributes.SERVER_NAME, server_name or "all")
+            main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
+            main_span.set_attribute(SpanAttributes.JOB, "enkrypt")
+            main_span.set_attribute(SpanAttributes.ENV, "dev")
             main_span.set_attribute(
                 "discovery_mode", "single" if server_name else "all"
             )
@@ -137,11 +138,11 @@ class DiscoveryService:
             main_span.set_attribute(
                 "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
             )
-            main_span.set_attribute("enkrypt_project_id", enkrypt_project_id)
-            main_span.set_attribute("enkrypt_user_id", enkrypt_user_id)
-            main_span.set_attribute("enkrypt_mcp_config_id", enkrypt_mcp_config_id)
-            main_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
-            main_span.set_attribute("enkrypt_email", enkrypt_email)
+            main_span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
+            main_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
+            main_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
+            main_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            main_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
 
             session_key = f"{credentials.get('gateway_key')}_{credentials.get('project_id')}_{credentials.get('user_id')}_{enkrypt_mcp_config_id}"
 
@@ -188,7 +189,7 @@ class DiscoveryService:
 
             except Exception as e:
                 main_span.record_exception(e)
-                main_span.set_attribute("error", str(e))
+                main_span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
 
                 # Use standardized error handling
                 context = ErrorContext(
@@ -244,12 +245,12 @@ class DiscoveryService:
     ):
         """Check authentication and return error if needed."""
         if not self.auth_manager.is_session_authenticated(session_key):
-            with tracer_obj.start_as_current_span("check_auth") as auth_span:
-                auth_span.set_attribute("custom_id", custom_id)
+            with tracer_obj.start_as_current_span(SpanNames.AUTH) as auth_span:
+                auth_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
                 auth_span.set_attribute(
                     "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
                 )
-                auth_span.set_attribute("is_authenticated", False)
+                auth_span.set_attribute(SpanAttributes.IS_AUTHENTICATED, False)
 
                 # Import here to avoid circular imports
                 from secure_mcp_gateway.gateway import enkrypt_authenticate
@@ -262,7 +263,7 @@ class DiscoveryService:
                     detail = f"Authentication failed: {auth_msg}"
                     if auth_err and auth_err != auth_msg:
                         detail += f" ({auth_err})"
-                    auth_span.set_attribute("error", detail)
+                    auth_span.set_attribute(SpanAttributes.ERROR_MESSAGE, detail)
                     logger.warning(
                         "enkrypt_discover_all_tools.not_authenticated",
                         extra=build_log_extra(ctx, custom_id, server_name),
@@ -300,13 +301,13 @@ class DiscoveryService:
     ):
         """Discover tools for all servers using three-phase parallel approach."""
         with tracer_obj.start_as_current_span("discover_all_servers") as all_span:
-            all_span.set_attribute("custom_id", custom_id)
+            all_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             all_span.set_attribute("discovery_started", True)
             all_span.set_attribute("project_id", enkrypt_project_id)
             all_span.set_attribute("user_id", enkrypt_user_id)
             all_span.set_attribute("mcp_config_id", enkrypt_mcp_config_id)
-            all_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
-            all_span.set_attribute("enkrypt_email", enkrypt_email)
+            all_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            all_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
 
             logger.info(
                 "[discover_server_tools] Discovering tools for all servers using three-phase parallel approach"
@@ -495,8 +496,8 @@ class DiscoveryService:
             with tracer_obj.start_as_current_span(
                 f"validate_server_{server_name}"
             ) as server_span:
-                server_span.set_attribute("server_name", server_name)
-                server_span.set_attribute("custom_id", custom_id)
+                server_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+                server_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
 
                 try:
                     # Get server info
@@ -631,8 +632,8 @@ class DiscoveryService:
         with tracer_obj.start_as_current_span(
             f"validate_config_tools_{server_name}"
         ) as span:
-            span.set_attribute("server_name", server_name)
-            span.set_attribute("custom_id", custom_id)
+            span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
 
             try:
                 # Get server info and config tools
@@ -751,7 +752,7 @@ class DiscoveryService:
                 }
 
             except Exception as e:
-                span.set_attribute("error", str(e))
+                span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
 
                 # Use standardized error handling
                 context = ErrorContext(
@@ -789,8 +790,8 @@ class DiscoveryService:
         with tracer_obj.start_as_current_span(
             f"discover_and_validate_{server_name}"
         ) as span:
-            span.set_attribute("server_name", server_name)
-            span.set_attribute("custom_id", custom_id)
+            span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
 
             try:
                 # Get server info
@@ -933,7 +934,7 @@ class DiscoveryService:
                 }
 
             except Exception as e:
-                span.set_attribute("error", str(e))
+                span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
 
                 # Use standardized error handling
                 context = ErrorContext(
@@ -970,7 +971,7 @@ class DiscoveryService:
         """Discover tools for a single server."""
         # Server info check
         with tracer_obj.start_as_current_span("get_server_info") as info_span:
-            info_span.set_attribute("server_name", server_name)
+            info_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
 
             server_info = get_server_info_by_name(
                 self.auth_manager.get_session_gateway_config(session_key), server_name
@@ -979,7 +980,7 @@ class DiscoveryService:
 
             if not server_info:
                 info_span.set_attribute(
-                    "error", f"Server '{server_name}' not available"
+                    SpanAttributes.ERROR_MESSAGE, f"Server '{server_name}' not available"
                 )
                 if IS_DEBUG_LOG_LEVEL:
                     logger.error(
@@ -1017,7 +1018,7 @@ class DiscoveryService:
                 with tracer_obj.start_as_current_span(
                     "validate_server_registration"
                 ) as server_validation_span:
-                    server_validation_span.set_attribute("server_name", server_name)
+                    server_validation_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
 
                     logger.info(
                         f"[discover_server_tools] Validating server registration for {server_name}"
@@ -1316,7 +1317,7 @@ class DiscoveryService:
                     with tracer_obj.start_as_current_span(
                         "validate_config_tool_registration"
                     ) as validation_span:
-                        validation_span.set_attribute("server_name", server_name)
+                        validation_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
 
                         # Convert config tools to list format for validation
                         tool_list = []
@@ -1667,7 +1668,7 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_dynamic_server_description_config"
                         ) as dynamic_desc_span:
-                            dynamic_desc_span.set_attribute("server_name", server_name)
+                            dynamic_desc_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
                             dynamic_desc_span.set_attribute(
                                 "description_source", "dynamic"
                             )
@@ -1722,7 +1723,7 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_static_server_description_config"
                         ) as static_desc_span:
-                            static_desc_span.set_attribute("server_name", server_name)
+                            static_desc_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
                             static_desc_span.set_attribute(
                                 "description_source", "static"
                             )
@@ -1909,7 +1910,7 @@ class DiscoveryService:
 
         # Tool discovery
         with tracer_obj.start_as_current_span("discover_tools") as discover_span:
-            discover_span.set_attribute("server_name", server_name)
+            discover_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
 
             # Cache check
             with tracer_obj.start_as_current_span("check_tools_cache") as cache_span:
@@ -2060,7 +2061,7 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_dynamic_server_description"
                         ) as dynamic_desc_span:
-                            dynamic_desc_span.set_attribute("server_name", server_name)
+                            dynamic_desc_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
                             logger.info(
                                 f"[discover_server_tools] Validating dynamic server description: '{dynamic_description}'"
                             )
@@ -2113,7 +2114,7 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_static_server_description"
                         ) as static_desc_span:
-                            static_desc_span.set_attribute("server_name", server_name)
+                            static_desc_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
                             static_desc_span.set_attribute(
                                 "description_source", "static"
                             )
@@ -2320,7 +2321,7 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_tool_registration"
                         ) as validation_span:
-                            validation_span.set_attribute("server_name", server_name)
+                            validation_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
 
                             # Extract tool list from ListToolsResult or dict
                             if hasattr(tools, "tools"):
@@ -2586,7 +2587,7 @@ class DiscoveryService:
                     with tracer_obj.start_as_current_span(
                         "cache_tools"
                     ) as cache_write_span:
-                        cache_write_span.set_attribute("server_name", server_name)
+                        cache_write_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
                         self.cache_service.cache_tools(id, server_name, tools)
                         cache_write_span.set_attribute("cache_write_success", True)
                 else:

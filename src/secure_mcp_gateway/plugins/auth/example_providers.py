@@ -21,7 +21,9 @@ from secure_mcp_gateway.plugins.auth.base import (
     AuthResult,
     AuthStatus,
 )
-from secure_mcp_gateway.utils import sys_print
+from secure_mcp_gateway.log import get_logger
+
+_logger = get_logger(__name__)
 
 # ============================================================================
 # OAuth 2.0 Provider
@@ -123,7 +125,7 @@ class OAuth2Provider(AuthProvider):
             )
 
         except Exception as e:
-            sys_print(f"[OAuth2Provider] Authentication error: {e}", is_error=True)
+            _logger.error("authentication error", provider="OAuth2Provider", error=str(e))
             return AuthResult(
                 status=AuthStatus.ERROR,
                 authenticated=False,
@@ -154,7 +156,7 @@ class OAuth2Provider(AuthProvider):
             return None
 
         except Exception as e:
-            sys_print(f"[OAuth2Provider] Error fetching user info: {e}", is_error=True)
+            _logger.error("error fetching user info", provider="OAuth2Provider", error=str(e))
             return None
 
     async def validate_session(self, session_id: str) -> bool:
@@ -340,7 +342,7 @@ class JWTProvider(AuthProvider):
             )
 
         except Exception as e:
-            sys_print(f"[JWTProvider] Authentication error: {e}", is_error=True)
+            _logger.error("authentication error", provider="JWTProvider", error=str(e))
             return AuthResult(
                 status=AuthStatus.ERROR,
                 authenticated=False,
@@ -464,7 +466,7 @@ class APIKeyProvider(AuthProvider):
             )
 
         except Exception as e:
-            sys_print(f"[APIKeyProvider] Authentication error: {e}", is_error=True)
+            _logger.error("authentication error", provider="APIKeyProvider", error=str(e))
             return AuthResult(
                 status=AuthStatus.ERROR,
                 authenticated=False,
@@ -608,7 +610,7 @@ class BasicAuthProvider(AuthProvider):
             )
 
         except Exception as e:
-            sys_print(f"[BasicAuthProvider] Authentication error: {e}", is_error=True)
+            _logger.error("authentication error", provider="BasicAuthProvider", error=str(e))
             return AuthResult(
                 status=AuthStatus.ERROR,
                 authenticated=False,

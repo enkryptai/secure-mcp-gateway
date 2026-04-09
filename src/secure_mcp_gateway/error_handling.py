@@ -1,7 +1,6 @@
 """Error handling and recovery system."""
 
 import asyncio
-import logging
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -14,6 +13,7 @@ from .exceptions import (
     MCPGatewayError,
     RecoveryStrategy,
 )
+from .log import get_logger
 from .utils import logger
 
 
@@ -178,19 +178,7 @@ class ErrorLogger:
     """Enhanced error logging with correlation IDs and structured data."""
 
     def __init__(self, logger_name: str = "mcp_gateway"):
-        self.logger = logging.getLogger(logger_name)
-        self._setup_logger()
-
-    def _setup_logger(self):
-        """Setup structured logging."""
-        if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            )
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
-            self.logger.setLevel(logging.INFO)
+        self.logger = get_logger(logger_name)
 
     def log_error(
         self,
@@ -198,46 +186,38 @@ class ErrorLogger:
         additional_context: Optional[Dict[str, Any]] = None,
     ):
         """Log error with full context and correlation ID."""
-        log_data = {
+        kw: Dict[str, Any] = {
             "correlation_id": error.context.correlation_id,
             "error_code": error.code.value,
             "severity": error.severity.value,
             "recovery_strategy": error.recovery_strategy.value,
-            "error_message": error.message,
             "timestamp": error.context.timestamp.isoformat(),
-            "context": {
-                "request_id": error.context.request_id,
-                "user_id": error.context.user_id,
-                "session_id": error.context.session_id,
-                "server_name": error.context.server_name,
-                "tool_name": error.context.tool_name,
-                "operation": error.context.operation,
-            },
+            "request_id": error.context.request_id,
+            "user_id": error.context.user_id,
+            "session_id": error.context.session_id,
+            "server_name": error.context.server_name,
+            "tool_name": error.context.tool_name,
+            "operation": error.context.operation,
             "additional_context": additional_context or {},
         }
 
         if error.cause:
-            log_data["cause"] = str(error.cause)
+            kw["cause"] = str(error.cause)
 
         if error.details:
-            log_data["details"] = {
-                "retry_after": error.details.retry_after,
-                "user_message": error.details.user_message,
-                "technical_details": error.details.technical_details,
-                "suggested_actions": error.details.suggested_actions,
-            }
+            kw["retry_after"] = error.details.retry_after
+            kw["user_message"] = error.details.user_message
+            kw["technical_details"] = error.details.technical_details
+            kw["suggested_actions"] = error.details.suggested_actions
 
-        # Log based on severity
         if error.severity == ErrorSeverity.CRITICAL:
-            self.logger.critical(f"CRITICAL ERROR: {error.message}", extra=log_data)
+            self.logger.critical(error.message, **kw)
         elif error.severity == ErrorSeverity.HIGH:
-            self.logger.error(f"HIGH SEVERITY ERROR: {error.message}", extra=log_data)
+            self.logger.error(error.message, **kw)
         elif error.severity == ErrorSeverity.MEDIUM:
-            self.logger.warning(
-                f"MEDIUM SEVERITY ERROR: {error.message}", extra=log_data
-            )
+            self.logger.warning(error.message, **kw)
         else:
-            self.logger.info(f"LOW SEVERITY ERROR: {error.message}", extra=log_data)
+            self.logger.info(error.message, **kw)
 
     def log_recovery_attempt(
         self,
@@ -247,18 +227,14 @@ class ErrorLogger:
         delay: Optional[float] = None,
     ):
         """Log recovery attempt."""
-        log_data = {
-            "correlation_id": error.context.correlation_id,
-            "error_code": error.code.value,
-            "attempt": attempt,
-            "max_attempts": max_attempts,
-            "delay": delay,
-            "recovery_strategy": error.recovery_strategy.value,
-        }
-
         self.logger.info(
-            f"Recovery attempt {attempt}/{max_attempts} for error {error.code.value}",
-            extra=log_data,
+            "recovery attempt",
+            correlation_id=error.context.correlation_id,
+            error_code=error.code.value,
+            attempt=attempt,
+            max_attempts=max_attempts,
+            delay=delay,
+            recovery_strategy=error.recovery_strategy.value,
         )
 
 
@@ -300,8 +276,7 @@ class ErrorMonitor:
         logger.critical(alert_message)
 
         # In a production system, this would send to monitoring service
-        # For now, we just log it
-        logging.getLogger("mcp_gateway.alerts").critical(alert_message)
+        get_logger("mcp_gateway.alerts").critical(alert_message)
 
 
 # Global instances
