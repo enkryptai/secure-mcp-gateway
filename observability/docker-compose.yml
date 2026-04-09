@@ -1,24 +1,6 @@
-# version: '3'
-name: secure-mcp-gateway-infra
-services:
-  # # Echo OAuth MCP Server
-  # echo-server:
-  #   build:
-  #     context: ..
-  #     dockerfile_inline: |
-  #       FROM python:3.12-slim
-  #       WORKDIR /app
-  #       COPY requirements.txt .
-  #       RUN pip install --no-cache-dir -r requirements.txt
-  #       COPY src/ src/
-  #       ENV MCP_HTTP_MODE=true
-  #       EXPOSE 8001
-  #       CMD ["python", "src/secure_mcp_gateway/bad_mcps/echo_oauth_mcp.py"]
-  #   ports:
-  #     - "8001:8001"
-  #   environment:
-  #     - MCP_HTTP_MODE=true
+name: secure-mcp-gateway-observability
 
+services:
   # OpenTelemetry Collector
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.134.1
@@ -63,12 +45,22 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
     depends_on:
       - otel-collector
+
+  # Promtail for log collection
+  promtail:
+    image: grafana/promtail:3.5.0
+    volumes:
+      - ./promtail/promtail-config.yaml:/etc/promtail/config.yaml
+      - /var/log:/var/log:ro
+    command: -config.file=/etc/promtail/config.yaml
+    depends_on:
+      - loki
 
   # Grafana for visualization
   grafana:

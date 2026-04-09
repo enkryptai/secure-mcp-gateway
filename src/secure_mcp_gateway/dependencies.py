@@ -1,7 +1,8 @@
-"""Package dependencies.
+"""Package dependencies — runtime mirror of pyproject.toml [project.dependencies].
 
-NOTE: This file must be kept in sync with requirements.txt in the project root.
-When adding or updating dependencies, update both files.
+The canonical dependency list lives in ``pyproject.toml``.  This file exists
+so that ``gateway.py`` can read and auto-install dependencies at startup.
+Keep both in sync when adding or updating packages.
 """
 
 __dependencies__ = [

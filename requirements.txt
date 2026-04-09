@@ -1,5 +1,6 @@
-# NOTE: This file must be kept in sync with src/secure_mcp_gateway/dependencies.py
-# When adding or updating dependencies, update both files.
+# Runtime mirror of pyproject.toml [project.dependencies].
+# The canonical dependency list lives in pyproject.toml.
+# Keep this file, dependencies.py, and pyproject.toml in sync.
 
 # Core dependencies
 flask~=3.1.2
