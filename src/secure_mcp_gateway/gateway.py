@@ -52,7 +52,11 @@ if src_dir not in sys.path:
 # print(f"src_dir: {src_dir}", file=sys.stderr)
 # print(f"root_dir: {root_dir}", file=sys.stderr)
 # print("--------------------------------", file=sys.stderr)
+# --- Logging must be configured BEFORE any module that uses `logger` ---
+from secure_mcp_gateway.log import configure_logging, get_logger
 
+configure_logging(
+    level=os.environ.get("ENKRYPT_LOG_LEVEL", "INFO"),
     json_output=os.environ.get("ENKRYPT_LOG_FORMAT", "").lower() == "json",
 )
 _boot_logger = get_logger("secure_mcp_gateway.gateway")
