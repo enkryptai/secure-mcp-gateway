@@ -1132,6 +1132,13 @@ try:
 except Exception as e:
     logger.error(f"[api_server] Skipping additional routes due to import error: {e}")
 
+try:
+    from secure_mcp_gateway.api_health_routes import health_router
+
+    app.include_router(health_router)
+except Exception as e:
+    logger.error(f"[api_server] Skipping health routes due to import error: {e}")
+
 # =============================================================================
 # MAIN FUNCTION
 # =============================================================================

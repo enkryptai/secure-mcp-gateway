@@ -2,7 +2,7 @@
 
 import os
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Header, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
@@ -140,6 +140,24 @@ class SystemRestoreRequest(BaseModel):
 
 class SystemResetRequest(BaseModel):
     confirm: bool = False
+
+
+# MCP Health Check Models
+class MCPServerConfigBody(BaseModel):
+    command: str
+    args: List[str]
+    env: Optional[Dict[str, str]] = None
+
+
+class MCPServerRequest(BaseModel):
+    server_name: str
+    config: MCPServerConfigBody
+    description: Optional[str] = ""
+
+
+class MCPToolRequest(MCPServerRequest):
+    tool_name: str
+    tool_args: Optional[Dict[str, Any]] = None
 
 
 # =============================================================================
