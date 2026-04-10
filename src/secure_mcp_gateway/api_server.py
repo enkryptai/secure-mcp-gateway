@@ -722,12 +722,13 @@ async def add_server_to_config_endpoint(
 
         f = io.StringIO()
         with redirect_stdout(f):
+            args_str = ",".join(request.args) if request.args else None
             add_server_to_config(
                 PICKED_CONFIG_PATH,
                 config_identifier,
                 request.server_name,
                 request.server_command,
-                request.args,
+                args_str,
                 json.dumps(request.env) if request.env else None,
                 json.dumps(request.tools) if request.tools else None,
                 request.description,
@@ -765,6 +766,7 @@ async def update_server_in_config_endpoint(
         import io
         from contextlib import redirect_stdout
 
+        args_str = ",".join(request.args) if request.args else None
         f = io.StringIO()
         with redirect_stdout(f):
             update_config_server(
@@ -772,7 +774,7 @@ async def update_server_in_config_endpoint(
                 config_identifier,
                 server_name,
                 request.server_command,
-                request.args,
+                args_str,
                 json.dumps(request.env) if request.env else None,
                 json.dumps(request.tools) if request.tools else None,
                 request.description,

@@ -1,0 +1,1068 @@
+{
+  "info": {
+    "name": "Enkrypt Secure MCP Gateway API",
+    "description": "REST API for managing MCP configurations, projects, users, system operations, and on-demand MCP server health checks.\n\nBase URL: http://localhost:8001\n\n## Authentication\nAll endpoints (except GET /health) require a Bearer token.\nSet the `GATEWAY_API_KEY` collection variable before use.",
+    "version": "2.1.8",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8001",
+      "type": "string"
+    },
+    {
+      "key": "GATEWAY_API_KEY",
+      "value": "YOUR_API_KEY_HERE",
+      "type": "string"
+    },
+    {
+      "key": "config_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "config_name",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "project_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "project_name",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_email",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "server_name",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{GATEWAY_API_KEY}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "description": "Service health check (no auth required)",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Health check endpoint. No authentication required."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Configurations",
+      "description": "MCP configuration management — create, read, update, delete configurations",
+      "item": [
+        {
+          "name": "List All Configs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs"]
+            },
+            "description": "List all MCP configurations."
+          }
+        },
+        {
+          "name": "Create Config",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"config_name\": \"my_new_config\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs"]
+            },
+            "description": "Create a new MCP configuration."
+          }
+        },
+        {
+          "name": "Copy Config",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_config\": \"{{config_id}}\",\n  \"target_config\": \"copied_config\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/copy",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "copy"]
+            },
+            "description": "Copy an existing configuration. source_config can be an ID or name."
+          }
+        },
+        {
+          "name": "Rename Config",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_name\": \"renamed_config\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/rename",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{config_id}}", "rename"]
+            },
+            "description": "Rename a configuration."
+          }
+        },
+        {
+          "name": "Get Config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{config_id}}"]
+            },
+            "description": "Get a specific configuration by ID or name."
+          }
+        },
+        {
+          "name": "Delete Config",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{config_id}}"]
+            },
+            "description": "Delete a configuration."
+          }
+        },
+        {
+          "name": "Get Config Projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{config_id}}", "projects"]
+            },
+            "description": "Get all projects using a specific configuration."
+          }
+        },
+        {
+          "name": "Validate Config",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/validate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{config_id}}", "validate"]
+            },
+            "description": "Validate a configuration for correctness."
+          }
+        },
+        {
+          "name": "Export Config",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"output_file\": \"C:/Users/username/exports/my_config.json\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/export",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{config_id}}", "export"]
+            },
+            "description": "Export a configuration to a JSON file."
+          }
+        },
+        {
+          "name": "Import Config",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"config_name\": \"imported_config\",\n  \"config_data\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/import",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "import"]
+            },
+            "description": "Import a configuration from JSON data."
+          }
+        },
+        {
+          "name": "Search Configs",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"search_term\": \"my_config\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "search"]
+            },
+            "description": "Search configurations by name."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Servers",
+      "description": "Server management within configurations",
+      "item": [
+        {
+          "name": "List Servers in Config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/servers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{config_id}}", "servers"]
+            },
+            "description": "List all servers in a configuration."
+          }
+        },
+        {
+          "name": "Add Server to Config",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"server_name\": \"github_server\",\n  \"server_command\": \"npx\",\n  \"args\": [\"-y\", \"@modelcontextprotocol/server-github\"],\n  \"description\": \"GitHub MCP Server\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/servers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{config_id}}", "servers"]
+            },
+            "description": "Add a new server to a configuration."
+          }
+        },
+        {
+          "name": "Get Server",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/servers/{{server_name}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{config_id}}", "servers", "{{server_name}}"]
+            },
+            "description": "Get a specific server from a configuration."
+          }
+        },
+        {
+          "name": "Update Server",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"server_command\": \"npx\",\n  \"args\": [\"-y\", \"@modelcontextprotocol/server-github\"],\n  \"description\": \"Updated GitHub MCP Server\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/servers/{{server_name}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{config_id}}", "servers", "{{server_name}}"]
+            },
+            "description": "Update a server in a configuration."
+          }
+        },
+        {
+          "name": "Delete Server",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/servers/{{server_name}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{config_id}}", "servers", "{{server_name}}"]
+            },
+            "description": "Delete a server from a configuration."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Guardrails",
+      "description": "Security guardrails — manage input and output policies for servers",
+      "item": [
+        {
+          "name": "Update Input Guardrails",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policy\": {\n    \"enabled\": true,\n    \"policy_name\": \"Sample Airline Guardrail\",\n    \"block\": [\"policy_violation\", \"injection_attack\"]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/servers/{{server_name}}/input-guardrails",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{config_id}}", "servers", "{{server_name}}", "input-guardrails"]
+            },
+            "description": "Update input guardrails policy for a server."
+          }
+        },
+        {
+          "name": "Update Output Guardrails",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policy\": {\n    \"enabled\": true,\n    \"policy_name\": \"Sample Airline Guardrail\",\n    \"block\": [\"policy_violation\"]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/servers/{{server_name}}/output-guardrails",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{config_id}}", "servers", "{{server_name}}", "output-guardrails"]
+            },
+            "description": "Update output guardrails policy for a server."
+          }
+        },
+        {
+          "name": "Update Combined Guardrails",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input_policy\": {\n    \"enabled\": true,\n    \"policy_name\": \"Sample Airline Guardrail\",\n    \"block\": [\"policy_violation\"]\n  },\n  \"output_policy\": {\n    \"enabled\": true,\n    \"policy_name\": \"Sample Airline Guardrail\",\n    \"block\": [\"policy_violation\"]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/servers/{{server_name}}/guardrails",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{config_id}}", "servers", "{{server_name}}", "guardrails"]
+            },
+            "description": "Update both input and output guardrails for a server."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Projects",
+      "description": "Project management",
+      "item": [
+        {
+          "name": "List All Projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "projects"]
+            },
+            "description": "List all projects."
+          }
+        },
+        {
+          "name": "Create Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_name\": \"my_project\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "projects"]
+            },
+            "description": "Create a new project."
+          }
+        },
+        {
+          "name": "Get Project",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{project_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}"]
+            },
+            "description": "Get a specific project by ID or name."
+          }
+        },
+        {
+          "name": "Delete Project",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{project_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}"]
+            },
+            "description": "Delete a project."
+          }
+        },
+        {
+          "name": "Assign Config to Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"config_name\": \"{{config_name}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{project_id}}/assign-config",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}", "assign-config"]
+            },
+            "description": "Assign a configuration to a project. Provide config_name or config_id."
+          }
+        },
+        {
+          "name": "Unassign Config from Project",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{project_id}}/unassign-config",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}", "unassign-config"]
+            },
+            "description": "Unassign the current configuration from a project."
+          }
+        },
+        {
+          "name": "Get Project Config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{project_id}}/config",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}", "config"]
+            },
+            "description": "Get the configuration assigned to a project."
+          }
+        },
+        {
+          "name": "List Project Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{project_id}}/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}", "users"]
+            },
+            "description": "List all users in a project."
+          }
+        },
+        {
+          "name": "Add User to Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{user_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{project_id}}/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}", "users"]
+            },
+            "description": "Add a user to a project. Provide user_id or email."
+          }
+        },
+        {
+          "name": "Remove User from Project",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{project_id}}/users/{{user_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}", "users", "{{user_id}}"]
+            },
+            "description": "Remove a user from a project."
+          }
+        },
+        {
+          "name": "Export Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"output_file\": \"C:/Users/username/exports/my_project.json\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{project_id}}/export",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}", "export"]
+            },
+            "description": "Export a project to a JSON file."
+          }
+        },
+        {
+          "name": "Search Projects",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"search_term\": \"my_project\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "projects", "search"]
+            },
+            "description": "Search projects by name."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "description": "User management",
+      "item": [
+        {
+          "name": "List All Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users"]
+            },
+            "description": "List all users."
+          }
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"newuser@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users"]
+            },
+            "description": "Create a new user."
+          }
+        },
+        {
+          "name": "Get User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{user_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users", "{{user_id}}"]
+            },
+            "description": "Get a specific user by ID or email."
+          }
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_email\": \"updated@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{user_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users", "{{user_id}}"]
+            },
+            "description": "Update a user's email."
+          }
+        },
+        {
+          "name": "Delete User",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"force\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{user_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users", "{{user_id}}"]
+            },
+            "description": "Delete a user. Set force=true to remove from projects as well."
+          }
+        },
+        {
+          "name": "Get User Projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{user_id}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users", "{{user_id}}", "projects"]
+            },
+            "description": "Get all projects a user belongs to."
+          }
+        },
+        {
+          "name": "Generate API Key for User",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_name\": \"{{project_name}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{user_id}}/api-keys",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users", "{{user_id}}", "api-keys"]
+            },
+            "description": "Generate a new API key for a user in a project. Provide project_name or project_id."
+          }
+        },
+        {
+          "name": "List User API Keys",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{user_id}}/api-keys",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users", "{{user_id}}", "api-keys"]
+            },
+            "description": "List all API keys for a user."
+          }
+        },
+        {
+          "name": "Search Users",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"search_term\": \"user@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users", "search"]
+            },
+            "description": "Search users by email."
+          }
+        }
+      ]
+    },
+    {
+      "name": "API Keys",
+      "description": "API key management — generate, rotate, enable, disable, and delete",
+      "item": [
+        {
+          "name": "List All API Keys",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api-keys",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "api-keys"]
+            },
+            "description": "List all API keys."
+          }
+        },
+        {
+          "name": "Rotate API Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api_key\": \"{{api_key}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api-keys/rotate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "api-keys", "rotate"]
+            },
+            "description": "Rotate an existing API key (replaces with a new one)."
+          }
+        },
+        {
+          "name": "Disable API Key",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api-keys/{{api_key}}/disable",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "api-keys", "{{api_key}}", "disable"]
+            },
+            "description": "Disable an API key."
+          }
+        },
+        {
+          "name": "Enable API Key",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api-keys/{{api_key}}/enable",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "api-keys", "{{api_key}}", "enable"]
+            },
+            "description": "Enable a previously disabled API key."
+          }
+        },
+        {
+          "name": "Delete API Key",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api-keys/{{api_key}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "api-keys", "{{api_key}}"]
+            },
+            "description": "Permanently delete an API key."
+          }
+        }
+      ]
+    },
+    {
+      "name": "System",
+      "description": "System operations — health checks, backup, restore, and reset",
+      "item": [
+        {
+          "name": "System Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "system", "health"]
+            },
+            "description": "Get detailed system health including config file status and server count."
+          }
+        },
+        {
+          "name": "System Backup",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"output_file\": \"C:/Users/username/backups/gateway_backup.json\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/backup",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "system", "backup"]
+            },
+            "description": "Create a backup of the current configuration to a file."
+          }
+        },
+        {
+          "name": "System Restore",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input_file\": \"C:/Users/username/backups/gateway_backup.json\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/restore",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "system", "restore"]
+            },
+            "description": "Restore configuration from a backup file."
+          }
+        },
+        {
+          "name": "System Reset",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirm\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/reset",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "system", "reset"]
+            },
+            "description": "Reset the configuration to defaults. Set confirm=true to proceed. This is destructive!"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Settings",
+      "description": "Settings management — configure Enkrypt API key and OpenTelemetry",
+      "item": [
+        {
+          "name": "Configure Enkrypt API Key",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api_key\": \"your-enkrypt-api-key\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/settings/enkrypt-api-key",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "settings", "enkrypt-api-key"]
+            },
+            "description": "Configure the Enkrypt API key for guardrails."
+          }
+        },
+        {
+          "name": "Configure Telemetry",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"url\": \"http://localhost:4317\",\n  \"insecure\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/settings/telemetry",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "settings", "telemetry"]
+            },
+            "description": "Configure OpenTelemetry settings."
+          }
+        }
+      ]
+    },
+    {
+      "name": "MCP Health",
+      "description": "On-demand MCP server health checks — connectivity, tool discovery, and tool execution. These APIs accept raw MCP server configuration in the request body (the server does NOT need to be pre-registered in the gateway).",
+      "item": [
+        {
+          "name": "Server Connectivity Check",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"server_name\": \"echo_server\",\n  \"description\": \"Simple echo MCP server\",\n  \"config\": {\n    \"command\": \"python\",\n    \"args\": [\"src/secure_mcp_gateway/bad_mcps/echo_mcp.py\"],\n    \"env\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health/mcp/server",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "health", "mcp", "server"]
+            },
+            "description": "Check connectivity to an MCP server. Spawns the server process, runs session.initialize(), and returns the server's reported name, version, description, and response time.\n\nReturns HTTP 200 even if the server is unreachable — check data.connectivity.status for connected or unreachable."
+          }
+        },
+        {
+          "name": "Server Connectivity Check (Unreachable)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"server_name\": \"broken_server\",\n  \"config\": {\n    \"command\": \"python\",\n    \"args\": [\"nonexistent_script.py\"]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health/mcp/server",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "health", "mcp", "server"]
+            },
+            "description": "Example of an unreachable server — the command points to a nonexistent script."
+          }
+        },
+        {
+          "name": "Server Info & Tools",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"server_name\": \"echo_server\",\n  \"description\": \"Simple echo MCP server\",\n  \"config\": {\n    \"command\": \"python\",\n    \"args\": [\"src/secure_mcp_gateway/bad_mcps/echo_mcp.py\"],\n    \"env\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/mcp/server/info",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "mcp", "server", "info"]
+            },
+            "description": "Discover all tools exposed by an MCP server. Returns the server's metadata (name, version, description) and a list of all tools with their name, description, and inputSchema."
+          }
+        },
+        {
+          "name": "Tool Execution Check (Success)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"server_name\": \"echo_server\",\n  \"description\": \"Simple echo MCP server\",\n  \"config\": {\n    \"command\": \"python\",\n    \"args\": [\"src/secure_mcp_gateway/bad_mcps/echo_mcp.py\"],\n    \"env\": {}\n  },\n  \"tool_name\": \"echo\",\n  \"tool_args\": {\n    \"message\": \"hello from Postman\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health/mcp/tool",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "health", "mcp", "tool"]
+            },
+            "description": "Execute a specific tool on an MCP server and return the result. This calls session.call_tool() with the given arguments.\n\nReturns HTTP 200 even if the tool errors — check data.execution.status for ok or error."
+          }
+        },
+        {
+          "name": "Tool Execution Check (Nonexistent Tool)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"server_name\": \"echo_server\",\n  \"config\": {\n    \"command\": \"python\",\n    \"args\": [\"src/secure_mcp_gateway/bad_mcps/echo_mcp.py\"]\n  },\n  \"tool_name\": \"nonexistent_tool\",\n  \"tool_args\": {}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health/mcp/tool",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "health", "mcp", "tool"]
+            },
+            "description": "Example of calling a tool that does not exist on the server."
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -3,7 +3,7 @@
   "info": {
     "title": "Enkrypt Secure MCP Gateway API",
     "description": "REST API for managing MCP configurations, projects, users, and system operations",
-    "version": "2.1.7"
+    "version": "2.1.8"
   },
   "servers": [
     {
@@ -59,6 +59,10 @@
     {
       "name": "Settings",
       "description": "Settings management - configure Enkrypt API key and OpenTelemetry settings"
+    },
+    {
+      "name": "MCP Health",
+      "description": "On-demand MCP server health checks - connectivity testing, tool discovery, and tool execution"
     }
   ],
   "paths": {
@@ -4127,6 +4131,316 @@
           "Settings"
         ]
       }
+    },
+    "/api/v1/health/mcp/server": {
+      "post": {
+        "summary": "MCP Server Health Check",
+        "description": "Check connectivity to an MCP server. Spawns the server process, runs session.initialize(), and returns the server's reported name, version, and description along with the connection latency. The server does not need to be pre-registered in the gateway config — supply the raw command/args/env in the request body.",
+        "operationId": "server_health_check",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPServerRequest"
+              },
+              "example": {
+                "server_name": "echo_server",
+                "description": "Simple echo MCP server",
+                "config": {
+                  "command": "python",
+                  "args": ["path/to/echo_mcp.py"],
+                  "env": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Health check completed (check data.connectivity.status for connected/unreachable)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                },
+                "examples": {
+                  "connected": {
+                    "summary": "Server is reachable",
+                    "value": {
+                      "message": "Server health check completed",
+                      "data": {
+                        "server_name": "echo_server",
+                        "connectivity": {
+                          "status": "connected",
+                          "server_name_from_server": "Simple Echo MCP Server",
+                          "server_version": "1.0.0",
+                          "server_description": "A simple echo server",
+                          "response_time_ms": 320.5
+                        }
+                      },
+                      "timestamp": "2026-02-17T10:30:00.000000"
+                    }
+                  },
+                  "unreachable": {
+                    "summary": "Server is unreachable",
+                    "value": {
+                      "message": "Server health check completed",
+                      "data": {
+                        "server_name": "broken_server",
+                        "connectivity": {
+                          "status": "unreachable",
+                          "error": "FileNotFoundError: [WinError 2] The system cannot find the file specified",
+                          "response_time_ms": 16.0
+                        }
+                      },
+                      "timestamp": "2026-02-17T10:30:00.000000"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "MCP Health"
+        ]
+      }
+    },
+    "/api/v1/mcp/server/info": {
+      "post": {
+        "summary": "MCP Server Info & Tools",
+        "description": "Discover all tools exposed by an MCP server. Spawns the server, initialises a session, calls list_tools(), and returns the server metadata together with every tool's name, description, and input schema. The server does not need to be pre-registered in the gateway config.",
+        "operationId": "server_info",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPServerRequest"
+              },
+              "example": {
+                "server_name": "echo_server",
+                "description": "Simple echo MCP server",
+                "config": {
+                  "command": "python",
+                  "args": ["path/to/echo_mcp.py"],
+                  "env": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server info and tools retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                },
+                "example": {
+                  "message": "Server info retrieved",
+                  "data": {
+                    "server_name": "echo_server",
+                    "server_info": {
+                      "name": "Simple Echo MCP Server",
+                      "version": "1.0.0",
+                      "description": "A simple echo server"
+                    },
+                    "tools": [
+                      {
+                        "name": "echo",
+                        "description": "Echo back the provided message.",
+                        "inputSchema": {
+                          "type": "object",
+                          "properties": {
+                            "message": {
+                              "type": "string",
+                              "title": "Message"
+                            }
+                          },
+                          "required": ["message"]
+                        }
+                      }
+                    ],
+                    "tool_count": 1,
+                    "response_time_ms": 450.2
+                  },
+                  "timestamp": "2026-02-17T10:30:00.000000"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "MCP Health"
+        ]
+      }
+    },
+    "/api/v1/health/mcp/tool": {
+      "post": {
+        "summary": "MCP Tool Execution Health Check",
+        "description": "Execute a specific tool on an MCP server and return the result. Spawns the server, initialises a session, calls the named tool with the supplied arguments, and returns the tool's response content. The server does not need to be pre-registered in the gateway config.",
+        "operationId": "tool_health_check",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPToolRequest"
+              },
+              "example": {
+                "server_name": "echo_server",
+                "description": "Simple echo MCP server",
+                "config": {
+                  "command": "python",
+                  "args": ["path/to/echo_mcp.py"],
+                  "env": {}
+                },
+                "tool_name": "echo",
+                "tool_args": {
+                  "message": "ping"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool execution completed (check data.execution.status for ok/error)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "Tool executed successfully",
+                    "value": {
+                      "message": "Tool health check completed",
+                      "data": {
+                        "server_name": "echo_server",
+                        "tool_name": "echo",
+                        "execution": {
+                          "status": "ok",
+                          "result": [
+                            {
+                              "type": "text",
+                              "text": "ping"
+                            }
+                          ],
+                          "response_time_ms": 215.8
+                        }
+                      },
+                      "timestamp": "2026-02-17T10:30:00.000000"
+                    }
+                  },
+                  "tool_error": {
+                    "summary": "Tool not found or execution error",
+                    "value": {
+                      "message": "Tool health check completed",
+                      "data": {
+                        "server_name": "echo_server",
+                        "tool_name": "nonexistent_tool",
+                        "execution": {
+                          "status": "error",
+                          "result": [
+                            {
+                              "type": "text",
+                              "text": "Unknown tool: nonexistent_tool"
+                            }
+                          ],
+                          "response_time_ms": 180.3
+                        }
+                      },
+                      "timestamp": "2026-02-17T10:30:00.000000"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "MCP Health"
+        ]
+      }
     }
   },
   "components": {
@@ -4333,6 +4647,111 @@
         },
         "type": "object",
         "title": "GuardrailsUpdateRequest"
+      },
+      "MCPServerConfigBody": {
+        "properties": {
+          "command": {
+            "type": "string",
+            "title": "Command",
+            "description": "The command to start the MCP server (e.g. python, npx, node)"
+          },
+          "args": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Args",
+            "description": "Command-line arguments for the server command"
+          },
+          "env": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Env",
+            "description": "Optional environment variables to pass to the server process",
+            "default": null
+          }
+        },
+        "type": "object",
+        "required": [
+          "command",
+          "args"
+        ],
+        "title": "MCPServerConfigBody"
+      },
+      "MCPServerRequest": {
+        "properties": {
+          "server_name": {
+            "type": "string",
+            "title": "Server Name",
+            "description": "A label for this server (used in response, does not need to match the server's internal name)"
+          },
+          "config": {
+            "$ref": "#/components/schemas/MCPServerConfigBody",
+            "description": "The command, args, and optional env to spawn the MCP server process"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Optional human-readable description of the server",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "server_name",
+          "config"
+        ],
+        "title": "MCPServerRequest"
+      },
+      "MCPToolRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MCPServerRequest"
+          }
+        ],
+        "properties": {
+          "tool_name": {
+            "type": "string",
+            "title": "Tool Name",
+            "description": "The name of the tool to execute on the MCP server"
+          },
+          "tool_args": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Args",
+            "description": "Arguments to pass to the tool (must match the tool's input schema)",
+            "default": null
+          }
+        },
+        "type": "object",
+        "required": [
+          "server_name",
+          "config",
+          "tool_name"
+        ],
+        "title": "MCPToolRequest"
       },
       "HTTPValidationError": {
         "properties": {
