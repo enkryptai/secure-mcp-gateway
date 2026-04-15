@@ -46,17 +46,37 @@ class ConfigRenameRequest(BaseModel):
     new_name: str
 
 
+class SandboxConfig(BaseModel):
+    """Per-server sandbox configuration (all fields optional, merged with global defaults)."""
+
+    enabled: Optional[bool] = None
+    runtime: Optional[str] = Field(None, description="docker | podman | bwrap | microsandbox | novavm")
+    image: Optional[str] = Field(None, description="Container image (Docker/Podman only)")
+    memory_limit: Optional[str] = Field(None, description="e.g. '512m', '1g'")
+    cpu_limit: Optional[str] = Field(None, description="e.g. '1.0', '2'")
+    pids_limit: Optional[int] = None
+    network: Optional[str] = Field(None, description="'none' = no network, 'host' = full network access, 'bridge' = Docker bridge (Docker only)")
+    read_only: Optional[bool] = None
+    allowed_env: Optional[List[str]] = Field(
+        None, description="Allowlist of env var names passed into the sandbox"
+    )
+    nova_api_url: Optional[str] = Field(None, description="NovaVM API endpoint")
+    nova_socket: Optional[str] = Field(None, description="NovaVM socket path")
+
+
 class ServerAddRequest(BaseModel):
     server_name: str
     server_command: str
     server_args: Optional[List[str]] = None
     description: Optional[str] = None
+    sandbox: Optional[SandboxConfig] = None
 
 
 class ServerUpdateRequest(BaseModel):
     server_command: Optional[str] = None
     server_args: Optional[List[str]] = None
     description: Optional[str] = None
+    sandbox: Optional[SandboxConfig] = None
 
 
 class ServerGuardrailsRequest(BaseModel):

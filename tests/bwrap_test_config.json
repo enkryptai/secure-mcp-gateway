@@ -1,0 +1,199 @@
+{
+  "admin_apikey": "test-admin-key",
+  "common_mcp_gateway_config": {
+    "enkrypt_log_level": "INFO",
+    "enkrypt_use_remote_mcp_config": false,
+    "enkrypt_mcp_use_external_cache": false,
+    "enkrypt_cache_host": "localhost",
+    "enkrypt_cache_port": 6379,
+    "enkrypt_tool_cache_expiration": 4,
+    "enkrypt_gateway_cache_expiration": 24,
+    "enkrypt_async_input_guardrails_enabled": false,
+    "enkrypt_async_output_guardrails_enabled": false,
+    "timeout_settings": {
+      "default_timeout": 30,
+      "guardrail_timeout": 15,
+      "auth_timeout": 10,
+      "tool_execution_timeout": 60,
+      "discovery_timeout": 20,
+      "cache_timeout": 5,
+      "connectivity_timeout": 2,
+      "escalation_policies": {
+        "warn_threshold": 0.8,
+        "timeout_threshold": 1.0,
+        "fail_threshold": 1.2
+      }
+    },
+    "sandbox": {
+      "enabled": true,
+      "runtime": "bwrap",
+      "default_network": "none",
+      "default_read_only": true
+    }
+  },
+  "plugins": {
+    "auth": {
+      "provider": "local_apikey",
+      "config": {}
+    },
+    "guardrails": {
+      "provider": "enkrypt",
+      "config": {
+        "api_key": "b1Zqo8XXhYjeXdWHCn9jzzkEViKdcZAb",
+        "base_url": "https://api.enkryptai.com"
+      }
+    },
+    "telemetry": {
+      "provider": "opentelemetry",
+      "config": {
+        "enabled": false,
+        "url": "http://localhost:4317",
+        "insecure": true
+      }
+    }
+  },
+  "mcp_configs": {
+    "bwrap-test-config-001": {
+      "mcp_config_name": "bwrap_test_config",
+      "mcp_config": [
+        {
+          "server_name": "playwright_bwrap",
+          "description": "Playwright MCP Server (bwrap sandboxed, network allowed)",
+          "config": {
+            "command": "/usr/bin/npx",
+            "args": [
+              "--prefer-offline",
+              "@playwright/mcp@0.0.70"
+            ]
+          },
+          "tools": {},
+          "enable_server_info_validation": false,
+          "input_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
+          "output_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
+          "sandbox": {
+            "enabled": true,
+            "runtime": "bwrap",
+            "network": "host",
+            "read_only": true
+          }
+        },
+        {
+          "server_name": "playwright_no_sandbox",
+          "description": "Playwright MCP Server (NO sandbox, for comparison)",
+          "config": {
+            "command": "/usr/bin/npx",
+            "args": [
+              "--prefer-offline",
+              "@playwright/mcp@0.0.70"
+            ]
+          },
+          "tools": {},
+          "enable_server_info_validation": false,
+          "input_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
+          "output_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
+          "sandbox": {
+            "enabled": false
+          }
+        },
+        {
+          "server_name": "echo_remote_sandboxed",
+          "description": "Echo MCP via mcp-remote proxy (bwrap sandboxed)",
+          "config": {
+            "command": "/usr/bin/npx",
+            "args": [
+              "-y",
+              "mcp-remote@0.1.38",
+              "http://localhost:9000/mcp/"
+            ]
+          },
+          "tools": {},
+          "enable_server_info_validation": false,
+          "input_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
+          "output_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
+          "sandbox": {
+            "enabled": true,
+            "runtime": "bwrap",
+            "network": "host",
+            "read_only": true
+          }
+        },
+        {
+          "server_name": "echo_remote_no_sandbox",
+          "description": "Echo MCP via mcp-remote proxy (NO sandbox, for comparison)",
+          "config": {
+            "command": "/usr/bin/npx",
+            "args": [
+              "-y",
+              "mcp-remote@0.1.38",
+              "http://localhost:9000/mcp/"
+            ]
+          },
+          "tools": {},
+          "enable_server_info_validation": false,
+          "input_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
+          "output_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
+          "sandbox": {
+            "enabled": false
+          }
+        },
+        {
+          "server_name": "playwright_traced",
+          "description": "Playwright MCP with session trace (for video-like recording)",
+          "config": {
+            "command": "/usr/bin/npx",
+            "args": [
+              "--prefer-offline",
+              "@playwright/mcp@0.0.70",
+              "--save-session",
+              "--output-dir",
+              "/mnt/e/github/enkryptai/secure-mcp-gateway/tests/traces"
+            ]
+          },
+          "tools": {},
+          "enable_server_info_validation": false,
+          "input_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
+          "output_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
+          "sandbox": {
+            "enabled": false
+          }
+        }
+      ]
+    }
+  },
+  "projects": {
+    "bwrap-test-project-001": {
+      "project_name": "bwrap_test_project",
+      "mcp_config_id": "bwrap-test-config-001",
+      "users": ["bwrap-test-user-001"],
+      "created_at": "2026-04-14T00:00:00.000000"
+    },
+    "7d459b46-ca71-4e37-901a-9d4e83eb0dab": {
+      "project_name": "cursor_project",
+      "mcp_config_id": "bwrap-test-config-001",
+      "users": ["f503c757-adbc-4332-9c3b-4ecce7a7c6d7"],
+      "created_at": "2026-04-14T00:00:00.000000"
+    }
+  },
+  "users": {
+    "bwrap-test-user-001": {
+      "email": "bwrap-test@example.com",
+      "created_at": "2026-04-14T00:00:00.000000"
+    },
+    "f503c757-adbc-4332-9c3b-4ecce7a7c6d7": {
+      "email": "cursor-user@example.com",
+      "created_at": "2026-04-14T00:00:00.000000"
+    }
+  },
+  "apikeys": {
+    "bwrap-test-key-001": {
+      "project_id": "bwrap-test-project-001",
+      "user_id": "bwrap-test-user-001",
+      "created_at": "2026-04-14T00:00:00.000000"
+    },
+    "JTuyjyK9SPB0dR9Ms0aEl6V9Z1ln8352c5YjB1Y5fU_bBUYO": {
+      "project_id": "7d459b46-ca71-4e37-901a-9d4e83eb0dab",
+      "user_id": "f503c757-adbc-4332-9c3b-4ecce7a7c6d7",
+      "created_at": "2026-04-14T00:00:00.000000"
+    }
+  }
+}

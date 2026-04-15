@@ -20,6 +20,7 @@ from secure_mcp_gateway.services.execution.execution_utils import (
 from secure_mcp_gateway.services.execution.tool_execution_service import (
     ToolExecutionService,
 )
+from secure_mcp_gateway.services.session.session_pool import get_session_pool
 
 # Get tracer from telemetry manager
 telemetry_manager = get_telemetry_config_manager()
@@ -597,12 +598,17 @@ class SecureToolExecutionService:
 
         results = []
 
-        # Single session for all calls (managed by ToolExecutionService)
-        async with self.tool_execution_service.open_session(
-            {"command": server_command, "args": server_args, "env": server_env}
-        ) as session:
+        pool = get_session_pool()
+        server_cfg = {"command": server_command, "args": server_args, "env": server_env}
+        session = None
+        reused = False
+        try:
+            session, reused = await pool.acquire(
+                session_key, server_name, server_cfg, server_info,
+            )
             logger.info(
                 f"[secure_call_tools] Session initialized successfully for {server_name}"
+                f" (reused={reused})"
             )
             logger.info(
                 "secure_tool_execution.execute_secure_tools.session_initialized",
@@ -635,6 +641,13 @@ class SecureToolExecutionService:
                     "blocked_output_hallucination",
                 ]:
                     break
+        except Exception:
+            # On hard failure, evict the session so the next call gets a fresh one
+            if session is not None:
+                await pool.evict(session_key, server_name)
+            raise
+        else:
+            await pool.release(session_key, server_name)
 
         return results
 

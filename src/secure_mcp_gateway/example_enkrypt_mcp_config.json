@@ -27,6 +27,18 @@
         "timeout_threshold": 1.0,
         "fail_threshold": 1.2
       }
+    },
+    "sandbox": {
+      "enabled": false,
+      "runtime": "docker",
+      "default_image": "python:3.11-slim",
+      "default_memory_limit": "512m",
+      "default_cpu_limit": "1.0",
+      "default_pids_limit": 100,
+      "default_network": "none",
+      "default_read_only": true,
+      "container_cli": "auto",
+      "nova_api_url": "http://localhost:9800"
     }
   },
   "plugins": {
@@ -91,6 +103,16 @@
             "OAUTH_CUSTOM_HEADERS": {}
           },
           "tools": {},
+          "sandbox": {
+            "enabled": false,
+            "runtime": "docker",
+            "image": "python:3.11-slim",
+            "memory_limit": "512m",
+            "cpu_limit": "1.0",
+            "network": "none",
+            "read_only": true,
+            "allowed_env": null
+          },
           "enable_server_info_validation": false,
           "tool_guardrails_policy": {
             "enabled": false,

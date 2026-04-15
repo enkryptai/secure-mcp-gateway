@@ -151,6 +151,23 @@ logger.info(
     f"Timeout management system initialized with {len(timeout_manager.get_active_operations())} active operations"
 )
 
+# Initialize sandbox system
+from secure_mcp_gateway.plugins.sandbox import (
+    get_sandbox_config_manager,
+    initialize_sandbox_system,
+)
+
+sandbox_manager = initialize_sandbox_system(common_config)
+logger.info(f"Registered sandbox providers: {sandbox_manager.list_providers()}")
+
+# Initialize session pool for reusing MCP server processes across calls
+from secure_mcp_gateway.services.session.session_pool import initialize_session_pool
+
+session_pool = initialize_session_pool(common_config)
+logger.info(
+    f"Session pool initialized (enabled={session_pool.enabled}, ttl={session_pool.ttl}s)"
+)
+
 # Plugin loading is now handled by the initialization functions above
 logger.info(f"Registered guardrail providers: {guardrail_manager.list_providers()}")
 

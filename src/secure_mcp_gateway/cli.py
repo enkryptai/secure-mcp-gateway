@@ -1389,6 +1389,176 @@ def configure_telemetry(config_path, enabled=None, url=None, insecure=None):
 
 
 # =============================================================================
+# SANDBOX COMMANDS
+# =============================================================================
+
+
+def update_sandbox_config(
+    config_path,
+    enabled=None,
+    disabled=False,
+    runtime=None,
+    default_image=None,
+    default_memory_limit=None,
+    default_cpu_limit=None,
+    default_pids_limit=None,
+    default_network=None,
+    default_read_only=None,
+    container_cli=None,
+    nova_api_url=None,
+):
+    """Update global sandbox configuration in common_mcp_gateway_config."""
+    config = load_config(config_path)
+
+    common = config.get("common_mcp_gateway_config", {})
+    if "sandbox" not in common:
+        common["sandbox"] = {}
+    sandbox = common["sandbox"]
+
+    updated = []
+
+    if enabled:
+        sandbox["enabled"] = True
+        updated.append("enabled=true")
+    elif disabled:
+        sandbox["enabled"] = False
+        updated.append("enabled=false")
+
+    if runtime is not None:
+        sandbox["runtime"] = runtime
+        updated.append(f"runtime={runtime}")
+    if default_image is not None:
+        sandbox["default_image"] = default_image
+        updated.append(f"default_image={default_image}")
+    if default_memory_limit is not None:
+        sandbox["default_memory_limit"] = default_memory_limit
+        updated.append(f"default_memory_limit={default_memory_limit}")
+    if default_cpu_limit is not None:
+        sandbox["default_cpu_limit"] = default_cpu_limit
+        updated.append(f"default_cpu_limit={default_cpu_limit}")
+    if default_pids_limit is not None:
+        sandbox["default_pids_limit"] = default_pids_limit
+        updated.append(f"default_pids_limit={default_pids_limit}")
+    if default_network is not None:
+        sandbox["default_network"] = default_network
+        updated.append(f"default_network={default_network}")
+    if default_read_only is not None:
+        sandbox["default_read_only"] = default_read_only
+        updated.append(f"default_read_only={default_read_only}")
+    if container_cli is not None:
+        sandbox["container_cli"] = container_cli
+        updated.append(f"container_cli={container_cli}")
+    if nova_api_url is not None:
+        sandbox["nova_api_url"] = nova_api_url
+        updated.append(f"nova_api_url={nova_api_url}")
+
+    if not updated:
+        print("ERROR: At least one sandbox option must be provided")
+        sys.exit(1)
+
+    config["common_mcp_gateway_config"] = common
+    save_config(config_path, config)
+    print(f"INFO: Global sandbox configuration updated: {', '.join(updated)}")
+
+
+def get_sandbox_config(config_path):
+    """Display current global sandbox configuration."""
+    config = load_config(config_path)
+    common = config.get("common_mcp_gateway_config", {})
+    sandbox = common.get("sandbox", {})
+
+    if not sandbox:
+        print("INFO: No sandbox configuration found. Sandbox is disabled by default.")
+        print("INFO: Use 'config update-sandbox --enabled --runtime <docker|bwrap>' to enable.")
+        return
+
+    print("INFO: Global sandbox configuration:")
+    print(json.dumps(sandbox, indent=2))
+
+
+def update_server_sandbox_config(
+    config_path,
+    config_identifier,
+    server_name,
+    enabled=None,
+    disabled=False,
+    runtime=None,
+    image=None,
+    memory_limit=None,
+    cpu_limit=None,
+    network=None,
+    read_only=None,
+    allowed_env=None,
+    nova_api_url=None,
+):
+    """Update sandbox configuration for a specific server."""
+    config = load_config(config_path)
+    config_id, config_data = find_config_by_name_or_id(config, config_identifier)
+
+    if not config_data:
+        print(f"ERROR: Config '{config_identifier}' not found.")
+        sys.exit(1)
+
+    server_data = None
+    for server in config_data.get("mcp_config", []):
+        if server.get("server_name") == server_name:
+            server_data = server
+            break
+
+    if not server_data:
+        print(f"ERROR: Server '{server_name}' not found in config '{config_identifier}'.")
+        sys.exit(1)
+
+    if "sandbox" not in server_data:
+        server_data["sandbox"] = {}
+    sandbox = server_data["sandbox"]
+
+    updated = []
+
+    if enabled:
+        sandbox["enabled"] = True
+        updated.append("enabled=true")
+    elif disabled:
+        sandbox["enabled"] = False
+        updated.append("enabled=false")
+
+    if runtime is not None:
+        sandbox["runtime"] = runtime
+        updated.append(f"runtime={runtime}")
+    if image is not None:
+        sandbox["image"] = image
+        updated.append(f"image={image}")
+    if memory_limit is not None:
+        sandbox["memory_limit"] = memory_limit
+        updated.append(f"memory_limit={memory_limit}")
+    if cpu_limit is not None:
+        sandbox["cpu_limit"] = cpu_limit
+        updated.append(f"cpu_limit={cpu_limit}")
+    if network is not None:
+        sandbox["network"] = network
+        updated.append(f"network={network}")
+    if read_only is not None:
+        sandbox["read_only"] = read_only
+        updated.append(f"read_only={read_only}")
+    if allowed_env is not None:
+        sandbox["allowed_env"] = [e.strip() for e in allowed_env.split(",")]
+        updated.append(f"allowed_env={sandbox['allowed_env']}")
+    if nova_api_url is not None:
+        sandbox["nova_api_url"] = nova_api_url
+        updated.append(f"nova_api_url={nova_api_url}")
+
+    if not updated:
+        print("ERROR: At least one sandbox option must be provided")
+        sys.exit(1)
+
+    save_config(config_path, config)
+    print(
+        f"INFO: Sandbox configuration for server '{server_name}' "
+        f"in config '{config_identifier}' updated: {', '.join(updated)}"
+    )
+
+
+# =============================================================================
 # PROJECT COMMANDS (ENHANCED)
 # =============================================================================
 
@@ -3033,6 +3203,108 @@ def main():
         help="Use insecure connection (true/false)",
     )
 
+    # config update-sandbox
+    config_update_sandbox_parser = config_subparsers.add_parser(
+        "update-sandbox", help="Update global sandbox configuration"
+    )
+    config_update_sandbox_parser.add_argument(
+        "--enabled", action="store_true", default=False, help="Enable sandbox isolation"
+    )
+    config_update_sandbox_parser.add_argument(
+        "--disabled", action="store_true", default=False, help="Disable sandbox isolation"
+    )
+    config_update_sandbox_parser.add_argument(
+        "--runtime",
+        choices=["docker", "podman", "bwrap", "microsandbox", "novavm"],
+        help="Sandbox runtime to use",
+    )
+    config_update_sandbox_parser.add_argument(
+        "--default-image", help="Default container image (e.g., python:3.11-slim)"
+    )
+    config_update_sandbox_parser.add_argument(
+        "--default-memory-limit", help="Default memory limit (e.g., 512m, 1g)"
+    )
+    config_update_sandbox_parser.add_argument(
+        "--default-cpu-limit", help="Default CPU limit (e.g., 1.0, 2.0)"
+    )
+    config_update_sandbox_parser.add_argument(
+        "--default-pids-limit", type=int, help="Default max processes per sandbox"
+    )
+    config_update_sandbox_parser.add_argument(
+        "--default-network",
+        choices=["none", "bridge", "host"],
+        help="Default network mode (none = no network access)",
+    )
+    config_update_sandbox_parser.add_argument(
+        "--default-read-only",
+        type=lambda x: x.lower() in ("true", "1", "yes"),
+        help="Default read-only filesystem (true/false)",
+    )
+    config_update_sandbox_parser.add_argument(
+        "--container-cli",
+        choices=["auto", "docker", "podman"],
+        help="Container CLI to use (auto = detect)",
+    )
+    config_update_sandbox_parser.add_argument(
+        "--nova-api-url", help="NovaVM daemon API URL"
+    )
+
+    # config get-sandbox
+    config_subparsers.add_parser(
+        "get-sandbox", help="Display current global sandbox configuration"
+    )
+
+    # config update-server-sandbox
+    config_update_server_sandbox_parser = config_subparsers.add_parser(
+        "update-server-sandbox", help="Update sandbox configuration for a specific server"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--config-name", help="Configuration name"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--config-id", help="Configuration ID"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--server-name", required=True, help="Server name"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--enabled", action="store_true", default=False, help="Enable sandbox for this server"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--disabled", action="store_true", default=False, help="Disable sandbox for this server"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--runtime",
+        choices=["docker", "podman", "bwrap", "microsandbox", "novavm"],
+        help="Sandbox runtime override",
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--image", help="Container image for this server"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--memory-limit", help="Memory limit (e.g., 256m, 1g)"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--cpu-limit", help="CPU limit (e.g., 0.5, 1.0)"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--network",
+        choices=["none", "bridge", "host"],
+        help="Network mode (none = no network access)",
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--read-only",
+        type=lambda x: x.lower() in ("true", "1", "yes"),
+        help="Read-only filesystem (true/false)",
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--allowed-env",
+        help="Comma-separated list of env var names to pass into sandbox",
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--nova-api-url", help="NovaVM daemon API URL override"
+    )
+
     # =========================================================================
     # PROJECT COMMANDS
     # =========================================================================
@@ -3512,6 +3784,46 @@ def main():
                 enabled=args.enabled,
                 url=args.url,
                 insecure=args.insecure,
+            )
+
+        elif args.config_command == "update-sandbox":
+            update_sandbox_config(
+                config_path,
+                enabled=args.enabled,
+                disabled=args.disabled,
+                runtime=args.runtime,
+                default_image=args.default_image,
+                default_memory_limit=args.default_memory_limit,
+                default_cpu_limit=args.default_cpu_limit,
+                default_pids_limit=args.default_pids_limit,
+                default_network=args.default_network,
+                default_read_only=args.default_read_only,
+                container_cli=args.container_cli,
+                nova_api_url=args.nova_api_url,
+            )
+
+        elif args.config_command == "get-sandbox":
+            get_sandbox_config(config_path)
+
+        elif args.config_command == "update-server-sandbox":
+            config_identifier = args.config_name or args.config_id
+            if not config_identifier:
+                print("ERROR: Either --config-name or --config-id is required")
+                sys.exit(1)
+            update_server_sandbox_config(
+                config_path,
+                config_identifier,
+                args.server_name,
+                enabled=args.enabled,
+                disabled=args.disabled,
+                runtime=args.runtime,
+                image=args.image,
+                memory_limit=args.memory_limit,
+                cpu_limit=args.cpu_limit,
+                network=args.network,
+                read_only=args.read_only,
+                allowed_env=args.allowed_env,
+                nova_api_url=args.nova_api_url,
             )
 
         sys.exit(0)

@@ -164,6 +164,7 @@ class ServerAddRequest(BaseModel):
     description: str = ""
     input_guardrails_policy: Optional[Dict[str, Any]] = None
     output_guardrails_policy: Optional[Dict[str, Any]] = None
+    sandbox: Optional[Dict[str, Any]] = None
 
 
 class ServerUpdateRequest(BaseModel):
@@ -172,6 +173,7 @@ class ServerUpdateRequest(BaseModel):
     env: Optional[Dict[str, Any]] = None
     tools: Optional[Dict[str, Any]] = None
     description: Optional[str] = None
+    sandbox: Optional[Dict[str, Any]] = None
 
 
 class GuardrailsUpdateRequest(BaseModel):
@@ -480,6 +482,27 @@ async def health_check():
     )
 
 
+@app.get("/api/v1/sandbox/status", response_model=SuccessResponse)
+async def get_sandbox_status(api_key: str = Depends(get_api_key)):
+    """Check sandbox runtime availability and current provider."""
+    from secure_mcp_gateway.plugins.sandbox import get_sandbox_config_manager
+
+    mgr = get_sandbox_config_manager()
+    provider = mgr.get_provider()
+    available, status_msg = await mgr.check_availability()
+
+    return SuccessResponse(
+        message="Sandbox status retrieved",
+        data={
+            "enabled": mgr.is_sandbox_enabled(),
+            "provider": provider.get_name() if provider else None,
+            "available": available,
+            "status": status_msg,
+            "metadata": provider.get_metadata() if provider else {},
+        },
+    )
+
+
 # =============================================================================
 # CONFIG ENDPOINTS
 # =============================================================================
@@ -709,6 +732,33 @@ async def get_config_server_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _patch_server_sandbox(
+    config_path: str,
+    config_identifier: str,
+    server_name: str,
+    sandbox_dict: dict,
+) -> None:
+    """Write sandbox config into a server entry inside the config file."""
+    cfg = load_config(config_path)
+    mcp_configs = cfg.get("mcp_configs", {})
+    config_entry = mcp_configs.get(config_identifier)
+    if not config_entry:
+        for cid, cval in mcp_configs.items():
+            if cval.get("mcp_config_name") == config_identifier:
+                config_entry = cval
+                break
+    if not config_entry:
+        return
+
+    for server in config_entry.get("mcp_config", []):
+        if server.get("server_name") == server_name:
+            server["sandbox"] = sandbox_dict
+            break
+
+    with open(config_path, "w") as f:
+        json.dump(cfg, f, indent=2)
+
+
 @app.post("/api/v1/configs/{config_identifier}/servers", response_model=SuccessResponse)
 async def add_server_to_config_endpoint(
     config_identifier: str,
@@ -738,6 +788,12 @@ async def add_server_to_config_endpoint(
                 json.dumps(request.output_guardrails_policy)
                 if request.output_guardrails_policy
                 else None,
+            )
+
+        if request.sandbox:
+            _patch_server_sandbox(
+                PICKED_CONFIG_PATH, config_identifier,
+                request.server_name, request.sandbox,
             )
 
         return SuccessResponse(message="Server added successfully")
@@ -778,6 +834,12 @@ async def update_server_in_config_endpoint(
                 json.dumps(request.env) if request.env else None,
                 json.dumps(request.tools) if request.tools else None,
                 request.description,
+            )
+
+        if request.sandbox:
+            _patch_server_sandbox(
+                PICKED_CONFIG_PATH, config_identifier,
+                server_name, request.sandbox,
             )
 
         return SuccessResponse(message="Server updated successfully")

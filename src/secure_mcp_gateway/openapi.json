@@ -63,6 +63,10 @@
     {
       "name": "MCP Health",
       "description": "On-demand MCP server health checks - connectivity testing, tool discovery, and tool execution"
+    },
+    {
+      "name": "Sandbox",
+      "description": "Sandbox isolation for MCP server execution - Docker, Podman, Microsandbox, and NovaVM runtimes"
     }
   ],
   "paths": {
@@ -86,6 +90,43 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/sandbox/status": {
+      "get": {
+        "tags": [
+          "Sandbox"
+        ],
+        "summary": "Get Sandbox Status",
+        "description": "Check sandbox runtime availability and current provider.",
+        "operationId": "get_sandbox_status",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                },
+                "example": {
+                  "message": "Sandbox status retrieved",
+                  "data": {
+                    "enabled": false,
+                    "provider": null,
+                    "available": false,
+                    "status": "No sandbox provider registered",
+                    "metadata": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/api/v1/configs": {
@@ -4970,6 +5011,17 @@
               }
             ],
             "title": "Output Guardrails Policy"
+          },
+          "sandbox": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SandboxConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sandbox Configuration"
           }
         },
         "type": "object",
@@ -5040,10 +5092,78 @@
               }
             ],
             "title": "Description"
+          },
+          "sandbox": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SandboxConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sandbox Configuration"
           }
         },
         "type": "object",
         "title": "ServerUpdateRequest"
+      },
+      "SandboxConfig": {
+        "properties": {
+          "enabled": {
+            "anyOf": [{"type": "boolean"}, {"type": "null"}],
+            "title": "Enable sandbox for this server"
+          },
+          "runtime": {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "title": "Sandbox runtime",
+            "description": "docker | podman | microsandbox | novavm"
+          },
+          "image": {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "title": "Container image (Docker/Podman)"
+          },
+          "memory_limit": {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "title": "Memory limit",
+            "description": "e.g. 512m, 1g"
+          },
+          "cpu_limit": {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "title": "CPU limit",
+            "description": "e.g. 1.0, 2"
+          },
+          "pids_limit": {
+            "anyOf": [{"type": "integer"}, {"type": "null"}],
+            "title": "PID limit"
+          },
+          "network": {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "title": "Network mode",
+            "description": "'none' to disable networking"
+          },
+          "read_only": {
+            "anyOf": [{"type": "boolean"}, {"type": "null"}],
+            "title": "Read-only filesystem"
+          },
+          "allowed_env": {
+            "anyOf": [
+              {"items": {"type": "string"}, "type": "array"},
+              {"type": "null"}
+            ],
+            "title": "Allowed environment variable names"
+          },
+          "nova_api_url": {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "title": "NovaVM API URL"
+          },
+          "nova_socket": {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "title": "NovaVM socket path"
+          }
+        },
+        "type": "object",
+        "title": "SandboxConfig"
       },
       "SuccessResponse": {
         "properties": {

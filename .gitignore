@@ -57,5 +57,9 @@ bandit-report.json
 # ── Legacy scripts ──────────────────────────────────────────────────────
 scripts/flake8/backups/
 
+# ── Playwright MCP artifacts ─────────────────────────────────────────
+.playwright-mcp/
+tests/traces/
+
 # ── Docs / manifests ───────────────────────────────────────────────────
 docs/secure-mcp-gateway-manifest.yaml

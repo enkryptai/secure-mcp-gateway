@@ -6,6 +6,8 @@ from typing import Any, AsyncIterator
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params
+
 
 class ToolExecutionService:
     """
@@ -115,19 +117,22 @@ class ToolExecutionService:
 
     @asynccontextmanager
     async def open_session(
-        self, server_config: dict[str, Any]
+        self,
+        server_config: dict[str, Any],
+        server_entry: dict[str, Any] | None = None,
     ) -> AsyncIterator[ClientSession]:
         """
         Opens a single stdio MCP session using the provided server_config.
 
         server_config must provide: command: str, args: list[str], env: Optional[dict]
+        server_entry is the full per-server config dict (needed for sandbox lookup).
         """
         command: str = server_config["command"]
         args: list[str] = server_config.get("args", [])
         env: dict[str, str] | None = server_config.get("env")
 
-        async with stdio_client(
-            StdioServerParameters(command=command, args=args, env=env)
+        async with build_server_params(
+            server_entry or {}, command, args, env
         ) as (read, write):
             async with ClientSession(read, write) as session:
                 # Initialize and capture server metadata

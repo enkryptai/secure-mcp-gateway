@@ -1063,6 +1063,63 @@
           }
         }
       ]
+    },
+    {
+      "name": "Sandbox",
+      "description": "Sandbox isolation for MCP server execution. Check runtime status and configure per-server sandbox settings.",
+      "item": [
+        {
+          "name": "Get Sandbox Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sandbox/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "sandbox", "status"]
+            },
+            "description": "Check current sandbox provider availability and configuration."
+          }
+        },
+        {
+          "name": "Add Server with Sandbox Config",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"server_name\": \"sandboxed_echo\",\n  \"server_command\": \"python\",\n  \"args\": [\"src/secure_mcp_gateway/bad_mcps/echo_mcp.py\"],\n  \"description\": \"Echo server running in sandbox\",\n  \"sandbox\": {\n    \"enabled\": true,\n    \"runtime\": \"docker\",\n    \"image\": \"python:3.11-slim\",\n    \"memory_limit\": \"256m\",\n    \"cpu_limit\": \"0.5\",\n    \"network\": \"none\",\n    \"read_only\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{configId}}/servers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{configId}}", "servers"]
+            },
+            "description": "Add a server with per-server sandbox configuration."
+          }
+        },
+        {
+          "name": "Update Server Sandbox Config",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sandbox\": {\n    \"enabled\": true,\n    \"runtime\": \"novavm\",\n    \"memory_limit\": \"512m\",\n    \"cpu_limit\": \"1\",\n    \"network\": \"none\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/configs/{{configId}}/servers/echo_server",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "configs", "{{configId}}", "servers", "echo_server"]
+            },
+            "description": "Update sandbox configuration for an existing server."
+          }
+        }
+      ]
     }
   ]
 }
