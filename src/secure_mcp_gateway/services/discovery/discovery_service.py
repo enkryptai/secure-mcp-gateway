@@ -337,8 +337,20 @@ class DiscoveryService:
 
             status = "success"
             message = "Tools discovery tried for all servers"
-            discovery_failed_servers = []
-            discovery_success_servers = []
+            # When ``discover_tools=True``, ``enkrypt_list_all_servers`` does
+            # the per-server discovery itself and returns the success/failure
+            # buckets. Seed our state from those rather than starting empty,
+            # otherwise the top-level ``discovery_success_servers`` /
+            # ``discovery_failed_servers`` arrays come back empty even when
+            # every server in ``available_servers`` has a clear status — the
+            # subsequent Phase 1/2/3 pipeline only acts on
+            # ``servers_needing_discovery`` (which is empty in this branch).
+            discovery_success_servers = list(
+                all_servers.get("discovery_success_servers", [])
+            )
+            discovery_failed_servers = list(
+                all_servers.get("discovery_failed_servers", [])
+            )
 
             import asyncio
 

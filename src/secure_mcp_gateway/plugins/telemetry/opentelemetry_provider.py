@@ -448,6 +448,20 @@ class OpenTelemetryProvider(TelemetryProvider):
             M.GUARDRAIL_HALLUCINATION_BLOCKS, description=D[M.GUARDRAIL_HALLUCINATION_BLOCKS], unit="1",
         )
 
+        # Health-check API metrics (REST endpoints under /api/v1/health/mcp/*)
+        self.health_request_counter = self._meter.create_counter(
+            M.HEALTH_REQUESTS, description=D[M.HEALTH_REQUESTS], unit="1",
+        )
+        self.health_request_duration = self._meter.create_histogram(
+            M.HEALTH_DURATION, description=D[M.HEALTH_DURATION], unit="s",
+        )
+        self.health_success_counter = self._meter.create_counter(
+            M.HEALTH_SUCCESS, description=D[M.HEALTH_SUCCESS], unit="1",
+        )
+        self.health_failure_counter = self._meter.create_counter(
+            M.HEALTH_FAILURES, description=D[M.HEALTH_FAILURES], unit="1",
+        )
+
     def _setup_disabled_telemetry(self):
         """Setup no-op telemetry when disabled.
 
@@ -539,6 +553,12 @@ class OpenTelemetryProvider(TelemetryProvider):
         self.active_sessions_gauge = NoOpCounter()
         self.active_users_gauge = NoOpCounter()
         self.pii_redactions_counter = NoOpCounter()
+
+        # Health-check API metrics
+        self.health_request_counter = NoOpCounter()
+        self.health_request_duration = NoOpHistogram()
+        self.health_success_counter = NoOpCounter()
+        self.health_failure_counter = NoOpCounter()
 
     def create_logger(self, name: str) -> Any:
         """Create a logger instance (structlog-backed)."""

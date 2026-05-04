@@ -353,6 +353,159 @@ async def enkrypt_get_server_info(ctx: Context, server_name: str):
     )
 
 
+def _get_tool_name(item):
+    """Extract a tool's name from any of the supported shapes."""
+    if isinstance(item, dict):
+        return item.get("name") or item.get("tool_name") or ""
+    return getattr(item, "name", "") or ""
+
+
+def _collect_deny_decisions(names, denied, allowed):
+    """
+    Run the deny matcher over each tool name and return a tuple of
+    (visible_names_set, denied_decisions_list) where each decision is
+    ``{"name", "pattern", "reason"}``.
+    """
+    from secure_mcp_gateway.services.execution.deny_matcher import is_tool_denied
+
+    visible = set()
+    denied_decisions = []
+    for name in names:
+        match = is_tool_denied(name, denied, allowed)
+        if match is None:
+            visible.add(name)
+        else:
+            denied_decisions.append(match)
+    return visible, denied_decisions
+
+
+def _filter_tools_payload(tools, denied, allowed):
+    """
+    Filter denied tools from any of the formats the gateway uses:
+
+    - ``ListToolsResult`` (Pydantic) with ``.tools`` list
+    - ``{"tools": [...]}`` wrapper dict (cached form)
+    - Flat dict keyed by tool name
+    - Plain list of Tool objects / dicts
+
+    Returns ``(filtered_payload, denied_decisions)`` where ``denied_decisions``
+    is a list of ``{"name", "pattern", "reason"}`` dicts describing every tool
+    that was removed.
+    """
+    if not denied or tools is None:
+        return tools, []
+
+    # Flat dict: {name: metadata}
+    if isinstance(tools, dict) and "tools" not in tools:
+        visible, decisions = _collect_deny_decisions(
+            list(tools.keys()), denied, allowed
+        )
+        return {k: v for k, v in tools.items() if k in visible}, decisions
+
+    # Wrapper dict: {"tools": [...]} (and possibly other keys)
+    if isinstance(tools, dict) and isinstance(tools.get("tools"), list):
+        names = [_get_tool_name(t) for t in tools["tools"]]
+        visible, decisions = _collect_deny_decisions(names, denied, allowed)
+        new_list = [t for t in tools["tools"] if _get_tool_name(t) in visible]
+        new_payload = dict(tools)
+        new_payload["tools"] = new_list
+        return new_payload, decisions
+
+    # Plain list
+    if isinstance(tools, list):
+        names = [_get_tool_name(t) for t in tools]
+        visible, decisions = _collect_deny_decisions(names, denied, allowed)
+        return [t for t in tools if _get_tool_name(t) in visible], decisions
+
+    # Pydantic ListToolsResult: has .tools attribute that is a list.
+    #
+    # CRITICAL: do NOT mutate ``tools`` in place. The same object may also be
+    # held by the local in-process cache (same Python reference), and mutating
+    # it would silently corrupt the cache so subsequent cache hits return the
+    # already-filtered list with no record of the deny decision. Always
+    # construct a *new* model instance via ``model_copy`` (Pydantic v2) or
+    # ``copy(update=...)`` (v1); fall back to a plain list if neither is
+    # available.
+    inner = getattr(tools, "tools", None)
+    if isinstance(inner, list):
+        names = [_get_tool_name(t) for t in inner]
+        visible, decisions = _collect_deny_decisions(names, denied, allowed)
+        new_inner = [t for t in inner if _get_tool_name(t) in visible]
+
+        if hasattr(tools, "model_copy"):
+            try:
+                return tools.model_copy(update={"tools": new_inner}), decisions
+            except Exception:
+                pass
+        copy_method = getattr(tools, "copy", None)
+        if callable(copy_method):
+            try:
+                return copy_method(update={"tools": new_inner}), decisions
+            except TypeError:
+                pass
+        return new_inner, decisions
+
+    return tools, []
+
+
+def _filter_denied_from_discovery(result, local_config, server_name, filter_denied_tools):
+    """
+    Remove denied tools from discovery results in-place and **always** attach
+    ``policy_denied_tools`` (list) and ``policy_denied_count`` (int) so callers
+    have a stable contract — empty list / zero when nothing matched.
+
+    ``filter_denied_tools`` is kept in the signature for backward compatibility
+    but is no longer used; deny decisions go through ``is_tool_denied`` so we
+    can capture per-tool reasons.
+    """
+    del filter_denied_tools  # unused
+
+    mcp_config = local_config.get("mcp_config", []) if local_config else []
+    server_deny_map = {
+        s.get("server_name"): (s.get("denied_tools", []), s.get("tools", {}))
+        for s in mcp_config
+    }
+
+    if server_name:
+        denied, allowed = server_deny_map.get(server_name, ([], {}))
+        decisions: list = []
+        if denied:
+            new_tools, decisions = _filter_tools_payload(
+                result.get("tools"), denied, allowed
+            )
+            result["tools"] = new_tools
+        result["policy_denied_tools"] = decisions
+        result["policy_denied_count"] = len(decisions)
+    else:
+        available = result.get("available_servers", {})
+        for sname, sdata in available.items():
+            if not isinstance(sdata, dict):
+                continue
+
+            # If a previous pass (the per-server enkrypt_discover_all_tools
+            # invoked by enkrypt_list_all_servers) already attached deny
+            # metadata, preserve it. Re-running the filter here would always
+            # produce zero decisions because ``sdata["tools"]`` has already
+            # been filtered, which would silently clobber the original
+            # attribution. Only normalise the keys if they're missing.
+            if "policy_denied_tools" in sdata:
+                sdata.setdefault(
+                    "policy_denied_count",
+                    len(sdata.get("policy_denied_tools") or []),
+                )
+                continue
+
+            denied, allowed = server_deny_map.get(sname, ([], {}))
+            decisions = []
+            if denied:
+                new_tools, decisions = _filter_tools_payload(
+                    sdata.get("tools"), denied, allowed
+                )
+                sdata["tools"] = new_tools
+            sdata["policy_denied_tools"] = decisions
+            sdata["policy_denied_count"] = len(decisions)
+
+
 # NOTE: Using name "enkrypt_discover_server_tools" is not working in Cursor for some reason.
 # So using a different name "enkrypt_discover_all_tools" which works.
 async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
@@ -394,14 +547,26 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
     session_key = f"{gateway_key}_{project_id}_{user_id}_{mcp_config_id}"
 
     service = DiscoveryService()
-    return await service.discover_tools(
+    result = await service.discover_tools(
         ctx=ctx,
         server_name=server_name,
         tracer_obj=tracer,
         logger_instance=logger,
         IS_DEBUG_LOG_LEVEL=IS_DEBUG_LOG_LEVEL,
-        session_key=session_key,  # Pass the correct session key
+        session_key=session_key,
     )
+
+    # Filter out denied tools so the LLM never sees them
+    from secure_mcp_gateway.services.execution.deny_matcher import (
+        filter_denied_tools,
+    )
+
+    if result.get("status") == "success":
+        _filter_denied_from_discovery(
+            result, local_config, server_name, filter_denied_tools
+        )
+
+    return result
 
 
 async def enkrypt_secure_call_tools(

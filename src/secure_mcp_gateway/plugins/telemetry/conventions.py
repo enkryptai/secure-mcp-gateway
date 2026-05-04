@@ -82,6 +82,12 @@ class SpanAttributes:
     ERROR_MESSAGE = "enkrypt.error.message"
     SUCCESS = "enkrypt.success"
 
+    # --- Health (REST health-check endpoints) ---
+    HEALTH_ENDPOINT = "enkrypt.health.endpoint"
+    HEALTH_STATUS = "enkrypt.health.status"
+    HEALTH_RESPONSE_TIME_MS = "enkrypt.health.response_time_ms"
+    HEALTH_TOOL_COUNT = "enkrypt.health.tool_count"
+
 
 # ===================================================================
 # Span names
@@ -126,6 +132,11 @@ class SpanNames:
     # PII
     PII_REDACT = "enkrypt.pii.redact"
     PII_RESTORE = "enkrypt.pii.restore"
+
+    # Health-check API (REST endpoints under /api/v1/health/mcp/*)
+    HEALTH_SERVER_CHECK = "enkrypt.health.server_check"
+    HEALTH_SERVER_INFO = "enkrypt.health.server_info"
+    HEALTH_TOOL_CALL = "enkrypt.health.tool_call"
 
 
 # ===================================================================
@@ -173,6 +184,12 @@ class MetricNames:
     DISCOVERY_LIST = "enkrypt.discovery.list_servers"
     DISCOVERY_FOUND = "enkrypt.discovery.servers_found"
 
+    # Health-check API metrics
+    HEALTH_REQUESTS = "enkrypt.health.requests"
+    HEALTH_DURATION = "enkrypt.health.duration"
+    HEALTH_SUCCESS = "enkrypt.health.success"
+    HEALTH_FAILURES = "enkrypt.health.failures"
+
     # Timeout metrics
     TIMEOUT_OPERATIONS = "enkrypt.timeout.operations"
     TIMEOUT_SUCCESS = "enkrypt.timeout.success"
@@ -213,6 +230,10 @@ METRIC_DESCRIPTIONS: dict[str, str] = {
     MetricNames.USERS_ACTIVE: "Currently active users",
     MetricNames.DISCOVERY_LIST: "Server list endpoint calls",
     MetricNames.DISCOVERY_FOUND: "Total servers discovered",
+    MetricNames.HEALTH_REQUESTS: "Health-check API requests received",
+    MetricNames.HEALTH_DURATION: "Health-check API duration in seconds",
+    MetricNames.HEALTH_SUCCESS: "Health-check API requests that completed successfully",
+    MetricNames.HEALTH_FAILURES: "Health-check API requests that failed",
     MetricNames.TIMEOUT_OPERATIONS: "Total timeout operations",
     MetricNames.TIMEOUT_SUCCESS: "Successful timeout operations",
     MetricNames.TIMEOUT_TIMED_OUT: "Operations that timed out",

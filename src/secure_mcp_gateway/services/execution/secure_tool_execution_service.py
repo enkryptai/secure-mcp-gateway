@@ -538,6 +538,11 @@ class SecureToolExecutionService:
         gateway_config = self.auth_manager.get_session_gateway_config(session_key)
         server_info = get_server_info_by_name(gateway_config, server_name)
         server_config = server_info["config"]
+        denied_tools = server_info.get("denied_tools", [])
+        # The configured allow list (from `server_info["tools"]`) — used as the
+        # exemption set for the deny-all wildcard "*". Distinct from
+        # ``server_config_tools`` which may have been replaced by discovery.
+        configured_allowed_tools = server_info.get("tools", {}) or {}
 
         server_command = server_config["command"]
         server_args = server_config["args"]
@@ -628,6 +633,8 @@ class SecureToolExecutionService:
                     session,
                     main_span,
                     logger,
+                    denied_tools=denied_tools,
+                    configured_allowed_tools=configured_allowed_tools,
                 )
                 results.append(result)
 
@@ -639,6 +646,7 @@ class SecureToolExecutionService:
                     "blocked_output_relevancy",
                     "blocked_output_adherence",
                     "blocked_output_hallucination",
+                    "denied",
                 ]:
                     break
         except Exception:
@@ -663,6 +671,9 @@ class SecureToolExecutionService:
         session,
         main_span,
         logger,
+        *,
+        denied_tools=None,
+        configured_allowed_tools=None,
     ):
         """Execute a single tool with all guardrail checks."""
         with tracer.start_as_current_span(
@@ -726,7 +737,53 @@ class SecureToolExecutionService:
                     f"[secure_call_tools] Call {i}: Starting tool execution for {tool_name}"
                 )
 
-                # Tool validation
+                # Deny-list check (runs before allow-list validation).
+                # Use the *configured* allow list (server_info["tools"]) as the
+                # "*" exemption set — NOT server_config_tools, which may contain
+                # post-discovery tools that should still be subject to "*".
+                if denied_tools:
+                    from secure_mcp_gateway.services.execution.deny_matcher import (
+                        is_tool_denied,
+                    )
+
+                    deny_match = is_tool_denied(
+                        tool_name,
+                        denied_tools,
+                        configured_allowed_tools or {},
+                    )
+                    if deny_match:
+                        reason = deny_match.get("reason") or "tool is on the server deny list"
+                        logger.warning(
+                            f"[secure_call_tools] Tool '{tool_name}' denied: {reason} "
+                            f"(pattern={deny_match['pattern']})",
+                        )
+                        logger.info(
+                            "secure_tool_execution.tool_denied",
+                            extra=build_log_extra(
+                                ctx,
+                                custom_id,
+                                server_name,
+                                tool_name=tool_name,
+                                deny_pattern=deny_match["pattern"],
+                                deny_reason=reason,
+                            ),
+                        )
+                        tool_span.set_attribute("tool.denied", True)
+                        tool_span.set_attribute("tool.deny_pattern", deny_match["pattern"])
+                        return {
+                            "status": "denied",
+                            "error": f"Tool '{tool_name}' is denied: {reason}",
+                            "message": f"Tool '{tool_name}' is denied: {reason}",
+                            "enkrypt_mcp_data": {
+                                "call_index": i,
+                                "server_name": server_name,
+                                "tool_name": tool_name,
+                                "deny_pattern": deny_match["pattern"],
+                                "deny_reason": reason,
+                            },
+                        }
+
+                # Tool validation (allow-list check)
                 validation_result = self._validate_tool(
                     tool_name, server_config_tools, tool_span
                 )

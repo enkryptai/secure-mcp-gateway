@@ -8,6 +8,23 @@ Sandboxing
 The health endpoints accept arbitrary user-supplied commands + args, so they
 spawn the target MCP server **inside a sandbox by default** (``sandbox.enabled = True``).
 Callers can override or opt out via the ``sandbox`` field in the request body.
+
+OpenTelemetry coverage
+----------------------
+Each public method emits:
+
+* a span with canonical name (``enkrypt.health.server_check``,
+  ``enkrypt.health.server_info``, ``enkrypt.health.tool_call``) carrying the
+  server name, endpoint label, status, latency, and optional tool metadata;
+* structured info/error logs with ``server_name``, ``endpoint``, ``status`` and
+  ``response_time_ms``;
+* metrics ``enkrypt.health.requests`` / ``.success`` / ``.failures`` (counters)
+  and ``enkrypt.health.duration`` (histogram, seconds) labelled by endpoint
+  and status, so per-endpoint dashboards can be built without log scraping.
+
+Telemetry calls are guarded so the service still works when the global
+telemetry manager has not been initialised (e.g. unit tests / standalone API
+server runs).
 """
 
 import time
@@ -17,7 +34,129 @@ from secure_mcp_gateway.client import forward_tool_call, get_server_metadata_onl
 from secure_mcp_gateway.plugins.sandbox.config_manager import (
     get_sandbox_config_manager,
 )
+from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    SpanAttributes,
+    SpanNames,
+)
 from secure_mcp_gateway.utils import logger
+
+
+# ---------------------------------------------------------------------------
+# Telemetry helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_tracer():
+    """Return a tracer if telemetry is initialised, otherwise ``None``.
+
+    The manager raises ``RuntimeError`` when no provider is active.  The health
+    APIs run inside the FastAPI process which may or may not have telemetry
+    bootstrapped (see telemetry-bootstrap follow-up), so we tolerate both.
+    """
+    try:
+        return get_telemetry_config_manager().get_tracer()
+    except Exception:  # pragma: no cover - telemetry not initialised
+        return None
+
+
+def _record_metrics(
+    *,
+    endpoint: str,
+    status: str,
+    duration_seconds: float,
+    server_name: str,
+    tool_name: Optional[str] = None,
+) -> None:
+    """Increment health-API counters and record latency."""
+    try:
+        manager = get_telemetry_config_manager()
+    except Exception:  # pragma: no cover
+        return
+
+    base_attrs: Dict[str, Any] = {
+        "endpoint": endpoint,
+        "status": status,
+        "server_name": server_name,
+    }
+    if tool_name is not None:
+        base_attrs["tool_name"] = tool_name
+
+    request_counter = manager.health_request_counter
+    if request_counter is not None:
+        request_counter.add(1, attributes=base_attrs)
+
+    duration = manager.health_request_duration
+    if duration is not None:
+        duration.record(duration_seconds, attributes=base_attrs)
+
+    if status == "ok":
+        success = manager.health_success_counter
+        if success is not None:
+            success.add(1, attributes=base_attrs)
+    else:
+        failure = manager.health_failure_counter
+        if failure is not None:
+            failure.add(1, attributes=base_attrs)
+
+
+def _set_span_basics(span, *, endpoint: str, server_name: str) -> None:
+    if span is None:
+        return
+    try:
+        span.set_attribute(SpanAttributes.HEALTH_ENDPOINT, endpoint)
+        span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+    except Exception:  # pragma: no cover
+        pass
+
+
+def _set_span_outcome(
+    span,
+    *,
+    status: str,
+    elapsed_ms: float,
+    extra_attrs: Optional[Dict[str, Any]] = None,
+    error: Optional[BaseException] = None,
+) -> None:
+    if span is None:
+        return
+    try:
+        span.set_attribute(SpanAttributes.HEALTH_STATUS, status)
+        span.set_attribute(SpanAttributes.HEALTH_RESPONSE_TIME_MS, round(elapsed_ms, 1))
+        span.set_attribute(SpanAttributes.SUCCESS, status == "ok" or status == "connected")
+        if extra_attrs:
+            for k, v in extra_attrs.items():
+                if v is not None:
+                    span.set_attribute(k, v)
+        if error is not None:
+            span.set_attribute(SpanAttributes.ERROR_CODE, type(error).__name__)
+            span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(error))
+            try:
+                span.record_exception(error)
+            except Exception:  # pragma: no cover
+                pass
+    except Exception:  # pragma: no cover
+        pass
+
+
+class _NullSpanCtx:
+    """Async-safe no-op span context used when no tracer is available."""
+
+    def __enter__(self):
+        return None
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+
+def _span(name: str):
+    tracer = _get_tracer()
+    if tracer is None:
+        return _NullSpanCtx()
+    try:
+        return tracer.start_as_current_span(name)
+    except Exception:  # pragma: no cover
+        return _NullSpanCtx()
 
 
 class MCPHealthService:
@@ -92,42 +231,92 @@ class MCPHealthService:
         sandbox: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Spawn the MCP server, initialise a session, and return connectivity info."""
+        endpoint = "server_check"
         gateway_config = self._build_gateway_config(
             server_name, config, description, sandbox
         )
         sandbox_cfg = gateway_config["mcp_config"][0]["sandbox"]
         start = time.monotonic()
 
-        try:
-            result = await get_server_metadata_only(server_name, gateway_config)
-            elapsed_ms = (time.monotonic() - start) * 1000
-            metadata = result.get("server_metadata", {})
-
-            return {
-                "server_name": server_name,
-                "connectivity": {
-                    "status": "connected",
-                    "server_name_from_server": metadata.get("name", "unknown"),
-                    "server_version": metadata.get("version", "unknown"),
-                    "server_description": metadata.get("description", ""),
-                    "response_time_ms": round(elapsed_ms, 1),
-                },
-                "sandbox": self._sandbox_status_payload(sandbox_cfg),
-            }
-        except Exception as exc:
-            elapsed_ms = (time.monotonic() - start) * 1000
-            logger.error(
-                f"[MCPHealthService] Server health check failed for {server_name}: {exc}"
+        with _span(SpanNames.HEALTH_SERVER_CHECK) as span:
+            _set_span_basics(span, endpoint=endpoint, server_name=server_name)
+            logger.info(
+                "[MCPHealthService] Server health check started",
+                extra={"endpoint": endpoint, "server_name": server_name},
             )
-            return {
-                "server_name": server_name,
-                "connectivity": {
-                    "status": "unreachable",
-                    "error": f"{type(exc).__name__}: {exc}",
-                    "response_time_ms": round(elapsed_ms, 1),
-                },
-                "sandbox": self._sandbox_status_payload(sandbox_cfg),
-            }
+
+            try:
+                result = await get_server_metadata_only(server_name, gateway_config)
+                elapsed = time.monotonic() - start
+                elapsed_ms = elapsed * 1000
+                metadata = result.get("server_metadata", {}) if result else {}
+
+                _set_span_outcome(
+                    span,
+                    status="connected",
+                    elapsed_ms=elapsed_ms,
+                )
+                _record_metrics(
+                    endpoint=endpoint,
+                    status="ok",
+                    duration_seconds=elapsed,
+                    server_name=server_name,
+                )
+                logger.info(
+                    "[MCPHealthService] Server health check ok",
+                    extra={
+                        "endpoint": endpoint,
+                        "server_name": server_name,
+                        "status": "connected",
+                        "response_time_ms": round(elapsed_ms, 1),
+                    },
+                )
+
+                return {
+                    "server_name": server_name,
+                    "connectivity": {
+                        "status": "connected",
+                        "server_name_from_server": metadata.get("name", "unknown"),
+                        "server_version": metadata.get("version", "unknown"),
+                        "server_description": metadata.get("description", ""),
+                        "response_time_ms": round(elapsed_ms, 1),
+                    },
+                    "sandbox": self._sandbox_status_payload(sandbox_cfg),
+                }
+            except Exception as exc:
+                elapsed = time.monotonic() - start
+                elapsed_ms = elapsed * 1000
+                _set_span_outcome(
+                    span,
+                    status="unreachable",
+                    elapsed_ms=elapsed_ms,
+                    error=exc,
+                )
+                _record_metrics(
+                    endpoint=endpoint,
+                    status="unreachable",
+                    duration_seconds=elapsed,
+                    server_name=server_name,
+                )
+                logger.error(
+                    "[MCPHealthService] Server health check failed",
+                    extra={
+                        "endpoint": endpoint,
+                        "server_name": server_name,
+                        "status": "unreachable",
+                        "response_time_ms": round(elapsed_ms, 1),
+                        "error": f"{type(exc).__name__}: {exc}",
+                    },
+                )
+                return {
+                    "server_name": server_name,
+                    "connectivity": {
+                        "status": "unreachable",
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "response_time_ms": round(elapsed_ms, 1),
+                    },
+                    "sandbox": self._sandbox_status_payload(sandbox_cfg),
+                }
 
     async def get_server_info(
         self,
@@ -137,44 +326,97 @@ class MCPHealthService:
         sandbox: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Spawn the MCP server and discover all tools with their schemas."""
+        endpoint = "server_info"
         gateway_config = self._build_gateway_config(
             server_name, config, description, sandbox
         )
         sandbox_cfg = gateway_config["mcp_config"][0]["sandbox"]
         start = time.monotonic()
 
-        try:
-            result = await forward_tool_call(server_name, None, None, gateway_config)
-            elapsed_ms = (time.monotonic() - start) * 1000
-
-            metadata = result.get("server_metadata", {})
-            tools_result = result.get("tools")
-
-            tool_list = self._serialize_tools(tools_result)
-
-            return {
-                "server_name": server_name,
-                "server_info": {
-                    "name": metadata.get("name", "unknown"),
-                    "version": metadata.get("version", "unknown"),
-                    "description": metadata.get("description", ""),
-                },
-                "tools": tool_list,
-                "tool_count": len(tool_list),
-                "response_time_ms": round(elapsed_ms, 1),
-                "sandbox": self._sandbox_status_payload(sandbox_cfg),
-            }
-        except Exception as exc:
-            elapsed_ms = (time.monotonic() - start) * 1000
-            logger.error(
-                f"[MCPHealthService] Server info failed for {server_name}: {exc}"
+        with _span(SpanNames.HEALTH_SERVER_INFO) as span:
+            _set_span_basics(span, endpoint=endpoint, server_name=server_name)
+            logger.info(
+                "[MCPHealthService] Server info started",
+                extra={"endpoint": endpoint, "server_name": server_name},
             )
-            return {
-                "server_name": server_name,
-                "error": f"{type(exc).__name__}: {exc}",
-                "response_time_ms": round(elapsed_ms, 1),
-                "sandbox": self._sandbox_status_payload(sandbox_cfg),
-            }
+
+            try:
+                result = await forward_tool_call(
+                    server_name, None, None, gateway_config
+                )
+                elapsed = time.monotonic() - start
+                elapsed_ms = elapsed * 1000
+
+                metadata = result.get("server_metadata", {}) if result else {}
+                tools_result = result.get("tools") if result else None
+                tool_list = self._serialize_tools(tools_result)
+
+                _set_span_outcome(
+                    span,
+                    status="ok",
+                    elapsed_ms=elapsed_ms,
+                    extra_attrs={SpanAttributes.HEALTH_TOOL_COUNT: len(tool_list)},
+                )
+                _record_metrics(
+                    endpoint=endpoint,
+                    status="ok",
+                    duration_seconds=elapsed,
+                    server_name=server_name,
+                )
+                logger.info(
+                    "[MCPHealthService] Server info ok",
+                    extra={
+                        "endpoint": endpoint,
+                        "server_name": server_name,
+                        "status": "ok",
+                        "tool_count": len(tool_list),
+                        "response_time_ms": round(elapsed_ms, 1),
+                    },
+                )
+
+                return {
+                    "server_name": server_name,
+                    "server_info": {
+                        "name": metadata.get("name", "unknown"),
+                        "version": metadata.get("version", "unknown"),
+                        "description": metadata.get("description", ""),
+                    },
+                    "tools": tool_list,
+                    "tool_count": len(tool_list),
+                    "response_time_ms": round(elapsed_ms, 1),
+                    "sandbox": self._sandbox_status_payload(sandbox_cfg),
+                }
+            except Exception as exc:
+                elapsed = time.monotonic() - start
+                elapsed_ms = elapsed * 1000
+                _set_span_outcome(
+                    span,
+                    status="error",
+                    elapsed_ms=elapsed_ms,
+                    error=exc,
+                )
+                _record_metrics(
+                    endpoint=endpoint,
+                    status="error",
+                    duration_seconds=elapsed,
+                    server_name=server_name,
+                )
+                logger.error(
+                    "[MCPHealthService] Server info failed",
+                    extra={
+                        "endpoint": endpoint,
+                        "server_name": server_name,
+                        "status": "error",
+                        "response_time_ms": round(elapsed_ms, 1),
+                        "error": f"{type(exc).__name__}: {exc}",
+                    },
+                )
+                return {
+                    "server_name": server_name,
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "response_time_ms": round(elapsed_ms, 1),
+                    "sandbox": self._sandbox_status_payload(sandbox_cfg),
+                }
 
     async def execute_tool_health_check(
         self,
@@ -186,47 +428,122 @@ class MCPHealthService:
         sandbox: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Spawn the MCP server and execute a specific tool."""
+        endpoint = "tool_call"
         gateway_config = self._build_gateway_config(
             server_name, config, description, sandbox
         )
         sandbox_cfg = gateway_config["mcp_config"][0]["sandbox"]
         start = time.monotonic()
 
-        try:
-            result = await forward_tool_call(
-                server_name, tool_name, tool_args, gateway_config
-            )
-            elapsed_ms = (time.monotonic() - start) * 1000
-
-            content = self._serialize_call_result(result)
-            is_error = getattr(result, "isError", False)
-
-            resp: Dict[str, Any] = {
-                "server_name": server_name,
-                "tool_name": tool_name,
-                "execution": {
-                    "status": "error" if is_error else "ok",
-                    "result": content,
-                    "response_time_ms": round(elapsed_ms, 1),
+        with _span(SpanNames.HEALTH_TOOL_CALL) as span:
+            _set_span_basics(span, endpoint=endpoint, server_name=server_name)
+            if span is not None:
+                try:
+                    span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
+                except Exception:  # pragma: no cover
+                    pass
+            logger.info(
+                "[MCPHealthService] Tool execution started",
+                extra={
+                    "endpoint": endpoint,
+                    "server_name": server_name,
+                    "tool_name": tool_name,
                 },
-                "sandbox": self._sandbox_status_payload(sandbox_cfg),
-            }
-            return resp
-        except Exception as exc:
-            elapsed_ms = (time.monotonic() - start) * 1000
-            logger.error(
-                f"[MCPHealthService] Tool execution failed for {server_name}/{tool_name}: {exc}"
             )
-            return {
-                "server_name": server_name,
-                "tool_name": tool_name,
-                "execution": {
-                    "status": "error",
-                    "error": f"{type(exc).__name__}: {exc}",
-                    "response_time_ms": round(elapsed_ms, 1),
-                },
-                "sandbox": self._sandbox_status_payload(sandbox_cfg),
-            }
+
+            try:
+                result = await forward_tool_call(
+                    server_name, tool_name, tool_args, gateway_config
+                )
+                elapsed = time.monotonic() - start
+                elapsed_ms = elapsed * 1000
+
+                content = self._serialize_call_result(result)
+                is_error = bool(getattr(result, "isError", False))
+                status = "error" if is_error else "ok"
+
+                _set_span_outcome(
+                    span,
+                    status=status,
+                    elapsed_ms=elapsed_ms,
+                )
+                _record_metrics(
+                    endpoint=endpoint,
+                    status=status,
+                    duration_seconds=elapsed,
+                    server_name=server_name,
+                    tool_name=tool_name,
+                )
+                if is_error:
+                    logger.error(
+                        "[MCPHealthService] Tool execution returned error",
+                        extra={
+                            "endpoint": endpoint,
+                            "server_name": server_name,
+                            "tool_name": tool_name,
+                            "status": status,
+                            "response_time_ms": round(elapsed_ms, 1),
+                        },
+                    )
+                else:
+                    logger.info(
+                        "[MCPHealthService] Tool execution ok",
+                        extra={
+                            "endpoint": endpoint,
+                            "server_name": server_name,
+                            "tool_name": tool_name,
+                            "status": status,
+                            "response_time_ms": round(elapsed_ms, 1),
+                        },
+                    )
+
+                return {
+                    "server_name": server_name,
+                    "tool_name": tool_name,
+                    "execution": {
+                        "status": status,
+                        "result": content,
+                        "response_time_ms": round(elapsed_ms, 1),
+                    },
+                    "sandbox": self._sandbox_status_payload(sandbox_cfg),
+                }
+            except Exception as exc:
+                elapsed = time.monotonic() - start
+                elapsed_ms = elapsed * 1000
+                _set_span_outcome(
+                    span,
+                    status="error",
+                    elapsed_ms=elapsed_ms,
+                    error=exc,
+                )
+                _record_metrics(
+                    endpoint=endpoint,
+                    status="error",
+                    duration_seconds=elapsed,
+                    server_name=server_name,
+                    tool_name=tool_name,
+                )
+                logger.error(
+                    "[MCPHealthService] Tool execution failed",
+                    extra={
+                        "endpoint": endpoint,
+                        "server_name": server_name,
+                        "tool_name": tool_name,
+                        "status": "error",
+                        "response_time_ms": round(elapsed_ms, 1),
+                        "error": f"{type(exc).__name__}: {exc}",
+                    },
+                )
+                return {
+                    "server_name": server_name,
+                    "tool_name": tool_name,
+                    "execution": {
+                        "status": "error",
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "response_time_ms": round(elapsed_ms, 1),
+                    },
+                    "sandbox": self._sandbox_status_payload(sandbox_cfg),
+                }
 
     # ------------------------------------------------------------------
     # Serialisation helpers

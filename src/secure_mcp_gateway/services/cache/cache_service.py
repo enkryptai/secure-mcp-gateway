@@ -171,24 +171,50 @@ class CacheService:
             logger.error(f"[cache_tools] Failed to cache tools for {server_name}: {e}")
             return False
 
-    def get_cached_tools(
-        self, server_id: str, server_name: str
-    ) -> Optional[Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], str]]]:
+    def get_cached_tools(self, server_id: str, server_name: str):
         """
         Get cached tools for a specific server.
+
+        The underlying ``client.get_cached_tools`` has historically returned two
+        different shapes: the local in-memory cache returns ``(value, expires_at)``
+        while the external (Redis) cache returns the bare ``value``. This wrapper
+        normalises the return so callers always get just the payload (or
+        ``None``); use :meth:`get_cached_tools_with_expiry` if you need the
+        timestamp.
 
         Args:
             server_id (str): Server ID
             server_name (str): Server name
 
         Returns:
-            Optional[Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], str]]]:
-                Cached tools or tuple of (tools, expires_at), or None if not found
+            The cached tools payload, or ``None`` if not found.
+        """
+        cached = self.get_cached_tools_with_expiry(server_id, server_name)
+        if cached is None:
+            return None
+        return cached[0]
+
+    def get_cached_tools_with_expiry(self, server_id: str, server_name: str):
+        """
+        Like :meth:`get_cached_tools` but also returns the expiration timestamp
+        when the local in-memory cache is in use. External caches (Redis) don't
+        carry the timestamp at this layer, so the second element will be
+        ``None`` in that path.
+
+        Returns ``None`` when the entry is missing, otherwise
+        ``(payload, expires_at | None)``.
         """
         try:
             from secure_mcp_gateway.client import get_cached_tools
 
-            return get_cached_tools(self.cache_client, server_id, server_name)
+            cached = get_cached_tools(self.cache_client, server_id, server_name)
+            if cached is None:
+                return None
+            # Local in-memory cache returns (value, expires_at); external cache
+            # returns the bare value. Normalise to (value, expires_at | None).
+            if isinstance(cached, tuple) and len(cached) == 2:
+                return cached[0], cached[1]
+            return cached, None
         except Exception as e:
             logger.error(
                 f"[get_cached_tools] Failed to get cached tools for {server_name}: {e}"

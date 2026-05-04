@@ -103,6 +103,7 @@
             "OAUTH_CUSTOM_HEADERS": {}
           },
           "tools": {},
+          "denied_tools": [],
           "sandbox": {
             "enabled": false,
             "runtime": "docker",

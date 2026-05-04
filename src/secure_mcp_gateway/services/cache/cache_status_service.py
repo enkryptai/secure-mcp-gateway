@@ -443,31 +443,28 @@ class CacheStatusService:
                     f"[get_cache_status] Getting tool cache for server: {server_name}"
                 )
 
-            cached_result = self.cache_service.get_cached_tools(id, server_name)
+            cached_result = self.cache_service.get_cached_tools_with_expiry(
+                id, server_name
+            )
             if IS_DEBUG_LOG_LEVEL:
                 logger.debug(f"[get_cache_status] Cached result: {cached_result}")
 
             if cached_result:
-                # Handle both tuple (local cache) and non-tuple (external cache) returns
-                if isinstance(cached_result, tuple) and len(cached_result) == 2:
-                    tools, expires_at = cached_result
-                else:
-                    # External cache returns just the tools data - query TTL from Redis
-                    tools = cached_result
-                    if ENKRYPT_MCP_USE_EXTERNAL_CACHE:
-                        # Get the hashed key for the server tools
-                        tools_key = self.cache_service.get_server_hashed_key(
-                            id, server_name
+                tools, expires_at = cached_result
+                # Local cache provides ``expires_at`` directly; external cache
+                # doesn't surface it through the client wrapper, so query Redis
+                # for the TTL when running with the external cache enabled.
+                if expires_at is None and ENKRYPT_MCP_USE_EXTERNAL_CACHE:
+                    tools_key = self.cache_service.get_server_hashed_key(
+                        id, server_name
+                    )
+                    ttl_seconds, expires_at = self.cache_service.get_redis_ttl(
+                        tools_key
+                    )
+                    if IS_DEBUG_LOG_LEVEL:
+                        logger.debug(
+                            f"[get_cache_status] Redis TTL for {server_name}: ttl_seconds={ttl_seconds}, expires_at={expires_at}"
                         )
-                        ttl_seconds, expires_at = self.cache_service.get_redis_ttl(
-                            tools_key
-                        )
-                        if IS_DEBUG_LOG_LEVEL:
-                            logger.debug(
-                                f"[get_cache_status] Redis TTL for {server_name}: ttl_seconds={ttl_seconds}, expires_at={expires_at}"
-                            )
-                    else:
-                        expires_at = None
 
                 server_span.set_attribute(SpanAttributes.CACHE_HIT, True)
                 server_span.set_attribute("expires_at", expires_at)

@@ -364,6 +364,7 @@ def generate_default_config():
                             "OAUTH_CUSTOM_HEADERS": {},
                         },
                         "tools": {},
+                        "denied_tools": [],
                         "enable_server_info_validation": False,
                         "tool_guardrails_policy": {
                             "enabled": False,
@@ -810,6 +811,7 @@ def add_server_to_config(
     description="",
     input_guardrails=None,
     output_guardrails=None,
+    denied_tools=None,
 ):
     """Add server to MCP configuration with validation."""
     config = load_config(config_path)
@@ -830,6 +832,9 @@ def add_server_to_config(
     # Validate JSON inputs
     env_data = validate_json_input(env, "environment variables") if env else None
     tools_data = validate_json_input(tools, "tools configuration") if tools else None
+    denied_tools_data = (
+        validate_json_input(denied_tools, "denied tools list") if denied_tools else None
+    )
     input_guardrails_data = (
         validate_json_input(input_guardrails, "input guardrails policy")
         if input_guardrails
@@ -850,6 +855,7 @@ def add_server_to_config(
         "description": description,
         "config": {"command": command, "args": args_list},
         "tools": tools_data or {},
+        "denied_tools": denied_tools_data or [],
         "enable_server_info_validation": False,
         "tool_guardrails_policy": {
             "enabled": False,
@@ -3030,6 +3036,10 @@ def main():
     config_add_server_parser.add_argument("--env", help="Environment variables (JSON)")
     config_add_server_parser.add_argument("--tools", help="Tools configuration (JSON)")
     config_add_server_parser.add_argument(
+        "--denied-tools",
+        help="Denied tools list (JSON array of strings/objects with name, reason, description)",
+    )
+    config_add_server_parser.add_argument(
         "--description", default="", help="Server description"
     )
     config_add_server_parser.add_argument(
@@ -3687,9 +3697,10 @@ def main():
                 args.args,
                 args.env,
                 args.tools,
-                args.description,  # Changed from args.command to args.server_command
+                args.description,
                 args.input_guardrails_policy,
                 args.output_guardrails_policy,
+                getattr(args, "denied_tools", None),
             )
         elif args.config_command == "get":
             config_identifier = args.config_name or args.config_id

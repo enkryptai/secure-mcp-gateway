@@ -4,9 +4,14 @@ These endpoints accept arbitrary user-supplied MCP server commands and
 arguments. Because that is inherently high-risk (RCE-by-API otherwise),
 they spawn the target server **inside a sandbox by default**.
 
-Callers may override behaviour per-call via the optional ``sandbox`` field
-in the request body (e.g. ``{"enabled": false}`` to opt out, or to
+Callers may override sandbox behaviour per-call via the optional ``sandbox``
+field in the request body (e.g. ``{"enabled": false}`` to opt out, or to
 override runtime / resource limits).
+
+The route handlers here are thin wrappers; OpenTelemetry traces, metrics, and
+structured logs are emitted by ``MCPHealthService`` so we don't double-count
+or duplicate spans.  Each route still emits a single info-level log on entry
+so the request boundary is visible even when telemetry is disabled.
 """
 
 from typing import Any, Dict, Optional
@@ -20,6 +25,7 @@ from secure_mcp_gateway.api_models import (
     get_api_key,
 )
 from secure_mcp_gateway.services.health.mcp_health_service import MCPHealthService
+from secure_mcp_gateway.utils import logger
 
 health_router = APIRouter(tags=["MCP Health"])
 
@@ -45,6 +51,13 @@ async def server_health_check(
 
     Pass ``sandbox: {"enabled": false}`` in the body to disable.
     """
+    logger.info(
+        "[api] /api/v1/health/mcp/server received",
+        extra={
+            "endpoint": "server_check",
+            "server_name": request.server_name,
+        },
+    )
     config = request.config.model_dump()
     result = await _service.check_server_health(
         server_name=request.server_name,
@@ -67,6 +80,13 @@ async def server_info(
 
     Pass ``sandbox: {"enabled": false}`` in the body to disable.
     """
+    logger.info(
+        "[api] /api/v1/mcp/server/info received",
+        extra={
+            "endpoint": "server_info",
+            "server_name": request.server_name,
+        },
+    )
     config = request.config.model_dump()
     result = await _service.get_server_info(
         server_name=request.server_name,
@@ -89,6 +109,14 @@ async def tool_health_check(
 
     Pass ``sandbox: {"enabled": false}`` in the body to disable.
     """
+    logger.info(
+        "[api] /api/v1/health/mcp/tool received",
+        extra={
+            "endpoint": "tool_call",
+            "server_name": request.server_name,
+            "tool_name": request.tool_name,
+        },
+    )
     config = request.config.model_dump()
     result = await _service.execute_tool_health_check(
         server_name=request.server_name,

@@ -64,12 +64,26 @@ class SandboxConfig(BaseModel):
     nova_socket: Optional[str] = Field(None, description="NovaVM socket path")
 
 
+# Deny-list entry. Either a bare tool-name string (supports fnmatch globs)
+# or a dict with at least a ``name`` key.  We keep the alias permissive so
+# callers can mix-and-match in the same array.
+DenyToolEntry = Any
+
+
 class ServerAddRequest(BaseModel):
     server_name: str
     server_command: str
     server_args: Optional[List[str]] = None
     description: Optional[str] = None
     sandbox: Optional[SandboxConfig] = None
+    denied_tools: Optional[List[DenyToolEntry]] = Field(
+        None,
+        description=(
+            "Tools to deny. Each entry is a tool-name string (supports fnmatch "
+            "globs like 'tool_a_*' or '*') or an object with 'name', 'reason', "
+            "and optional 'description' fields."
+        ),
+    )
 
 
 class ServerUpdateRequest(BaseModel):

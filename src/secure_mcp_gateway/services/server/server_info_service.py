@@ -159,10 +159,21 @@ class ServerInfoService:
                     latest_server_info
                 )
 
+                # Apply deny-list filter to the tools payload so the response
+                # is consistent with what ``enkrypt_discover_all_tools`` shows.
+                # ``policy_denied_tools`` / ``policy_denied_count`` are always
+                # emitted (empty list / zero when nothing matched) so callers
+                # have a stable contract.
+                policy_denied, policy_count = self._apply_deny_list(
+                    masked_server_info, latest_server_info
+                )
+
                 return {
                     "status": "success",
                     "server_name": server_name,
                     "server_info": masked_server_info,
+                    "policy_denied_tools": policy_denied,
+                    "policy_denied_count": policy_count,
                 }
 
             except Exception as e:
@@ -191,6 +202,36 @@ class ServerInfoService:
         import uuid
 
         return str(uuid.uuid4())
+
+    def _apply_deny_list(self, masked_server_info, source_server_info):
+        """
+        Filter the masked server-info ``tools`` field through the deny list
+        configured on the *unmasked* source. The deny rules and configured
+        allow list come from the source because masking may rewrite tool
+        names or metadata.
+
+        Mutates ``masked_server_info["tools"]`` in place and returns
+        ``(decisions, count)``. Always returns a list (possibly empty)
+        and an int so the response shape is stable.
+        """
+        from secure_mcp_gateway.gateway import _filter_tools_payload
+
+        denied = source_server_info.get("denied_tools", []) or []
+        configured_allowed = source_server_info.get("tools", {}) or {}
+
+        # Mask may have replaced tools with a marker dict. If the masked
+        # value isn't a recognisable shape, we still want to report what
+        # the policy *would* have denied based on the unmasked tool names.
+        if not denied:
+            return [], 0
+
+        target = masked_server_info.get("tools")
+        new_target, decisions = _filter_tools_payload(
+            target, denied, configured_allowed
+        )
+        if new_target is not target:
+            masked_server_info["tools"] = new_target
+        return decisions, len(decisions)
 
     async def _check_authentication(
         self,
