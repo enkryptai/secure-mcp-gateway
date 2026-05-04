@@ -173,6 +173,14 @@ class MCPServerRequest(BaseModel):
     server_name: str
     config: MCPServerConfigBody
     description: Optional[str] = ""
+    sandbox: Optional[SandboxConfig] = Field(
+        None,
+        description=(
+            "Per-call sandbox override. Health endpoints sandbox by default "
+            "(enabled=True). Set 'enabled': false here to opt out, or override "
+            "runtime / resource limits for this single call."
+        ),
+    )
 
 
 class MCPToolRequest(MCPServerRequest):

@@ -1,4 +1,15 @@
-"""MCP server health check and info REST API endpoints."""
+"""MCP server health check and info REST API endpoints.
+
+These endpoints accept arbitrary user-supplied MCP server commands and
+arguments. Because that is inherently high-risk (RCE-by-API otherwise),
+they spawn the target server **inside a sandbox by default**.
+
+Callers may override behaviour per-call via the optional ``sandbox`` field
+in the request body (e.g. ``{"enabled": false}`` to opt out, or to
+override runtime / resource limits).
+"""
+
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends
 
@@ -15,21 +26,31 @@ health_router = APIRouter(tags=["MCP Health"])
 _service = MCPHealthService()
 
 
+def _extract_sandbox(request: MCPServerRequest) -> Optional[Dict[str, Any]]:
+    """Return the request's sandbox override as a plain dict (or None)."""
+    if request.sandbox is None:
+        return None
+    return request.sandbox.model_dump(exclude_none=True)
+
+
 @health_router.post("/api/v1/health/mcp/server", response_model=SuccessResponse)
 async def server_health_check(
     request: MCPServerRequest, api_key: str = Depends(get_api_key)
 ):
     """Check connectivity to an MCP server.
 
-    Spawns the server process, runs session.initialize(), and returns
-    the server's reported name, version, and description along with
-    the connection latency.
+    Spawns the server process **inside a sandbox by default**, runs
+    ``session.initialize()``, and returns the server's reported name,
+    version, and description along with the connection latency.
+
+    Pass ``sandbox: {"enabled": false}`` in the body to disable.
     """
     config = request.config.model_dump()
     result = await _service.check_server_health(
         server_name=request.server_name,
         config=config,
         description=request.description or "",
+        sandbox=_extract_sandbox(request),
     )
     return SuccessResponse(message="Server health check completed", data=result)
 
@@ -40,15 +61,18 @@ async def server_info(
 ):
     """Discover all tools exposed by an MCP server.
 
-    Spawns the server, initialises a session, calls list_tools(), and
-    returns the server metadata together with every tool's name,
-    description, and input schema.
+    Spawns the server **inside a sandbox by default**, initialises a
+    session, calls ``list_tools()``, and returns the server metadata
+    together with every tool's name, description, and input schema.
+
+    Pass ``sandbox: {"enabled": false}`` in the body to disable.
     """
     config = request.config.model_dump()
     result = await _service.get_server_info(
         server_name=request.server_name,
         config=config,
         description=request.description or "",
+        sandbox=_extract_sandbox(request),
     )
     return SuccessResponse(message="Server info retrieved", data=result)
 
@@ -59,8 +83,11 @@ async def tool_health_check(
 ):
     """Execute a specific tool on an MCP server and return the result.
 
-    Spawns the server, initialises a session, calls the named tool with
-    the supplied arguments, and returns the tool's response content.
+    Spawns the server **inside a sandbox by default**, initialises a
+    session, calls the named tool with the supplied arguments, and
+    returns the tool's response content.
+
+    Pass ``sandbox: {"enabled": false}`` in the body to disable.
     """
     config = request.config.model_dump()
     result = await _service.execute_tool_health_check(
@@ -69,5 +96,6 @@ async def tool_health_check(
         tool_name=request.tool_name,
         tool_args=request.tool_args,
         description=request.description or "",
+        sandbox=_extract_sandbox(request),
     )
     return SuccessResponse(message="Tool health check completed", data=result)

@@ -2,12 +2,21 @@
 
 Provides connectivity checks, tool discovery, and tool execution
 for arbitrary MCP servers supplied via raw JSON config (no pre-registration required).
+
+Sandboxing
+----------
+The health endpoints accept arbitrary user-supplied commands + args, so they
+spawn the target MCP server **inside a sandbox by default** (``sandbox.enabled = True``).
+Callers can override or opt out via the ``sandbox`` field in the request body.
 """
 
 import time
 from typing import Any, Dict, List, Optional
 
 from secure_mcp_gateway.client import forward_tool_call, get_server_metadata_only
+from secure_mcp_gateway.plugins.sandbox.config_manager import (
+    get_sandbox_config_manager,
+)
 from secure_mcp_gateway.utils import logger
 
 
@@ -15,19 +24,64 @@ class MCPHealthService:
     """On-demand health check and info retrieval for MCP servers."""
 
     @staticmethod
-    def _build_gateway_config(
-        server_name: str, config: Dict[str, Any], description: str = ""
+    def _resolve_sandbox(
+        sandbox_override: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
+        """
+        Build the effective sandbox config for a health-endpoint call.
+
+        The health endpoints sandbox by default. The caller may pass
+        ``sandbox_override`` to disable or fine-tune. Per-call values win
+        over the gateway's global sandbox defaults.
+        """
+        effective: Dict[str, Any] = {"enabled": True}
+        if sandbox_override:
+            effective.update(
+                {k: v for k, v in sandbox_override.items() if v is not None}
+            )
+        return effective
+
+    @staticmethod
+    def _build_gateway_config(
+        server_name: str,
+        config: Dict[str, Any],
+        description: str = "",
+        sandbox_override: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        sandbox_cfg = MCPHealthService._resolve_sandbox(sandbox_override)
         return {
             "mcp_config": [
                 {
                     "server_name": server_name,
                     "description": description,
                     "config": config,
+                    "sandbox": sandbox_cfg,
                 }
             ],
             "project_id": None,
             "mcp_config_id": None,
+        }
+
+    @staticmethod
+    def _sandbox_status_payload(sandbox_cfg: Dict[str, Any]) -> Dict[str, Any]:
+        """Describe what sandbox actually applied for the response payload."""
+        manager = get_sandbox_config_manager()
+        provider = manager.get_provider()
+        requested_enabled = bool(sandbox_cfg.get("enabled", False))
+        provider_name = provider.get_name() if provider else None
+
+        if not requested_enabled:
+            applied = "disabled"
+        elif provider is None:
+            applied = "fell-through (no provider registered)"
+        else:
+            applied = f"sandboxed via {provider_name}"
+
+        return {
+            "requested_enabled": requested_enabled,
+            "provider": provider_name,
+            "runtime": sandbox_cfg.get("runtime"),
+            "applied": applied,
         }
 
     async def check_server_health(
@@ -35,9 +89,13 @@ class MCPHealthService:
         server_name: str,
         config: Dict[str, Any],
         description: str = "",
+        sandbox: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Spawn the MCP server, initialise a session, and return connectivity info."""
-        gateway_config = self._build_gateway_config(server_name, config, description)
+        gateway_config = self._build_gateway_config(
+            server_name, config, description, sandbox
+        )
+        sandbox_cfg = gateway_config["mcp_config"][0]["sandbox"]
         start = time.monotonic()
 
         try:
@@ -54,6 +112,7 @@ class MCPHealthService:
                     "server_description": metadata.get("description", ""),
                     "response_time_ms": round(elapsed_ms, 1),
                 },
+                "sandbox": self._sandbox_status_payload(sandbox_cfg),
             }
         except Exception as exc:
             elapsed_ms = (time.monotonic() - start) * 1000
@@ -67,6 +126,7 @@ class MCPHealthService:
                     "error": f"{type(exc).__name__}: {exc}",
                     "response_time_ms": round(elapsed_ms, 1),
                 },
+                "sandbox": self._sandbox_status_payload(sandbox_cfg),
             }
 
     async def get_server_info(
@@ -74,9 +134,13 @@ class MCPHealthService:
         server_name: str,
         config: Dict[str, Any],
         description: str = "",
+        sandbox: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Spawn the MCP server and discover all tools with their schemas."""
-        gateway_config = self._build_gateway_config(server_name, config, description)
+        gateway_config = self._build_gateway_config(
+            server_name, config, description, sandbox
+        )
+        sandbox_cfg = gateway_config["mcp_config"][0]["sandbox"]
         start = time.monotonic()
 
         try:
@@ -98,6 +162,7 @@ class MCPHealthService:
                 "tools": tool_list,
                 "tool_count": len(tool_list),
                 "response_time_ms": round(elapsed_ms, 1),
+                "sandbox": self._sandbox_status_payload(sandbox_cfg),
             }
         except Exception as exc:
             elapsed_ms = (time.monotonic() - start) * 1000
@@ -108,6 +173,7 @@ class MCPHealthService:
                 "server_name": server_name,
                 "error": f"{type(exc).__name__}: {exc}",
                 "response_time_ms": round(elapsed_ms, 1),
+                "sandbox": self._sandbox_status_payload(sandbox_cfg),
             }
 
     async def execute_tool_health_check(
@@ -117,9 +183,13 @@ class MCPHealthService:
         tool_name: str,
         tool_args: Optional[Dict[str, Any]] = None,
         description: str = "",
+        sandbox: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Spawn the MCP server and execute a specific tool."""
-        gateway_config = self._build_gateway_config(server_name, config, description)
+        gateway_config = self._build_gateway_config(
+            server_name, config, description, sandbox
+        )
+        sandbox_cfg = gateway_config["mcp_config"][0]["sandbox"]
         start = time.monotonic()
 
         try:
@@ -139,6 +209,7 @@ class MCPHealthService:
                     "result": content,
                     "response_time_ms": round(elapsed_ms, 1),
                 },
+                "sandbox": self._sandbox_status_payload(sandbox_cfg),
             }
             return resp
         except Exception as exc:
@@ -154,6 +225,7 @@ class MCPHealthService:
                     "error": f"{type(exc).__name__}: {exc}",
                     "response_time_ms": round(elapsed_ms, 1),
                 },
+                "sandbox": self._sandbox_status_payload(sandbox_cfg),
             }
 
     # ------------------------------------------------------------------

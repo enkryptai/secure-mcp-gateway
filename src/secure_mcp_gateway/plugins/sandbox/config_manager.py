@@ -95,12 +95,22 @@ def initialize_sandbox_system(common_config: Dict[str, Any]) -> SandboxConfigMan
     manager.set_global_config(common_config)
 
     sandbox_cfg = common_config.get("sandbox", {})
-    if not sandbox_cfg.get("enabled", False):
-        logger.info("[SandboxConfigManager] Sandboxing is disabled in config")
-        return manager
-
     runtime = sandbox_cfg.get("runtime", "docker")
-    logger.info(f"[SandboxConfigManager] Initializing sandbox runtime: {runtime}")
+
+    # The provider is registered whenever a runtime is configured, even if
+    # ``sandbox.enabled`` is false globally. This lets per-server / per-call
+    # opt-in (e.g. /api/v1/health/mcp/* endpoints) work without forcing every
+    # MCP server through a sandbox by default.
+    globally_enabled = bool(sandbox_cfg.get("enabled", False))
+    if globally_enabled:
+        logger.info(
+            f"[SandboxConfigManager] Initializing sandbox runtime (global default ON): {runtime}"
+        )
+    else:
+        logger.info(
+            f"[SandboxConfigManager] Initializing sandbox runtime (global default OFF, "
+            f"available for per-call opt-in): {runtime}"
+        )
 
     provider: Optional[SandboxProvider] = None
 
