@@ -1,0 +1,65 @@
+apiVersion: 1
+
+# ---------------------------------------------------------------------------
+# Contact points for Grafana unified alerting.
+#
+# Grafana writes a notification *to one channel per webhook* — the webhook
+# URL determines which Slack channel the message lands in.  Create the
+# webhook in Slack (Apps → Incoming Webhooks) bound to the
+# ``#grafana-alerts`` channel (id C0B1RTCL93N) and paste the resulting
+# https://hooks.slack.com/services/... URL into the ``url`` field below.
+#
+# DO NOT commit the real webhook URL — it is a write secret.  Either:
+#   1. leave the placeholder and inject the real URL via env var
+#      ``$SLACK_WEBHOOK_URL`` before docker compose up (Grafana provisioning
+#      expands ``$VAR`` at load time), or
+#   2. mount a per-environment override file via the docker-compose volume.
+# ---------------------------------------------------------------------------
+
+contactPoints:
+  - orgId: 1
+    name: slack-grafana-alerts
+    receivers:
+      - uid: slack-grafana-alerts-primary
+        type: slack
+        settings:
+          # Webhook URL is read from env var SLACK_WEBHOOK_URL (set in
+          # observability/.env and passed through by docker-compose).
+          # NOTE: Grafana provisioning supports $VAR / ${VAR} substitution but
+          #       NOT shell-style ${VAR:-default} fallback — keep it simple.
+          # NOTE: Do NOT add a `recipient:` field here.  Setting `recipient`
+          #       switches Grafana to Slack's chat.postMessage API mode and
+          #       forces a `token:` requirement.  In incoming-webhook mode the
+          #       channel is fixed by the webhook URL itself.
+          url: $SLACK_WEBHOOK_URL
+          username: "MCP Gateway Alerts"
+          # NOTE: Grafana's alerting templates use Go's text/template directly,
+          #       NOT sprig — so functions like `default`, `toUpper`, `toLower`
+          #       are NOT available.  Only built-in template syntax (`if`, `with`,
+          #       `range`, `eq`, etc.) and Grafana's own helpers work.
+          #
+          # Convention: each metadata line is wrapped in `{{ if .Labels.X }}...{{ end }}`
+          # so absent labels are *omitted entirely* instead of rendering "n/a".
+          # That way:
+          #   * per-(server,tool) burst alerts show concrete *Server* / *Tool* lines
+          #   * cross-server aggregate alerts (e.g. Auth Failure Burst) just leave
+          #     those keys out and surface their own discriminator (failure_reason,
+          #     check_kind, etc.) instead.
+          title: |
+            [{{ if .CommonLabels.severity }}{{ .CommonLabels.severity }}{{ else }}info{{ end }}] {{ .CommonAnnotations.summary }}
+          text: |
+            {{ range .Alerts }}
+            *Rule*: {{ .Labels.alertname }}
+            *Severity*: `{{ .Labels.severity }}`{{ if .Labels.server_name }}
+            *Server*: `{{ .Labels.server_name }}`{{ end }}{{ if .Labels.tool_name }}
+            *Tool*: `{{ .Labels.tool_name }}`{{ end }}{{ if .Labels.user_id }}
+            *User*: `{{ .Labels.user_id }}`{{ end }}{{ if .Labels.direction }}
+            *Direction*: `{{ .Labels.direction }}`{{ end }}{{ if .Labels.failure_reason }}
+            *Failure reason*: `{{ .Labels.failure_reason }}`{{ end }}{{ if .Labels.provider }}
+            *Provider*: `{{ .Labels.provider }}`{{ end }}{{ if .Labels.check_kind }}
+            *Check kind*: `{{ .Labels.check_kind }}`{{ end }}
+            *Started*: {{ .StartsAt }}
+            {{ if .Annotations.description }}*Details*: {{ .Annotations.description }}{{ end }}
+            {{ if .GeneratorURL }}<{{ .GeneratorURL }}|Open in Grafana>{{ end }}
+            {{ end }}
+        disableResolveMessage: false

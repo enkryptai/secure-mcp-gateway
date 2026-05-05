@@ -281,7 +281,7 @@
               "uid": "prometheus"
             },
             "editorMode": "code",
-            "expr": "rate(otel_enkrypt_list_all_servers_calls_total[5m])",
+            "expr": "rate(otel_enkrypt_discovery_list_servers_total[5m])",
             "instant": false,
             "legendFormat": "Server Calls/sec",
             "range": true,
@@ -293,7 +293,7 @@
               "uid": "prometheus"
             },
             "editorMode": "code",
-            "expr": "rate(otel_enkrypt_servers_discovered[5m])",
+            "expr": "rate(otel_enkrypt_discovery_servers_found_total[5m])",
             "instant": false,
             "legendFormat": "Discovery Rate/sec",
             "range": true,
@@ -467,7 +467,7 @@
               "uid": "prometheus"
             },
             "editorMode": "code",
-            "expr": "histogram_quantile(0.50, rate(otel_enkrypt_tool_call_duration_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.50, rate(otel_enkrypt_tool_duration_seconds_bucket[5m]))",
             "instant": false,
             "legendFormat": "p50",
             "range": true,
@@ -479,7 +479,7 @@
               "uid": "prometheus"
             },
             "editorMode": "code",
-            "expr": "histogram_quantile(0.95, rate(otel_enkrypt_tool_call_duration_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.95, rate(otel_enkrypt_tool_duration_seconds_bucket[5m]))",
             "instant": false,
             "legendFormat": "p95",
             "range": true,
@@ -491,7 +491,7 @@
               "uid": "prometheus"
             },
             "editorMode": "code",
-            "expr": "histogram_quantile(0.99, rate(otel_enkrypt_tool_call_duration_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.99, rate(otel_enkrypt_tool_duration_seconds_bucket[5m]))",
             "instant": false,
             "legendFormat": "p99",
             "range": true,
@@ -503,7 +503,7 @@
               "uid": "prometheus"
             },
             "editorMode": "code",
-            "expr": "rate(otel_enkrypt_tool_call_duration_seconds_sum[5m]) / rate(otel_enkrypt_tool_call_duration_seconds_count[5m])",
+            "expr": "rate(otel_enkrypt_tool_duration_seconds_sum[5m]) / rate(otel_enkrypt_tool_duration_seconds_count[5m])",
             "instant": false,
             "legendFormat": "Average",
             "range": true,
@@ -873,7 +873,7 @@
               "uid": "prometheus"
             },
             "editorMode": "code",
-            "expr": "rate(otel_enkrypt_guardrail_violations_total[5m])",
+            "expr": "rate(otel_enkrypt_guardrail_blocks_total[5m])",
             "instant": false,
             "legendFormat": "Violations/sec",
             "range": true,
@@ -1075,7 +1075,7 @@
               "uid": "prometheus"
             },
             "editorMode": "code",
-            "expr": "otel_enkrypt_servers_discovered",
+            "expr": "sum(increase(otel_enkrypt_discovery_servers_found_total[1h]))",
             "instant": false,
             "legendFormat": "Servers Discovered",
             "range": true,
@@ -1280,7 +1280,7 @@
             "uid": "prometheus"
             },
             "editorMode": "code",
-            "expr": "increase(otel_enkrypt_guardrail_violations_total[1h])",
+            "expr": "increase(otel_enkrypt_guardrail_blocks_total[1h])",
             "instant": false,
             "legendFormat": "Violations (1h)",
             "range": true,
@@ -1375,7 +1375,7 @@
             "uid": "prometheus"
             },
             "editorMode": "code",
-            "expr": "rate(otel_enkrypt_tool_call_duration_seconds_bucket[5m])",
+            "expr": "rate(otel_enkrypt_tool_duration_seconds_bucket[5m])",
             "format": "heatmap",
             "instant": false,
             "legendFormat": "{{le}}",
@@ -1477,7 +1477,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum by (type) (rate(otel_enkrypt_guardrail_violations_total[5m]))",
+          "expr": "sum by (type) (rate(otel_enkrypt_guardrail_blocks_total[5m]))",
           "legendFormat": "{{type}}",
           "refId": "A"
         }
@@ -1491,7 +1491,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum by (tool) (rate(otel_enkrypt_guardrail_violations_total[5m]))",
+          "expr": "sum by (tool_name) (rate(otel_enkrypt_guardrail_blocks_total[5m]))",
           "legendFormat": "{{tool}}",
           "refId": "A"
         }
@@ -1505,7 +1505,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum by (tool) (rate(otel_enkrypt_guardrail_violations_total[5m])) / sum by (tool) (rate(otel_enkrypt_tool_calls_total[5m]))",
+          "expr": "sum by (tool_name) (rate(otel_enkrypt_guardrail_blocks_total[5m])) / sum by (tool_name) (rate(otel_enkrypt_tool_calls_total[5m]))",
           "legendFormat": "{{tool}}",
           "refId": "A"
         }
@@ -1519,7 +1519,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum(rate(otel_enkrypt_tool_call_success_total[5m])) / sum(rate(otel_enkrypt_tool_calls_total[5m]))",
+          "expr": "sum(rate(otel_enkrypt_tool_success_total[5m])) / sum(rate(otel_enkrypt_tool_calls_total[5m]))",
           "legendFormat": "Success Rate",
           "refId": "A"
         }
@@ -1533,7 +1533,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum(rate(otel_enkrypt_tool_call_failure_total[5m])) / sum(rate(otel_enkrypt_tool_calls_total[5m]))",
+          "expr": "sum(rate(otel_enkrypt_tool_failures_total[5m])) / sum(rate(otel_enkrypt_tool_calls_total[5m]))",
           "legendFormat": "Failure Rate",
           "refId": "A"
         }
@@ -1547,7 +1547,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum by (error_type) (rate(otel_enkrypt_tool_call_errors_total[5m]))",
+          "expr": "sum by (error_type) (rate(otel_enkrypt_tool_errors_total[5m]))",
           "legendFormat": "{{error_type}}",
           "refId": "A"
         }
@@ -1561,7 +1561,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (tool, le) (rate(otel_enkrypt_tool_call_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (tool_name, le) (rate(otel_enkrypt_tool_duration_seconds_bucket[5m])))",
           "legendFormat": "{{tool}}",
           "refId": "A"
         }
@@ -1594,7 +1594,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "rate(otel_enkrypt_input_guardrail_violations_total[5m])",
+          "expr": "rate(otel_enkrypt_guardrail_input_blocks_total[5m])",
           "legendFormat": "Input Violations",
           "refId": "A"
         }
@@ -1608,7 +1608,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "rate(otel_enkrypt_output_guardrail_violations_total[5m])",
+          "expr": "rate(otel_enkrypt_guardrail_blocks_total{direction=\"output\"}[5m])",
           "legendFormat": "Output Violations",
           "refId": "A"
         }
@@ -1622,7 +1622,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "rate(otel_enkrypt_relevancy_violations_total[5m])",
+          "expr": "rate(otel_enkrypt_guardrail_blocks_total{violation_type=\"relevancy\"}[5m])",
           "legendFormat": "Relevancy Violations",
           "refId": "A"
         }
@@ -1636,7 +1636,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "rate(otel_enkrypt_adherence_violations_total[5m])",
+          "expr": "rate(otel_enkrypt_guardrail_blocks_total{violation_type=\"adherence\"}[5m])",
           "legendFormat": "Adherence Violations",
           "refId": "A"
         }
@@ -1650,7 +1650,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "rate(otel_enkrypt_hallucination_violations_total[5m])",
+          "expr": "rate(otel_enkrypt_guardrail_blocks_total{violation_type=\"hallucination\"}[5m])",
           "legendFormat": "Hallucination Violations",
           "refId": "A"
         }
@@ -1670,7 +1670,7 @@
     },
     "timepicker": {},
     "timezone": "",
-    "title": "OpenTelemetry Gateway Metrics",
+    "title": "OpenTelemetry Gateway Metrics (Complete)",
     "uid": "otel-gateway-metrics",
     "version": 1,
     "weekStart": ""

@@ -63,13 +63,23 @@ services:
       - loki
 
   # Grafana for visualization
+  # NOTE: published on host port 3001 (container still listens on 3000) to avoid
+  # clashing with a native Windows Grafana service that binds 0.0.0.0:3000.
+  # Override with GRAFANA_HOST_PORT in observability/.env if needed.
   grafana:
     image: grafana/grafana:12.2.0-17535958692
     ports:
-      - "3000:3000"
+      - "${GRAFANA_HOST_PORT:-3001}:3000"
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      # Crank notifier subsystem to debug so successful Slack POSTs are logged
+      # as `msg="Notify success"`.  At info level Grafana stays silent on
+      # success and only logs failures, which made the pipeline look broken
+      # during validation.  Safe to keep at debug — only the notifier
+      # subsystem is verbose, not the whole Grafana process.
+      - GF_LOG_FILTERS=ngalert.notifier:debug
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning
     depends_on:

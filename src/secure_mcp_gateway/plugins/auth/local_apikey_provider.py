@@ -14,6 +14,7 @@ from secure_mcp_gateway.plugins.auth.base import (
     AuthResult,
     AuthStatus,
 )
+from secure_mcp_gateway.plugins.telemetry.metrics_helpers import record_auth_outcome
 from secure_mcp_gateway.utils import (
     CONFIG_PATH,
     DOCKER_CONFIG_PATH,
@@ -88,6 +89,18 @@ class LocalApiKeyProvider(AuthProvider):
         Returns:
             AuthResult: Authentication result
         """
+        result = await self._authenticate_impl(credentials)
+        # Record auth metrics regardless of which return path was taken.
+        record_auth_outcome(
+            provider=self.get_name(),
+            outcome="success" if result.authenticated else "failure",
+            failure_reason=(result.error or result.status.value)
+            if not result.authenticated
+            else None,
+        )
+        return result
+
+    async def _authenticate_impl(self, credentials: AuthCredentials) -> AuthResult:
         try:
             logger.info("[LocalApiKeyProvider] Starting authentication")
 

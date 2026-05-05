@@ -172,9 +172,12 @@ class CacheManagementService:
         """Handle authentication and setup for cache operations."""
         with tracer.start_as_current_span("cache_management.authenticate") as auth_span:
             credentials = self.auth_manager.get_gateway_credentials(ctx)
-            enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
-            enkrypt_project_id = credentials.get("project_id", "not_provided")
-            enkrypt_user_id = credentials.get("user_id", "not_provided")
+            # See discovery_service.py for the rationale: ``or`` so a
+            # ``None`` credential value is coerced to ``"not_provided"``
+            # (cloud-auth MCP clients don't send project_id/user_id headers).
+            enkrypt_gateway_key = credentials.get("gateway_key") or "not_provided"
+            enkrypt_project_id = credentials.get("project_id") or "not_provided"
+            enkrypt_user_id = credentials.get("user_id") or "not_provided"
 
             gateway_config = await self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
@@ -207,7 +210,16 @@ class CacheManagementService:
             auth_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
             auth_span.set_attribute("enkrypt_email", enkrypt_email)
 
-            session_key = f"{credentials.get('gateway_key')}_{credentials.get('project_id')}_{credentials.get('user_id')}_{enkrypt_mcp_config_id}"
+            # Build session key via the canonical helper so ``None``
+            # credential components (cloud-auth requests don't send
+            # project_id/user_id headers) get coerced consistently with the
+            # store side in ``AuthConfigManager.authenticate``.
+            session_key = self.auth_manager.create_session_key(
+                credentials.get("gateway_key"),
+                credentials.get("project_id"),
+                credentials.get("user_id"),
+                enkrypt_mcp_config_id,
+            )
 
             if not self.auth_manager.is_session_authenticated(session_key):
                 auth_span.set_attribute("requires_auth", True)

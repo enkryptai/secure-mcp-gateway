@@ -447,6 +447,86 @@ def generate_default_config():
     return config
 
 
+def _detect_auth_provider(config: dict) -> str:
+    """Return the configured auth provider name.
+
+    Falls back to ``"local_apikey"`` when ``plugins.auth.provider`` is
+    missing — matches the runtime default in ``plugin_loader.py``.
+    """
+    return (
+        (config.get("plugins") or {}).get("auth", {}).get("provider")
+        or "local_apikey"
+    )
+
+
+def get_install_credentials(config_path: str, override_apikey: str | None = None):
+    """Build the credential payloads needed to install the gateway in an MCP client.
+
+    Returns a dict with three keys:
+
+      * ``provider``    — ``"enkrypt"`` or ``"local_apikey"``
+      * ``env``         — env-var dict for stdio installs (keys are env var
+                          names the gateway will read in
+                          ``extract_credentials``)
+      * ``headers``     — header dict for streamable-HTTP installs (keys are
+                          HTTP header names the gateway will read in
+                          ``extract_credentials``)
+
+    The shape is provider-aware:
+
+      * ``enkrypt`` (cloud auth) — single credential: ``apikey``. Sourced
+        from ``override_apikey`` (i.e. ``--apikey`` on the CLI), falling
+        back to ``auth.config.apikey`` in the local config file. No
+        ``project_id`` / ``user_id`` are emitted because cloud auth derives
+        identity from the apikey itself.
+
+      * ``local_apikey`` — three credentials: gateway_key + project_id +
+        user_id, read from the local ``apikeys`` / ``projects`` blocks.
+        Matches the historical install behaviour exactly.
+
+    Raises ``ValueError`` if the configured provider lacks the credentials
+    it needs (e.g. ``enkrypt`` mode with no apikey anywhere, or
+    ``local_apikey`` mode with no ``apikeys`` block).
+    """
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found at path: {config_path}")
+
+    config = load_config(config_path)
+    provider = _detect_auth_provider(config)
+
+    if provider == "enkrypt":
+        cloud_cfg = (
+            (config.get("plugins") or {}).get("auth", {}).get("config") or {}
+        )
+        apikey = override_apikey or cloud_cfg.get("apikey")
+        if not apikey:
+            raise ValueError(
+                "auth.provider is 'enkrypt' but no apikey was supplied. "
+                "Pass it via 'secure-mcp-gateway install ... --apikey <key>' "
+                "or set 'plugins.auth.config.apikey' in the local config file."
+            )
+        return {
+            "provider": "enkrypt",
+            "env": {"ENKRYPT_APIKEY": apikey},
+            "headers": {"apikey": apikey},
+        }
+
+    creds = get_gateway_credentials(config_path)
+    return {
+        "provider": "local_apikey",
+        "env": {
+            "ENKRYPT_GATEWAY_KEY": creds["gateway_key"],
+            "ENKRYPT_PROJECT_ID": creds["project_id"],
+            "ENKRYPT_USER_ID": creds["user_id"],
+        },
+        "headers": {
+            "ENKRYPT_GATEWAY_KEY": creds["gateway_key"],
+            "project_id": creds["project_id"],
+            "user_id": creds["user_id"],
+        },
+    }
+
+
 def get_gateway_credentials(config_path):
     """Extract gateway credentials from config."""
     if not os.path.exists(config_path):
@@ -2932,6 +3012,38 @@ def main():
     install_parser.add_argument(
         "--client", type=str, required=True, help="Client name (claude-desktop, cursor, or claude-code)"
     )
+    install_parser.add_argument(
+        "--apikey",
+        type=str,
+        default=None,
+        help=(
+            "Enkrypt cloud apikey to embed in the client config. Only used "
+            "when the gateway's auth.provider is 'enkrypt'. If omitted, "
+            "falls back to auth.config.apikey from the local config file."
+        ),
+    )
+    install_parser.add_argument(
+        "--transport",
+        type=str,
+        choices=["stdio", "http"],
+        default="stdio",
+        help=(
+            "Transport for the MCP client connection. 'stdio' (default) "
+            "spawns the gateway as a subprocess with credentials passed via "
+            "env vars. 'http' assumes the gateway is already running on a "
+            "URL and writes credentials as request headers. 'http' is "
+            "supported for claude-desktop and cursor only."
+        ),
+    )
+    install_parser.add_argument(
+        "--url",
+        type=str,
+        default="http://localhost:8000/mcp/",
+        help=(
+            "Gateway URL to use when --transport=http. Ignored for stdio "
+            "installs. Defaults to the local streamable-HTTP endpoint."
+        ),
+    )
 
     # =========================================================================
     # CONFIG COMMANDS
@@ -4040,23 +4152,177 @@ def main():
         sys.exit(0)
 
     elif args.command == "install":
-        credentials = get_gateway_credentials(config_path)
-        gateway_key = credentials.get("gateway_key")
-        project_id = credentials.get("project_id")
-        user_id = credentials.get("user_id")
-
-        if not gateway_key:
+        # Provider-aware credential resolution. ``get_install_credentials``
+        # inspects ``plugins.auth.provider`` in the local config and returns
+        # the right shape: a single ``apikey`` for cloud auth, the legacy
+        # gateway_key+project_id+user_id triple for local_apikey.
+        try:
+            install_creds = get_install_credentials(
+                config_path, override_apikey=args.apikey
+            )
+        except FileNotFoundError as e:
+            print(f"ERROR: {e}")
             print(
-                "INFO: ",
-                f"Gateway key not found in {config_path}. Please generate a new config file using 'generate-config' subcommand and try again.",
+                "INFO: Generate a config file with 'secure-mcp-gateway generate-config'."
             )
             sys.exit(1)
+        except ValueError as e:
+            print(f"ERROR: {e}")
+            sys.exit(1)
 
-        env = {
-            "ENKRYPT_GATEWAY_KEY": gateway_key,
-            "ENKRYPT_PROJECT_ID": project_id,
-            "ENKRYPT_USER_ID": user_id,
+        provider = install_creds["provider"]
+        env = install_creds["env"]
+        headers = install_creds["headers"]
+        transport = args.transport.lower()
+
+        # Help operators see exactly which auth shape is being installed —
+        # this is the diagnostic that would have made the
+        # "ENKRYPT_GATEWAY_KEY -> 401" debugging session 30 seconds long.
+        masked_creds = {
+            k: ("****" + v[-4:] if isinstance(v, str) and len(v) >= 4 else "****")
+            for k, v in env.items()
         }
+        print(
+            f"INFO: Installing with auth.provider='{provider}' "
+            f"transport='{transport}' credentials={masked_creds}"
+        )
+
+        # Backward-compat: keep the legacy gateway_key/project_id/user_id
+        # locals around for branches that still reference them. They are
+        # ``None`` in cloud mode but every cloud-mode codepath below is
+        # guarded by the provider check before it reads them.
+        gateway_key = env.get("ENKRYPT_GATEWAY_KEY")
+        project_id = env.get("ENKRYPT_PROJECT_ID")
+        user_id = env.get("ENKRYPT_USER_ID")
+
+        # ---------------------------------------------------------------
+        # Streamable-HTTP install path (--transport http)
+        # ---------------------------------------------------------------
+        # Writes a ``{ "url": ..., "headers": {...} }`` entry into the
+        # client's MCP config instead of spawning the gateway as a stdio
+        # subprocess. Targets the case where the gateway is running as a
+        # long-lived HTTP server (the production deployment shape) and the
+        # client just connects to its URL.
+        #
+        # Currently supports claude-desktop and cursor (both of which
+        # accept the same {url, headers} shape in their mcp.json /
+        # claude_desktop_config.json). claude-code uses its own CLI for
+        # http installs, so we tell the operator to run it directly.
+        if transport == "http":
+            client_lc = args.client.lower()
+
+            if client_lc == "claude-code":
+                print(
+                    "ERROR: --transport http is not supported for claude-code "
+                    "via this CLI. Run 'claude mcp add --transport http "
+                    "<name> --header \"<header>=<value>\" -- <url>' directly."
+                )
+                sys.exit(1)
+
+            if client_lc not in ("claude", "claude-desktop", "cursor"):
+                print(
+                    f"ERROR: --transport http does not support client '{args.client}'. "
+                    "Use 'claude-desktop' or 'cursor'."
+                )
+                sys.exit(1)
+
+            entry = {"url": args.url, "headers": headers}
+
+            if client_lc == "cursor":
+                base_path = "/app" if is_docker_running else HOME_DIR
+                cursor_config_path = os.path.join(base_path, ".cursor", "mcp.json")
+                cursor_config = {}
+                if os.path.exists(cursor_config_path):
+                    try:
+                        with open(cursor_config_path) as f:
+                            content = f.read().strip()
+                            if content:
+                                cursor_config = json.loads(content)
+                    except json.JSONDecodeError as e:
+                        print(
+                            f"ERROR: Could not parse {cursor_config_path}: {e}"
+                        )
+                        sys.exit(1)
+                cursor_config.setdefault("mcpServers", {})[
+                    "Enkrypt Secure MCP Gateway"
+                ] = entry
+
+                os.makedirs(os.path.dirname(cursor_config_path), exist_ok=True)
+                if os.name == "posix":
+                    os.chmod(os.path.dirname(cursor_config_path), 0o700)
+                with open(cursor_config_path, "w") as f:
+                    json.dump(cursor_config, f, indent=2)
+                if os.name == "posix":
+                    os.chmod(cursor_config_path, 0o600)
+
+                print(
+                    f"INFO: Successfully configured Cursor for streamable-HTTP "
+                    f"transport at {args.url}"
+                )
+                print(f"INFO: Config updated at: {cursor_config_path}")
+                print("INFO: Reload Cursor MCP servers to pick up the change.")
+                sys.exit(0)
+
+            # claude / claude-desktop branch
+            if is_docker_running:
+                claude_desktop_config_path = os.path.join(
+                    "/app", ".claude", "claude_desktop_config.json"
+                )
+            elif sys.platform == "darwin":
+                claude_desktop_config_path = os.path.join(
+                    HOME_DIR,
+                    "Library",
+                    "Application Support",
+                    "Claude",
+                    "claude_desktop_config.json",
+                )
+            elif sys.platform == "win32":
+                appdata = os.environ.get("APPDATA")
+                claude_desktop_config_path = (
+                    os.path.join(appdata, "Claude", "claude_desktop_config.json")
+                    if appdata
+                    else None
+                )
+            else:
+                claude_desktop_config_path = os.path.join(
+                    HOME_DIR, ".claude", "claude_desktop_config.json"
+                )
+
+            if not claude_desktop_config_path:
+                print(
+                    "ERROR: Could not determine Claude Desktop config path on this OS."
+                )
+                sys.exit(1)
+
+            claude_desktop_config = {"mcpServers": {}}
+            if os.path.exists(claude_desktop_config_path):
+                try:
+                    with open(claude_desktop_config_path) as f:
+                        content = f.read().strip()
+                        if content:
+                            claude_desktop_config = json.loads(content)
+                except json.JSONDecodeError as e:
+                    print(
+                        f"ERROR: Could not parse {claude_desktop_config_path}: {e}"
+                    )
+                    sys.exit(1)
+            claude_desktop_config.setdefault("mcpServers", {})[
+                "Enkrypt Secure MCP Gateway"
+            ] = entry
+
+            os.makedirs(
+                os.path.dirname(claude_desktop_config_path), exist_ok=True
+            )
+            with open(claude_desktop_config_path, "w") as f:
+                json.dump(claude_desktop_config, f, indent=2)
+
+            print(
+                f"INFO: Successfully configured Claude Desktop for "
+                f"streamable-HTTP transport at {args.url}"
+            )
+            print(f"INFO: Config updated at: {claude_desktop_config_path}")
+            print("INFO: Restart Claude Desktop to pick up the change.")
+            sys.exit(0)
 
         if args.client.lower() == "claude" or args.client.lower() == "claude-desktop":
             client = args.client
@@ -4099,20 +4365,19 @@ def main():
                 print("INFO: Please restart Claude Desktop to use the new gateway.")
                 sys.exit(0)
             else:
-                # non-Docker logic
+                # non-Docker logic. Build --env-var flags dynamically from
+                # the provider-aware ``env`` dict so cloud-auth installs
+                # emit ENKRYPT_APIKEY=... (only) and local_apikey installs
+                # emit the legacy three-var triple.
                 cmd = [
                     "mcp",
                     "install",
                     GATEWAY_PY_PATH,
                     "--name",
                     "Enkrypt Secure MCP Gateway",
-                    "--env-var",
-                    f"ENKRYPT_GATEWAY_KEY={gateway_key}",
-                    "--env-var",
-                    f"ENKRYPT_PROJECT_ID={project_id}",
-                    "--env-var",
-                    f"ENKRYPT_USER_ID={user_id}",
                 ]
+                for k, v in env.items():
+                    cmd.extend(["--env-var", f"{k}={v}"])
                 result = subprocess.run(cmd, capture_output=True, text=True)
                 if result.returncode != 0:
                     print(f"INFO: Error installing gateway: {result.stderr}")
@@ -4226,26 +4491,29 @@ def main():
                 capture_output=True,
             )
 
+            # Build --env flags dynamically from the provider-aware env
+            # dict (cloud auth -> ENKRYPT_APIKEY only; local_apikey ->
+            # legacy gateway_key/project_id/user_id triple).
             cmd = [
                 claude_bin,
                 "mcp",
                 "add",
                 "--transport",
                 "stdio",
-                "--env",
-                f"ENKRYPT_GATEWAY_KEY={gateway_key}",
-                "--env",
-                f"ENKRYPT_PROJECT_ID={project_id}",
-                "--env",
-                f"ENKRYPT_USER_ID={user_id}",
-                "--scope",
-                "user",
-                server_name,
-                "--",
-                "mcp",
-                "run",
-                GATEWAY_PY_PATH,
             ]
+            for k, v in env.items():
+                cmd.extend(["--env", f"{k}={v}"])
+            cmd.extend(
+                [
+                    "--scope",
+                    "user",
+                    server_name,
+                    "--",
+                    "mcp",
+                    "run",
+                    GATEWAY_PY_PATH,
+                ]
+            )
 
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:

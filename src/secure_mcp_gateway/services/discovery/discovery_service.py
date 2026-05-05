@@ -99,9 +99,16 @@ class DiscoveryService:
 
             # Get credentials and config
             credentials = self.auth_manager.get_gateway_credentials(ctx)
-            enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
-            enkrypt_project_id = credentials.get("project_id", "not_provided")
-            enkrypt_user_id = credentials.get("user_id", "not_provided")
+            # NOTE: ``dict.get(k, default)`` only substitutes when ``k`` is
+            # missing — a present-but-``None`` value still returns ``None``.
+            # With cloud auth the calling MCP client only sends ``apikey`` (no
+            # ``project_id`` / ``user_id`` headers), so those credential
+            # fields arrive as ``None`` rather than absent. Use ``or`` so we
+            # coerce both cases to the placeholder string and avoid OTel
+            # ``Invalid type NoneType for attribute`` warnings downstream.
+            enkrypt_gateway_key = credentials.get("gateway_key") or "not_provided"
+            enkrypt_project_id = credentials.get("project_id") or "not_provided"
+            enkrypt_user_id = credentials.get("user_id") or "not_provided"
             gateway_config = await self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
             )
@@ -144,7 +151,15 @@ class DiscoveryService:
             main_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
             main_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
 
-            session_key = f"{credentials.get('gateway_key')}_{credentials.get('project_id')}_{credentials.get('user_id')}_{enkrypt_mcp_config_id}"
+            # Funnel through ``create_session_key`` so a ``None`` credential
+            # field (cloud-auth requests omit project_id/user_id headers) is
+            # canonicalized to the same string the store side produces.
+            session_key = self.auth_manager.create_session_key(
+                credentials.get("gateway_key"),
+                credentials.get("project_id"),
+                credentials.get("user_id"),
+                enkrypt_mcp_config_id,
+            )
 
             try:
                 # Authentication check

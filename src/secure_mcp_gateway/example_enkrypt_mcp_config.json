@@ -192,5 +192,21 @@
       "user_id": "UNIQUE_USER_ID",
       "created_at": "2025-01-01T00:00:00.000000"
     }
-  }
+  },
+  "_doc_local_server_overrides": "Layer local-only fields (sandbox / denied_tools / oauth_config) onto cloud-fetched servers when plugins.auth.provider is 'enkrypt'. Each key is the server's saved_name in cloud, each value is a partial server entry. Cloud values win for any field present on both sides; entries here only fill gaps the cloud spec does not yet model.",
+  "local_server_overrides": {
+    "echo_server": {
+      "sandbox": {
+        "enabled": false,
+        "image": "python:3.11-slim",
+        "memory_limit": "256m",
+        "network": "none",
+        "read_only": true
+      },
+      "denied_tools": [
+        { "pattern": "delete_*", "reason": "deny destructive tools" }
+      ]
+    }
+  },
+  "_doc_auth_enkrypt_cloud": "Switch plugins.auth to the cloud-backed provider by replacing the block with: { 'provider': 'enkrypt', 'config': { 'apikey': '<fallback enkrypt apikey - clients can override per request via the apikey header>', 'gateway_name': '<saved_name from /mcp-gateway/add-gateway>', 'gateway_version': 'v1', 'project_name': 'default', 'base_url': 'https://api.enkryptai.com', 'cache_ttl_seconds': 600 } }. When in cloud mode, the projects/users/apikeys/mcp_configs blocks above are ignored - only local_server_overrides is read."
 }

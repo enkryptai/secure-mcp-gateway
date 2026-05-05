@@ -178,7 +178,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(otel_enkrypt_tool_call_duration_seconds_sum[5m]) / rate(otel_enkrypt_tool_call_duration_seconds_count[5m])",
+          "expr": "rate(otel_enkrypt_tool_duration_seconds_sum[5m]) / rate(otel_enkrypt_tool_duration_seconds_count[5m])",
           "instant": false,
           "legendFormat": "Average Tool Call Duration",
           "range": true,
@@ -268,7 +268,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(otel_enkrypt_list_all_servers_calls_total[5m])",
+          "expr": "rate(otel_enkrypt_discovery_list_servers_total[5m])",
           "instant": false,
           "legendFormat": "List Servers Rate",
           "range": true,
@@ -280,7 +280,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(otel_enkrypt_servers_discovered[5m])",
+          "expr": "rate(otel_enkrypt_discovery_servers_found_total[5m])",
           "instant": false,
           "legendFormat": "Servers Discovery Rate",
           "range": true,
@@ -382,7 +382,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(otel_enkrypt_guardrail_violations_total[5m])",
+          "expr": "rate(otel_enkrypt_guardrail_blocks_total[5m])",
           "instant": false,
           "legendFormat": "Guardrail Violations Rate",
           "range": true,

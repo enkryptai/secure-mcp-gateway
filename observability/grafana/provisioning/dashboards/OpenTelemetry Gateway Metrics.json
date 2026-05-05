@@ -95,7 +95,7 @@
           "disableTextWrap": false,
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(otel_enkrypt_tool_calls_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=\"$project_id\",mcp_config_id=\"$mcp_config_id\"})",
+          "expr": "sum(otel_enkrypt_tool_calls_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=~\"$project_id\",mcp_config_id=~\"$mcp_config_id\"})",
           "format": "table",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
@@ -194,7 +194,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, rate(otel_enkrypt_tool_call_duration_seconds_bucket{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=\"$project_id\",mcp_config_id=\"$mcp_config_id\"}[5m]))",
+          "expr": "histogram_quantile(0.50, rate(otel_enkrypt_tool_duration_seconds_bucket{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=~\"$project_id\",mcp_config_id=~\"$mcp_config_id\"}[5m]))",
           "instant": false,
           "legendFormat": "p50",
           "range": true,
@@ -206,7 +206,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, rate(otel_enkrypt_tool_call_duration_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.95, rate(otel_enkrypt_tool_duration_seconds_bucket[5m]))",
           "instant": false,
           "legendFormat": "p95",
           "range": true,
@@ -218,7 +218,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, rate(otel_enkrypt_tool_call_duration_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.99, rate(otel_enkrypt_tool_duration_seconds_bucket[5m]))",
           "instant": false,
           "legendFormat": "p99",
           "range": true,
@@ -230,7 +230,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(otel_enkrypt_tool_call_duration_seconds_sum[5m]) / rate(otel_enkrypt_tool_call_duration_seconds_count[5m])",
+          "expr": "rate(otel_enkrypt_tool_duration_seconds_sum[5m]) / rate(otel_enkrypt_tool_duration_seconds_count[5m])",
           "instant": false,
           "legendFormat": "Average",
           "range": true,
@@ -313,7 +313,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(otel_enkrypt_tool_call_duration_seconds_bucket{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=\"$project_id\",mcp_config_id=\"$mcp_config_id\"}[5m])",
+          "expr": "rate(otel_enkrypt_tool_duration_seconds_bucket{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=~\"$project_id\",mcp_config_id=~\"$mcp_config_id\"}[5m])",
           "format": "heatmap",
           "instant": false,
           "legendFormat": "{{le}}",
@@ -407,7 +407,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (tool, le) (rate(otel_enkrypt_tool_call_duration_seconds_bucket{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=\"$project_id\",mcp_config_id=\"$mcp_config_id\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (tool_name, le) (rate(otel_enkrypt_tool_duration_seconds_bucket{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=~\"$project_id\",mcp_config_id=~\"$mcp_config_id\"}[5m])))",
           "legendFormat": "{{tool}}",
           "range": true,
           "refId": "A"
@@ -499,7 +499,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate(otel_enkrypt_tool_call_success_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=\"$project_id\",mcp_config_id=\"$mcp_config_id\"}[5m])) / sum(rate(otel_enkrypt_tool_calls_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=\"$project_id\",mcp_config_id=\"$mcp_config_id\"}[5m]))",
+          "expr": "sum(rate(otel_enkrypt_tool_success_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=~\"$project_id\",mcp_config_id=~\"$mcp_config_id\"}[5m])) / sum(rate(otel_enkrypt_tool_calls_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=~\"$project_id\",mcp_config_id=~\"$mcp_config_id\"}[5m]))",
           "legendFormat": "Success Rate",
           "range": true,
           "refId": "A"
@@ -592,7 +592,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(otel_enkrypt_list_all_servers_calls_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=\"$project_id\",mcp_config_id=\"$mcp_config_id\"}[5m])",
+          "expr": "rate(otel_enkrypt_discovery_list_servers_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=~\"$project_id\",mcp_config_id=~\"$mcp_config_id\"}[5m])",
           "instant": false,
           "legendFormat": "Server Calls/sec",
           "range": true,
@@ -604,7 +604,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(otel_enkrypt_servers_discovered[5m])",
+          "expr": "rate(otel_enkrypt_discovery_servers_found_total[5m])",
           "instant": false,
           "legendFormat": "Discovery Rate/sec",
           "range": true,
@@ -670,7 +670,7 @@
           },
           "disableTextWrap": false,
           "editorMode": "code",
-          "expr": "rate(otel_enkrypt_tool_calls_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=\"$project_id\",mcp_config_id=\"$mcp_config_id\"}[1h])",
+          "expr": "rate(otel_enkrypt_tool_calls_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=~\"$project_id\",mcp_config_id=~\"$mcp_config_id\"}[1h])",
           "fullMetaSearch": false,
           "hide": false,
           "includeNullMetadata": false,
@@ -767,7 +767,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (error_type) (rate(otel_enkrypt_tool_call_errors_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=\"$project_id\",mcp_config_id=\"$mcp_config_id\"}[5m]))",
+          "expr": "sum by (error_type) (rate(otel_enkrypt_tool_errors_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=~\"$project_id\",mcp_config_id=~\"$mcp_config_id\"}[5m]))",
           "legendFormat": "{{error_type}}",
           "range": true,
           "refId": "A"
@@ -859,7 +859,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate(otel_enkrypt_tool_call_failure_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=\"$project_id\",mcp_config_id=\"$mcp_config_id\"}[5m])) / sum(rate(otel_enkrypt_tool_calls_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=\"$project_id\",mcp_config_id=\"$mcp_config_id\"}[5m]))",
+          "expr": "sum(rate(otel_enkrypt_tool_failures_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=~\"$project_id\",mcp_config_id=~\"$mcp_config_id\"}[5m])) / sum(rate(otel_enkrypt_tool_calls_total{project_name=~\"$project_name\", user_id=~\"$user_id\", project_id=~\"$project_id\",mcp_config_id=~\"$mcp_config_id\"}[5m]))",
           "legendFormat": "Failure Rate",
           "range": true,
           "refId": "A"
@@ -943,7 +943,7 @@
               "disableTextWrap": false,
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum(otel_enkrypt_guardrail_violations_total{violation_type=~\"$violation_type\"})",
+              "expr": "sum(otel_enkrypt_guardrail_blocks_total{violation_type=~\"$violation_type\"})",
               "format": "table",
               "fullMetaSearch": false,
               "includeNullMetadata": false,
@@ -1050,7 +1050,7 @@
               },
               "disableTextWrap": false,
               "editorMode": "code",
-              "expr": "rate(otel_enkrypt_guardrail_violations_total{violation_type=~\"$violation_type\"}[5m])",
+              "expr": "rate(otel_enkrypt_guardrail_blocks_total{violation_type=~\"$violation_type\"}[5m])",
               "fullMetaSearch": false,
               "includeNullMetadata": true,
               "instant": false,
@@ -1066,7 +1066,7 @@
               },
               "disableTextWrap": false,
               "editorMode": "builder",
-              "expr": "rate(otel_enkrypt_guardrail_violations_total[$__rate_interval])",
+              "expr": "rate(otel_enkrypt_guardrail_blocks_total[$__rate_interval])",
               "fullMetaSearch": false,
               "hide": false,
               "includeNullMetadata": false,
@@ -1164,7 +1164,7 @@
             {
               "disableTextWrap": false,
               "editorMode": "code",
-              "expr": "otel_enkrypt_guardrail_violations_total{violation_type=~\"$violation_type\"}",
+              "expr": "otel_enkrypt_guardrail_blocks_total{violation_type=~\"$violation_type\"}",
               "fullMetaSearch": false,
               "includeNullMetadata": true,
               "legendFormat": "{{type}}",
@@ -1260,7 +1260,7 @@
             {
               "disableTextWrap": false,
               "editorMode": "builder",
-              "expr": "otel_enkrypt_input_guardrail_violations_total{violation_type=~\"$violation_type\"}",
+              "expr": "otel_enkrypt_guardrail_input_blocks_total{violation_type=~\"$violation_type\"}",
               "fullMetaSearch": false,
               "includeNullMetadata": true,
               "legendFormat": "Input Violations",
@@ -1356,7 +1356,7 @@
             {
               "disableTextWrap": false,
               "editorMode": "code",
-              "expr": "rate(otel_enkrypt_output_guardrail_violations_total{violation_type=~\"$violation_type\"}[5m])",
+              "expr": "rate(otel_enkrypt_guardrail_blocks_total{direction=\"output\", violation_type=~\"$violation_type\"}[5m])",
               "fullMetaSearch": false,
               "includeNullMetadata": true,
               "legendFormat": "Output Violations",
@@ -1452,7 +1452,7 @@
             {
               "disableTextWrap": false,
               "editorMode": "builder",
-              "expr": "sum by(tool) (otel_enkrypt_guardrail_violations_total)",
+              "expr": "sum by(tool_name) (otel_enkrypt_guardrail_blocks_total)",
               "fullMetaSearch": false,
               "includeNullMetadata": true,
               "legendFormat": "{{tool}}",
@@ -1552,7 +1552,7 @@
               },
               "disableTextWrap": false,
               "editorMode": "builder",
-              "expr": "otel_enkrypt_guardrail_violations_total{tool=\"$tool_name\"} / otel_enkrypt_guardrail_violations_total",
+              "expr": "otel_enkrypt_guardrail_blocks_total{tool_name=\"$tool_name\"} / otel_enkrypt_guardrail_blocks_total",
               "fullMetaSearch": false,
               "hide": false,
               "includeNullMetadata": true,
@@ -1846,7 +1846,7 @@
               },
               "disableTextWrap": false,
               "editorMode": "builder",
-              "expr": "sum(otel_enkrypt_api_requests_total{project_id=\"$project_id\", user_id=\"$user_id\", project_name=\"$project_name\", mcp_config_id=\"$mcp_config_id\"})",
+              "expr": "sum(otel_enkrypt_api_requests_total{project_id=~\"$project_id\", user_id=~\"$user_id\", project_name=~\"$project_name\", mcp_config_id=~\"$mcp_config_id\"})",
               "fullMetaSearch": false,
               "includeNullMetadata": true,
               "instant": false,
@@ -2026,7 +2026,7 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "rate(otel_enkrypt_adherence_violations_total[5m])",
+              "expr": "rate(otel_enkrypt_guardrail_blocks_total{violation_type=\"adherence\"}[5m])",
               "legendFormat": "Adherence Violations",
               "range": true,
               "refId": "A"
@@ -2118,7 +2118,7 @@
           "targets": [
             {
               "editorMode": "builder",
-              "expr": "rate(otel_enkrypt_hallucination_violations_total[5m])",
+              "expr": "rate(otel_enkrypt_guardrail_blocks_total{violation_type=\"hallucination\"}[5m])",
               "legendFormat": "Hallucination Violations",
               "range": true,
               "refId": "A"
@@ -2210,7 +2210,7 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "rate(otel_enkrypt_relevancy_violations_total[5m])",
+              "expr": "rate(otel_enkrypt_guardrail_blocks_total{violation_type=\"relevancy\"}[5m])",
               "legendFormat": "Relevancy Violations",
               "range": true,
               "refId": "A"
@@ -2349,7 +2349,7 @@
               },
               "disableTextWrap": false,
               "editorMode": "code",
-              "expr": "rate(otel_enkrypt_cache_hits_total{project_id=\"$project_id\", project_name=\"$project_name\", mcp_config_id=\"$mcp_config_id\", user_id=\"$user_id\"}[5m])",
+              "expr": "rate(otel_enkrypt_cache_hits_total{project_id=~\"$project_id\", project_name=~\"$project_name\", mcp_config_id=~\"$mcp_config_id\", user_id=~\"$user_id\"}[5m])",
               "fullMetaSearch": false,
               "includeNullMetadata": true,
               "instant": false,
@@ -2503,7 +2503,7 @@
               },
               "disableTextWrap": false,
               "editorMode": "code",
-              "expr": "sum(otel_enkrypt_cache_hits_total{project_id=\"$project_id\", project_name=\"$project_name\", mcp_config_id=\"$mcp_config_id\", user_id=\"$user_id\"})",
+              "expr": "sum(otel_enkrypt_cache_hits_total{project_id=~\"$project_id\", project_name=~\"$project_name\", mcp_config_id=~\"$mcp_config_id\", user_id=~\"$user_id\"})",
               "fullMetaSearch": false,
               "includeNullMetadata": true,
               "instant": false,
@@ -2579,7 +2579,7 @@
                 "uid": "prometheus"
               },
               "editorMode": "code",
-              "expr": "otel_enkrypt_cache_misses_total{project_id=\"$project_id\", project_name=\"$project_name\", mcp_config_id=\"$mcp_config_id\", user_id=\"$user_id\"}",
+              "expr": "otel_enkrypt_cache_misses_total{project_id=~\"$project_id\", project_name=~\"$project_name\", mcp_config_id=~\"$mcp_config_id\", user_id=~\"$user_id\"}",
               "instant": false,
               "legendFormat": "Cache Misses (1h)",
               "range": true,
@@ -2720,8 +2720,8 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "editorMode": "builder",
-              "expr": "otel_enkrypt_servers_discovered",
+              "editorMode": "code",
+              "expr": "sum(increase(otel_enkrypt_discovery_servers_found_total[1h]))",
               "instant": false,
               "legendFormat": "Servers Discovered",
               "range": true,
@@ -2847,7 +2847,7 @@
             "$__all"
           ]
         },
-        "definition": "label_values(otel_enkrypt_guardrail_violations_total,violation_type)",
+        "definition": "label_values(otel_enkrypt_guardrail_blocks_total,violation_type)",
         "description": "",
         "includeAll": true,
         "label": "Input Violation Type",
@@ -2856,7 +2856,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(otel_enkrypt_guardrail_violations_total,violation_type)",
+          "query": "label_values(otel_enkrypt_guardrail_blocks_total,violation_type)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -2893,7 +2893,7 @@
             "$__all"
           ]
         },
-        "definition": "label_values(otel_enkrypt_guardrail_violations_total,violation_type)",
+        "definition": "label_values(otel_enkrypt_guardrail_blocks_total,violation_type)",
         "includeAll": true,
         "label": "Violation Type",
         "multi": true,
@@ -2901,7 +2901,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(otel_enkrypt_guardrail_violations_total,violation_type)",
+          "query": "label_values(otel_enkrypt_guardrail_blocks_total,violation_type)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -2917,7 +2917,7 @@
             "$__all"
           ]
         },
-        "definition": "label_values(otel_enkrypt_guardrail_violations_total,tool)",
+        "definition": "label_values(otel_enkrypt_guardrail_blocks_total,tool_name)",
         "includeAll": true,
         "label": "Tool Name",
         "multi": true,
@@ -2925,7 +2925,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(otel_enkrypt_guardrail_violations_total,tool)",
+          "query": "label_values(otel_enkrypt_guardrail_blocks_total,tool_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

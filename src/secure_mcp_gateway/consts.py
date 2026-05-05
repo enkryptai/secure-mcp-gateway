@@ -19,6 +19,11 @@ HOST_DOCKER_CONFIG_PATH = os.path.join(
     os.path.expanduser("~"), ".enkrypt", "docker", CONFIG_NAME
 )
 
+# TTL for the in-process cache that the Enkrypt cloud-auth provider uses to
+# avoid hitting GET /mcp-gateway/get-gateway-config on every tool call.
+# Operators can override per-deployment via auth.config.cache_ttl_seconds.
+ENKRYPT_REMOTE_CONFIG_TTL_SECONDS = 600
+
 BASE_DIR = files("secure_mcp_gateway")
 EXAMPLE_CONFIG_NAME = f"example_{CONFIG_NAME}"
 EXAMPLE_CONFIG_PATH = os.path.join(BASE_DIR, EXAMPLE_CONFIG_NAME)

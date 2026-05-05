@@ -28,8 +28,17 @@ __pycache__/
 Thumbs.db
 
 # ── Environment & secrets ───────────────────────────────────────────────
+# Real env files (with secrets) — never commit.
 **/.env
 .env.*
+# …but DO commit the templates that ship with the repo.
+# Without these un-ignore rules the `.env.*` glob above swallows
+# observability/.env.example (and any future *.env.example), which
+# silently breaks new-operator setup. Confirmed 2026-05-05 with
+# `git check-ignore -v observability/.env.example`.
+!**/.env.example
+!**/.env.template
+!**/.env.sample
 enkrypt_mcp_config*.json*
 
 # ── Logs ────────────────────────────────────────────────────────────────
