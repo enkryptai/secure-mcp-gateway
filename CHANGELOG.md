@@ -4,6 +4,29 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 
 ## [Unreleased]
 
+### Cloud `is_active` flag now honored on server entries
+
+- **`plugins.auth.enkrypt_provider.EnkryptAuthProvider._map_response` now
+  drops servers with `is_active: false`** before the per-server merge. The
+  cloud's `expanded_servers[]` entries each carry an `is_active` flag that
+  the dashboard flips when a server is soft-deleted or temporarily
+  disabled; the gateway was previously ingesting those entries
+  unconditionally and surfacing their tools in discovery / execution /
+  cache. Confirmed against the live dev cloud response: every server
+  entry returns `is_active: true|false`, with no other field signalling
+  the same state.
+- **Strict `is False` check.** Missing key, `null`, and `true` all keep
+  the server, matching the cloud's optimistic default. Only an explicit
+  `false` skips the entry, which avoids accidentally silencing
+  pre-`is_active` cloud responses or transient null states.
+- Skipped servers emit a single `INFO` log line with `saved_name`,
+  `gateway_name`, and `gateway_version` so operators can see *why* a
+  server disappeared from discovery.
+- Module-level docstring grew a 7th design-decision bullet so this isn't
+  an undocumented behavior, and `tests/test_enkrypt_auth_provider.py`
+  gained 5 regression tests covering: explicit-false skip, missing-key
+  keep, null keep, true keep, and all-inactive → empty list.
+
 ### Enkrypt cloud auth provider (rewrite)
 
 - **`plugins.auth.enkrypt_provider.EnkryptAuthProvider` now fetches gateway

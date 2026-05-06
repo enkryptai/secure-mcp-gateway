@@ -46,6 +46,15 @@ Design decisions
    app, not the gateway-owner principal. Until the cloud surfaces a stable
    ``project_id`` UUID we mirror ``project_name`` into the ``project_id``
    slot for the existing label set.
+
+7. **Per-server ``is_active`` filter.** Cloud responses carry an
+   ``is_active`` flag on every entry of ``expanded_servers`` that the
+   dashboard flips when a server is soft-deleted or temporarily disabled.
+   The mapper drops any server with ``is_active is False`` before merging,
+   so disabled servers never reach discovery, execution, or the
+   in-process cache. The check is strict (``is False``) — missing /
+   ``null`` / ``true`` all retain the server, matching the cloud's
+   optimistic default.
 """
 
 from __future__ import annotations
@@ -422,10 +431,25 @@ class EnkryptAuthProvider(AuthProvider):
 
         composite_id = f"{user_id}_{project_id}_{gateway_id}"
 
+        # Cloud may mark individual servers as ``is_active: false`` (soft-
+        # delete / disabled in the dashboard). Treat that as "do not surface
+        # this server" — skip it before the per-server merge so it never
+        # reaches discovery, tool execution, or the in-process cache. The
+        # check is strict (``is False``) so missing / null / true all keep
+        # the server, matching the cloud's own optimistic default.
         servers_in = response.get("expanded_servers") or []
-        servers_out = [
-            self._map_server(srv, local_overrides) for srv in servers_in
-        ]
+        servers_out: List[Dict[str, Any]] = []
+        for srv in servers_in:
+            if isinstance(srv, dict) and srv.get("is_active") is False:
+                logger.info(
+                    "[EnkryptAuthProvider] skipping inactive server "
+                    "saved_name=%s gateway=%s/%s",
+                    srv.get("saved_name") or srv.get("server_name") or "?",
+                    self.gateway_name,
+                    self.gateway_version,
+                )
+                continue
+            servers_out.append(self._map_server(srv, local_overrides))
 
         # Audit context: anything in request_context that we didn't promote
         # to a top-level field stays here for log enrichment. ``None`` values
@@ -543,8 +567,8 @@ class EnkryptAuthProvider(AuthProvider):
             return {}
 
         def _load() -> Dict[str, Any]:
-            with open(config_path, encoding="utf-8") as f:
-                return json.load(f)
+                with open(config_path, encoding="utf-8") as f:
+                    return json.load(f)
 
         try:
             data = await asyncio.to_thread(_load)
@@ -581,7 +605,7 @@ class EnkryptAuthProvider(AuthProvider):
     def _cache_get(self, key: str) -> Optional[Dict[str, Any]]:
         entry = self._cache.get(key)
         if not entry:
-            return None
+                return None
         expires_at, value = entry
         if expires_at < time.time():
             self._cache.pop(key, None)
