@@ -167,11 +167,11 @@ Content-Type: application/json
   "description": "My MCP Server",
   "input_guardrails_policy": {
     "enabled": true,
-    "policy_name": "Sample Policy"
+    "guardrail_name": "Sample Policy"
   },
   "output_guardrails_policy": {
     "enabled": true,
-    "policy_name": "Sample Policy"
+    "guardrail_name": "Sample Policy"
   }
 }
 
@@ -259,7 +259,7 @@ Content-Type: application/json
   "policy_file": "/path/to/policy.json",
   "policy": {
     "enabled": true,
-    "policy_name": "Input Guardrail Policy",
+    "guardrail_name": "Input Guardrail Policy",
     "additional_config": {
       "pii_redaction": true
     },
@@ -279,7 +279,7 @@ Content-Type: application/json
   "policy_file": "/path/to/policy.json",
   "policy": {
     "enabled": true,
-    "policy_name": "Output Guardrail Policy",
+    "guardrail_name": "Output Guardrail Policy",
     "additional_config": {
       "pii_redaction": true
     },
@@ -299,12 +299,12 @@ Content-Type: application/json
   "input_policy_file": "/path/to/input_policy.json",
   "input_policy": {
     "enabled": true,
-    "policy_name": "Input Guardrail Policy"
+    "guardrail_name": "Input Guardrail Policy"
   },
   "output_policy_file": "/path/to/output_policy.json",
   "output_policy": {
     "enabled": true,
-    "policy_name": "Output Guardrail Policy"
+    "guardrail_name": "Output Guardrail Policy"
   }
 }
 

@@ -379,7 +379,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
           "tools": {},
           "input_guardrails_policy": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "pii_redaction": false
             },
@@ -389,7 +389,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
           },
           "output_guardrails_policy": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "relevancy": false,
               "hallucination": false,
@@ -477,7 +477,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
           "tools": {},
           "input_guardrails_policy": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "pii_redaction": false
             },
@@ -487,7 +487,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
           },
           "output_guardrails_policy": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "relevancy": false,
               "hallucination": false,
@@ -1165,7 +1165,7 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
           "tools": {},
           "input_guardrails_policy": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "pii_redaction": false
             },
@@ -1175,7 +1175,7 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
           },
           "output_guardrails_policy": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "relevancy": false,
               "hallucination": false,
@@ -1961,7 +1961,7 @@ The observability stack includes:
             "tools": {},
             "input_guardrails_policy": {
               "enabled": false,
-              "policy_name": "Sample Airline Guardrail",
+              "guardrail_name": "Sample Airline Guardrail",
               "additional_config": {
                 "pii_redaction": false
               },
@@ -1971,7 +1971,7 @@ The observability stack includes:
             },
             "output_guardrails_policy": {
               "enabled": false,
-              "policy_name": "Sample Airline Guardrail",
+              "guardrail_name": "Sample Airline Guardrail",
               "additional_config": {
                 "relevancy": false,
                 "hallucination": false,
@@ -2207,7 +2207,7 @@ The observability stack includes:
 
   - `input_guardrails_policy`: Use this if we plan to use Enkrypt Guardrails on input side
 
-  - `policy_name`: Name of the guardrails policy that you have created in the Enkrypt App or using the API/SDK
+  - `guardrail_name`: Name of the guardrails policy that you have created in the Enkrypt App or using the API/SDK
 
   - `enabled`: Whether to enable guardrails on the input side or not. This is `false` in the example config file
 
@@ -2229,7 +2229,7 @@ The observability stack includes:
 
 - `output_guardrails_policy`: Use this if we plan to use Enkrypt Guardrails on output side
 
-  - `policy_name`: Name of the guardrails policy that you have created in the Enkrypt App or using the API/SDK
+  - `guardrail_name`: Name of the guardrails policy that you have created in the Enkrypt App or using the API/SDK
 
   - `enabled`: Whether to enable guardrails on the output side or not. This is `false` in the example config file
 
@@ -2786,7 +2786,7 @@ secure-mcp-gateway --docker system health-check
           "enable_tool_guardrails": false,
           "input_guardrails_policy": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "pii_redaction": false
             },
@@ -2796,7 +2796,7 @@ secure-mcp-gateway --docker system health-check
           },
           "output_guardrails_policy": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "relevancy": false,
               "hallucination": false,
@@ -2855,7 +2855,7 @@ If you're running the Enkrypt Gateway in Docker or prefer not to use Docker-in-D
   "enable_tool_guardrails": false,
   "input_guardrails_policy": {
     "enabled": false,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "additional_config": {
       "pii_redaction": false
     },
@@ -2865,7 +2865,7 @@ If you're running the Enkrypt Gateway in Docker or prefer not to use Docker-in-D
   },
   "output_guardrails_policy": {
     "enabled": false,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "additional_config": {
       "relevancy": false,
       "hallucination": false,
@@ -3456,7 +3456,7 @@ Enforce strict context boundaries across repositories.
 
   - Add the newly created Guardrail `GitHub Guardrail` to the `input_guardrails_policy` and `output_guardrails_policy` sections
 
-  - By replacing `"policy_name": "Sample Airline Guardrail"` with `"policy_name": "GitHub Guardrail"`
+  - By replacing `"guardrail_name": "Sample Airline Guardrail"` with `"guardrail_name": "GitHub Guardrail"`
 
   - Now change `enabled` to `true` for `input_guardrails_policy` from previous `false`
 
@@ -3503,7 +3503,7 @@ Enforce strict context boundaries across repositories.
             "enable_tool_guardrails": false,
             "input_guardrails_policy": {
               "enabled": true,
-              "policy_name": "GitHub Guardrail",
+              "guardrail_name": "GitHub Guardrail",
               "additional_config": {
                 "pii_redaction": false
               },
@@ -3511,7 +3511,7 @@ Enforce strict context boundaries across repositories.
             },
             "output_guardrails_policy": {
               "enabled": false,
-              "policy_name": "GitHub Guardrail",
+              "guardrail_name": "GitHub Guardrail",
               "additional_config": {
                 "relevancy": false,
                 "hallucination": false,

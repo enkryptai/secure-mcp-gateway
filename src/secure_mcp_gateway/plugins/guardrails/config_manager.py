@@ -37,7 +37,7 @@ class GuardrailConfigManager:
             "input_guardrails_policy": {
                 "enabled": True,
                 "provider": "enkrypt",  # New field
-                "policy_name": "GitHub Policy",
+                "guardrail_name": "GitHub Policy",
                 "block": ["policy_violation"]
             }
         }
@@ -257,7 +257,7 @@ class GuardrailConfigManager:
             tools: List of tool dictionaries
             mode: "filter" to filter unsafe tools, "block_all" to block if any unsafe
             tool_guardrails_policy: Optional per-server tool guardrails policy with
-                "block" list and "policy_name"
+                "block" list and "guardrail_name"
 
         Returns:
             GuardrailResponse or None if no provider supports registration
@@ -303,7 +303,7 @@ def get_guardrail_config_schema() -> Dict[str, Any]:
                 "description": "Guardrail provider name (e.g., 'enkrypt', 'openai-moderation')",
                 "default": "enkrypt",
             },
-            "policy_name": {
+            "guardrail_name": {
                 "type": "string",
                 "description": "Name of the guardrail policy",
             },
@@ -346,11 +346,10 @@ def validate_guardrail_config(config: Dict[str, Any]) -> tuple[bool, Optional[st
     if not isinstance(config["enabled"], bool):
         return False, "'enabled' must be a boolean"
 
-    if config.get("enabled") and not config.get("policy_name"):
-        # Some providers might not need policy_name
+    if config.get("enabled") and not (config.get("guardrail_name") or config.get("policy_name")):
         provider = config.get("provider", "enkrypt")
-        if provider == "enkrypt" and not config.get("policy_name"):
-            return False, "Enkrypt provider requires 'policy_name' when enabled"
+        if provider == "enkrypt" and not (config.get("guardrail_name") or config.get("policy_name")):
+            return False, "Enkrypt provider requires 'guardrail_name' when enabled"
 
     return True, None
 

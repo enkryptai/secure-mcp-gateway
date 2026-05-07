@@ -68,8 +68,8 @@
           },
           "tools": {},
           "enable_server_info_validation": false,
-          "input_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
-          "output_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
+          "input_guardrails_policy": { "enabled": false, "guardrail_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
+          "output_guardrails_policy": { "enabled": false, "guardrail_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
           "sandbox": {
             "enabled": true,
             "runtime": "bwrap",
@@ -89,8 +89,8 @@
           },
           "tools": {},
           "enable_server_info_validation": false,
-          "input_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
-          "output_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
+          "input_guardrails_policy": { "enabled": false, "guardrail_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
+          "output_guardrails_policy": { "enabled": false, "guardrail_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
           "sandbox": {
             "enabled": false
           }
@@ -108,8 +108,8 @@
           },
           "tools": {},
           "enable_server_info_validation": false,
-          "input_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
-          "output_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
+          "input_guardrails_policy": { "enabled": false, "guardrail_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
+          "output_guardrails_policy": { "enabled": false, "guardrail_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
           "sandbox": {
             "enabled": true,
             "runtime": "bwrap",
@@ -130,8 +130,8 @@
           },
           "tools": {},
           "enable_server_info_validation": false,
-          "input_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
-          "output_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
+          "input_guardrails_policy": { "enabled": false, "guardrail_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
+          "output_guardrails_policy": { "enabled": false, "guardrail_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
           "sandbox": {
             "enabled": false
           }
@@ -151,8 +151,8 @@
           },
           "tools": {},
           "enable_server_info_validation": false,
-          "input_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
-          "output_guardrails_policy": { "enabled": false, "policy_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
+          "input_guardrails_policy": { "enabled": false, "guardrail_name": "Sample Airline Guardrail", "additional_config": { "pii_redaction": false }, "block": [] },
+          "output_guardrails_policy": { "enabled": false, "guardrail_name": "Sample Airline Guardrail", "additional_config": { "relevancy": false, "hallucination": false, "adherence": false }, "block": [] },
           "sandbox": {
             "enabled": false
           }

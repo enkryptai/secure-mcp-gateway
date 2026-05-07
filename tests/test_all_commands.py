@@ -294,11 +294,11 @@ class CLITester:
         self.run_command(["config", "add-server", "--config-name", "development-config", "--server-name", "tool-server", "--server-command", "python", "--args", "tools.py", "--tools", tools_config, "--description", "Tool server with specific tools"])
 
         # Test server with input guardrails
-        input_guardrails = '{"enabled": true, "policy_name": "Input Security Policy", "additional_config": {"pii_redaction": true, "content_filtering": true}, "block": ["policy_violation", "injection_attack", "malicious_input"]}'
+        input_guardrails = '{"enabled": true, "guardrail_name": "Input Security Policy", "additional_config": {"pii_redaction": true, "content_filtering": true}, "block": ["policy_violation", "injection_attack", "malicious_input"]}'
         self.run_command(["config", "add-server", "--config-name", "production-config", "--server-name", "secure-input-server", "--server-command", "python", "--args", "secure.py", "--input-guardrails-policy", input_guardrails, "--description", "Server with input guardrails"])
 
         # Test server with output guardrails
-        output_guardrails = '{"enabled": true, "policy_name": "Output Security Policy", "additional_config": {"relevancy": true, "hallucination": true, "adherence": true, "toxicity_filter": true}, "block": ["policy_violation", "injection_attack", "harmful_content"]}'
+        output_guardrails = '{"enabled": true, "guardrail_name": "Output Security Policy", "additional_config": {"relevancy": true, "hallucination": true, "adherence": true, "toxicity_filter": true}, "block": ["policy_violation", "injection_attack", "harmful_content"]}'
         self.run_command(["config", "add-server", "--config-name", "production-config", "--server-name", "secure-output-server", "--server-command", "python", "--args", "secure_output.py", "--output-guardrails-policy", output_guardrails, "--description", "Server with output guardrails"])
 
         # Test server with both input and output guardrails
@@ -323,7 +323,7 @@ class CLITester:
         # Create JSON policy files for testing
         input_policy_content = {
             "enabled": True,
-            "policy_name": "Test Input Policy",
+            "guardrail_name": "Test Input Policy",
             "additional_config": {
                 "pii_redaction": True,
                 "content_filtering": True
@@ -333,7 +333,7 @@ class CLITester:
 
         output_policy_content = {
             "enabled": True,
-            "policy_name": "Test Output Policy",
+            "guardrail_name": "Test Output Policy",
             "additional_config": {
                 "relevancy": True,
                 "hallucination": True,
@@ -349,14 +349,14 @@ class CLITester:
             json.dump(output_policy_content, f, indent=2)
 
         # Test input guardrails updates with JSON string
-        input_policy_json = '{"enabled": true, "policy_name": "Custom Input Policy", "additional_config": {"pii_redaction": true}, "block": ["policy_violation", "sensitive_data"]}'
+        input_policy_json = '{"enabled": true, "guardrail_name": "Custom Input Policy", "additional_config": {"pii_redaction": true}, "block": ["policy_violation", "sensitive_data"]}'
         self.run_command(["config", "update-server-input-guardrails", "--config-name", "production-config", "--server-name", "secure-input-server", "--policy", input_policy_json])
 
         # Test input guardrails updates with JSON file
         self.run_command(["config", "update-server-input-guardrails", "--config-name", "production-config", "--server-name", "fully-secure-server", "--policy-file", "input_policy.json"])
 
         # Test output guardrails updates with JSON string
-        output_policy_json = '{"enabled": true, "policy_name": "Custom Output Policy", "additional_config": {"relevancy": true, "hallucination": true, "adherence": true}, "block": ["policy_violation", "hallucination"]}'
+        output_policy_json = '{"enabled": true, "guardrail_name": "Custom Output Policy", "additional_config": {"relevancy": true, "hallucination": true, "adherence": true}, "block": ["policy_violation", "hallucination"]}'
         self.run_command(["config", "update-server-output-guardrails", "--config-name", "production-config", "--server-name", "secure-output-server", "--policy", output_policy_json])
 
         # Test output guardrails updates with JSON file
@@ -766,7 +766,7 @@ class CLITester:
         # Add multiple servers with different configurations
         basic_env = '{"ENVIRONMENT": "staging", "LOG_LEVEL": "DEBUG"}'
         staging_tools = '{"web_search": {"enabled": true}, "file_system": {"enabled": true}}'
-        staging_guardrails = '{"enabled": true, "policy_name": "Staging Policy", "additional_config": {"content_filtering": false}, "block": ["injection_attack"]}'
+        staging_guardrails = '{"enabled": true, "guardrail_name": "Staging Policy", "additional_config": {"content_filtering": false}, "block": ["injection_attack"]}'
 
         self.run_command(["config", "add-server", "--config-name", "staging-config", "--server-name", "staging-web", "--server-command", "python", "--args", "web.py", "--env", basic_env, "--description", "Staging web server"])
         self.run_command(["config", "add-server", "--config-name", "staging-config", "--server-name", "staging-tools", "--server-command", "python", "--args", "tools.py", "--tools", staging_tools, "--description", "Staging tools server"])
@@ -782,7 +782,7 @@ class CLITester:
         # Create enhanced policy files
         enhanced_input_policy = {
             "enabled": True,
-            "policy_name": "Enhanced Input Security",
+            "guardrail_name": "Enhanced Input Security",
             "additional_config": {
                 "pii_redaction": True,
                 "content_filtering": True,
@@ -793,7 +793,7 @@ class CLITester:
 
         enhanced_output_policy = {
             "enabled": True,
-            "policy_name": "Enhanced Output Security",
+            "guardrail_name": "Enhanced Output Security",
             "additional_config": {
                 "relevancy": True,
                 "hallucination": True,
@@ -818,8 +818,8 @@ class CLITester:
         self.run_command(["config", "update-server-output-guardrails", "--config-name", "staging-config", "--server-name", "security-test-server", "--policy-file", "enhanced_output_policy.json"])
 
         # Step 4: Update both guardrails simultaneously
-        updated_input = '{"enabled": true, "policy_name": "Updated Input Policy", "additional_config": {"pii_redaction": false, "content_filtering": true}, "block": ["policy_violation"]}'
-        updated_output = '{"enabled": true, "policy_name": "Updated Output Policy", "additional_config": {"relevancy": false, "hallucination": true, "adherence": true}, "block": ["policy_violation", "hallucination"]}'
+        updated_input = '{"enabled": true, "guardrail_name": "Updated Input Policy", "additional_config": {"pii_redaction": false, "content_filtering": true}, "block": ["policy_violation"]}'
+        updated_output = '{"enabled": true, "guardrail_name": "Updated Output Policy", "additional_config": {"relevancy": false, "hallucination": true, "adherence": true}, "block": ["policy_violation", "hallucination"]}'
         self.run_command(["config", "update-server-guardrails", "--config-name", "staging-config", "--server-name", "security-test-server", "--input-policy", updated_input, "--output-policy", updated_output])
 
         # Step 5: Verify server configuration

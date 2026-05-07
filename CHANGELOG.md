@@ -377,7 +377,7 @@ which surfaced both regressions on every gateway tool call.
 - Added `tool_guardrails_policy` per-server config field, replacing the boolean `enable_tool_guardrails`
 - The `block` list in the policy controls which detectors run during tool/server registration validation at discovery time
 - Detectors not in the `block` list are disabled -- no more hardcoded always-on detectors
-- `policy_name` field is used for the policy violation detector's policy text
+- `guardrail_name` field is used for the policy violation detector's policy text
 - Added `_build_detectors()` method to `EnkryptServerRegistrationGuardrail` for dynamic detector construction from policy config
 - Removed `DEFAULT_SERVER_DETECTORS` and `DEFAULT_TOOL_DETECTORS` hardcoded fallbacks -- detectors are now **only** driven by `tool_guardrails_policy.block`
 

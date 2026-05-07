@@ -384,8 +384,8 @@ class SecureToolExecutionService:
 
         input_policy_enabled = input_guardrails_policy["enabled"]
         output_policy_enabled = output_guardrails_policy["enabled"]
-        input_policy_name = input_guardrails_policy["policy_name"]
-        output_policy_name = output_guardrails_policy["policy_name"]
+        input_policy_name = input_guardrails_policy.get("guardrail_name") or input_guardrails_policy.get("policy_name", "")
+        output_policy_name = output_guardrails_policy.get("guardrail_name") or output_guardrails_policy.get("policy_name", "")
         input_blocks = input_guardrails_policy["block"]
         output_blocks = output_guardrails_policy["block"]
         pii_redaction = input_guardrails_policy["additional_config"].get(
@@ -1126,7 +1126,7 @@ class SecureToolExecutionService:
                 "pii_redaction", guardrails_config["pii_redaction"]
             )
             input_span.set_attribute(
-                "policy_name", guardrails_config["input_policy_name"]
+                "guardrail_name", guardrails_config["input_policy_name"]
             )
             input_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
 

@@ -153,9 +153,9 @@ secure-mcp-gateway config add-server --config-name "development-config" --server
 #### Add server with guardrails
 
 ```bash
-secure-mcp-gateway config add-server --config-name "production-config" --server-name "secure-input-server" --server-command "python" --args="secure.py" --input-guardrails-policy '{"enabled": true, "policy_name": "Input Security Policy", "additional_config": {"pii_redaction": true, "content_filtering": true}, "block": ["policy_violation", "injection_attack", "malicious_input"]}' --description "Server with input guardrails"
+secure-mcp-gateway config add-server --config-name "production-config" --server-name "secure-input-server" --server-command "python" --args="secure.py" --input-guardrails-policy '{"enabled": true, "guardrail_name": "Input Security Policy", "additional_config": {"pii_redaction": true, "content_filtering": true}, "block": ["policy_violation", "injection_attack", "malicious_input"]}' --description "Server with input guardrails"
 
-secure-mcp-gateway config add-server --config-name "production-config" --server-name "secure-output-server" --server-command "python" --args="secure_output.py" --output-guardrails-policy '{"enabled": true, "policy_name": "Output Security Policy", "additional_config": {"relevancy": true, "hallucination": true, "adherence": true, "toxicity_filter": true}, "block": ["policy_violation", "injection_attack", "harmful_content"]}' --description "Server with output guardrails"
+secure-mcp-gateway config add-server --config-name "production-config" --server-name "secure-output-server" --server-command "python" --args="secure_output.py" --output-guardrails-policy '{"enabled": true, "guardrail_name": "Output Security Policy", "additional_config": {"relevancy": true, "hallucination": true, "adherence": true, "toxicity_filter": true}, "block": ["policy_violation", "injection_attack", "harmful_content"]}' --description "Server with output guardrails"
 
 ```
 
@@ -189,7 +189,7 @@ secure-mcp-gateway config update-server --config-name "development-config" --ser
 ```bash
 
 # Update both guardrails with JSON strings
-secure-mcp-gateway config update-server-guardrails --config-name "default_config" --server-name "echo_server" --input-policy "{\"enabled\": true, \"policy_name\": \"Custom Input Policy\", \"additional_config\": {\"pii_redaction\": true}, \"block\": [\"policy_violation\", \"sensitive_data\"]}" --output-policy "{\"enabled\": true, \"policy_name\": \"Custom Output Policy\", \"additional_config\": {\"relevancy\": true, \"hallucination\": true, \"adherence\": true}, \"block\": [\"policy_violation\", \"hallucination\"]}"
+secure-mcp-gateway config update-server-guardrails --config-name "default_config" --server-name "echo_server" --input-policy "{\"enabled\": true, \"guardrail_name\": \"Custom Input Policy\", \"additional_config\": {\"pii_redaction\": true}, \"block\": [\"policy_violation\", \"sensitive_data\"]}" --output-policy "{\"enabled\": true, \"guardrail_name\": \"Custom Output Policy\", \"additional_config\": {\"relevancy\": true, \"hallucination\": true, \"adherence\": true}, \"block\": [\"policy_violation\", \"hallucination\"]}"
 
 # Update both guardrails from JSON files
 secure-mcp-gateway config update-server-guardrails --config-name "default_config" --server-name "echo_server" --input-policy-file "input_policy.json" --output-policy-file "output_policy.json"
@@ -207,7 +207,7 @@ secure-mcp-gateway config update-server-guardrails --config-name "default_config
 ```bash
 
 # Update input guardrails with JSON string
-secure-mcp-gateway config update-server-input-guardrails --config-name "default_config" --server-name "echo_server" --policy "{\"enabled\": true, \"policy_name\": \"Custom Policy\", \"additional_config\": {\"pii_redaction\": true}, \"block\": [\"policy_violation\", \"sensitive_data\"]}"
+secure-mcp-gateway config update-server-input-guardrails --config-name "default_config" --server-name "echo_server" --policy "{\"enabled\": true, \"guardrail_name\": \"Custom Policy\", \"additional_config\": {\"pii_redaction\": true}, \"block\": [\"policy_violation\", \"sensitive_data\"]}"
 
 # Update input guardrails from JSON file
 secure-mcp-gateway config update-server-input-guardrails --config-name "default_config" --server-name "echo_server" --policy-file "input_policy.json"
@@ -222,7 +222,7 @@ secure-mcp-gateway config update-server-input-guardrails --config-id "f957f1b2-c
 ```bash
 
 # Update output guardrails with JSON string
-secure-mcp-gateway config update-server-output-guardrails --config-name "default_config" --server-name "echo_server" --policy "{\"enabled\": true, \"policy_name\": \"Custom Output Policy\", \"additional_config\": {\"relevancy\": true, \"hallucination\": true, \"adherence\": true}, \"block\": [\"policy_violation\", \"hallucination\"]}"
+secure-mcp-gateway config update-server-output-guardrails --config-name "default_config" --server-name "echo_server" --policy "{\"enabled\": true, \"guardrail_name\": \"Custom Output Policy\", \"additional_config\": {\"relevancy\": true, \"hallucination\": true, \"adherence\": true}, \"block\": [\"policy_violation\", \"hallucination\"]}"
 
 # Update output guardrails from JSON file
 secure-mcp-gateway config update-server-output-guardrails --config-name "default_config" --server-name "echo_server" --policy-file "output_policy.json"
@@ -892,7 +892,7 @@ secure-mcp-gateway config add --config-name "prod-config"
 
 ```bash
 
-secure-mcp-gateway config add-server --config-name "prod-config" --server-name "prod-server" --server-command "python" --args="production.py" --input-guardrails-policy '{"enabled": true, "policy_name": "Production Policy", "additional_config": {"pii_redaction": true}, "block": ["policy_violation", "injection_attack"]}' --description "Production server"
+secure-mcp-gateway config add-server --config-name "prod-config" --server-name "prod-server" --server-command "python" --args="production.py" --input-guardrails-policy '{"enabled": true, "guardrail_name": "Production Policy", "additional_config": {"pii_redaction": true}, "block": ["policy_violation", "injection_attack"]}' --description "Production server"
 
 ```
 
@@ -1066,7 +1066,7 @@ secure-mcp-gateway config add-server --config-name "staging-config" --server-nam
 
 ```bash
 
-secure-mcp-gateway config add-server --config-name "staging-config" --server-name "staging-secure" --server-command "python" --args="secure.py" --input-guardrails-policy '{"enabled": true, "policy_name": "Staging Policy", "additional_config": {"content_filtering": false}, "block": ["injection_attack"]}' --description "Staging secure server"
+secure-mcp-gateway config add-server --config-name "staging-config" --server-name "staging-secure" --server-command "python" --args="secure.py" --input-guardrails-policy '{"enabled": true, "guardrail_name": "Staging Policy", "additional_config": {"content_filtering": false}, "block": ["injection_attack"]}' --description "Staging secure server"
 
 ```
 

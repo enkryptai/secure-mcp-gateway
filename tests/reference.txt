@@ -65,9 +65,9 @@ ADVANCED SERVER CONFIGURATIONS:
 
 ✅ python cli.py config add-server --config-name "development-config" --server-name "tool-server" --server-command "python" --args "tools.py" --tools '{"search": {"enabled": true}, "calculator": {"enabled": false}, "file_reader": {"enabled": true}}' --description "Tool server with specific tools"
 
-✅ python cli.py config add-server --config-name "production-config" --server-name "secure-input-server" --server-command "python" --args "secure.py" --input-guardrails-policy '{"enabled": true, "policy_name": "Input Security Policy", "additional_config": {"pii_redaction": true, "content_filtering": true}, "block": ["policy_violation", "injection_attack", "malicious_input"]}' --description "Server with input guardrails"
+✅ python cli.py config add-server --config-name "production-config" --server-name "secure-input-server" --server-command "python" --args "secure.py" --input-guardrails-policy '{"enabled": true, "guardrail_name": "Input Security Policy", "additional_config": {"pii_redaction": true, "content_filtering": true}, "block": ["policy_violation", "injection_attack", "malicious_input"]}' --description "Server with input guardrails"
 
-✅ python cli.py config add-server --config-name "production-config" --server-name "secure-output-server" --server-command "python" --args "secure_output.py" --output-guardrails-policy '{"enabled": true, "policy_name": "Output Security Policy", "additional_config": {"relevancy": true, "hallucination": true, "adherence": true, "toxicity_filter": true}, "block": ["policy_violation", "injection_attack", "harmful_content"]}' --description "Server with output guardrails"
+✅ python cli.py config add-server --config-name "production-config" --server-name "secure-output-server" --server-command "python" --args "secure_output.py" --output-guardrails-policy '{"enabled": true, "guardrail_name": "Output Security Policy", "additional_config": {"relevancy": true, "hallucination": true, "adherence": true, "toxicity_filter": true}, "block": ["policy_violation", "injection_attack", "harmful_content"]}' --description "Server with output guardrails"
 
 ✅ python cli.py config add-server --config-name "production-config" --server-name "fully-secure-server" --server-command "python" --args "fully_secure.py" --input-guardrails-policy {input-guardrails} --output-guardrails-policy {output-guardrails} --description "Fully secured server"
 
@@ -84,7 +84,7 @@ ADVANCED SERVER UPDATES:
 
 INPUT GUARDRAILS UPDATES:
 --------------------------
-✅ python cli.py config update-server-input-guardrails --config-name "production-config" --server-name "secure-input-server" --policy '{"enabled": true, "policy_name": "Custom Input Policy", "additional_config": {"pii_redaction": true}, "block": ["policy_violation"]}'
+✅ python cli.py config update-server-input-guardrails --config-name "production-config" --server-name "secure-input-server" --policy '{"enabled": true, "guardrail_name": "Custom Input Policy", "additional_config": {"pii_redaction": true}, "block": ["policy_violation"]}'
 
 ✅ python cli.py config update-server-input-guardrails --config-name "production-config" --server-name "fully-secure-server" --policy-file "input_policy.json"
 
@@ -92,7 +92,7 @@ INPUT GUARDRAILS UPDATES:
 
 OUTPUT GUARDRAILS UPDATES:
 ---------------------------
-✅ python cli.py config update-server-output-guardrails --config-name "production-config" --server-name "secure-output-server" --policy '{"enabled": true, "policy_name": "Custom Output Policy", "additional_config": {"relevancy": true, "hallucination": true, "adherence": true}, "block": ["policy_violation"]}'
+✅ python cli.py config update-server-output-guardrails --config-name "production-config" --server-name "secure-output-server" --policy '{"enabled": true, "guardrail_name": "Custom Output Policy", "additional_config": {"relevancy": true, "hallucination": true, "adherence": true}, "block": ["policy_violation"]}'
 
 ✅ python cli.py config update-server-output-guardrails --config-name "production-config" --server-name "fully-secure-server" --policy-file "output_policy.json"
 
@@ -100,7 +100,7 @@ OUTPUT GUARDRAILS UPDATES:
 
 COMBINED GUARDRAILS UPDATES:
 -----------------------------
-✅ python cli.py config update-server-guardrails --config-name "production-config" --server-name "complex-server" --input-policy '{"enabled": true, "policy_name": "Custom Input Policy", "additional_config": {"pii_redaction": true}, "block": ["policy_violation"]}' --output-policy '{"enabled": true, "policy_name": "Custom Output Policy", "additional_config": {"relevancy": true, "hallucination": true, "adherence": true}, "block": ["policy_violation"]}'
+✅ python cli.py config update-server-guardrails --config-name "production-config" --server-name "complex-server" --input-policy '{"enabled": true, "guardrail_name": "Custom Input Policy", "additional_config": {"pii_redaction": true}, "block": ["policy_violation"]}' --output-policy '{"enabled": true, "guardrail_name": "Custom Output Policy", "additional_config": {"relevancy": true, "hallucination": true, "adherence": true}, "block": ["policy_violation"]}'
 
 ✅ python cli.py config update-server-guardrails --config-name "production-config" --server-name "fully-secure-server" --input-policy-file "input_policy.json" --output-policy-file "output_policy.json"
 
@@ -110,7 +110,7 @@ PARTIAL GUARDRAILS UPDATES:
 
 ✅ python cli.py config update-server-guardrails --config-name "production-config" --server-name "secure-output-server" --output-policy-file "output_policy.json"
 
-✅ python cli.py config update-server-guardrails --config-id {config-id} --server-name "complex-server" --input-policy '{"enabled": true, "policy_name": "Updated Policy", "additional_config": {"pii_redaction": false}, "block": ["policy_violation"]}'
+✅ python cli.py config update-server-guardrails --config-id {config-id} --server-name "complex-server" --input-policy '{"enabled": true, "guardrail_name": "Updated Policy", "additional_config": {"pii_redaction": false}, "block": ["policy_violation"]}'
 
 CONFIG VALIDATION & EXPORT:
 ----------------------------
@@ -330,7 +330,7 @@ CONFIGURATION MANAGEMENT WORKFLOW:
 ✅ python cli.py config add --config-name "staging-config"
 ✅ python cli.py config add-server --config-name "staging-config" --server-name "staging-web" --server-command "python" --args "web.py" --env '{"ENVIRONMENT": "staging", "LOG_LEVEL": "DEBUG"}' --description "Staging web server"
 ✅ python cli.py config add-server --config-name "staging-config" --server-name "staging-tools" --server-command "python" --args "tools.py" --tools '{"web_search": {"enabled": true}, "file_system": {"enabled": true}}' --description "Staging tools server"
-✅ python cli.py config add-server --config-name "staging-config" --server-name "staging-secure" --server-command "python" --args "secure.py" --input-guardrails-policy '{"enabled": true, "policy_name": "Staging Policy", "additional_config": {"content_filtering": false}, "block": ["injection_attack"]}' --description "Staging secure server"
+✅ python cli.py config add-server --config-name "staging-config" --server-name "staging-secure" --server-command "python" --args "secure.py" --input-guardrails-policy '{"enabled": true, "guardrail_name": "Staging Policy", "additional_config": {"content_filtering": false}, "block": ["injection_attack"]}' --description "Staging secure server"
 ✅ python cli.py config validate --config-name "staging-config"
 ✅ python cli.py config export --config-name "staging-config" --output-file "staging-config-export.json"
 
@@ -339,7 +339,7 @@ CONFIGURATION MANAGEMENT WORKFLOW:
 ✅ python cli.py config add-server --config-name "staging-config" --server-name "security-test-server" --server-command "python" --args "security.py" --description "Security testing server"
 ✅ python cli.py config update-server-input-guardrails --config-name "staging-config" --server-name "security-test-server" --policy-file "enhanced_input_policy.json"
 ✅ python cli.py config update-server-output-guardrails --config-name "staging-config" --server-name "security-test-server" --policy-file "enhanced_output_policy.json"
-✅ python cli.py config update-server-guardrails --config-name "staging-config" --server-name "security-test-server" --input-policy '{"enabled": true, "policy_name": "Updated Input Policy", "additional_config": {"pii_redaction": false, "content_filtering": true}, "block": ["policy_violation"]}' --output-policy '{"enabled": true, "policy_name": "Updated Output Policy", "additional_config": {"relevancy": false, "hallucination": true, "adherence": true}, "block": ["policy_violation", "hallucination"]}'
+✅ python cli.py config update-server-guardrails --config-name "staging-config" --server-name "security-test-server" --input-policy '{"enabled": true, "guardrail_name": "Updated Input Policy", "additional_config": {"pii_redaction": false, "content_filtering": true}, "block": ["policy_violation"]}' --output-policy '{"enabled": true, "guardrail_name": "Updated Output Policy", "additional_config": {"relevancy": false, "hallucination": true, "adherence": true}, "block": ["policy_violation", "hallucination"]}'
 ✅ python cli.py config get-server --config-name "staging-config" --server-name "security-test-server"
 ✅ python cli.py config validate --config-name "staging-config"
 ✅ python cli.py config export --config-name "staging-config" --output-file "staging-config-with-guardrails.json"
@@ -484,7 +484,7 @@ INPUT_POLICY.JSON:
 ------------------
 {
   "enabled": true,
-  "policy_name": "Test Input Policy",
+  "guardrail_name": "Test Input Policy",
   "additional_config": {
     "pii_redaction": true,
     "content_filtering": true
@@ -496,7 +496,7 @@ OUTPUT_POLICY.JSON:
 -------------------
 {
   "enabled": true,
-  "policy_name": "Test Output Policy",
+  "guardrail_name": "Test Output Policy",
   "additional_config": {
     "relevancy": true,
     "hallucination": true,
@@ -595,14 +595,14 @@ GUARDRAILS JSON EXAMPLES FOR DIFFERENT PLATFORMS:
 --------------------------------------------------
 
 WINDOWS CMD:
-python cli.py config update-server-input-guardrails --config-name "production-config" --server-name "echo_server" --policy "{\"enabled\": true, \"policy_name\": \"Custom Policy\", \"additional_config\": {\"pii_redaction\": true}, \"block\": [\"policy_violation\", \"sensitive_data\"]}"
+python cli.py config update-server-input-guardrails --config-name "production-config" --server-name "echo_server" --policy "{\"enabled\": true, \"guardrail_name\": \"Custom Policy\", \"additional_config\": {\"pii_redaction\": true}, \"block\": [\"policy_violation\", \"sensitive_data\"]}"
 
 WINDOWS POWERSHELL:
-$policy = '{"enabled": true, "policy_name": "Custom Policy", "additional_config": {"pii_redaction": true}, "block": ["policy_violation", "sensitive_data"]}'
+$policy = '{"enabled": true, "guardrail_name": "Custom Policy", "additional_config": {"pii_redaction": true}, "block": ["policy_violation", "sensitive_data"]}'
 python cli.py config update-server-input-guardrails --config-name "production-config" --server-name "echo_server" --policy $policy
 
 LINUX/MACOS BASH:
-python cli.py config update-server-input-guardrails --config-name 'production-config' --server-name 'echo_server' --policy '{"enabled": true, "policy_name": "Custom Policy", "additional_config": {"pii_redaction": true}, "block": ["policy_violation", "sensitive_data"]}'
+python cli.py config update-server-input-guardrails --config-name 'production-config' --server-name 'echo_server' --policy '{"enabled": true, "guardrail_name": "Custom Policy", "additional_config": {"pii_redaction": true}, "block": ["policy_violation", "sensitive_data"]}'
 
 FILE-BASED (ALL PLATFORMS):
 python cli.py config update-server-input-guardrails --config-name "production-config" --server-name "echo_server" --policy-file "input_policy.json"
@@ -642,7 +642,7 @@ ERROR: Policy validation failed
 SOLUTION: Check policy structure matches expected format:
 {
  "enabled": boolean,
- "policy_name": "string",
+ "guardrail_name": "string",
  "additional_config": { ... },
  "block": ["array", "of", "strings"]
 }

@@ -78,7 +78,7 @@ Wired through `record_guardrail_violations(direction, violation_types, ...)` in
 * `_process_async_output_guardrails` when `has_blocking == True`
 
 Labels: `direction` (`input` or `output`), `violation_type`, `server_name`,
-`tool_name`, optional `policy_name`, optional `user_id`, optional
+`tool_name`, optional `guardrail_name`, optional `user_id`, optional
 `project_id`. The per-check counters (`relevancy_violation_counter`,
 `adherence_violation_counter`, `hallucination_violation_counter`) are only
 incremented when the `violation_type` value matches their kind, so they

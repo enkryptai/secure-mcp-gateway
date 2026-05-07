@@ -368,7 +368,7 @@ def generate_default_config():
                         "enable_server_info_validation": False,
                         "tool_guardrails_policy": {
                             "enabled": False,
-                            "policy_name": "Sample Airline Guardrail",
+                            "guardrail_name": "Sample Airline Guardrail",
                             "block": [
                                 "policy_violation",
                                 "injection_attack",
@@ -383,7 +383,7 @@ def generate_default_config():
                         },
                         "input_guardrails_policy": {
                             "enabled": False,
-                            "policy_name": "Sample Airline Guardrail",
+                            "guardrail_name": "Sample Airline Guardrail",
                             "additional_config": {"pii_redaction": False},
                             "block": [
                                 "policy_violation",
@@ -399,7 +399,7 @@ def generate_default_config():
                         },
                         "output_guardrails_policy": {
                             "enabled": False,
-                            "policy_name": "Sample Airline Guardrail",
+                            "guardrail_name": "Sample Airline Guardrail",
                             "additional_config": {
                                 "relevancy": False,
                                 "hallucination": False,
@@ -939,7 +939,7 @@ def add_server_to_config(
         "enable_server_info_validation": False,
         "tool_guardrails_policy": {
             "enabled": False,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "block": [
                 "policy_violation",
                 "injection_attack",
@@ -955,14 +955,14 @@ def add_server_to_config(
         "input_guardrails_policy": input_guardrails_data
         or {
             "enabled": False,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {"pii_redaction": False},
             "block": ["policy_violation"],
         },
         "output_guardrails_policy": output_guardrails_data
         or {
             "enabled": False,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
                 "relevancy": False,
                 "hallucination": False,

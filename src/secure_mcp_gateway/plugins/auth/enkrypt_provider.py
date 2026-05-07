@@ -505,7 +505,7 @@ class EnkryptAuthProvider(AuthProvider):
 
         # Policy fields: gateway_overrides wins when present. The cloud
         # often returns partial policy objects (e.g. only ``enabled`` and
-        # ``policy_name``); fill missing keys from the empty-policy template
+        # ``guardrail_name``); fill missing keys from the empty-policy template
         # so downstream consumers can safely index ``policy["block"]`` etc.
         def _pick_policy(name: str) -> Optional[Dict[str, Any]]:
             override = gateway_overrides.get(name)
@@ -636,7 +636,7 @@ def _empty_policy() -> Dict[str, Any]:
     """Default GuardrailsPolicy used when neither base nor override is set."""
     return {
         "enabled": False,
-        "policy_name": "",
+        "guardrail_name": "",
         "additional_config": {},
         "block": [],
     }

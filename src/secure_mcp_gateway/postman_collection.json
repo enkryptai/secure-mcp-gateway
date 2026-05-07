@@ -371,7 +371,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"policy\": {\n    \"enabled\": true,\n    \"policy_name\": \"Sample Airline Guardrail\",\n    \"block\": [\"policy_violation\", \"injection_attack\"]\n  }\n}"
+              "raw": "{\n  \"policy\": {\n    \"enabled\": true,\n    \"guardrail_name\": \"Sample Airline Guardrail\",\n    \"block\": [\"policy_violation\", \"injection_attack\"]\n  }\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/servers/{{server_name}}/input-guardrails",
@@ -390,7 +390,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"policy\": {\n    \"enabled\": true,\n    \"policy_name\": \"Sample Airline Guardrail\",\n    \"block\": [\"policy_violation\"]\n  }\n}"
+              "raw": "{\n  \"policy\": {\n    \"enabled\": true,\n    \"guardrail_name\": \"Sample Airline Guardrail\",\n    \"block\": [\"policy_violation\"]\n  }\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/servers/{{server_name}}/output-guardrails",
@@ -409,7 +409,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"input_policy\": {\n    \"enabled\": true,\n    \"policy_name\": \"Sample Airline Guardrail\",\n    \"block\": [\"policy_violation\"]\n  },\n  \"output_policy\": {\n    \"enabled\": true,\n    \"policy_name\": \"Sample Airline Guardrail\",\n    \"block\": [\"policy_violation\"]\n  }\n}"
+              "raw": "{\n  \"input_policy\": {\n    \"enabled\": true,\n    \"guardrail_name\": \"Sample Airline Guardrail\",\n    \"block\": [\"policy_violation\"]\n  },\n  \"output_policy\": {\n    \"enabled\": true,\n    \"guardrail_name\": \"Sample Airline Guardrail\",\n    \"block\": [\"policy_violation\"]\n  }\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/configs/{{config_id}}/servers/{{server_name}}/guardrails",

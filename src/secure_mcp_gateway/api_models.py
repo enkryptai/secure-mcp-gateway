@@ -95,7 +95,7 @@ class ServerUpdateRequest(BaseModel):
 
 class ServerGuardrailsRequest(BaseModel):
     enabled: bool = True
-    policy_name: Optional[str] = None
+    guardrail_name: Optional[str] = None
 
 
 class ConfigValidateRequest(BaseModel):

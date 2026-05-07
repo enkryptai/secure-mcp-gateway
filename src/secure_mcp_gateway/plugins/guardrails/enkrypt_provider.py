@@ -81,7 +81,7 @@ class EnkryptInputGuardrail:
         self.config = config
         self.api_key = api_key
         self.base_url = base_url
-        self.policy_name = config.get("policy_name", "")
+        self.guardrail_name = config.get("guardrail_name") or config.get("policy_name", "")
         self.block_list = config.get("block", [])
         self.additional_config = config.get("additional_config", {})
 
@@ -101,7 +101,7 @@ class EnkryptInputGuardrail:
             server_name=getattr(request, "server_name", None),
             tool_name=request.tool_name,
             additional_context={
-                "policy_name": self.policy_name,
+                "guardrail_name": self.guardrail_name,
                 "content_length": len(request.content),
             },
         )
@@ -111,7 +111,7 @@ class EnkryptInputGuardrail:
                 # Prepare payload
                 payload = {"text": request.content}
                 headers = {
-                    "X-Enkrypt-Policy": self.policy_name,
+                    "X-Enkrypt-Policy": self.guardrail_name,
                     "apikey": self.api_key,
                     "Content-Type": "application/json",
                     "X-Enkrypt-Source-Name": "mcp-gateway",
@@ -120,7 +120,7 @@ class EnkryptInputGuardrail:
 
                 if self.debug:
                     logger.debug(
-                        f"[EnkryptInputGuardrail] Validating with policy: {self.policy_name}"
+                        f"[EnkryptInputGuardrail] Validating with policy: {self.guardrail_name}"
                     )
                     logger.debug(f"[EnkryptInputGuardrail] Payload: {payload}")
 
@@ -203,7 +203,7 @@ class EnkryptInputGuardrail:
                     violations=violations,
                     modified_content=None,
                     metadata={
-                        "policy_name": self.policy_name,
+                        "guardrail_name": self.guardrail_name,
                         "enkrypt_response": resp_json,
                     },
                     processing_time_ms=processing_time_ms,
@@ -283,7 +283,7 @@ class EnkryptOutputGuardrail:
         self.config = config
         self.api_key = api_key
         self.base_url = base_url
-        self.policy_name = config.get("policy_name", "")
+        self.guardrail_name = config.get("guardrail_name") or config.get("policy_name", "")
         self.block_list = config.get("block", [])
         self.additional_config = config.get("additional_config", {})
 
@@ -460,7 +460,7 @@ class EnkryptOutputGuardrail:
         try:
             payload = {"text": text}
             headers = {
-                "X-Enkrypt-Policy": self.policy_name,
+                "X-Enkrypt-Policy": self.guardrail_name,
                 "apikey": self.api_key,
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
@@ -469,7 +469,7 @@ class EnkryptOutputGuardrail:
 
             if self.debug:
                 logger.debug(
-                    f"[EnkryptOutputGuardrail] Policy check for: {self.policy_name}"
+                    f"[EnkryptOutputGuardrail] Policy check for: {self.guardrail_name}"
                 )
 
             _, result = await _post_with_metrics(
@@ -785,7 +785,7 @@ class EnkryptServerRegistrationGuardrail:
     def _build_detectors(
         cls,
         block_list: List[str],
-        policy_name: Optional[str] = None,
+        guardrail_name: Optional[str] = None,
         context: str = "tool",
     ) -> Dict[str, Any]:
         """
@@ -795,7 +795,7 @@ class EnkryptServerRegistrationGuardrail:
 
         Args:
             block_list: List of detector names to enable (e.g. ["injection_attack", "nsfw"])
-            policy_name: Optional policy name for the policy_violation detector
+            guardrail_name: Optional guardrail name for the policy_violation detector
             context: Either "tool" or "server" - used for default policy_text
 
         Returns:
@@ -808,8 +808,8 @@ class EnkryptServerRegistrationGuardrail:
 
             # Set policy_text for policy_violation
             if detector_name == "policy_violation" and is_enabled:
-                if policy_name:
-                    config["policy_text"] = policy_name
+                if guardrail_name:
+                    config["policy_text"] = guardrail_name
                 else:
                     config["policy_text"] = (
                         f"Allow only safe {context}s to be registered for this MCP server "
@@ -905,7 +905,7 @@ class EnkryptServerRegistrationGuardrail:
             else:
                 detectors = self._build_detectors(
                     block_list=block_list,
-                    policy_name=policy.get("policy_name"),
+                    guardrail_name=policy.get("guardrail_name") or policy.get("policy_name"),
                     context="server",
                 )
 
@@ -1136,7 +1136,7 @@ class EnkryptServerRegistrationGuardrail:
             else:
                 detectors = self._build_detectors(
                     block_list=block_list,
-                    policy_name=policy.get("policy_name"),
+                    guardrail_name=policy.get("guardrail_name") or policy.get("policy_name"),
                     context="tool",
                 )
 
@@ -1589,14 +1589,13 @@ class EnkryptGuardrailProvider(GuardrailProvider):
     def validate_config(self, config: Dict[str, Any]) -> bool:
         """Validate Enkrypt configuration."""
         if config.get("enabled", False):
-            # Policy name is required when enabled
-            if not config.get("policy_name"):
+            if not (config.get("guardrail_name") or config.get("policy_name")):
                 return False
         return True
 
     def get_required_config_keys(self) -> List[str]:
         """Get required config keys."""
-        return ["enabled", "policy_name"]
+        return ["enabled", "guardrail_name"]
 
     async def validate_server_registration(
         self, request: ServerRegistrationRequest

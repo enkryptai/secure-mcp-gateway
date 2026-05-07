@@ -26,7 +26,7 @@ Helpers
     outcome in {"success", "failure", "error", "blocked"}.
 
 ``record_guardrail_violations(direction, violation_types, server_name,
-                              tool_name, policy_name=None)``
+                              tool_name, guardrail_name=None)``
     direction in {"input", "output"}.  Increments overall +
     directional + per-check counters.
 
@@ -178,7 +178,7 @@ def record_guardrail_violations(
     violation_types: Iterable[Any],
     server_name: str = "",
     tool_name: str = "",
-    policy_name: Optional[str] = None,
+    guardrail_name: Optional[str] = None,
     user_id: Optional[str] = None,
     project_id: Optional[str] = None,
 ) -> None:
@@ -212,7 +212,7 @@ def record_guardrail_violations(
             "violation_type": vt_str,
             "server_name": server_name,
             "tool_name": tool_name,
-            "policy_name": policy_name,
+            "guardrail_name": guardrail_name,
             "user_id": user_id,
             "project_id": project_id,
         }
