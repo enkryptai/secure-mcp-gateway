@@ -1774,9 +1774,9 @@ class SecureToolExecutionService:
                 "args": args,
             },
             "enkrypt_policy_detections": {
-                "input_guardrail_policy": guardrails_config["input_guardrails_policy"],
+                "input_guardrail_name": guardrails_config["input_guardrails_policy"],
                 "input_guardrail_response": {},
-                "output_guardrail_policy": guardrails_config[
+                "output_guardrail_name": guardrails_config[
                     "output_guardrails_policy"
                 ],
                 "output_guardrail_response": output_guardrail_response,
@@ -1827,9 +1827,9 @@ class SecureToolExecutionService:
                 "args": args,
             },
             "enkrypt_policy_detections": {
-                "input_guardrail_policy": guardrails_config["input_guardrails_policy"],
+                "input_guardrail_name": guardrails_config["input_guardrails_policy"],
                 "input_guardrail_response": input_guardrail_response,
-                "output_guardrail_policy": guardrails_config[
+                "output_guardrail_name": guardrails_config[
                     "output_guardrails_policy"
                 ],
                 "output_guardrail_response": output_guardrail_response,
