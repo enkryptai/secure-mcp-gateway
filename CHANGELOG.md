@@ -374,17 +374,17 @@ which surfaced both regressions on every gateway tool call.
 
 #### Configurable Tool Guardrails Policy
 
-- Added `tool_guardrails_policy` per-server config field, replacing the boolean `enable_tool_guardrails`
+- Added `tool_guardrails_config` per-server config field, replacing the boolean `enable_tool_guardrails`
 - The `block` list in the policy controls which detectors run during tool/server registration validation at discovery time
 - Detectors not in the `block` list are disabled -- no more hardcoded always-on detectors
 - `guardrail_name` field is used for the policy violation detector's policy text
 - Added `_build_detectors()` method to `EnkryptServerRegistrationGuardrail` for dynamic detector construction from policy config
-- Removed `DEFAULT_SERVER_DETECTORS` and `DEFAULT_TOOL_DETECTORS` hardcoded fallbacks -- detectors are now **only** driven by `tool_guardrails_policy.block`
+- Removed `DEFAULT_SERVER_DETECTORS` and `DEFAULT_TOOL_DETECTORS` hardcoded fallbacks -- detectors are now **only** driven by `tool_guardrails_config.block`
 
 #### Breaking Changes
 
-- **`enable_tool_guardrails` is no longer supported.** The boolean field has been fully replaced by the `tool_guardrails_policy` object. Existing configs using `enable_tool_guardrails: true/false` will be silently ignored (guardrails will default to disabled). **You must regenerate your config** with `secure-mcp-gateway generate-config --overwrite` or manually add the `tool_guardrails_policy` field to each server entry.
-- **Hardcoded default detectors removed.** Previously, when no policy was provided, all detectors ran with hardcoded defaults. Now, detectors only run when explicitly listed in the `block` array of `tool_guardrails_policy`. If `block` is empty or missing, no tools/servers are blocked — the gateway logs a monitor-only message and allows everything through.
+- **`enable_tool_guardrails` is no longer supported.** The boolean field has been fully replaced by the `tool_guardrails_config` object. Existing configs using `enable_tool_guardrails: true/false` will be silently ignored (guardrails will default to disabled). **You must regenerate your config** with `secure-mcp-gateway generate-config --overwrite` or manually add the `tool_guardrails_config` field to each server entry.
+- **Hardcoded default detectors removed.** Previously, when no policy was provided, all detectors ran with hardcoded defaults. Now, detectors only run when explicitly listed in the `block` array of `tool_guardrails_config`. If `block` is empty or missing, no tools/servers are blocked — the gateway logs a monitor-only message and allows everything through.
 
 #### CLI Enhancements
 
@@ -393,7 +393,7 @@ which surfaced both regressions on every gateway tool call.
 - Added `install --client claude-code` support for direct Claude Code integration via `claude mcp add`
 - Fixed Windows `.cmd` executable resolution using `shutil.which()` for Claude Code install
 - Suppressed duplicate initialization output when delegating to Docker with `--docker`
-- `config add-server` now generates `tool_guardrails_policy` with full block list (disabled by default)
+- `config add-server` now generates `tool_guardrails_config` with full block list (disabled by default)
 
 #### Auth Error Messages
 

@@ -514,9 +514,9 @@ class EnkryptAuthProvider(AuthProvider):
                 return None
             return {**_empty_policy(), **chosen}
 
-        tool_policy = _pick_policy("tool_guardrails_policy")
-        input_policy = _pick_policy("input_guardrails_policy")
-        output_policy = _pick_policy("output_guardrails_policy")
+        tool_policy = _pick_policy("tool_guardrails_config")
+        input_policy = _pick_policy("input_guardrails_config")
+        output_policy = _pick_policy("output_guardrails_config")
 
         # OAuth lives inside mcp_config in the cloud spec; gateway_overrides
         # may override it too.
@@ -534,9 +534,9 @@ class EnkryptAuthProvider(AuthProvider):
                 "enable_server_info_validation", False
             ),
             "enable_tool_guardrails": (tool_policy or {}).get("enabled", False),
-            "tool_guardrails_policy": tool_policy or _empty_policy(),
-            "input_guardrails_policy": input_policy or _empty_policy(),
-            "output_guardrails_policy": output_policy or _empty_policy(),
+            "tool_guardrails_config": tool_policy or _empty_policy(),
+            "input_guardrails_config": input_policy or _empty_policy(),
+            "output_guardrails_config": output_policy or _empty_policy(),
         }
         if oauth_config:
             merged["oauth_config"] = oauth_config

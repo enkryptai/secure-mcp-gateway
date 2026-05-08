@@ -75,19 +75,19 @@ def sample_response(**overrides: Any) -> Dict[str, Any]:
                 "mcp_config": {
                     "config": {"command": "python", "args": ["echo.py"]},
                     "tools": {},
-                    "input_guardrails_policy": {
+                    "input_guardrails_config": {
                         "enabled": True,
                         "guardrail_name": "Base Input",
                         "additional_config": {},
                         "block": ["injection_attack"],
                     },
-                    "output_guardrails_policy": {
+                    "output_guardrails_config": {
                         "enabled": False,
                         "guardrail_name": "",
                         "additional_config": {},
                         "block": [],
                     },
-                    "tool_guardrails_policy": None,
+                    "tool_guardrails_config": None,
                 },
                 "gateway_overrides": {},
             }
@@ -272,8 +272,8 @@ def test_map_response_handles_real_cloud_shape() -> None:
     * ``gateway_id`` is an integer (must be coerced to string)
     * cloud policy objects only carry ``enabled`` + ``guardrail_name`` and
       need the missing ``additional_config`` / ``block`` keys filled in
-    * ``gateway_overrides.input_guardrails_policy`` wins over
-      ``mcp_config.input_guardrails_policy`` (in this fixture they are
+    * ``gateway_overrides.input_guardrails_config`` wins over
+      ``mcp_config.input_guardrails_config`` (in this fixture they are
       identical, so the assertion is on the guardrail_name)
     * ``request_context`` carries ``org_id`` but no ``forwarded_*`` /
       ``actioner`` yet
@@ -302,18 +302,18 @@ def test_map_response_handles_real_cloud_shape() -> None:
                         ],
                     },
                     "enable_server_info_validation": True,
-                    "input_guardrails_policy": {
+                    "input_guardrails_config": {
                         "enabled": True,
                         "guardrail_name": "Updated Guardrail",
                         "block": ["topic_detector", "nsfw", "keyword_detector"],
                     },
-                    "tool_guardrails_policy": {
+                    "tool_guardrails_config": {
                         "enabled": False,
                         "guardrail_name": "",
                     },
                 },
                 "gateway_overrides": {
-                    "input_guardrails_policy": {
+                    "input_guardrails_config": {
                         "enabled": True,
                         "guardrail_name": "Updated Guardrail",
                         "block": ["topic_detector", "nsfw", "keyword_detector"],
@@ -344,9 +344,9 @@ def test_map_response_handles_real_cloud_shape() -> None:
     assert server["server_name"] == "my-filesystem-server"
     assert server["enable_server_info_validation"] is True
 
-    # Cloud returned a partial tool_guardrails_policy — missing keys filled
+    # Cloud returned a partial tool_guardrails_config — missing keys filled
     # in from _empty_policy.
-    tool_policy = server["tool_guardrails_policy"]
+    tool_policy = server["tool_guardrails_config"]
     assert tool_policy == {
         "enabled": False,
         "guardrail_name": "",
@@ -356,9 +356,9 @@ def test_map_response_handles_real_cloud_shape() -> None:
 
     # gateway_overrides won; same shape as cloud value here.
     assert (
-        server["input_guardrails_policy"]["guardrail_name"] == "Updated Guardrail"
+        server["input_guardrails_config"]["guardrail_name"] == "Updated Guardrail"
     )
-    assert "topic_detector" in server["input_guardrails_policy"]["block"]
+    assert "topic_detector" in server["input_guardrails_config"]["block"]
 
     # extras carry unmapped fields including org_id (now landed on the dev
     # cloud), but no forwarded_* / actioner yet.
@@ -445,7 +445,7 @@ def test_map_server_gateway_overrides_replace_base_policy() -> None:
     p = make_provider()
     resp = sample_response()
     resp["expanded_servers"][0]["gateway_overrides"] = {
-        "input_guardrails_policy": {
+        "input_guardrails_config": {
             "enabled": True,
             "guardrail_name": "Stricter",
             "additional_config": {},
@@ -454,8 +454,8 @@ def test_map_server_gateway_overrides_replace_base_policy() -> None:
     }
     out = p._map_response(resp)
     server = out["mcp_config"][0]
-    assert server["input_guardrails_policy"]["guardrail_name"] == "Stricter"
-    assert server["input_guardrails_policy"]["block"] == [
+    assert server["input_guardrails_config"]["guardrail_name"] == "Stricter"
+    assert server["input_guardrails_config"]["block"] == [
         "pii",
         "injection_attack",
         "toxicity",
@@ -466,16 +466,16 @@ def test_map_server_uses_base_policy_when_no_gateway_override() -> None:
     p = make_provider()
     out = p._map_response(sample_response())
     server = out["mcp_config"][0]
-    assert server["input_guardrails_policy"]["guardrail_name"] == "Base Input"
+    assert server["input_guardrails_config"]["guardrail_name"] == "Base Input"
 
 
 def test_map_server_returns_empty_policy_when_neither_set() -> None:
     p = make_provider()
     resp = sample_response()
-    resp["expanded_servers"][0]["mcp_config"]["input_guardrails_policy"] = None
+    resp["expanded_servers"][0]["mcp_config"]["input_guardrails_config"] = None
     out = p._map_response(resp)
     server = out["mcp_config"][0]
-    assert server["input_guardrails_policy"] == _empty_policy()
+    assert server["input_guardrails_config"] == _empty_policy()
 
 
 def test_map_server_layers_local_overrides_for_unmapped_fields() -> None:

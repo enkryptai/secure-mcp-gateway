@@ -118,8 +118,8 @@ update them if the cloud team changes the contract.
 ## `gateway_overrides`
 
 If a server entry in the cloud response carries
-`gateway_overrides.<policy>` for `tool_guardrails_policy`,
-`input_guardrails_policy`, `output_guardrails_policy` or `oauth_config`,
+`gateway_overrides.<policy>` for `tool_guardrails_config`,
+`input_guardrails_config`, `output_guardrails_config` or `oauth_config`,
 that whole-policy value wins over the corresponding `mcp_config.<policy>`
 field. Matches cloud-side merge semantics.
 

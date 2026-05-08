@@ -237,7 +237,7 @@ logger.info("--------------------------------")
 # TODO
 AUTH_SERVER_VALIDATE_URL = f"{GUARDRAIL_URL}/mcp-gateway/get-gateway"
 
-# For Output Checks if they are enabled in output_guardrails_policy['additional_config']
+# For Output Checks if they are enabled in output_guardrails_config['additional_config']
 RELEVANCY_THRESHOLD = 0.75
 ADHERENCE_THRESHOLD = 0.75
 

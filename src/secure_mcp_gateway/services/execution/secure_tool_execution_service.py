@@ -375,29 +375,29 @@ class SecureToolExecutionService:
 
     def _extract_guardrails_config(self, server_info, main_span):
         """Extract guardrails configuration from server info."""
-        input_guardrails_policy = server_info["input_guardrails_policy"]
-        output_guardrails_policy = server_info["output_guardrails_policy"]
+        input_guardrails_config = server_info["input_guardrails_config"]
+        output_guardrails_config = server_info["output_guardrails_config"]
 
         if self.IS_DEBUG_LOG_LEVEL:
-            logger.debug(f"Input Guardrails Policy: {input_guardrails_policy}")
-            logger.debug(f"Output Guardrails Policy: {output_guardrails_policy}")
+            logger.debug(f"Input Guardrails Policy: {input_guardrails_config}")
+            logger.debug(f"Output Guardrails Policy: {output_guardrails_config}")
 
-        input_policy_enabled = input_guardrails_policy["enabled"]
-        output_policy_enabled = output_guardrails_policy["enabled"]
-        input_policy_name = input_guardrails_policy.get("guardrail_name") or input_guardrails_policy.get("policy_name", "")
-        output_policy_name = output_guardrails_policy.get("guardrail_name") or output_guardrails_policy.get("policy_name", "")
-        input_blocks = input_guardrails_policy["block"]
-        output_blocks = output_guardrails_policy["block"]
-        pii_redaction = input_guardrails_policy["additional_config"].get(
+        input_policy_enabled = input_guardrails_config["enabled"]
+        output_policy_enabled = output_guardrails_config["enabled"]
+        input_policy_name = input_guardrails_config.get("guardrail_name") or input_guardrails_config.get("policy_name", "")
+        output_policy_name = output_guardrails_config.get("guardrail_name") or output_guardrails_config.get("policy_name", "")
+        input_blocks = input_guardrails_config["block"]
+        output_blocks = output_guardrails_config["block"]
+        pii_redaction = input_guardrails_config["additional_config"].get(
             "pii_redaction", False
         )
-        relevancy = output_guardrails_policy["additional_config"].get(
+        relevancy = output_guardrails_config["additional_config"].get(
             "relevancy", False
         )
-        adherence = output_guardrails_policy["additional_config"].get(
+        adherence = output_guardrails_config["additional_config"].get(
             "adherence", False
         )
-        hallucination = output_guardrails_policy["additional_config"].get(
+        hallucination = output_guardrails_config["additional_config"].get(
             "hallucination", False
         )
 
@@ -410,8 +410,8 @@ class SecureToolExecutionService:
         main_span.set_attribute(SpanAttributes.HALLUCINATION_ENABLED, hallucination)
 
         return {
-            "input_guardrails_policy": input_guardrails_policy,
-            "output_guardrails_policy": output_guardrails_policy,
+            "input_guardrails_config": input_guardrails_config,
+            "output_guardrails_config": output_guardrails_config,
             "input_policy_enabled": input_policy_enabled,
             "output_policy_enabled": output_policy_enabled,
             "input_policy_name": input_policy_name,
@@ -1141,8 +1141,8 @@ class SecureToolExecutionService:
             # Get input guardrail from manager
             input_guardrail = self.guardrail_manager.get_input_guardrail(
                 server_config={
-                    "input_guardrails_policy": guardrails_config[
-                        "input_guardrails_policy"
+                    "input_guardrails_config": guardrails_config[
+                        "input_guardrails_config"
                     ]
                 }
             )
@@ -1473,8 +1473,8 @@ class SecureToolExecutionService:
         # Get output guardrail from manager
         output_guardrail = self.guardrail_manager.get_output_guardrail(
             server_config={
-                "output_guardrails_policy": guardrails_config[
-                    "output_guardrails_policy"
+                "output_guardrails_config": guardrails_config[
+                    "output_guardrails_config"
                 ]
             }
         )
@@ -1631,8 +1631,8 @@ class SecureToolExecutionService:
         # Get output guardrail from manager
         output_guardrail = self.guardrail_manager.get_output_guardrail(
             server_config={
-                "output_guardrails_policy": guardrails_config[
-                    "output_guardrails_policy"
+                "output_guardrails_config": guardrails_config[
+                    "output_guardrails_config"
                 ]
             }
         )
@@ -1774,10 +1774,10 @@ class SecureToolExecutionService:
                 "args": args,
             },
             "enkrypt_policy_detections": {
-                "input_guardrail_name": guardrails_config["input_guardrails_policy"],
+                "input_guardrail_name": guardrails_config["input_guardrails_config"],
                 "input_guardrail_response": {},
                 "output_guardrail_name": guardrails_config[
-                    "output_guardrails_policy"
+                    "output_guardrails_config"
                 ],
                 "output_guardrail_response": output_guardrail_response,
                 "output_relevancy_response": output_relevancy_response,
@@ -1827,10 +1827,10 @@ class SecureToolExecutionService:
                 "args": args,
             },
             "enkrypt_policy_detections": {
-                "input_guardrail_name": guardrails_config["input_guardrails_policy"],
+                "input_guardrail_name": guardrails_config["input_guardrails_config"],
                 "input_guardrail_response": input_guardrail_response,
                 "output_guardrail_name": guardrails_config[
-                    "output_guardrails_policy"
+                    "output_guardrails_config"
                 ],
                 "output_guardrail_response": output_guardrail_response,
                 "output_relevancy_response": output_relevancy_response,

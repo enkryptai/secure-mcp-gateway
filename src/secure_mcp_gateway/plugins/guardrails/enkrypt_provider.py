@@ -86,7 +86,7 @@ class EnkryptInputGuardrail:
         self.additional_config = config.get("additional_config", {})
 
         # API endpoints
-        self.guardrail_url = f"{base_url}/guardrails/policy/detect"
+        self.guardrail_url = f"{base_url}/guardrails/guardrail/detect"
 
         # Debug mode
         self.debug = config.get("debug", False)
@@ -111,7 +111,8 @@ class EnkryptInputGuardrail:
                 # Prepare payload
                 payload = {"text": request.content}
                 headers = {
-                    "X-Enkrypt-Policy": self.guardrail_name,
+                    "X-Enkrypt-Guardrail": self.guardrail_name,
+                    "X-Enkrypt-Mode": "prompt",
                     "apikey": self.api_key,
                     "Content-Type": "application/json",
                     "X-Enkrypt-Source-Name": "mcp-gateway",
@@ -120,7 +121,7 @@ class EnkryptInputGuardrail:
 
                 if self.debug:
                     logger.debug(
-                        f"[EnkryptInputGuardrail] Validating with policy: {self.guardrail_name}"
+                        f"[EnkryptInputGuardrail] Validating with guardrail: {self.guardrail_name}"
                     )
                     logger.debug(f"[EnkryptInputGuardrail] Payload: {payload}")
 
@@ -130,7 +131,7 @@ class EnkryptInputGuardrail:
                     payload,
                     headers,
                     direction="input",
-                    check_kind="policy",
+                    check_kind="guardrail",
                 )
 
                 if self.debug:
@@ -288,7 +289,7 @@ class EnkryptOutputGuardrail:
         self.additional_config = config.get("additional_config", {})
 
         # API endpoints
-        self.guardrail_url = f"{base_url}/guardrails/policy/detect"
+        self.guardrail_url = f"{base_url}/guardrails/guardrail/detect"
         self.relevancy_url = f"{base_url}/guardrails/relevancy"
         self.adherence_url = f"{base_url}/guardrails/adherence"
         self.hallucination_url = f"{base_url}/guardrails/hallucination"
@@ -456,11 +457,12 @@ class EnkryptOutputGuardrail:
             )
 
     async def _check_policy(self, text: str) -> Dict[str, Any]:
-        """Check against policy using Enkrypt API."""
+        """Check against guardrail using Enkrypt API."""
         try:
             payload = {"text": text}
             headers = {
-                "X-Enkrypt-Policy": self.guardrail_name,
+                "X-Enkrypt-Guardrail": self.guardrail_name,
+                "X-Enkrypt-Mode": "response",
                 "apikey": self.api_key,
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
@@ -469,7 +471,7 @@ class EnkryptOutputGuardrail:
 
             if self.debug:
                 logger.debug(
-                    f"[EnkryptOutputGuardrail] Policy check for: {self.guardrail_name}"
+                    f"[EnkryptOutputGuardrail] Guardrail check for: {self.guardrail_name}"
                 )
 
             _, result = await _post_with_metrics(
@@ -477,11 +479,11 @@ class EnkryptOutputGuardrail:
                 payload,
                 headers,
                 direction="output",
-                check_kind="policy",
+                check_kind="guardrail",
             )
 
             if self.debug:
-                logger.debug(f"[EnkryptOutputGuardrail] Policy result: {result}")
+                logger.debug(f"[EnkryptOutputGuardrail] Guardrail result: {result}")
 
             return result
 
@@ -877,8 +879,8 @@ class EnkryptServerRegistrationGuardrail:
                 )
                 logger.debug(f"[EnkryptServerRegistration] Text: {server_text}")
 
-            # Build detectors from tool_guardrails_policy (required since v2.1.7)
-            policy = getattr(request, "tool_guardrails_policy", None) or {}
+            # Build detectors from tool_guardrails_config (required since v2.1.7)
+            policy = getattr(request, "tool_guardrails_config", None) or {}
             block_list = policy.get("block", [])
 
             # If block list is empty, no blocking — monitor/log only
@@ -1107,8 +1109,8 @@ class EnkryptServerRegistrationGuardrail:
                     f"[EnkryptToolRegistration] Validating {len(texts)} tools for {request.server_name}"
                 )
 
-            # Build detectors from tool_guardrails_policy (required since v2.1.7)
-            policy = getattr(request, "tool_guardrails_policy", None) or {}
+            # Build detectors from tool_guardrails_config (required since v2.1.7)
+            policy = getattr(request, "tool_guardrails_config", None) or {}
             block_list = policy.get("block", [])
 
             # If block list is empty, no blocking — monitor/log only

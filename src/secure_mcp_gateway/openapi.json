@@ -4988,7 +4988,7 @@
             "title": "Description",
             "default": ""
           },
-          "input_guardrails_policy": {
+          "input_guardrails_config": {
             "anyOf": [
               {
                 "additionalProperties": true,
@@ -5000,7 +5000,7 @@
             ],
             "title": "Input Guardrails Policy"
           },
-          "output_guardrails_policy": {
+          "output_guardrails_config": {
             "anyOf": [
               {
                 "additionalProperties": true,

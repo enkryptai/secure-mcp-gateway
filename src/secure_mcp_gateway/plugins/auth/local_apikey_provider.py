@@ -307,10 +307,10 @@ class LocalApiKeyProvider(AuthProvider):
             config_project_id = key_info.get("project_id")
             config_user_id = key_info.get("user_id")
 
-            # Use config IDs if not provided
-            if not project_id:
+            # Use config IDs if not provided (treat "not_provided" as absent)
+            if not project_id or project_id == "not_provided":
                 project_id = config_project_id
-            if not user_id:
+            if not user_id or user_id == "not_provided":
                 user_id = config_user_id
 
             # Validate IDs match

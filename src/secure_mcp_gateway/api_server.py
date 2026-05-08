@@ -162,8 +162,8 @@ class ServerAddRequest(BaseModel):
     env: Optional[Dict[str, Any]] = None
     tools: Optional[Dict[str, Any]] = None
     description: str = ""
-    input_guardrails_policy: Optional[Dict[str, Any]] = None
-    output_guardrails_policy: Optional[Dict[str, Any]] = None
+    input_guardrails_config: Optional[Dict[str, Any]] = None
+    output_guardrails_config: Optional[Dict[str, Any]] = None
     sandbox: Optional[Dict[str, Any]] = None
 
 
@@ -768,11 +768,11 @@ async def add_server_to_config_endpoint(
                 json.dumps(request.env) if request.env else None,
                 json.dumps(request.tools) if request.tools else None,
                 request.description,
-                json.dumps(request.input_guardrails_policy)
-                if request.input_guardrails_policy
+                json.dumps(request.input_guardrails_config)
+                if request.input_guardrails_config
                 else None,
-                json.dumps(request.output_guardrails_policy)
-                if request.output_guardrails_policy
+                json.dumps(request.output_guardrails_config)
+                if request.output_guardrails_config
                 else None,
             )
 
