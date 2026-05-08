@@ -207,23 +207,13 @@ class MCPToolRequest(MCPServerRequest):
 # =============================================================================
 
 
-def get_api_key(authorization: Optional[str] = Header(None)) -> str:
-    """Extract and validate admin API key from Authorization header."""
-    if not authorization:
+def get_api_key(apikey: Optional[str] = Header(None)) -> str:
+    """Extract and validate API key from the 'apikey' header (cloud-compatible)."""
+    if not apikey:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization header required",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="apikey header required",
         )
-
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization format. Use 'Bearer <api_key>'",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    api_key = authorization[7:]  # Remove "Bearer " prefix
 
     # Validate admin API key exists in config
     try:
@@ -236,14 +226,13 @@ def get_api_key(authorization: Optional[str] = Header(None)) -> str:
                 detail="Admin API key not configured. Please regenerate configuration.",
             )
 
-        if api_key != config["admin_apikey"]:
+        if apikey != config["admin_apikey"]:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid admin API key. Administrative operations require admin_apikey.",
-                headers={"WWW-Authenticate": "Bearer"},
+                detail="Invalid API key.",
             )
 
-        return api_key
+        return apikey
     except FileNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -39,7 +39,7 @@ def _extract_sandbox(request: MCPServerRequest) -> Optional[Dict[str, Any]]:
     return request.sandbox.model_dump(exclude_none=True)
 
 
-@health_router.post("/api/v1/health/mcp/server", response_model=SuccessResponse)
+@health_router.post("/mcp-playground/test-server", response_model=SuccessResponse)
 async def server_health_check(
     request: MCPServerRequest, api_key: str = Depends(get_api_key)
 ):
@@ -52,9 +52,9 @@ async def server_health_check(
     Pass ``sandbox: {"enabled": false}`` in the body to disable.
     """
     logger.info(
-        "[api] /api/v1/health/mcp/server received",
+        "[api] /mcp-playground/test-server received",
         extra={
-            "endpoint": "server_check",
+            "endpoint": "test_server",
             "server_name": request.server_name,
         },
     )
@@ -68,7 +68,7 @@ async def server_health_check(
     return SuccessResponse(message="Server health check completed", data=result)
 
 
-@health_router.post("/api/v1/mcp/server/info", response_model=SuccessResponse)
+@health_router.get("/mcp-playground/get-tools", response_model=SuccessResponse)
 async def server_info(
     request: MCPServerRequest, api_key: str = Depends(get_api_key)
 ):
@@ -81,9 +81,9 @@ async def server_info(
     Pass ``sandbox: {"enabled": false}`` in the body to disable.
     """
     logger.info(
-        "[api] /api/v1/mcp/server/info received",
+        "[api] /mcp-playground/get-tools received",
         extra={
-            "endpoint": "server_info",
+            "endpoint": "get_tools",
             "server_name": request.server_name,
         },
     )
@@ -97,7 +97,7 @@ async def server_info(
     return SuccessResponse(message="Server info retrieved", data=result)
 
 
-@health_router.post("/api/v1/health/mcp/tool", response_model=SuccessResponse)
+@health_router.post("/mcp-playground/call-tool", response_model=SuccessResponse)
 async def tool_health_check(
     request: MCPToolRequest, api_key: str = Depends(get_api_key)
 ):
@@ -110,9 +110,9 @@ async def tool_health_check(
     Pass ``sandbox: {"enabled": false}`` in the body to disable.
     """
     logger.info(
-        "[api] /api/v1/health/mcp/tool received",
+        "[api] /mcp-playground/call-tool received",
         extra={
-            "endpoint": "tool_call",
+            "endpoint": "call_tool",
             "server_name": request.server_name,
             "tool_name": request.tool_name,
         },

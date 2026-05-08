@@ -287,14 +287,14 @@ class TelemetryConfigRequest(BaseModel):
 # =============================================================================
 
 
-def get_api_key(authorization: Optional[str] = Header(None)) -> str:
-    """Extract and validate admin API key from Authorization header."""
-    context = ErrorContext(operation="admin_api_key_validation")
+def get_api_key(apikey: Optional[str] = Header(None)) -> str:
+    """Extract and validate API key from the 'apikey' header (cloud-compatible)."""
+    context = ErrorContext(operation="api_key_validation")
 
-    if not authorization:
+    if not apikey:
         error = create_auth_error(
             code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-            message="Authorization header required",
+            message="apikey header required",
             context=context,
         )
         error_logger.log_error(error)
@@ -302,20 +302,6 @@ def get_api_key(authorization: Optional[str] = Header(None)) -> str:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=create_error_response(error),
         )
-
-    if not authorization.startswith("Bearer "):
-        error = create_auth_error(
-            code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-            message="Invalid authorization format. Use 'Bearer <api_key>'",
-            context=context,
-        )
-        error_logger.log_error(error)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=create_error_response(error),
-        )
-
-    api_key = authorization[7:]  # Remove "Bearer " prefix
 
     # Validate admin API key exists in config
     try:
@@ -335,10 +321,10 @@ def get_api_key(authorization: Optional[str] = Header(None)) -> str:
                 detail=create_error_response(error),
             )
 
-        if api_key != config["admin_apikey"]:
+        if apikey != config["admin_apikey"]:
             error = create_auth_error(
                 code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-                message="Invalid admin API key. Administrative operations require admin_apikey.",
+                message="Invalid API key.",
                 context=context,
             )
             error_logger.log_error(error)
@@ -347,7 +333,7 @@ def get_api_key(authorization: Optional[str] = Header(None)) -> str:
                 detail=create_error_response(error),
             )
 
-        return api_key
+        return apikey
     except FileNotFoundError:
         error = create_configuration_error(
             code=ErrorCode.CONFIG_MISSING_REQUIRED,
