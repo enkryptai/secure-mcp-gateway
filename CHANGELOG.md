@@ -2,7 +2,7 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
-## [Unreleased]
+## [v2.2.0]
 
 ### Cloud `is_active` flag now honored on server entries
 

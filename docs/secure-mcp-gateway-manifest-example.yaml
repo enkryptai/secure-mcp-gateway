@@ -39,7 +39,7 @@ spec:
         - /bin/sh
         - -c
         - |
-          echo "Downloading config file from S3 for ${S3_BUCKET_NAME} in region ${AWS_DEFAULT_REGION} in account ${ACCOUNT_ID}"          
+          echo "Downloading config file from S3 for ${S3_BUCKET_NAME} in region ${AWS_DEFAULT_REGION} in account ${ACCOUNT_ID}"
           mkdir -p /shared-config/.enkrypt/docker/
           aws s3 cp s3://${S3_BUCKET_NAME}/enkrypt_mcp_config.json /shared-config/.enkrypt/docker/enkrypt_mcp_config.json
           if [ -f /shared-config/.enkrypt/docker/enkrypt_mcp_config.json ]; then
@@ -93,7 +93,7 @@ spec:
           mountPath: /app/.enkrypt
       containers:
       - name: secure-mcp-gateway
-        image: enkryptai/secure-mcp-gateway:v2.1.7
+        image: enkryptai/secure-mcp-gateway:v2.2.0
         # imagePullPolicy: Always
         command:
         - /bin/sh
