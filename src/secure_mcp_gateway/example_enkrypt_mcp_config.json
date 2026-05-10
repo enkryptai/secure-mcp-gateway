@@ -115,7 +115,7 @@
             "allowed_env": null
           },
           "enable_server_info_validation": false,
-          "tool_guardrails_policy": {
+          "tool_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
             "block": [
@@ -130,7 +130,7 @@
               "sponge_attack"
             ]
           },
-          "input_guardrails_policy": {
+          "input_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
@@ -148,7 +148,7 @@
               "sponge_attack"
             ]
           },
-          "output_guardrails_policy": {
+          "output_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {

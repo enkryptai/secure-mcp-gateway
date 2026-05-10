@@ -377,7 +377,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
             ]
           },
           "tools": {},
-          "input_guardrails_policy": {
+          "input_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
@@ -387,7 +387,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
               "policy_violation"
             ]
           },
-          "output_guardrails_policy": {
+          "output_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
@@ -475,7 +475,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
             ]
           },
           "tools": {},
-          "input_guardrails_policy": {
+          "input_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
@@ -485,7 +485,7 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
               "policy_violation"
             ]
           },
-          "output_guardrails_policy": {
+          "output_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
@@ -1163,7 +1163,7 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
             ]
           },
           "tools": {},
-          "input_guardrails_policy": {
+          "input_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
@@ -1173,7 +1173,7 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
               "policy_violation"
             ]
           },
-          "output_guardrails_policy": {
+          "output_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
@@ -1959,7 +1959,7 @@ The observability stack includes:
               ]
             },
             "tools": {},
-            "input_guardrails_policy": {
+            "input_guardrails_config": {
               "enabled": false,
               "guardrail_name": "Sample Airline Guardrail",
               "additional_config": {
@@ -1969,7 +1969,7 @@ The observability stack includes:
                 "policy_violation"
               ]
             },
-            "output_guardrails_policy": {
+            "output_guardrails_config": {
               "enabled": false,
               "guardrail_name": "Sample Airline Guardrail",
               "additional_config": {
@@ -2082,8 +2082,8 @@ The observability stack includes:
                 "tools": {},
                 "enable_server_info_validation": false,
                 "enable_tool_guardrails": false,
-                "input_guardrails_policy": {...},
-                "output_guardrails_policy": {...}
+                "input_guardrails_config": {...},
+                "output_guardrails_config": {...}
               },
               {
                 "server_name": "MCP_SERVER_NAME_2",
@@ -2092,8 +2092,8 @@ The observability stack includes:
                 "tools": {},
                 "enable_server_info_validation": false,
                 "enable_tool_guardrails": false,
-                "input_guardrails_policy": {...},
-                "output_guardrails_policy": {...}
+                "input_guardrails_config": {...},
+                "output_guardrails_config": {...}
               }
             ]
           },
@@ -2205,7 +2205,7 @@ The observability stack includes:
 
 - **Inside each MCP server config, you can set the following:**
 
-  - `input_guardrails_policy`: Use this if we plan to use Enkrypt Guardrails on input side
+  - `input_guardrails_config`: Use this if we plan to use Enkrypt Guardrails on input side
 
   - `guardrail_name`: Name of the guardrails policy that you have created in the Enkrypt App or using the API/SDK
 
@@ -2227,7 +2227,7 @@ The observability stack includes:
 
       - This is similar to our AI Proxy deployments config. [Refer to our docs](https://docs.enkryptai.com/deployments-api-reference/endpoint/add-deployment#body-input-guardrails-policy-block)
 
-- `output_guardrails_policy`: Use this if we plan to use Enkrypt Guardrails on output side
+- `output_guardrails_config`: Use this if we plan to use Enkrypt Guardrails on output side
 
   - `guardrail_name`: Name of the guardrails policy that you have created in the Enkrypt App or using the API/SDK
 
@@ -2761,8 +2761,8 @@ secure-mcp-gateway --docker system health-check
           "description": "Simple Echo Server",
           "config": {...},
           "tools": {},
-          "input_guardrails_policy": {...},
-          "output_guardrails_policy": {...}
+          "input_guardrails_config": {...},
+          "output_guardrails_config": {...}
         },
         {
           "server_name": "github_server",
@@ -2784,7 +2784,7 @@ secure-mcp-gateway --docker system health-check
           "tools": {},
           "enable_server_info_validation": false,
           "enable_tool_guardrails": false,
-          "input_guardrails_policy": {
+          "input_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
@@ -2794,7 +2794,7 @@ secure-mcp-gateway --docker system health-check
               "policy_violation"
             ]
           },
-          "output_guardrails_policy": {
+          "output_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
@@ -2853,7 +2853,7 @@ If you're running the Enkrypt Gateway in Docker or prefer not to use Docker-in-D
   "tools": {},
   "enable_server_info_validation": false,
   "enable_tool_guardrails": false,
-  "input_guardrails_policy": {
+  "input_guardrails_config": {
     "enabled": false,
     "guardrail_name": "Sample Airline Guardrail",
     "additional_config": {
@@ -2863,7 +2863,7 @@ If you're running the Enkrypt Gateway in Docker or prefer not to use Docker-in-D
       "policy_violation"
     ]
   },
-  "output_guardrails_policy": {
+  "output_guardrails_config": {
     "enabled": false,
     "guardrail_name": "Sample Airline Guardrail",
     "additional_config": {
@@ -2945,10 +2945,10 @@ For machine-to-machine authentication, use the Client Credentials flow:
   "tools": {},
   "enable_server_info_validation": false,
   "enable_tool_guardrails": false,
-  "input_guardrails_policy": {
+  "input_guardrails_config": {
     "enabled": false
   },
-  "output_guardrails_policy": {
+  "output_guardrails_config": {
     "enabled": false
   }
 }
@@ -3082,10 +3082,10 @@ If you want to use a remote callback URL (professional, branded experience):
    ```bash
    # Quick start with Python
    python host_oauth_callback.py
-   
+
    # Or with Docker
    docker-compose -f docker-compose.oauth-callback.yml up -d
-   
+
    # Or deploy oauth_callback.html to any static hosting
    # (GitHub Pages, Vercel, Netlify, AWS S3, etc.)
    ```
@@ -3173,10 +3173,10 @@ Add this configuration to your `enkrypt_mcp_config.json` in the `mcp_config` arr
   "tools": {},
   "enable_server_info_validation": false,
   "enable_tool_guardrails": false,
-  "input_guardrails_policy": {
+  "input_guardrails_config": {
     "enabled": false
   },
-  "output_guardrails_policy": {
+  "output_guardrails_config": {
     "enabled": false
   }
 }
@@ -3454,13 +3454,13 @@ Enforce strict context boundaries across repositories.
 
 - Inside the **`GitHub`** server block we added in the previous section,
 
-  - Add the newly created Guardrail `GitHub Guardrail` to the `input_guardrails_policy` and `output_guardrails_policy` sections
+  - Add the newly created Guardrail `GitHub Guardrail` to the `input_guardrails_config` and `output_guardrails_config` sections
 
   - By replacing `"guardrail_name": "Sample Airline Guardrail"` with `"guardrail_name": "GitHub Guardrail"`
 
-  - Now change `enabled` to `true` for `input_guardrails_policy` from previous `false`
+  - Now change `enabled` to `true` for `input_guardrails_config` from previous `false`
 
-    - We will leave `output_guardrails_policy` as `false` for now
+    - We will leave `output_guardrails_config` as `false` for now
 
   - We already should have `policy_violation` in the `block` array for both policies
 
@@ -3501,7 +3501,7 @@ Enforce strict context boundaries across repositories.
             "tools": {},
             "enable_server_info_validation": false,
             "enable_tool_guardrails": false,
-            "input_guardrails_policy": {
+            "input_guardrails_config": {
               "enabled": true,
               "guardrail_name": "GitHub Guardrail",
               "additional_config": {
@@ -3509,7 +3509,7 @@ Enforce strict context boundaries across repositories.
               },
               "block": ["policy_violation"]
             },
-            "output_guardrails_policy": {
+            "output_guardrails_config": {
               "enabled": false,
               "guardrail_name": "GitHub Guardrail",
               "additional_config": {
@@ -3636,10 +3636,10 @@ Controls whether server descriptions are validated during discovery/registration
   },
   "enable_server_info_validation": false,
   "enable_tool_guardrails": false,
-  "input_guardrails_policy": {
+  "input_guardrails_config": {
     "enabled": false
   },
-  "output_guardrails_policy": {
+  "output_guardrails_config": {
     "enabled": false
   }
 }
@@ -3663,7 +3663,7 @@ The gateway has three distinct levels of guardrails:
    - **What**: Validates tool descriptions and schemas
    - **Blocks**: Individual tools with harmful content
 
-3. **Runtime Guardrails** (`input_guardrails_policy` / `output_guardrails_policy`)
+3. **Runtime Guardrails** (`input_guardrails_config` / `output_guardrails_config`)
    - **When**: During tool execution (input before, output after)
    - **What**: Validates tool arguments and responses
    - **Blocks**: Requests/responses violating policies

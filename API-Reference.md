@@ -165,11 +165,11 @@ Content-Type: application/json
   "env": {"ENV_VAR": "value"},
   "tools": {},
   "description": "My MCP Server",
-  "input_guardrails_policy": {
+  "input_guardrails_config": {
     "enabled": true,
     "guardrail_name": "Sample Policy"
   },
-  "output_guardrails_policy": {
+  "output_guardrails_config": {
     "enabled": true,
     "guardrail_name": "Sample Policy"
   }

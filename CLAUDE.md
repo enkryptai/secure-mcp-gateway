@@ -342,13 +342,13 @@ get_id_from_key(cache_client, gateway_key)
           },
           "tools": {},
           "enable_tool_guardrails": true,
-          "input_guardrails_policy": {
+          "input_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
             "additional_config": { "pii_redaction": false },
             "block": ["policy_violation", "injection_attack", ...]
           },
-          "output_guardrails_policy": {
+          "output_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {

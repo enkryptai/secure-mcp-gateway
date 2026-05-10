@@ -16,13 +16,13 @@
         "tools": {},
         "enable_server_info_validation": true,
         "enable_tool_guardrails": false,
-        "tool_guardrails_policy": {
+        "tool_guardrails_config": {
           "enabled": false,
           "guardrail_name": "",
           "additional_config": {},
           "block": []
         },
-        "input_guardrails_policy": {
+        "input_guardrails_config": {
           "enabled": true,
           "guardrail_name": "Updated Guardrail",
           "additional_config": {},
@@ -32,7 +32,7 @@
             "keyword_detector"
           ]
         },
-        "output_guardrails_policy": {
+        "output_guardrails_config": {
           "enabled": false,
           "guardrail_name": "",
           "additional_config": {},
@@ -72,13 +72,13 @@
       "tools": {},
       "enable_server_info_validation": true,
       "enable_tool_guardrails": false,
-      "tool_guardrails_policy": {
+      "tool_guardrails_config": {
         "enabled": false,
         "guardrail_name": "",
         "additional_config": {},
         "block": []
       },
-      "input_guardrails_policy": {
+      "input_guardrails_config": {
         "enabled": true,
         "guardrail_name": "Updated Guardrail",
         "additional_config": {},
@@ -88,7 +88,7 @@
           "keyword_detector"
         ]
       },
-      "output_guardrails_policy": {
+      "output_guardrails_config": {
         "enabled": false,
         "guardrail_name": "",
         "additional_config": {},

@@ -64,10 +64,11 @@ import hashlib
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import aiohttp
 
+from secure_mcp_gateway.consts import ENKRYPT_REMOTE_CONFIG_TTL_SECONDS
 from secure_mcp_gateway.plugins.auth.base import (
     AuthCredentials,
     AuthMethod,
@@ -75,7 +76,6 @@ from secure_mcp_gateway.plugins.auth.base import (
     AuthResult,
     AuthStatus,
 )
-from secure_mcp_gateway.consts import ENKRYPT_REMOTE_CONFIG_TTL_SECONDS
 from secure_mcp_gateway.plugins.telemetry.metrics_helpers import record_auth_outcome
 from secure_mcp_gateway.utils import (
     CONFIG_PATH,
@@ -84,7 +84,6 @@ from secure_mcp_gateway.utils import (
     logger,
     mask_key,
 )
-
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -125,10 +124,10 @@ class EnkryptAuthProvider(AuthProvider):
 
     def __init__(
         self,
-        apikey: Optional[str] = None,
-        gateway_name: Optional[str] = None,
+        apikey: str | None = None,
+        gateway_name: str | None = None,
         gateway_version: str = DEFAULT_GATEWAY_VERSION,
-        project_name: Optional[str] = None,
+        project_name: str | None = None,
         base_url: str = DEFAULT_BASE_URL,
         cache_ttl_seconds: int = DEFAULT_CACHE_TTL_SECONDS,
         **legacy_kwargs: Any,
@@ -163,7 +162,7 @@ class EnkryptAuthProvider(AuthProvider):
         self.cache_ttl_seconds = int(cache_ttl_seconds)
 
         # In-process cache: hash(apikey) -> (expires_at_epoch, mapped_config)
-        self._cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+        self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
         logger.info(
             "[EnkryptAuthProvider] initialised: gateway_name=%s gateway_version=%s "
@@ -185,13 +184,13 @@ class EnkryptAuthProvider(AuthProvider):
     def get_version(self) -> str:
         return "2.0.0"
 
-    def get_supported_methods(self) -> List[AuthMethod]:
+    def get_supported_methods(self) -> list[AuthMethod]:
         return [AuthMethod.API_KEY]
 
-    def validate_config(self, config: Dict[str, Any]) -> bool:
+    def validate_config(self, config: dict[str, Any]) -> bool:
         return bool(self.gateway_name)
 
-    def get_required_config_keys(self) -> List[str]:
+    def get_required_config_keys(self) -> list[str]:
         return ["gateway_name"]
 
     # ------------------------------------------------------------------
@@ -232,7 +231,7 @@ class EnkryptAuthProvider(AuthProvider):
                 message="Failed to fetch gateway config from Enkrypt cloud",
                 error=str(exc),
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("[EnkryptAuthProvider] Unexpected auth error")
             return AuthResult(
                 status=AuthStatus.ERROR,
@@ -284,9 +283,9 @@ class EnkryptAuthProvider(AuthProvider):
     async def _get_local_config(
         self,
         gateway_key: str,
-        project_id: Optional[str] = None,  # noqa: ARG002 - signature parity
-        user_id: Optional[str] = None,  # noqa: ARG002 - signature parity
-    ) -> Optional[Dict[str, Any]]:
+        project_id: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any] | None:
         """Return the internal ``gateway_config`` dict for a given apikey.
 
         The signature mirrors ``LocalApiKeyProvider._get_local_config`` so all
@@ -315,7 +314,7 @@ class EnkryptAuthProvider(AuthProvider):
 
     async def _fetch_remote_gateway_config(
         self, gateway_key: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Call ``GET /mcp-gateway/get-gateway-config`` and return the body.
 
         Raises ``_CloudFetchError`` on transport / HTTP failures so the
@@ -374,7 +373,7 @@ class EnkryptAuthProvider(AuthProvider):
             from secure_mcp_gateway.services.timeout import get_timeout_manager
 
             return float(get_timeout_manager().get_timeout("auth"))
-        except Exception:  # noqa: BLE001
+        except Exception:
             return float(DEFAULT_FETCH_TIMEOUT_SECONDS)
 
     # ------------------------------------------------------------------
@@ -383,9 +382,9 @@ class EnkryptAuthProvider(AuthProvider):
 
     def _map_response(
         self,
-        response: Dict[str, Any],
-        local_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        response: dict[str, Any],
+        local_overrides: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Map ``ExpandedGatewayConfig`` → internal gateway-config dict.
 
         Internal contract (matches LocalApiKeyProvider._get_local_config)::
@@ -438,7 +437,7 @@ class EnkryptAuthProvider(AuthProvider):
         # check is strict (``is False``) so missing / null / true all keep
         # the server, matching the cloud's own optimistic default.
         servers_in = response.get("expanded_servers") or []
-        servers_out: List[Dict[str, Any]] = []
+        servers_out: list[dict[str, Any]] = []
         for srv in servers_in:
             if isinstance(srv, dict) and srv.get("is_active") is False:
                 logger.info(
@@ -485,9 +484,9 @@ class EnkryptAuthProvider(AuthProvider):
 
     def _map_server(
         self,
-        server: Dict[str, Any],
-        local_overrides: Dict[str, Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        server: dict[str, Any],
+        local_overrides: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
         """Map one ``expanded_servers[]`` entry → one local mcp_config[] entry.
 
         The mapping is order-sensitive:
@@ -507,36 +506,48 @@ class EnkryptAuthProvider(AuthProvider):
         # often returns partial policy objects (e.g. only ``enabled`` and
         # ``guardrail_name``); fill missing keys from the empty-policy template
         # so downstream consumers can safely index ``policy["block"]`` etc.
-        def _pick_policy(name: str) -> Optional[Dict[str, Any]]:
+        def _pick_config(name: str) -> dict[str, Any] | None:
             override = gateway_overrides.get(name)
             chosen = override if override else cloud_mcp.get(name)
             if chosen is None:
                 return None
-            return {**_empty_policy(), **chosen}
+            return {**_empty_config(), **chosen}
 
-        tool_policy = _pick_policy("tool_guardrails_config")
-        input_policy = _pick_policy("input_guardrails_config")
-        output_policy = _pick_policy("output_guardrails_config")
+        tool_config = _pick_config("tool_guardrails_config")
+        input_config = _pick_config("input_guardrails_config")
+        output_config = _pick_config("output_guardrails_config")
+
+        # Boolean / scalar override: key-presence semantics so a caller can
+        # intentionally override to False. ``_pick_config``'s truthiness check
+        # would conflate "unset" with "explicitly False" here.
+        if (
+            "enable_server_info_validation" in gateway_overrides
+            and gateway_overrides["enable_server_info_validation"] is not None
+        ):
+            enable_server_info_validation = gateway_overrides[
+                "enable_server_info_validation"
+            ]
+        else:
+            enable_server_info_validation = cloud_mcp.get(
+                "enable_server_info_validation", False
+            )
 
         # OAuth lives inside mcp_config in the cloud spec; gateway_overrides
         # may override it too.
-        oauth_config = (
-            gateway_overrides.get("oauth_config")
-            or cloud_mcp.get("oauth_config")
+        oauth_config = gateway_overrides.get("oauth_config") or cloud_mcp.get(
+            "oauth_config"
         )
 
-        merged: Dict[str, Any] = {
+        merged: dict[str, Any] = {
             "server_name": saved_name,
             "description": server.get("description", ""),
             "config": cloud_mcp.get("config", {}),
             "tools": cloud_mcp.get("tools", {}),
-            "enable_server_info_validation": cloud_mcp.get(
-                "enable_server_info_validation", False
-            ),
-            "enable_tool_guardrails": (tool_policy or {}).get("enabled", False),
-            "tool_guardrails_config": tool_policy or _empty_policy(),
-            "input_guardrails_config": input_policy or _empty_policy(),
-            "output_guardrails_config": output_policy or _empty_policy(),
+            "enable_server_info_validation": enable_server_info_validation,
+            "enable_tool_guardrails": (tool_config or {}).get("enabled", False),
+            "tool_guardrails_config": tool_config or _empty_config(),
+            "input_guardrails_config": input_config or _empty_config(),
+            "output_guardrails_config": output_config or _empty_config(),
         }
         if oauth_config:
             merged["oauth_config"] = oauth_config
@@ -557,7 +568,7 @@ class EnkryptAuthProvider(AuthProvider):
 
     async def _load_local_server_overrides(
         self,
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         """Read the optional ``local_server_overrides`` block from the local
         config file. Returns ``{}`` if the file is missing or the block is
         absent — does NOT fall back to the file's full ``mcp_configs``."""
@@ -566,13 +577,13 @@ class EnkryptAuthProvider(AuthProvider):
         if not os.path.exists(config_path):
             return {}
 
-        def _load() -> Dict[str, Any]:
-                with open(config_path, encoding="utf-8") as f:
-                    return json.load(f)
+        def _load() -> dict[str, Any]:
+            with open(config_path, encoding="utf-8") as f:
+                return json.load(f)
 
         try:
             data = await asyncio.to_thread(_load)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "[EnkryptAuthProvider] could not read %s for local_server_overrides: %s",
                 config_path,
@@ -602,17 +613,17 @@ class EnkryptAuthProvider(AuthProvider):
         ).hexdigest()
         return h[:16]
 
-    def _cache_get(self, key: str) -> Optional[Dict[str, Any]]:
+    def _cache_get(self, key: str) -> dict[str, Any] | None:
         entry = self._cache.get(key)
         if not entry:
-                return None
+            return None
         expires_at, value = entry
         if expires_at < time.time():
             self._cache.pop(key, None)
             return None
         return value
 
-    def _cache_put(self, key: str, value: Dict[str, Any]) -> None:
+    def _cache_put(self, key: str, value: dict[str, Any]) -> None:
         self._cache[key] = (time.time() + self.cache_ttl_seconds, value)
 
     def invalidate_cache(self) -> None:
@@ -632,7 +643,7 @@ class _CloudFetchError(Exception):
     the cloud failure rather than seeing a generic auth error."""
 
 
-def _empty_policy() -> Dict[str, Any]:
+def _empty_config() -> dict[str, Any]:
     """Default GuardrailsPolicy used when neither base nor override is set."""
     return {
         "enabled": False,

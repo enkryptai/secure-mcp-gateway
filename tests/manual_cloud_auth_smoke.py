@@ -74,10 +74,10 @@ def _summarise_discovery(payload: Dict[str, Any]) -> None:
             tools_list = []
         tool_names = [t.get("name") for t in tools_list if isinstance(t, dict)]
         denied = entry.get("policy_denied_tools") or []
-        igp = entry.get("input_guardrails_policy") or {}
+        igp = entry.get("input_guardrails_config") or {}
         print(f"    - {name}: source={source}, tools={tool_names}")
-        print(f"        input_guardrails_policy.guardrail_name = {igp.get('guardrail_name')!r}")
-        print(f"        input_guardrails_policy.block       = {igp.get('block')}")
+        print(f"        input_guardrails_config.guardrail_name = {igp.get('guardrail_name')!r}")
+        print(f"        input_guardrails_config.block       = {igp.get('block')}")
         print(f"        policy_denied_tools                 = {denied}")
 
 
@@ -177,14 +177,14 @@ def _print_server_info(payload: Dict[str, Any]) -> None:
     print(f"  status                : {payload.get('status')}")
     info = payload.get("server_info") or payload
     config = info.get("config") if isinstance(info, dict) else {}
-    igp = info.get("input_guardrails_policy") if isinstance(info, dict) else {}
+    igp = info.get("input_guardrails_config") if isinstance(info, dict) else {}
     sb = info.get("sandbox") if isinstance(info, dict) else None
     print(f"  server_name           : {info.get('server_name')}")
     print(f"  description           : {info.get('description')}")
     print(f"  config.command        : {(config or {}).get('command')}")
     print(f"  config.args           : {(config or {}).get('args')}")
     print(f"  enable_tool_guardrails: {info.get('enable_tool_guardrails')}")
-    print(f"  input_guardrails_policy:")
+    print(f"  input_guardrails_config:")
     print(f"      enabled        : {(igp or {}).get('enabled')}")
     print(f"      guardrail_name : {(igp or {}).get('guardrail_name')!r}")
     print(f"      block          : {(igp or {}).get('block')}")
