@@ -2,7 +2,7 @@
   "info": {
     "name": "Enkrypt Secure MCP Gateway API",
     "description": "REST API for managing MCP configurations, projects, users, system operations, and on-demand MCP server health checks.\n\nBase URL: http://localhost:8001\n\n## Authentication\nAll endpoints (except GET /health) require a Bearer token.\nSet the `GATEWAY_API_KEY` collection variable before use.",
-    "version": "2.1.8",
+    "version": "2.2.0",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
