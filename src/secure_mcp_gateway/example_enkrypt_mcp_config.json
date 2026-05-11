@@ -168,6 +168,36 @@
               "sponge_attack"
             ]
           }
+        },
+        {
+          "_doc_url_server": "URL-based servers connect directly over HTTP instead of spawning a subprocess. Use 'url' instead of 'command'+'args'. Transport defaults to streamable_http; set to 'sse' for legacy SSE servers.",
+          "server_name": "example_remote_server",
+          "description": "Example remote MCP server (URL-based)",
+          "config": {
+            "url": "https://mcp.example.com/mcp",
+            "transport": "streamable_http",
+            "headers": {}
+          },
+          "tools": {},
+          "denied_tools": [],
+          "enable_server_info_validation": false,
+          "tool_guardrails_config": {
+            "enabled": false,
+            "guardrail_name": "Sample Airline Guardrail",
+            "block": ["policy_violation", "injection_attack"]
+          },
+          "input_guardrails_config": {
+            "enabled": false,
+            "guardrail_name": "Sample Airline Guardrail",
+            "additional_config": { "pii_redaction": false },
+            "block": ["policy_violation"]
+          },
+          "output_guardrails_config": {
+            "enabled": false,
+            "guardrail_name": "Sample Airline Guardrail",
+            "additional_config": { "relevancy": false, "hallucination": false, "adherence": false },
+            "block": ["policy_violation"]
+          }
         }
       ]
     }

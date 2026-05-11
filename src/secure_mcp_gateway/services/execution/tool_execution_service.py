@@ -122,17 +122,23 @@ class ToolExecutionService:
         server_entry: dict[str, Any] | None = None,
     ) -> AsyncIterator[ClientSession]:
         """
-        Opens a single stdio MCP session using the provided server_config.
+        Opens an MCP session using the provided server_config.
 
-        server_config must provide: command: str, args: list[str], env: Optional[dict]
-        server_entry is the full per-server config dict (needed for sandbox lookup).
+        For stdio servers: server_config must provide command, args, env.
+        For URL servers: server_config must provide url (and optionally transport, headers).
+        server_entry is the full per-server config dict (needed for sandbox/URL lookup).
         """
-        command: str = server_config["command"]
-        args: list[str] = server_config.get("args", [])
+        is_url = bool(server_config.get("url"))
+        command = server_config.get("command") if not is_url else None
+        args: list[str] = server_config.get("args", []) if not is_url else []
         env: dict[str, str] | None = server_config.get("env")
 
+        effective_entry = server_entry or {}
+        if is_url and effective_entry.get("config", {}).get("url") != server_config.get("url"):
+            effective_entry = {**effective_entry, "config": server_config}
+
         async with build_server_params(
-            server_entry or {}, command, args, env
+            effective_entry, command, args, env
         ) as (read, write):
             async with ClientSession(read, write) as session:
                 # Initialize and capture server metadata

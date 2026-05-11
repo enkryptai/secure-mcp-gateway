@@ -110,13 +110,18 @@ class PooledSession:
         """Background task that owns the ClientSession and its cancel scopes."""
         from mcp import ClientSession
 
-        command: str = server_config["command"]
-        args: list = server_config.get("args", [])
+        is_url = bool(server_config.get("url"))
+        command = server_config.get("command") if not is_url else None
+        args: list = server_config.get("args", []) if not is_url else []
         env: dict | None = server_config.get("env")
+
+        effective_entry = server_entry
+        if is_url and server_entry.get("config", {}).get("url") != server_config.get("url"):
+            effective_entry = {**server_entry, "config": server_config}
 
         try:
             async with build_server_params(
-                server_entry, command, args, env
+                effective_entry, command, args, env
             ) as (read, write):
                 async with ClientSession(read, write) as session:
                     init_result = await session.initialize()
