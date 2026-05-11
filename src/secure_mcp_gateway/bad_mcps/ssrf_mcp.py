@@ -3,6 +3,7 @@ MCP server demonstrating Server-Side Request Forgery (SSRF) vulnerabilities (Ran
 Tests detection of SSRF attacks and internal network access.
 Reference: https://adversa.ai/mcp-security-top-25-mcp-vulnerabilities/
 """
+
 import sys
 
 from mcp import types
@@ -183,7 +184,7 @@ Attack Chain:
 Current Check: {service_url}
 Status: 200 OK (Internal service accessible!)
 Response Time: 5ms (Fast - definitely internal)
-Headers: Internal-Service: v2.1.7
+Headers: Internal-Service: v2.2.0
 
 [SSRF SUCCESSFUL - Internal network mapped!]""",
         )

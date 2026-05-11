@@ -2,6 +2,62 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [v2.2.0]
+
+### New Features in v2.2.0
+
+#### Enkrypt Cloud Auth Provider
+
+- New `enkrypt` auth provider that fetches gateway config from the Enkrypt cloud (`/mcp-gateway/get-gateway-config`) instead of the local config file
+- Per-request multi-tenancy — each MCP client passes its own apikey via the `apikey` header, so a single gateway process can serve many tenants
+- `request_context` from the cloud is mapped onto identity / metric labels (`forwarded_user_id`, `forwarded_user_email`, `project_name`) for accurate attribution in dashboards and alerts
+- `gateway_overrides` from the cloud replace per-server input/output guardrail policies on the merged config
+- New top-level `local_server_overrides` block lets operators layer local-only fields (`sandbox`, `denied_tools`, `oauth_config`) onto cloud-fetched servers; cloud values always win on conflict
+- In-process cache keyed on a SHA-256 hash of the apikey, with a 10-minute TTL (`cache_ttl_seconds` configurable)
+- Cloud's `is_active: false` flag now drops servers from discovery / execution / cache before the per-server merge
+
+#### Provider-Aware Install
+
+- `secure-mcp-gateway install` now reads `plugins.auth.provider` from the local config and emits the matching credential shape in the generated `mcp.json` (avoids `HTTP 401`s when a cloud-configured gateway received a local-mode header triple)
+- New `--apikey`, `--transport {stdio,http}`, and `--url` flags on `install`
+- HTTP transport supported for `claude-desktop` and `cursor`
+- Diagnostic summary line printed on every install so operators can verify the detected provider and masked credentials before restarting their MCP client
+
+#### Grafana Alerting
+
+- Provisioned 9 alert rules covering policy-violation bursts, injection attacks, PII detection, toxicity/NSFW, output-quality (hallucination/adherence/relevancy), deny-list bursts, per-user red-team patterns, guardrail-API p95 latency, and auth-failure bursts
+- Alerts route per-`(server, tool)` and per-principal (`user_id`, `failure_reason`, `provider`) so each distinct offender produces its own Slack message
+- Provisioned Slack contact point and notification policy (critical → 0s group wait, warning → 5m); webhook URL read from `observability/.env`
+
+### Updates in v2.2.0
+
+#### Telemetry Wiring
+
+- Wired up 15 previously-dead Prometheus counters and histograms — guardrail violations (overall + input/output + per-check), guardrail-API request count and duration, PII redactions, tool-call lifecycle (success/failure/error/blocked), and auth success/failure are now actually emitted
+- Added a central, no-throw metrics helper module that degrades to a silent no-op when telemetry is not initialised
+- Added developer-facing reference at `docs/metric_reference.md` mapping every helper to its OTel name, Prometheus series, call-site, and alert rule
+
+#### Observability Dashboards & Docs
+
+- Renamed all dashboard queries to match the current metric naming scheme (the 3 provisioned dashboards were querying older series and showing `No data`)
+- Switched 18 dashboard label filters from `=` to `=~` so the `All` template-variable selection now matches every series
+- Repointed 7 dashboard panels at metrics that actually exist (legacy "wrapper" guardrail names and prototype discovery counters)
+- Resolved a Grafana provisioning warning where two dashboards shared the same title (the "complete" variant is now suffixed `(Complete)`)
+- Bumped published Grafana port to `${GRAFANA_HOST_PORT:-3001}` to avoid colliding with native Windows Grafana service installs
+- Added `observability/README.md` operator setup guide and `observability/.env.example` template
+
+#### Bug Fixes
+
+- Fixed `OTel Invalid type NoneType for attribute 'project_id'` warnings on every request — service modules now coerce missing/`None` credentials to a placeholder before emitting span attributes (cloud-auth clients only send `apikey`, surfacing the `None` case that local-apikey clients never hit)
+- Fixed `Session ..._None_None_... not found` `ValueError` on every cached tool call after the null-fix — session-key generation is now funnelled through a single canonical helper so the store and lookup sides always agree
+- Fixed `gateway.py` running twice on startup — removed wildcard re-exports from `secure_mcp_gateway/__init__.py` that caused `python -m secure_mcp_gateway.gateway` to re-execute the module body as `__main__`
+
+#### Breaking Changes
+
+- **`auth.config` shape renamed for the `enkrypt` provider.** Removed keys: `api_key`, `use_remote_config`, `timeout`. New keys: `apikey`, `gateway_name`, `gateway_version`, `project_name`, `base_url`, `cache_ttl_seconds`. Operators see a clear `ValueError` at boot pointing at the new keys.
+- **Plugin loader mapping fixed.** Setting `plugins.auth.provider: "enkrypt"` previously resolved to `LocalApiKeyProvider`; it now resolves to the new cloud provider. The default fallback (no `provider` key) still uses `LocalApiKeyProvider` for backwards compatibility.
+- **Cloud auth hard-fails on errors.** Network / 5xx / non-JSON responses surface as auth errors with the upstream message attached — no local-file fallback, no stale-cache serving.
+
 ## [2.1.7] - 2026-02-13
 
 ### Updates in v2.1.7
@@ -13,17 +69,17 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 
 #### Configurable Tool Guardrails Policy
 
-- Added `tool_guardrails_policy` per-server config field, replacing the boolean `enable_tool_guardrails`
+- Added `tool_guardrails_config` per-server config field, replacing the boolean `enable_tool_guardrails`
 - The `block` list in the policy controls which detectors run during tool/server registration validation at discovery time
 - Detectors not in the `block` list are disabled -- no more hardcoded always-on detectors
-- `policy_name` field is used for the policy violation detector's policy text
+- `guardrail_name` field is used for the policy violation detector's policy text
 - Added `_build_detectors()` method to `EnkryptServerRegistrationGuardrail` for dynamic detector construction from policy config
-- Removed `DEFAULT_SERVER_DETECTORS` and `DEFAULT_TOOL_DETECTORS` hardcoded fallbacks -- detectors are now **only** driven by `tool_guardrails_policy.block`
+- Removed `DEFAULT_SERVER_DETECTORS` and `DEFAULT_TOOL_DETECTORS` hardcoded fallbacks -- detectors are now **only** driven by `tool_guardrails_config.block`
 
 #### Breaking Changes
 
-- **`enable_tool_guardrails` is no longer supported.** The boolean field has been fully replaced by the `tool_guardrails_policy` object. Existing configs using `enable_tool_guardrails: true/false` will be silently ignored (guardrails will default to disabled). **You must regenerate your config** with `secure-mcp-gateway generate-config --overwrite` or manually add the `tool_guardrails_policy` field to each server entry.
-- **Hardcoded default detectors removed.** Previously, when no policy was provided, all detectors ran with hardcoded defaults. Now, detectors only run when explicitly listed in the `block` array of `tool_guardrails_policy`. If `block` is empty or missing, no tools/servers are blocked — the gateway logs a monitor-only message and allows everything through.
+- **`enable_tool_guardrails` is no longer supported.** The boolean field has been fully replaced by the `tool_guardrails_config` object. Existing configs using `enable_tool_guardrails: true/false` will be silently ignored (guardrails will default to disabled). **You must regenerate your config** with `secure-mcp-gateway generate-config --overwrite` or manually add the `tool_guardrails_config` field to each server entry.
+- **Hardcoded default detectors removed.** Previously, when no policy was provided, all detectors ran with hardcoded defaults. Now, detectors only run when explicitly listed in the `block` array of `tool_guardrails_config`. If `block` is empty or missing, no tools/servers are blocked — the gateway logs a monitor-only message and allows everything through.
 
 #### CLI Enhancements
 
@@ -32,7 +88,7 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 - Added `install --client claude-code` support for direct Claude Code integration via `claude mcp add`
 - Fixed Windows `.cmd` executable resolution using `shutil.which()` for Claude Code install
 - Suppressed duplicate initialization output when delegating to Docker with `--docker`
-- `config add-server` now generates `tool_guardrails_policy` with full block list (disabled by default)
+- `config add-server` now generates `tool_guardrails_config` with full block list (disabled by default)
 
 #### Auth Error Messages
 

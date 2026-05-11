@@ -18,79 +18,10 @@ from secure_mcp_gateway.consts import (
     EXAMPLE_CONFIG_NAME,
     EXAMPLE_CONFIG_PATH,
 )
-
-# Lazy import to avoid circular imports
-#
-# We expose a single, centralized logger for the whole application via a
-# lazy accessor. Most modules should import and use `utils.logger`, which
-# routes to the active telemetry provider's logger when telemetry is
-# enabled. This centralizes formatting, context, and export behavior.
-#
-# IMPORTANT: Telemetry modules themselves (e.g. providers under
-# `plugins/telemetry`) MUST NOT import from `utils` to fetch this logger,
-# because `utils` depends on telemetry during initialization. Those
-# modules should instead create a local module logger with
-# `logging.getLogger(...)` to avoid circular imports during bootstrap.
-_logger_cache = None
-
-
-def get_logger():
-    """Return the active application logger lazily.
-
-    This defers importing the telemetry config/manager until first use,
-    preventing circular imports during process startup. If telemetry is
-    disabled or unavailable, this returns None and `LazyLogger` will
-    no-op calls.
-    """
-    global _logger_cache
-    if _logger_cache is None:
-        try:
-            from secure_mcp_gateway.plugins.telemetry import (
-                get_telemetry_config_manager,
-            )
-
-            telemetry_manager = get_telemetry_config_manager()
-            _logger_cache = telemetry_manager.get_logger()
-            # print("[utils] Logger initialized successfully", file=sys.stderr)
-        except Exception as e:
-            # If telemetry is not available, return None
-            # print(f"[utils] Logger initialization failed: {e}", file=sys.stderr)
-            _logger_cache = None
-    return _logger_cache
-
-
-# For backward compatibility, expose logger as a module-level variable
-class LazyLogger:
-    """Lazy logger wrapper used by application modules.
-
-    Accessing any logging method (e.g., `.info`, `.debug`) forwards the
-    call to the real telemetry-backed logger when available. Otherwise it
-    becomes a safe no-op. This allows importing `logger` from `utils`
-    everywhere without eagerly initializing telemetry.
-    """
-
-    def __getattr__(self, name):
-        logger = get_logger()
-        if logger:
-            return getattr(logger, name)
-        # No-op if logger not available
-        # print(
-        #     f"[utils] LazyLogger: No logger available for method {name}",
-        #     file=sys.stderr,
-        # )
-        return lambda *args, **kwargs: None
-
-
-# Central application logger for non-telemetry modules.
-#
-# Usage guidance:
-# - In most modules, prefer: `from secure_mcp_gateway.utils import logger`
-# - In telemetry provider/config modules, prefer a local
-#   `logging.getLogger("enkrypt.telemetry")` to avoid importing `utils`
-#   (which depends on telemetry initialization) and creating a circular
-#   dependency.
-logger = LazyLogger()
+from secure_mcp_gateway.log import get_logger
 from secure_mcp_gateway.version import __version__
+
+logger = get_logger("secure_mcp_gateway")
 
 
 # Get debug log level (lazy-loaded to avoid circular imports)
@@ -106,29 +37,7 @@ class _DebugLevel:
 
 IS_DEBUG_LOG_LEVEL = _DebugLevel()
 
-# NOTE:
-# This module is imported very early in the gateway startup sequence by multiple
-# subsystems. At that time, the telemetry provider (which owns the logger
-# configuration) may not yet be initialized. As a result, calls to acquire a
-# logger can return None, and the LazyLogger will no-op. To ensure critical
-# bootstrap diagnostics are visible, we mirror key messages to stderr via
-# print() in addition to logger calls. Once telemetry is initialized, logger
-# messages will flow through the configured provider as usual.
-# Initialize logger for this module
-# print(
-#     f"[utils] Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}",
-#     file=sys.stderr,
-# )
-# logger.info(
-#     f"[utils] Initializing Enkrypt Secure MCP Gateway Common Utilities Module v{__version__}"
-# )
-
 IS_TELEMETRY_ENABLED = None
-
-# --------------------------------------------------------------------------
-# Also redefined funcations in telemetry.py to avoid circular imports
-# If logic changes, please make changes in both files
-# --------------------------------------------------------------------------
 
 
 def get_file_from_root(file_name):
@@ -204,9 +113,6 @@ def get_common_config(print_debug=False):
     """
     global _config_cache, _config_mtime, _config_path_cached
 
-    # NOTE: Using sys_print here will cause a circular import between get_common_config, is_telemetry_enabled, and sys_print functions.
-    # So we are using print instead.
-
     if print_debug:
         logger.debug(f"[utils] config_path: {CONFIG_PATH}")
         logger.debug(f"[utils] docker_config_path: {DOCKER_CONFIG_PATH}")
@@ -239,8 +145,7 @@ def get_common_config(print_debug=False):
 
             # File changed or first load - reload config
             try:
-                print(f"[utils] Loading {picked_config_path} file...", file=sys.stderr)
-                logger.info(f"[utils] Loading {picked_config_path} file...")
+                logger.info("loading config", path=picked_config_path)
                 with open(picked_config_path, encoding="utf-8") as f:
                     config = json.load(f)
                 _config_mtime = current_mtime
@@ -359,37 +264,6 @@ def generate_custom_id():
         # Fallback to a simpler ID if there's an error
         return f"fallback_{int(time.time())}"
 
-
-def sys_print(*args, **kwargs):
-    """
-    Print a message using the logger system.
-
-    Args:
-        *args: Arguments to log
-        **kwargs: Keyword arguments including:
-            - is_error (bool): If True, use logger.error
-            - is_debug (bool): If True, use logger.debug
-    """
-    is_error = kwargs.pop("is_error", False)
-    is_debug = kwargs.pop("is_debug", False)
-
-    # Using try/except to avoid any logging errors blocking the flow for edge cases
-    try:
-        if args:
-            # Join all arguments into a single message
-            message = " ".join(str(arg) for arg in args)
-
-            # Route to appropriate logger method
-            if is_error:
-                logger.error(message)
-            elif is_debug:
-                logger.debug(message)
-            else:
-                logger.info(message)
-    except Exception as e:
-        # Fallback to print if logger fails
-        print(f"[utils] Error logging using sys_print: {e}", file=sys.stderr)
-        pass
 
 
 def mask_key(key):

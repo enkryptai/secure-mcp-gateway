@@ -1051,7 +1051,7 @@ class GatewayToolsTester:
         """Test 11.1: Gateway operates correctly with telemetry disabled
 
         When telemetry is disabled, the gateway logs should show:
-        - INFO [opentelemetry] Initializing OpenTelemetry provider v2.1.7...
+        - INFO [opentelemetry] Initializing OpenTelemetry provider v2.2.0...
         - INFO [opentelemetry] OpenTelemetry disabled - using no-op components
         - INFO [opentelemetry] [OK] Initialized OpenTelemetry provider
 
@@ -2501,7 +2501,7 @@ class GatewayToolsTester:
         """Test 21.1: Output guardrail advanced flags
 
         Tests that relevancy, hallucination, and adherence flags in
-        output_guardrails_policy control respective checks.
+        output_guardrails_config control respective checks.
         """
         import json
 
@@ -2521,16 +2521,16 @@ class GatewayToolsTester:
             return
 
         # Store original values
-        original_relevancy = echo_config["output_guardrails_policy"]["additional_config"].get("relevancy", True)
-        original_hallucination = echo_config["output_guardrails_policy"]["additional_config"].get("hallucination", True)
-        original_adherence = echo_config["output_guardrails_policy"]["additional_config"].get("adherence", True)
+        original_relevancy = echo_config["output_guardrails_config"]["additional_config"].get("relevancy", True)
+        original_hallucination = echo_config["output_guardrails_config"]["additional_config"].get("hallucination", True)
+        original_adherence = echo_config["output_guardrails_config"]["additional_config"].get("adherence", True)
 
         try:
             # Test with all flags enabled
             print(f"      Testing with all flags enabled (relevancy, hallucination, adherence)")
-            echo_config["output_guardrails_policy"]["additional_config"]["relevancy"] = True
-            echo_config["output_guardrails_policy"]["additional_config"]["hallucination"] = True
-            echo_config["output_guardrails_policy"]["additional_config"]["adherence"] = True
+            echo_config["output_guardrails_config"]["additional_config"]["relevancy"] = True
+            echo_config["output_guardrails_config"]["additional_config"]["hallucination"] = True
+            echo_config["output_guardrails_config"]["additional_config"]["adherence"] = True
 
             with open(self.test_config_path, 'w') as f:
                 json.dump(config, f, indent=2)
@@ -2546,9 +2546,9 @@ class GatewayToolsTester:
 
             # Test with flags disabled
             print(f"      Testing with flags disabled")
-            echo_config["output_guardrails_policy"]["additional_config"]["relevancy"] = False
-            echo_config["output_guardrails_policy"]["additional_config"]["hallucination"] = False
-            echo_config["output_guardrails_policy"]["additional_config"]["adherence"] = False
+            echo_config["output_guardrails_config"]["additional_config"]["relevancy"] = False
+            echo_config["output_guardrails_config"]["additional_config"]["hallucination"] = False
+            echo_config["output_guardrails_config"]["additional_config"]["adherence"] = False
 
             with open(self.test_config_path, 'w') as f:
                 json.dump(config, f, indent=2)
@@ -2564,9 +2564,9 @@ class GatewayToolsTester:
 
             # Test with mixed configuration
             print(f"      Testing with mixed configuration (relevancy only)")
-            echo_config["output_guardrails_policy"]["additional_config"]["relevancy"] = True
-            echo_config["output_guardrails_policy"]["additional_config"]["hallucination"] = False
-            echo_config["output_guardrails_policy"]["additional_config"]["adherence"] = False
+            echo_config["output_guardrails_config"]["additional_config"]["relevancy"] = True
+            echo_config["output_guardrails_config"]["additional_config"]["hallucination"] = False
+            echo_config["output_guardrails_config"]["additional_config"]["adherence"] = False
 
             with open(self.test_config_path, 'w') as f:
                 json.dump(config, f, indent=2)
@@ -2583,9 +2583,9 @@ class GatewayToolsTester:
 
         finally:
             # Restore original values
-            echo_config["output_guardrails_policy"]["additional_config"]["relevancy"] = original_relevancy
-            echo_config["output_guardrails_policy"]["additional_config"]["hallucination"] = original_hallucination
-            echo_config["output_guardrails_policy"]["additional_config"]["adherence"] = original_adherence
+            echo_config["output_guardrails_config"]["additional_config"]["relevancy"] = original_relevancy
+            echo_config["output_guardrails_config"]["additional_config"]["hallucination"] = original_hallucination
+            echo_config["output_guardrails_config"]["additional_config"]["adherence"] = original_adherence
 
             with open(self.test_config_path, 'w') as f:
                 json.dump(config, f, indent=2)

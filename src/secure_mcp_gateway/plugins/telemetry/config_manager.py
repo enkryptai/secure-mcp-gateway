@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any, Dict
 
+from secure_mcp_gateway.log import get_logger
 from secure_mcp_gateway.plugins.telemetry.base import (
     TelemetryProvider,
     TelemetryRegistry,
     TelemetryResult,
 )
 
-logger = logging.getLogger("enkrypt.telemetry")
+logger = get_logger("enkrypt.telemetry")
 
 
 class TelemetryConfigManager:
@@ -435,6 +435,29 @@ class TelemetryConfigManager:
     def timeout_active_operations(self):
         """Backward-compatible metric accessor for timeout active operations"""
         return self._get_metric_from_provider("timeout_active_operations")
+
+    # ------------------------------------------------------------------
+    # Health-check API metrics (REST endpoints under /api/v1/health/mcp/*)
+    # ------------------------------------------------------------------
+    @property
+    def health_request_counter(self):
+        """Backward-compatible metric accessor for health-check request count."""
+        return self._get_metric_from_provider("health_request_counter")
+
+    @property
+    def health_request_duration(self):
+        """Backward-compatible metric accessor for health-check request duration."""
+        return self._get_metric_from_provider("health_request_duration")
+
+    @property
+    def health_success_counter(self):
+        """Backward-compatible metric accessor for health-check successful requests."""
+        return self._get_metric_from_provider("health_success_counter")
+
+    @property
+    def health_failure_counter(self):
+        """Backward-compatible metric accessor for health-check failed requests."""
+        return self._get_metric_from_provider("health_failure_counter")
 
 
 # ============================================================================

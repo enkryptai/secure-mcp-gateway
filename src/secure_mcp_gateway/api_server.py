@@ -5,7 +5,15 @@ import os
 import sys
 import traceback
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
+
+# --- Logging must be configured before any module that uses `logger` ---
+from secure_mcp_gateway.log import configure_logging
+
+configure_logging(
+    level=os.environ.get("ENKRYPT_LOG_LEVEL", "INFO"),
+    json_output=os.environ.get("ENKRYPT_LOG_FORMAT", "").lower() == "json",
+)
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, status
@@ -14,7 +22,6 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
-# Add the current directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import all CLI functions
@@ -33,6 +40,7 @@ from secure_mcp_gateway.cli import (
     list_config_servers,
     # Config functions
     list_configs,
+    load_config,
     remove_all_servers_from_config,
     remove_config,
     remove_server_from_config,
@@ -124,13 +132,13 @@ app.add_middleware(
 
 class ErrorResponse(BaseModel):
     error: str
-    detail: Optional[str] = None
+    detail: str | None = None
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
 class SuccessResponse(BaseModel):
     message: str
-    data: Optional[Any] = None
+    data: Any | None = None
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
@@ -151,32 +159,40 @@ class ConfigRenameRequest(BaseModel):
 class ServerAddRequest(BaseModel):
     server_name: str
     server_command: str
-    args: Optional[List[str]] = []
-    env: Optional[Dict[str, Any]] = None
-    tools: Optional[Dict[str, Any]] = None
+    args: list[str] | None = []
+    env: dict[str, Any] | None = None
+    tools: dict[str, Any] | None = None
     description: str = ""
-    input_guardrails_policy: Optional[Dict[str, Any]] = None
-    output_guardrails_policy: Optional[Dict[str, Any]] = None
+    input_guardrails_config: dict[str, Any] | None = None
+    output_guardrails_config: dict[str, Any] | None = None
+    tool_guardrails_config: dict[str, Any] | None = None
+    enable_server_info_validation: bool | None = None
+    sandbox: dict[str, Any] | None = None
 
 
 class ServerUpdateRequest(BaseModel):
-    server_command: Optional[str] = None
-    args: Optional[List[str]] = None
-    env: Optional[Dict[str, Any]] = None
-    tools: Optional[Dict[str, Any]] = None
-    description: Optional[str] = None
+    server_command: str | None = None
+    args: list[str] | None = None
+    env: dict[str, Any] | None = None
+    tools: dict[str, Any] | None = None
+    description: str | None = None
+    sandbox: dict[str, Any] | None = None
+    input_guardrails_config: dict[str, Any] | None = None
+    output_guardrails_config: dict[str, Any] | None = None
+    tool_guardrails_config: dict[str, Any] | None = None
+    enable_server_info_validation: bool | None = None
 
 
 class GuardrailsUpdateRequest(BaseModel):
-    policy_file: Optional[str] = None
-    policy: Optional[Dict[str, Any]] = None
+    policy_file: str | None = None
+    policy: dict[str, Any] | None = None
 
 
 class CombinedGuardrailsUpdateRequest(BaseModel):
-    input_policy_file: Optional[str] = None
-    input_policy: Optional[Dict[str, Any]] = None
-    output_policy_file: Optional[str] = None
-    output_policy: Optional[Dict[str, Any]] = None
+    input_policy_file: str | None = None
+    input_policy: dict[str, Any] | None = None
+    output_policy_file: str | None = None
+    output_policy: dict[str, Any] | None = None
 
 
 class ConfigExportRequest(BaseModel):
@@ -198,13 +214,13 @@ class ProjectCreateRequest(BaseModel):
 
 
 class ProjectAssignConfigRequest(BaseModel):
-    config_name: Optional[str] = None
-    config_id: Optional[str] = None
+    config_name: str | None = None
+    config_id: str | None = None
 
 
 class ProjectAddUserRequest(BaseModel):
-    user_id: Optional[str] = None
-    email: Optional[str] = None
+    user_id: str | None = None
+    email: str | None = None
 
 
 class ProjectExportRequest(BaseModel):
@@ -229,8 +245,8 @@ class UserDeleteRequest(BaseModel):
 
 
 class UserGenerateApiKeyRequest(BaseModel):
-    project_name: Optional[str] = None
-    project_id: Optional[str] = None
+    project_name: str | None = None
+    project_id: str | None = None
 
 
 class ApiKeyRotateRequest(BaseModel):
@@ -264,11 +280,11 @@ class EnkryptApiKeyRequest(BaseModel):
 
 
 class TelemetryConfigRequest(BaseModel):
-    enabled: Optional[bool] = Field(None, description="Enable or disable telemetry")
-    url: Optional[str] = Field(
+    enabled: bool | None = Field(None, description="Enable or disable telemetry")
+    url: str | None = Field(
         None, description="OpenTelemetry collector URL (e.g., http://localhost:4317)"
     )
-    insecure: Optional[bool] = Field(
+    insecure: bool | None = Field(
         None, description="Use insecure connection (true/false)"
     )
 
@@ -278,14 +294,14 @@ class TelemetryConfigRequest(BaseModel):
 # =============================================================================
 
 
-def get_api_key(authorization: Optional[str] = Header(None)) -> str:
-    """Extract and validate admin API key from Authorization header."""
-    context = ErrorContext(operation="admin_api_key_validation")
+def get_api_key(apikey: str | None = Header(None)) -> str:
+    """Extract and validate API key from the 'apikey' header (cloud-compatible)."""
+    context = ErrorContext(operation="api_key_validation")
 
-    if not authorization:
+    if not apikey:
         error = create_auth_error(
             code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-            message="Authorization header required",
+            message="apikey header required",
             context=context,
         )
         error_logger.log_error(error)
@@ -293,20 +309,6 @@ def get_api_key(authorization: Optional[str] = Header(None)) -> str:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=create_error_response(error),
         )
-
-    if not authorization.startswith("Bearer "):
-        error = create_auth_error(
-            code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-            message="Invalid authorization format. Use 'Bearer <api_key>'",
-            context=context,
-        )
-        error_logger.log_error(error)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=create_error_response(error),
-        )
-
-    api_key = authorization[7:]  # Remove "Bearer " prefix
 
     # Validate admin API key exists in config
     try:
@@ -326,10 +328,10 @@ def get_api_key(authorization: Optional[str] = Header(None)) -> str:
                 detail=create_error_response(error),
             )
 
-        if api_key != config["admin_apikey"]:
+        if apikey != config["admin_apikey"]:
             error = create_auth_error(
                 code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-                message="Invalid admin API key. Administrative operations require admin_apikey.",
+                message="Invalid API key.",
                 context=context,
             )
             error_logger.log_error(error)
@@ -338,7 +340,7 @@ def get_api_key(authorization: Optional[str] = Header(None)) -> str:
                 detail=create_error_response(error),
             )
 
-        return api_key
+        return apikey
     except FileNotFoundError:
         error = create_configuration_error(
             code=ErrorCode.CONFIG_MISSING_REQUIRED,
@@ -470,6 +472,27 @@ async def health_check():
     return SuccessResponse(
         message="API server is healthy",
         data={"version": __version__, "config_path": PICKED_CONFIG_PATH},
+    )
+
+
+@app.get("/api/v1/sandbox/status", response_model=SuccessResponse)
+async def get_sandbox_status(api_key: str = Depends(get_api_key)):
+    """Check sandbox runtime availability and current provider."""
+    from secure_mcp_gateway.plugins.sandbox import get_sandbox_config_manager
+
+    mgr = get_sandbox_config_manager()
+    provider = mgr.get_provider()
+    available, status_msg = await mgr.check_availability()
+
+    return SuccessResponse(
+        message="Sandbox status retrieved",
+        data={
+            "enabled": mgr.is_sandbox_enabled(),
+            "provider": provider.get_name() if provider else None,
+            "available": available,
+            "status": status_msg,
+            "metadata": provider.get_metadata() if provider else {},
+        },
     )
 
 
@@ -702,6 +725,33 @@ async def get_config_server_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _patch_server_sandbox(
+    config_path: str,
+    config_identifier: str,
+    server_name: str,
+    sandbox_dict: dict,
+) -> None:
+    """Write sandbox config into a server entry inside the config file."""
+    cfg = load_config(config_path)
+    mcp_configs = cfg.get("mcp_configs", {})
+    config_entry = mcp_configs.get(config_identifier)
+    if not config_entry:
+        for cid, cval in mcp_configs.items():
+            if cval.get("mcp_config_name") == config_identifier:
+                config_entry = cval
+                break
+    if not config_entry:
+        return
+
+    for server in config_entry.get("mcp_config", []):
+        if server.get("server_name") == server_name:
+            server["sandbox"] = sandbox_dict
+            break
+
+    with open(config_path, "w") as f:
+        json.dump(cfg, f, indent=2)
+
+
 @app.post("/api/v1/configs/{config_identifier}/servers", response_model=SuccessResponse)
 async def add_server_to_config_endpoint(
     config_identifier: str,
@@ -715,21 +765,34 @@ async def add_server_to_config_endpoint(
 
         f = io.StringIO()
         with redirect_stdout(f):
+            args_str = ",".join(request.args) if request.args else None
             add_server_to_config(
                 PICKED_CONFIG_PATH,
                 config_identifier,
                 request.server_name,
                 request.server_command,
-                request.args,
+                args_str,
                 json.dumps(request.env) if request.env else None,
                 json.dumps(request.tools) if request.tools else None,
                 request.description,
-                json.dumps(request.input_guardrails_policy)
-                if request.input_guardrails_policy
+                json.dumps(request.input_guardrails_config)
+                if request.input_guardrails_config
                 else None,
-                json.dumps(request.output_guardrails_policy)
-                if request.output_guardrails_policy
+                json.dumps(request.output_guardrails_config)
+                if request.output_guardrails_config
                 else None,
+                tool_guardrails=json.dumps(request.tool_guardrails_config)
+                if request.tool_guardrails_config
+                else None,
+                enable_server_info_validation=request.enable_server_info_validation,
+            )
+
+        if request.sandbox:
+            _patch_server_sandbox(
+                PICKED_CONFIG_PATH,
+                config_identifier,
+                request.server_name,
+                request.sandbox,
             )
 
         return SuccessResponse(message="Server added successfully")
@@ -758,6 +821,7 @@ async def update_server_in_config_endpoint(
         import io
         from contextlib import redirect_stdout
 
+        args_str = ",".join(request.args) if request.args else None
         f = io.StringIO()
         with redirect_stdout(f):
             update_config_server(
@@ -765,10 +829,28 @@ async def update_server_in_config_endpoint(
                 config_identifier,
                 server_name,
                 request.server_command,
-                request.args,
+                args_str,
                 json.dumps(request.env) if request.env else None,
                 json.dumps(request.tools) if request.tools else None,
                 request.description,
+                input_guardrails=json.dumps(request.input_guardrails_config)
+                if request.input_guardrails_config
+                else None,
+                output_guardrails=json.dumps(request.output_guardrails_config)
+                if request.output_guardrails_config
+                else None,
+                tool_guardrails=json.dumps(request.tool_guardrails_config)
+                if request.tool_guardrails_config
+                else None,
+                enable_server_info_validation=request.enable_server_info_validation,
+            )
+
+        if request.sandbox:
+            _patch_server_sandbox(
+                PICKED_CONFIG_PATH,
+                config_identifier,
+                server_name,
+                request.sandbox,
             )
 
         return SuccessResponse(message="Server updated successfully")
@@ -950,7 +1032,7 @@ async def update_server_input_guardrails_endpoint(
     api_key: str = Depends(get_api_key),
 ):
     """Update server input guardrails policy."""
-    result, error = run_cli_function_with_error_handling(
+    _result, error = run_cli_function_with_error_handling(
         update_server_input_guardrails,
         PICKED_CONFIG_PATH,
         config_identifier,
@@ -978,7 +1060,7 @@ async def update_server_output_guardrails_endpoint(
     api_key: str = Depends(get_api_key),
 ):
     """Update server output guardrails policy."""
-    result, error = run_cli_function_with_error_handling(
+    _result, error = run_cli_function_with_error_handling(
         update_server_output_guardrails,
         PICKED_CONFIG_PATH,
         config_identifier,
@@ -1006,7 +1088,7 @@ async def update_server_guardrails_endpoint(
     api_key: str = Depends(get_api_key),
 ):
     """Update server guardrails policies (both input and output)."""
-    result, error = run_cli_function_with_error_handling(
+    _result, error = run_cli_function_with_error_handling(
         update_server_guardrails,
         PICKED_CONFIG_PATH,
         config_identifier,
@@ -1040,7 +1122,7 @@ async def set_enkrypt_api_key_endpoint(
     api_key: str = Depends(get_api_key),
 ):
     """Set Enkrypt API key in guardrails configuration."""
-    result, error = run_cli_function_with_error_handling(
+    _result, error = run_cli_function_with_error_handling(
         set_enkrypt_api_key,
         PICKED_CONFIG_PATH,
         request.api_key,
@@ -1097,7 +1179,7 @@ async def configure_telemetry_endpoint(
             "configure_telemetry",
         )
 
-    result, error = run_cli_function_with_error_handling(
+    _result, error = run_cli_function_with_error_handling(
         configure_telemetry,
         PICKED_CONFIG_PATH,
         enabled=request.enabled,
@@ -1124,6 +1206,13 @@ try:
     app.include_router(additional_routes)
 except Exception as e:
     logger.error(f"[api_server] Skipping additional routes due to import error: {e}")
+
+try:
+    from secure_mcp_gateway.api_health_routes import health_router
+
+    app.include_router(health_router)
+except Exception as e:
+    logger.error(f"[api_server] Skipping health routes due to import error: {e}")
 
 # =============================================================================
 # MAIN FUNCTION

@@ -1,0 +1,476 @@
+apiVersion: 1
+
+# ---------------------------------------------------------------------------
+# Grafana-managed unified alert rules for the MCP Gateway.
+#
+# Source of truth: Prometheus counters exported from the gateway via OTLP ->
+# OTel Collector -> Prometheus.  The OTel collector is configured with
+# ``namespace: otel`` and a ``service_name: secure-mcp-gateway`` const label,
+# so the canonical Prometheus names look like
+#
+#   otel_enkrypt_guardrail_blocks_total{service_name="secure-mcp-gateway",
+#                                       direction="...", violation_type="..."}
+#
+# These counters are populated by ``plugins/telemetry/metrics_helpers.py``
+# helpers wired into the secure tool execution service, the Enkrypt guardrail
+# provider, and the auth providers.
+#
+# Rule pattern used here:
+#   - refId A: an instant PromQL query (``increase(... [Nm])``) that returns
+#     a single numeric (or a series for the per-user rule).
+#   - refId B: a ``threshold`` math expression that compares A against the
+#     numeric threshold and decides fire/no-fire.  ``condition: B``.
+#
+# Format reference:
+#   https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/file-provisioning/
+#
+# All 9 rules are now PromQL-backed.  ``user_id`` and ``project_id`` are
+# carried as metric attributes by the helpers in
+# ``plugins/telemetry/metrics_helpers.py``, so the per-user pivot in rule 7
+# is a one-line ``sum by (user_id) (...)`` query instead of a Loki text
+# scan.
+# ---------------------------------------------------------------------------
+
+groups:
+  - orgId: 1
+    name: gateway-guardrail-redteam
+    folder: MCP Gateway
+    interval: 1m
+    rules:
+
+      # -------------------------------------------------------------------
+      # 1. Policy Violation Burst        (severity: critical)
+      # -------------------------------------------------------------------
+      # NOTE: ``sum by (server_name, tool_name)`` instead of plain ``sum`` so
+      #       each offending (server, tool) tuple becomes its own alert
+      #       instance.  This:
+      #         a) lets the Slack template render real server/tool names
+      #            instead of "n/a", and
+      #         b) makes the threshold per-server instead of global —
+      #            "5 violations against any single server" is a much sharper
+      #            signal than "5 violations across the whole gateway".
+      - uid: mcpgw-policy-violation-burst
+        title: Policy Violation Burst
+        condition: B
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "MCP Gateway: policy violation burst detected"
+          description: |
+            More than 5 input or output guardrail blocks tagged
+            ``policy_violation`` were observed against a single
+            (server, tool) tuple in the last 5 minutes.
+        labels:
+          severity: critical
+          category: guardrail
+          violation_type: policy_violation
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 300, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: |
+                sum by (server_name, tool_name) (increase(
+                  otel_enkrypt_guardrail_blocks_total{
+                    service_name="secure-mcp-gateway",
+                    violation_type="policy_violation"
+                  }[5m]
+                ))
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange: { from: 0, to: 0 }
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { params: [5], type: gt }
+              refId: B
+
+      # -------------------------------------------------------------------
+      # 2. Injection Attack Burst        (severity: critical)
+      # -------------------------------------------------------------------
+      - uid: mcpgw-injection-attack-burst
+        title: Injection Attack Burst
+        condition: B
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "MCP Gateway: prompt-injection burst detected"
+          description: |
+            More than 3 input guardrail blocks tagged ``injection_attack``
+            were observed against a single (server, tool) tuple in the
+            last 5 minutes.  Likely red-team / abuse.
+        labels:
+          severity: critical
+          category: guardrail
+          violation_type: injection_attack
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 300, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: |
+                sum by (server_name, tool_name) (increase(
+                  otel_enkrypt_guardrail_input_blocks_total{
+                    service_name="secure-mcp-gateway",
+                    violation_type="injection_attack"
+                  }[5m]
+                ))
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange: { from: 0, to: 0 }
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { params: [3], type: gt }
+              refId: B
+
+      # -------------------------------------------------------------------
+      # 3. PII Detected                 (severity: critical, fires on first hit)
+      # -------------------------------------------------------------------
+      # Mirrors the OpenSearch "PII Found" trigger - any single PII redaction
+      # event is alert-worthy.  Threshold is "at least 1 in last 1 minute".
+      # ``otel_enkrypt_pii_redactions_total`` is only incremented when the
+      # PII handler actually rewrote content, so this never false-fires on a
+      # PII check that returned clean.
+      - uid: mcpgw-pii-found
+        title: PII Detected
+        condition: B
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "MCP Gateway: PII detected in tool traffic"
+          description: |
+            One or more PII redactions occurred in the last minute.
+            Inspect the ``server_name`` / ``tool_name`` / ``direction`` labels
+            in the alert payload, then pivot to Loki for the matching
+            request body.
+        labels:
+          severity: critical
+          category: guardrail
+          violation_type: pii
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 60, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: |
+                sum by (server_name, tool_name, direction) (increase(
+                  otel_enkrypt_pii_redactions_total{
+                    service_name="secure-mcp-gateway"
+                  }[1m]
+                ))
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange: { from: 0, to: 0 }
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { params: [0], type: gt }
+              refId: B
+
+      # -------------------------------------------------------------------
+      # 4. Toxicity / NSFW Surge         (severity: warning)
+      # -------------------------------------------------------------------
+      - uid: mcpgw-toxicity-nsfw-surge
+        title: Toxicity / NSFW Surge
+        condition: B
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "MCP Gateway: toxicity/NSFW guardrail spike"
+          description: |
+            More than 5 guardrail blocks tagged ``toxicity`` or ``nsfw``
+            against a single (server, tool) tuple in the last 10 minutes.
+        labels:
+          severity: warning
+          category: guardrail
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: |
+                sum by (server_name, tool_name) (increase(
+                  otel_enkrypt_guardrail_blocks_total{
+                    service_name="secure-mcp-gateway",
+                    violation_type=~"toxicity|nsfw"
+                  }[10m]
+                ))
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange: { from: 0, to: 0 }
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { params: [5], type: gt }
+              refId: B
+
+      # -------------------------------------------------------------------
+      # 5. Output Quality Failure        (severity: warning)
+      # -------------------------------------------------------------------
+      # Hallucination / adherence / relevancy violations on output side.
+      # We sum the three dedicated per-check counters rather than filter
+      # ``output_blocks_total`` so we don't depend on the ``violation_type``
+      # label being attached to every output block.
+      - uid: mcpgw-output-quality-failure
+        title: Output Quality Failure
+        condition: B
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "MCP Gateway: model output failing quality guardrails"
+          description: |
+            More than 3 output guardrail blocks tagged ``hallucination``,
+            ``adherence`` or ``relevancy`` against a single (server, tool)
+            tuple in the last 10 minutes.
+        labels:
+          severity: warning
+          category: guardrail
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: |
+                sum by (server_name, tool_name) (
+                  increase(otel_enkrypt_guardrail_relevancy_blocks_total{service_name="secure-mcp-gateway"}[10m])
+                  or
+                  increase(otel_enkrypt_guardrail_adherence_blocks_total{service_name="secure-mcp-gateway"}[10m])
+                  or
+                  increase(otel_enkrypt_guardrail_hallucination_blocks_total{service_name="secure-mcp-gateway"}[10m])
+                )
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange: { from: 0, to: 0 }
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { params: [3], type: gt }
+              refId: B
+
+      # -------------------------------------------------------------------
+      # 6. Tool Denied by Admin Policy   (severity: warning)
+      # -------------------------------------------------------------------
+      # Fires when the per-server deny-list (``denied_tools``) blocks
+      # tool execution > 5 times in 5 minutes.  Useful for spotting either
+      # red-team probing of disallowed tools, or a misconfigured deny list.
+      - uid: mcpgw-tool-deny-list-burst
+        title: Tool Denied by Admin Policy (burst)
+        condition: B
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "MCP Gateway: deny-list burst"
+          description: |
+            More than 5 tool executions were blocked by the server-level
+            ``denied_tools`` policy against a single (server, tool) tuple
+            in the last 5 minutes.  Check for either an attacker probing
+            disallowed tools or a configuration drift.
+        labels:
+          severity: warning
+          category: policy
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 300, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: |
+                sum by (server_name, tool_name) (increase(
+                  otel_enkrypt_tool_blocked_total{
+                    service_name="secure-mcp-gateway",
+                    block_reason="deny_list"
+                  }[5m]
+                ))
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange: { from: 0, to: 0 }
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { params: [5], type: gt }
+              refId: B
+
+      # -------------------------------------------------------------------
+      # 7. User Repeatedly Triggering Guardrails   (severity: critical)
+      # -------------------------------------------------------------------
+      # Per-user pivot.  Indicates a single account is the source of a
+      # sustained guardrail spike — the strongest red-team signal we can
+      # surface from telemetry alone.
+      #
+      # Now PromQL-backed: ``record_guardrail_violations`` (in
+      # ``plugins/telemetry/metrics_helpers.py``) carries ``user_id`` as a
+      # metric attribute, so ``sum by (user_id) (...)`` produces one alert
+      # instance per offending principal — and the Slack template renders
+      # the actual user_id on its own line.
+      #
+      # ``user_id!=""`` filter excludes the time series emitted before auth
+      # populated the principal (e.g. a 401 path that records a metric with
+      # an empty user_id) so anonymous noise doesn't trip the alert.
+      - uid: mcpgw-user-targeting-guardrails
+        title: User Repeatedly Triggering Guardrails
+        condition: B
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "MCP Gateway: single user repeatedly tripping guardrails"
+          description: |
+            A single user_id triggered more than 10 guardrail blocks in
+            the last 10 minutes.  Treat as targeted abuse / red-team and
+            pivot from the user_id label in this alert to the Loki Explore
+            view for the full request trail.
+        labels:
+          severity: critical
+          category: redteam
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: |
+                sum by (user_id) (increase(
+                  otel_enkrypt_guardrail_blocks_total{
+                    service_name="secure-mcp-gateway",
+                    user_id!=""
+                  }[10m]
+                ))
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange: { from: 0, to: 0 }
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { params: [10], type: gt }
+              refId: B
+
+      # -------------------------------------------------------------------
+      # 8. Guardrail API Latency Degradation   (severity: warning, NEW)
+      # -------------------------------------------------------------------
+      # Surfaces slow Enkrypt-guardrail API responses.  Fires when the
+      # p95 latency of any check kind goes above 2 seconds for 5 minutes.
+      - uid: mcpgw-guardrail-api-latency
+        title: Guardrail API Latency Degradation
+        condition: B
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "MCP Gateway: guardrail provider p95 latency above 2s"
+          description: |
+            The p95 latency of the external guardrail API has been > 2s for
+            the last 5 minutes.  Tool calls relying on guardrails will pile
+            up - check the ``check_kind`` and ``status_code`` labels on
+            ``otel_enkrypt_guardrail_duration_seconds`` for the slow path.
+        labels:
+          severity: warning
+          category: dependency
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 300, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: |
+                histogram_quantile(0.95,
+                  sum by (le, check_kind) (
+                    rate(otel_enkrypt_guardrail_duration_seconds_bucket{
+                      service_name="secure-mcp-gateway"
+                    }[5m])
+                  )
+                )
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange: { from: 0, to: 0 }
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { params: [2], type: gt }
+              refId: B
+
+      # -------------------------------------------------------------------
+      # 9. Auth Failure Burst   (severity: critical, NEW)
+      # -------------------------------------------------------------------
+      # Catches credential-stuffing or token-leak attempts.
+      #
+      # NOTE: aggregated ``by (failure_reason, provider)`` so a stale-token
+      #       campaign and a brute-force-keys campaign fire as two distinct
+      #       alerts.  The Slack template surfaces the discriminator on its
+      #       own line — the alert is intentionally NOT scoped per-server
+      #       because credential stuffing typically isn't directed at a
+      #       specific MCP server, and per-server splitting would dilute
+      #       the burst signal.
+      - uid: mcpgw-auth-failure-burst
+        title: Auth Failure Burst
+        condition: B
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "MCP Gateway: spike in auth failures"
+          description: |
+            More than 10 auth failures sharing the same
+            (failure_reason, provider) tuple in the last 5 minutes.
+            Likely credential stuffing or stale-token retries.
+        labels:
+          severity: critical
+          category: auth
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 300, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: |
+                sum by (failure_reason, provider) (increase(
+                  otel_enkrypt_auth_failure_total{
+                    service_name="secure-mcp-gateway"
+                  }[5m]
+                ))
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange: { from: 0, to: 0 }
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { params: [10], type: gt }
+              refId: B

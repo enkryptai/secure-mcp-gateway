@@ -12,6 +12,12 @@ from secure_mcp_gateway.plugins.guardrails import (
     get_guardrail_config_manager,
 )
 from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
+from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes, SpanNames
+from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+    record_guardrail_violations,
+    record_pii_redaction,
+    record_tool_call_outcome,
+)
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 from secure_mcp_gateway.services.execution.execution_utils import (
     extract_input_text_from_args,
@@ -19,6 +25,7 @@ from secure_mcp_gateway.services.execution.execution_utils import (
 from secure_mcp_gateway.services.execution.tool_execution_service import (
     ToolExecutionService,
 )
+from secure_mcp_gateway.services.session.session_pool import get_session_pool
 
 # Get tracer from telemetry manager
 telemetry_manager = get_telemetry_config_manager()
@@ -85,13 +92,13 @@ class SecureToolExecutionService:
         custom_id = generate_custom_id()
 
         with tracer.start_as_current_span(
-            "secure_tool_execution.execute_secure_tools"
+            SpanNames.TOOL_EXECUTE
         ) as main_span:
             # Set main span attributes
-            main_span.set_attribute("server_name", server_name)
-            main_span.set_attribute("num_tool_calls", num_tool_calls)
-            main_span.set_attribute("request_id", ctx.request_id)
-            main_span.set_attribute("custom_id", custom_id)
+            main_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            main_span.set_attribute(SpanAttributes.NUM_TOOL_CALLS, num_tool_calls)
+            main_span.set_attribute(SpanAttributes.REQUEST_ID, ctx.request_id)
+            main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
 
             logger.info(
                 f"[secure_call_tools] Starting secure batch execution for {num_tool_calls} tools for server: {server_name}"
@@ -184,7 +191,7 @@ class SecureToolExecutionService:
 
             except Exception as e:
                 main_span.record_exception(e)
-                main_span.set_attribute("error", str(e))
+                main_span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
                 logger.error(
                     f"[secure_call_tools] Critical error during batch execution: {e}"
                 )
@@ -203,7 +210,7 @@ class SecureToolExecutionService:
     ):
         """Handle authentication and setup for secure tool execution."""
         with tracer.start_as_current_span(
-            "secure_tool_execution.authenticate"
+            SpanNames.AUTH
         ) as auth_span:
             # Gather credentials
             creds = self.auth_manager.get_gateway_credentials(ctx)
@@ -235,7 +242,13 @@ class SecureToolExecutionService:
                 mcp_config_id = (auth_result.gateway_config or {}).get(
                     "mcp_config_id", "not_provided"
                 )
-                session_key = f"{creds.get('gateway_key')}_{creds.get('project_id')}_{creds.get('user_id')}_{mcp_config_id}"
+                # Canonical session key — see AuthConfigManager.create_session_key.
+                session_key = self.auth_manager.create_session_key(
+                    creds.get("gateway_key"),
+                    creds.get("project_id"),
+                    creds.get("user_id"),
+                    mcp_config_id,
+                )
                 server_info = get_server_info_by_name(
                     auth_result.gateway_config, server_name
                 )
@@ -249,7 +262,7 @@ class SecureToolExecutionService:
                 )
 
                 if not local_config:
-                    auth_span.set_attribute("error", "No local config found")
+                    auth_span.set_attribute(SpanAttributes.ERROR_MESSAGE, "No local config found")
                     from secure_mcp_gateway.error_handling import create_error_response
                     from secure_mcp_gateway.exceptions import (
                         ErrorCode,
@@ -270,10 +283,16 @@ class SecureToolExecutionService:
                     return create_error_response(err)
 
                 mcp_config_id = local_config.get("mcp_config_id", "not_provided")
-                session_key = f"{creds.get('gateway_key')}_{creds.get('project_id')}_{creds.get('user_id')}_{mcp_config_id}"
+                # Canonical session key — see AuthConfigManager.create_session_key.
+                session_key = self.auth_manager.create_session_key(
+                    creds.get("gateway_key"),
+                    creds.get("project_id"),
+                    creds.get("user_id"),
+                    mcp_config_id,
+                )
 
                 if not self.auth_manager.is_session_authenticated(session_key):
-                    auth_span.set_attribute("required_new_auth", True)
+                    auth_span.set_attribute(SpanAttributes.REQUIRED_NEW_AUTH, True)
                     from secure_mcp_gateway.gateway import enkrypt_authenticate
 
                     result = await enkrypt_authenticate(ctx)
@@ -283,7 +302,7 @@ class SecureToolExecutionService:
                         detail = f"Authentication failed: {auth_msg}"
                         if auth_err and auth_err != auth_msg:
                             detail += f" ({auth_err})"
-                        auth_span.set_attribute("error", detail)
+                        auth_span.set_attribute(SpanAttributes.ERROR_MESSAGE, detail)
                         logger.error(f"[secure_call_tools] {detail}")
                         logger.error(
                             "secure_tool_execution.execute_secure_tools.not_authenticated",
@@ -310,7 +329,7 @@ class SecureToolExecutionService:
                         )
                         return create_error_response(err)
                 else:
-                    auth_span.set_attribute("required_new_auth", False)
+                    auth_span.set_attribute(SpanAttributes.REQUIRED_NEW_AUTH, False)
 
                 server_info = get_server_info_by_name(
                     self.auth_manager.get_session_gateway_config(session_key),
@@ -320,7 +339,7 @@ class SecureToolExecutionService:
             # Validate server availability
             if not server_info:
                 auth_span.set_attribute(
-                    "error", f"Server '{server_name}' not available"
+                    SpanAttributes.ERROR_MESSAGE, f"Server '{server_name}' not available"
                 )
                 logger.warning(
                     f"[secure_call_tools] Server '{server_name}' not available",
@@ -356,43 +375,43 @@ class SecureToolExecutionService:
 
     def _extract_guardrails_config(self, server_info, main_span):
         """Extract guardrails configuration from server info."""
-        input_guardrails_policy = server_info["input_guardrails_policy"]
-        output_guardrails_policy = server_info["output_guardrails_policy"]
+        input_guardrails_config = server_info["input_guardrails_config"]
+        output_guardrails_config = server_info["output_guardrails_config"]
 
         if self.IS_DEBUG_LOG_LEVEL:
-            logger.debug(f"Input Guardrails Policy: {input_guardrails_policy}")
-            logger.debug(f"Output Guardrails Policy: {output_guardrails_policy}")
+            logger.debug(f"Input Guardrails Policy: {input_guardrails_config}")
+            logger.debug(f"Output Guardrails Policy: {output_guardrails_config}")
 
-        input_policy_enabled = input_guardrails_policy["enabled"]
-        output_policy_enabled = output_guardrails_policy["enabled"]
-        input_policy_name = input_guardrails_policy["policy_name"]
-        output_policy_name = output_guardrails_policy["policy_name"]
-        input_blocks = input_guardrails_policy["block"]
-        output_blocks = output_guardrails_policy["block"]
-        pii_redaction = input_guardrails_policy["additional_config"].get(
+        input_policy_enabled = input_guardrails_config["enabled"]
+        output_policy_enabled = output_guardrails_config["enabled"]
+        input_policy_name = input_guardrails_config.get("guardrail_name") or input_guardrails_config.get("policy_name", "")
+        output_policy_name = output_guardrails_config.get("guardrail_name") or output_guardrails_config.get("policy_name", "")
+        input_blocks = input_guardrails_config["block"]
+        output_blocks = output_guardrails_config["block"]
+        pii_redaction = input_guardrails_config["additional_config"].get(
             "pii_redaction", False
         )
-        relevancy = output_guardrails_policy["additional_config"].get(
+        relevancy = output_guardrails_config["additional_config"].get(
             "relevancy", False
         )
-        adherence = output_guardrails_policy["additional_config"].get(
+        adherence = output_guardrails_config["additional_config"].get(
             "adherence", False
         )
-        hallucination = output_guardrails_policy["additional_config"].get(
+        hallucination = output_guardrails_config["additional_config"].get(
             "hallucination", False
         )
 
         # Set guardrails attributes on main span
-        main_span.set_attribute("input_guardrails_enabled", input_policy_enabled)
-        main_span.set_attribute("output_guardrails_enabled", output_policy_enabled)
-        main_span.set_attribute("pii_redaction_enabled", pii_redaction)
-        main_span.set_attribute("relevancy_enabled", relevancy)
-        main_span.set_attribute("adherence_enabled", adherence)
-        main_span.set_attribute("hallucination_enabled", hallucination)
+        main_span.set_attribute(SpanAttributes.INPUT_GUARDRAILS_ENABLED, input_policy_enabled)
+        main_span.set_attribute(SpanAttributes.OUTPUT_GUARDRAILS_ENABLED, output_policy_enabled)
+        main_span.set_attribute(SpanAttributes.PII_REDACTION_ENABLED, pii_redaction)
+        main_span.set_attribute(SpanAttributes.RELEVANCY_ENABLED, relevancy)
+        main_span.set_attribute(SpanAttributes.ADHERENCE_ENABLED, adherence)
+        main_span.set_attribute(SpanAttributes.HALLUCINATION_ENABLED, hallucination)
 
         return {
-            "input_guardrails_policy": input_guardrails_policy,
-            "output_guardrails_policy": output_guardrails_policy,
+            "input_guardrails_config": input_guardrails_config,
+            "output_guardrails_config": output_guardrails_config,
             "input_policy_enabled": input_policy_enabled,
             "output_policy_enabled": output_policy_enabled,
             "input_policy_name": input_policy_name,
@@ -410,12 +429,12 @@ class SecureToolExecutionService:
     ):
         """Handle tool discovery for the server."""
         with tracer.start_as_current_span(
-            "secure_tool_execution.tool_discovery"
+            SpanNames.DISCOVERY
         ) as discovery_span:
-            discovery_span.set_attribute("server_name", server_name)
+            discovery_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
 
             server_config_tools = server_info.get("tools", {})
-            discovery_span.set_attribute("has_cached_tools", bool(server_config_tools))
+            discovery_span.set_attribute(SpanAttributes.HAS_CACHED_TOOLS, bool(server_config_tools))
 
             if self.IS_DEBUG_LOG_LEVEL:
                 logger.debug(
@@ -427,7 +446,7 @@ class SecureToolExecutionService:
                 server_config_tools = self.cache_service.get_cached_tools(
                     id, server_name
                 )
-                discovery_span.set_attribute("cache_hit", bool(server_config_tools))
+                discovery_span.set_attribute(SpanAttributes.CACHE_HIT, bool(server_config_tools))
 
                 if server_config_tools:
                     from secure_mcp_gateway.plugins.telemetry import (
@@ -455,7 +474,7 @@ class SecureToolExecutionService:
                         1, attributes=build_log_extra(ctx)
                     )
                     try:
-                        discovery_span.set_attribute("discovery_required", True)
+                        discovery_span.set_attribute(SpanAttributes.DISCOVERY_REQUIRED, True)
 
                         telemetry_mgr.list_servers_call_count.add(
                             1, attributes=build_log_extra(ctx, custom_id)
@@ -474,7 +493,7 @@ class SecureToolExecutionService:
                         )
 
                         if discovery_result.get("status") != "success":
-                            discovery_span.set_attribute("error", "Discovery failed")
+                            discovery_span.set_attribute(SpanAttributes.ERROR_MESSAGE, "Discovery failed")
                             logger.error(
                                 "secure_tool_execution.execute_secure_tools.discovery_failed",
                                 extra=build_log_extra(
@@ -536,6 +555,11 @@ class SecureToolExecutionService:
         gateway_config = self.auth_manager.get_session_gateway_config(session_key)
         server_info = get_server_info_by_name(gateway_config, server_name)
         server_config = server_info["config"]
+        denied_tools = server_info.get("denied_tools", [])
+        # The configured allow list (from `server_info["tools"]`) — used as the
+        # exemption set for the deny-all wildcard "*". Distinct from
+        # ``server_config_tools`` which may have been replaced by discovery.
+        configured_allowed_tools = server_info.get("tools", {}) or {}
 
         server_command = server_config["command"]
         server_args = server_config["args"]
@@ -551,6 +575,13 @@ class SecureToolExecutionService:
         # Extract project_id and mcp_config_id from gateway_config
         project_id = gateway_config.get("project_id")
         mcp_config_id = gateway_config.get("mcp_config_id")
+        user_id = gateway_config.get("user_id")
+
+        # Auth context threaded into per-tool helpers so metric helpers can
+        # tag each `tool_call_*` / `guardrail_*` counter with `user_id` and
+        # `project_id`.  Pivots like "single user repeatedly tripping
+        # guardrails" become a one-line PromQL alert instead of a Loki query.
+        auth_context = {"user_id": user_id, "project_id": project_id}
 
         oauth_data, oauth_error = await prepare_oauth_for_server(
             server_name=server_name,
@@ -596,12 +627,17 @@ class SecureToolExecutionService:
 
         results = []
 
-        # Single session for all calls (managed by ToolExecutionService)
-        async with self.tool_execution_service.open_session(
-            {"command": server_command, "args": server_args, "env": server_env}
-        ) as session:
+        pool = get_session_pool()
+        server_cfg = {"command": server_command, "args": server_args, "env": server_env}
+        session = None
+        reused = False
+        try:
+            session, reused = await pool.acquire(
+                session_key, server_name, server_cfg, server_info,
+            )
             logger.info(
                 f"[secure_call_tools] Session initialized successfully for {server_name}"
+                f" (reused={reused})"
             )
             logger.info(
                 "secure_tool_execution.execute_secure_tools.session_initialized",
@@ -621,6 +657,9 @@ class SecureToolExecutionService:
                     session,
                     main_span,
                     logger,
+                    denied_tools=denied_tools,
+                    configured_allowed_tools=configured_allowed_tools,
+                    auth_context=auth_context,
                 )
                 results.append(result)
 
@@ -632,8 +671,16 @@ class SecureToolExecutionService:
                     "blocked_output_relevancy",
                     "blocked_output_adherence",
                     "blocked_output_hallucination",
+                    "denied",
                 ]:
                     break
+        except Exception:
+            # On hard failure, evict the session so the next call gets a fresh one
+            if session is not None:
+                await pool.evict(session_key, server_name)
+            raise
+        else:
+            await pool.release(session_key, server_name)
 
         return results
 
@@ -649,10 +696,21 @@ class SecureToolExecutionService:
         session,
         main_span,
         logger,
+        *,
+        denied_tools=None,
+        configured_allowed_tools=None,
+        auth_context=None,
     ):
-        """Execute a single tool with all guardrail checks."""
+        """Execute a single tool with all guardrail checks.
+
+        ``auth_context`` is a small dict ``{"user_id": ..., "project_id": ...}``
+        threaded through so every metric increment can carry the authenticated
+        principal as an attribute.  Optional — defaults to an empty dict so
+        callers that don't have auth context (tests, backfills) still work.
+        """
+        auth_context = auth_context or {}
         with tracer.start_as_current_span(
-            f"secure_tool_execution.tool_execution_{i}"
+            SpanNames.TOOL_CALL
         ) as tool_span:
             tool_name = (
                 tool_call.get("name")
@@ -662,9 +720,9 @@ class SecureToolExecutionService:
                 or tool_call.get("function_name")
                 or tool_call.get("function_id")
             )
-            tool_span.set_attribute("tool_name", tool_name or "unknown")
-            tool_span.set_attribute("call_index", i)
-            tool_span.set_attribute("server_name", server_name)
+            tool_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name or "unknown")
+            tool_span.set_attribute(SpanAttributes.TOOL_CALL_INDEX, i)
+            tool_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
 
             try:
                 args = (
@@ -680,7 +738,7 @@ class SecureToolExecutionService:
                 )
 
                 if not tool_name:
-                    tool_span.set_attribute("error", "No tool_name provided")
+                    tool_span.set_attribute(SpanAttributes.ERROR_MESSAGE, "No tool_name provided")
                     return {
                         "status": "error",
                         "error": "No tool_name provided",
@@ -712,7 +770,60 @@ class SecureToolExecutionService:
                     f"[secure_call_tools] Call {i}: Starting tool execution for {tool_name}"
                 )
 
-                # Tool validation
+                # Deny-list check (runs before allow-list validation).
+                # Use the *configured* allow list (server_info["tools"]) as the
+                # "*" exemption set — NOT server_config_tools, which may contain
+                # post-discovery tools that should still be subject to "*".
+                if denied_tools:
+                    from secure_mcp_gateway.services.execution.deny_matcher import (
+                        is_tool_denied,
+                    )
+
+                    deny_match = is_tool_denied(
+                        tool_name,
+                        denied_tools,
+                        configured_allowed_tools or {},
+                    )
+                    if deny_match:
+                        reason = deny_match.get("reason") or "tool is on the server deny list"
+                        logger.warning(
+                            f"[secure_call_tools] Tool '{tool_name}' denied: {reason} "
+                            f"(pattern={deny_match['pattern']})",
+                        )
+                        logger.info(
+                            "secure_tool_execution.tool_denied",
+                            extra=build_log_extra(
+                                ctx,
+                                custom_id,
+                                server_name,
+                                tool_name=tool_name,
+                                deny_pattern=deny_match["pattern"],
+                                deny_reason=reason,
+                            ),
+                        )
+                        tool_span.set_attribute("tool.denied", True)
+                        tool_span.set_attribute("tool.deny_pattern", deny_match["pattern"])
+                        record_tool_call_outcome(
+                            server_name,
+                            tool_name,
+                            "blocked",
+                            block_reason="deny_list",
+                            **auth_context,
+                        )
+                        return {
+                            "status": "denied",
+                            "error": f"Tool '{tool_name}' is denied: {reason}",
+                            "message": f"Tool '{tool_name}' is denied: {reason}",
+                            "enkrypt_mcp_data": {
+                                "call_index": i,
+                                "server_name": server_name,
+                                "tool_name": tool_name,
+                                "deny_pattern": deny_match["pattern"],
+                                "deny_reason": reason,
+                            },
+                        }
+
+                # Tool validation (allow-list check)
                 validation_result = self._validate_tool(
                     tool_name, server_config_tools, tool_span
                 )
@@ -747,6 +858,7 @@ class SecureToolExecutionService:
                         session,
                         tool_span,
                         logger,
+                        auth_context=auth_context,
                     )
                     # Extract input guardrail response from result
                     input_guardrail_response = result.get(
@@ -787,6 +899,7 @@ class SecureToolExecutionService:
                         guardrails_config,
                         tool_span,
                         logger,
+                        auth_context=auth_context,
                     )
                     if output_result:
                         # Check if it's a blocking result
@@ -851,6 +964,7 @@ class SecureToolExecutionService:
                     output_adherence_response,
                     output_hallucination_response,
                     logger,
+                    auth_context=auth_context,
                 )
 
             except Exception as tool_error:
@@ -889,8 +1003,8 @@ class SecureToolExecutionService:
                 error_logger.log_error(error)
 
                 tool_span.record_exception(tool_error)
-                tool_span.set_attribute("error", str(tool_error))
-                tool_span.set_attribute("correlation_id", context.correlation_id)
+                tool_span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(tool_error))
+                tool_span.set_attribute(SpanAttributes.CORRELATION_ID, context.correlation_id)
                 logger.error(
                     f"[secure_call_tools] Error in call {i} ({tool_name}): {tool_error}"
                 )
@@ -906,6 +1020,9 @@ class SecureToolExecutionService:
                         correlation_id=context.correlation_id,
                     ),
                 )
+                record_tool_call_outcome(
+                    server_name, tool_name, "error", **auth_context
+                )
 
                 # Return standardized error response
                 error_response = create_error_response(error)
@@ -920,9 +1037,9 @@ class SecureToolExecutionService:
     def _validate_tool(self, tool_name, server_config_tools, tool_span):
         """Validate that the tool exists and is available."""
         with tracer.start_as_current_span(
-            "secure_tool_execution.validate_tool"
+            SpanNames.TOOL_VALIDATE
         ) as validate_span:
-            validate_span.set_attribute("tool_name", tool_name)
+            validate_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
 
             # Normalize possible formats and check membership
             if isinstance(server_config_tools, tuple) and len(server_config_tools) == 2:
@@ -932,7 +1049,7 @@ class SecureToolExecutionService:
                 server_config_tools
             )
             if not valid_format:
-                validate_span.set_attribute("error", "Unknown tool format")
+                validate_span.set_attribute(SpanAttributes.ERROR_MESSAGE, "Unknown tool format")
                 logger.error(
                     f"[secure_call_tools] Unknown tool format: {type(server_config_tools)}"
                 )
@@ -955,9 +1072,9 @@ class SecureToolExecutionService:
                 return create_error_response(err)
 
             tool_found = tool_name in names
-            validate_span.set_attribute("tool_found", tool_found)
+            validate_span.set_attribute(SpanAttributes.TOOL_FOUND, tool_found)
             if not tool_found:
-                validate_span.set_attribute("error", "Tool not found")
+                validate_span.set_attribute(SpanAttributes.ERROR_MESSAGE, "Tool not found")
                 logger.error(
                     f"[enkrypt_secure_call_tools] Tool '{tool_name}' not found for this server."
                 )
@@ -995,18 +1112,23 @@ class SecureToolExecutionService:
         session,
         tool_span,
         logger,
+        *,
+        auth_context=None,
     ):
+        # Default to empty mapping so unpack-via-** is safe even on the
+        # legacy code paths that don't pass auth.
+        auth_context = auth_context or {}
         """Execute tool with input guardrails enabled."""
         with tracer.start_as_current_span(
-            "secure_tool_execution.input_guardrails"
+            SpanNames.GUARDRAIL_INPUT
         ) as input_span:
             input_span.set_attribute(
                 "pii_redaction", guardrails_config["pii_redaction"]
             )
             input_span.set_attribute(
-                "policy_name", guardrails_config["input_policy_name"]
+                "guardrail_name", guardrails_config["input_policy_name"]
             )
-            input_span.set_attribute("tool_name", tool_name)
+            input_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
 
             logger.info(
                 f"[secure_call_tools] Call {i} : Input guardrails enabled for {tool_name} of server {server_name}"
@@ -1019,8 +1141,8 @@ class SecureToolExecutionService:
             # Get input guardrail from manager
             input_guardrail = self.guardrail_manager.get_input_guardrail(
                 server_config={
-                    "input_guardrails_policy": guardrails_config[
-                        "input_guardrails_policy"
+                    "input_guardrails_config": guardrails_config[
+                        "input_guardrails_config"
                     ]
                 }
             )
@@ -1053,7 +1175,7 @@ class SecureToolExecutionService:
 
             # Validate with plugin
             if self.ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED:
-                input_span.set_attribute("async_guardrails", True)
+                input_span.set_attribute(SpanAttributes.ASYNC_GUARDRAILS, True)
                 # Start both guardrail and tool call tasks concurrently with timeouts
                 guardrail_task = asyncio.create_task(
                     timeout_manager.execute_with_timeout(
@@ -1080,7 +1202,7 @@ class SecureToolExecutionService:
                 if hasattr(result, "result"):
                     result = result.result
             else:
-                input_span.set_attribute("async_guardrails", False)
+                input_span.set_attribute(SpanAttributes.ASYNC_GUARDRAILS, False)
                 guardrail_response = await timeout_manager.execute_with_timeout(
                     input_guardrail.validate, "guardrail", f"guardrail_{i}", request
                 )
@@ -1136,7 +1258,7 @@ class SecureToolExecutionService:
                     v.violation_type.value for v in guardrail_response.violations
                 ]
                 input_span.set_attribute(
-                    "error", f"Input violations: {violation_types}"
+                    SpanAttributes.ERROR_MESSAGE, f"Input violations: {violation_types}"
                 )
                 logger.info(
                     f"[secure_call_tools] Call {i}: Blocked due to input guardrail violations: {violation_types} for {tool_name} of server {server_name}"
@@ -1151,6 +1273,20 @@ class SecureToolExecutionService:
                         input_violations_detected=True,
                         input_violation_types=violation_types,
                     ),
+                )
+                record_guardrail_violations(
+                    "input",
+                    violation_types,
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    **auth_context,
+                )
+                record_tool_call_outcome(
+                    server_name,
+                    tool_name,
+                    "blocked",
+                    block_reason="input_violation",
+                    **auth_context,
                 )
                 return {
                     "status": "blocked_input",
@@ -1205,10 +1341,10 @@ class SecureToolExecutionService:
     ):
         """Execute tool without input guardrails."""
         with tracer.start_as_current_span(
-            "secure_tool_execution.execute_tool"
+            SpanNames.TOOL_FORWARD
         ) as exec_span:
-            exec_span.set_attribute("tool_name", tool_name)
-            exec_span.set_attribute("async_guardrails", False)
+            exec_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
+            exec_span.set_attribute(SpanAttributes.ASYNC_GUARDRAILS, False)
 
             logger.info(
                 f"[secure_call_tools] Call {i}: Input guardrails not enabled for {tool_name} of server {server_name}"
@@ -1251,21 +1387,23 @@ class SecureToolExecutionService:
         guardrails_config,
         tool_span,
         logger,
+        *,
+        auth_context=None,
     ):
         """Process output with guardrails."""
         with tracer.start_as_current_span(
-            "secure_tool_execution.output_guardrails"
+            SpanNames.GUARDRAIL_OUTPUT
         ) as output_span:
             output_span.set_attribute(
-                "relevancy_enabled", guardrails_config["relevancy"]
+                SpanAttributes.RELEVANCY_ENABLED, guardrails_config["relevancy"]
             )
             output_span.set_attribute(
-                "adherence_enabled", guardrails_config["adherence"]
+                SpanAttributes.ADHERENCE_ENABLED, guardrails_config["adherence"]
             )
             output_span.set_attribute(
-                "hallucination_enabled", guardrails_config["hallucination"]
+                SpanAttributes.HALLUCINATION_ENABLED, guardrails_config["hallucination"]
             )
-            output_span.set_attribute("tool_name", tool_name)
+            output_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
 
             if not self.ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED:
                 # Sync output guardrails
@@ -1281,6 +1419,7 @@ class SecureToolExecutionService:
                     guardrails_config,
                     output_span,
                     logger,
+                    auth_context=auth_context,
                 )
             else:
                 # Async output guardrails
@@ -1296,6 +1435,7 @@ class SecureToolExecutionService:
                     guardrails_config,
                     output_span,
                     logger,
+                    auth_context=auth_context,
                 )
 
     async def _process_sync_output_guardrails(
@@ -1311,8 +1451,11 @@ class SecureToolExecutionService:
         guardrails_config,
         output_span,
         logger,
+        *,
+        auth_context=None,
     ):
         """Process output guardrails synchronously."""
+        auth_context = auth_context or {}
         logger.info(
             f"[secure_call_tools] Call {i}: Starting sync output guardrails for {tool_name} of server {server_name}"
         )
@@ -1330,8 +1473,8 @@ class SecureToolExecutionService:
         # Get output guardrail from manager
         output_guardrail = self.guardrail_manager.get_output_guardrail(
             server_config={
-                "output_guardrails_policy": guardrails_config[
-                    "output_guardrails_policy"
+                "output_guardrails_config": guardrails_config[
+                    "output_guardrails_config"
                 ]
             }
         )
@@ -1371,7 +1514,7 @@ class SecureToolExecutionService:
 
             if has_blocking:
                 output_span.set_attribute(
-                    "error", f"Output violations: {violation_types}"
+                    SpanAttributes.ERROR_MESSAGE, f"Output violations: {violation_types}"
                 )
                 logger.info(
                     f"[secure_call_tools] Call {i}: Blocked due to output violations: {violation_types}"
@@ -1386,6 +1529,13 @@ class SecureToolExecutionService:
                         output_violations_detected=True,
                         output_violation_types=violation_types,
                     ),
+                )
+                record_guardrail_violations(
+                    "output",
+                    violation_types,
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    **auth_context,
                 )
                 return self._build_blocked_result(
                     "blocked_output",
@@ -1412,6 +1562,7 @@ class SecureToolExecutionService:
                     guardrail_response.metadata.get("relevancy", {}),
                     guardrail_response.metadata.get("adherence", {}),
                     guardrail_response.metadata.get("hallucination", {}),
+                    auth_context=auth_context,
                 )
 
         # Extract individual check results from metadata
@@ -1456,8 +1607,11 @@ class SecureToolExecutionService:
         guardrails_config,
         output_span,
         logger,
+        *,
+        auth_context=None,
     ):
         """Process output guardrails asynchronously."""
+        auth_context = auth_context or {}
         logger.info(
             f"[secure_call_tools] Call {i}: Starting async output guardrails for {tool_name} of server {server_name}"
         )
@@ -1477,8 +1631,8 @@ class SecureToolExecutionService:
         # Get output guardrail from manager
         output_guardrail = self.guardrail_manager.get_output_guardrail(
             server_config={
-                "output_guardrails_policy": guardrails_config[
-                    "output_guardrails_policy"
+                "output_guardrails_config": guardrails_config[
+                    "output_guardrails_config"
                 ]
             }
         )
@@ -1517,6 +1671,13 @@ class SecureToolExecutionService:
             )
 
             if has_blocking:
+                record_guardrail_violations(
+                    "output",
+                    violation_types,
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    **auth_context,
+                )
                 return self._build_blocked_result(
                     "blocked_output",
                     f"Request blocked due to output guardrail violations: {', '.join(violation_types)}",
@@ -1542,6 +1703,7 @@ class SecureToolExecutionService:
                     guardrail_response.metadata.get("relevancy", {}),
                     guardrail_response.metadata.get("adherence", {}),
                     guardrail_response.metadata.get("hallucination", {}),
+                    auth_context=auth_context,
                 )
 
         # Extract individual check results from metadata
@@ -1586,8 +1748,21 @@ class SecureToolExecutionService:
         output_relevancy_response,
         output_adherence_response,
         output_hallucination_response,
+        *,
+        auth_context=None,
     ):
         """Build a blocked result."""
+        auth_context = auth_context or {}
+        # status is e.g. "blocked_input", "blocked_output", "blocked_*";
+        # extract the reason for the metric label.
+        block_reason = status.replace("blocked_", "") if isinstance(status, str) else "unknown"
+        record_tool_call_outcome(
+            server_name,
+            tool_name,
+            "blocked",
+            block_reason=block_reason,
+            **auth_context,
+        )
         return {
             "status": status,
             "message": message,
@@ -1599,10 +1774,10 @@ class SecureToolExecutionService:
                 "args": args,
             },
             "enkrypt_policy_detections": {
-                "input_guardrail_policy": guardrails_config["input_guardrails_policy"],
+                "input_guardrail_name": guardrails_config["input_guardrails_config"],
                 "input_guardrail_response": {},
-                "output_guardrail_policy": guardrails_config[
-                    "output_guardrails_policy"
+                "output_guardrail_name": guardrails_config[
+                    "output_guardrails_config"
                 ],
                 "output_guardrail_response": output_guardrail_response,
                 "output_relevancy_response": output_relevancy_response,
@@ -1627,8 +1802,11 @@ class SecureToolExecutionService:
         output_adherence_response,
         output_hallucination_response,
         logger,
+        *,
+        auth_context=None,
     ):
         """Build a successful result."""
+        auth_context = auth_context or {}
         logger.info(
             f"[secure_call_tools] Call {i}: Completed successfully for {tool_name} of server {server_name}"
         )
@@ -1636,6 +1814,7 @@ class SecureToolExecutionService:
             "secure_tool_execution.execute_secure_tools.completed_successfully",
             extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name),
         )
+        record_tool_call_outcome(server_name, tool_name, "success", **auth_context)
 
         return {
             "status": "success",
@@ -1648,10 +1827,10 @@ class SecureToolExecutionService:
                 "args": args,
             },
             "enkrypt_policy_detections": {
-                "input_guardrail_policy": guardrails_config["input_guardrails_policy"],
+                "input_guardrail_name": guardrails_config["input_guardrails_config"],
                 "input_guardrail_response": input_guardrail_response,
-                "output_guardrail_policy": guardrails_config[
-                    "output_guardrails_policy"
+                "output_guardrail_name": guardrails_config[
+                    "output_guardrails_config"
                 ],
                 "output_guardrail_response": output_guardrail_response,
                 "output_relevancy_response": output_relevancy_response,

@@ -1,0 +1,195 @@
+{
+  "test_date": "2026-04-13",
+  "test_environment": {
+    "os": "Ubuntu 24.04 on WSL2 (Windows 10)",
+    "python": "3.12.3",
+    "mcp_sdk": "1.27.0",
+    "docker": "27.4.0 (Docker Desktop)",
+    "bwrap": "0.8.0",
+    "gvisor": "release-20250210.0",
+    "srt": "@anthropic-ai/sandbox-runtime",
+    "novavm": "0.1.0",
+    "kvm": "available (/dev/kvm)"
+  },
+  "test_description": "Full MCP roundtrip (initialize + list_tools + call_tool) through each sandbox runtime using echo_mcp.py",
+  "results": {
+    "baseline": {
+      "description": "Direct subprocess execution, no sandbox",
+      "status": "PASS",
+      "total_ms": 530,
+      "init_ms": 517,
+      "discovery_ms": 4,
+      "call_ms": 7,
+      "overhead_ms": 0,
+      "overhead_pct": "0%",
+      "tools_found": 2,
+      "isolation_level": "none",
+      "platform": "any",
+      "install": "n/a"
+    },
+    "bubblewrap": {
+      "description": "Bubblewrap namespace sandbox (bwrap)",
+      "status": "PASS",
+      "total_ms": 573,
+      "init_ms": 560,
+      "discovery_ms": 4,
+      "call_ms": 7,
+      "overhead_ms": 43,
+      "overhead_pct": "8%",
+      "tools_found": 2,
+      "isolation_level": "namespace (mount, PID, network, user)",
+      "platform": "Linux only",
+      "install": "sudo apt install bubblewrap",
+      "pros": [
+        "Near-zero overhead (43ms)",
+        "No daemon, no images, no Docker needed",
+        "Single binary, minimal dependencies",
+        "Used by Flatpak for production app sandboxing"
+      ],
+      "cons": [
+        "Linux only",
+        "No built-in resource limits (memory, CPU)",
+        "Requires user namespace support in kernel",
+        "Need to manually bind-mount system libraries"
+      ]
+    },
+    "docker": {
+      "description": "Docker container (sandbox-test-mcp image)",
+      "status": "PASS",
+      "total_ms": 1020,
+      "init_ms": 1002,
+      "discovery_ms": 6,
+      "call_ms": 10,
+      "overhead_ms": 490,
+      "overhead_pct": "92%",
+      "tools_found": 2,
+      "isolation_level": "namespace + cgroup (shared kernel)",
+      "platform": "Linux, macOS, Windows",
+      "install": "docker.com",
+      "security_flags": "--network=none, --security-opt=no-new-privileges, --memory, --cpus, --pids-limit, --read-only, --tmpfs",
+      "pros": [
+        "Cross-platform (Linux, macOS, Windows)",
+        "Full resource limits (memory, CPU, PIDs)",
+        "Mature, well-documented ecosystem",
+        "Pre-built images with exact dependency versions",
+        "Production-ready, battle-tested"
+      ],
+      "cons": [
+        "Requires Docker daemon running",
+        "~500ms overhead per sandbox start",
+        "Shared kernel — kernel exploits can escape",
+        "Docker Desktop license required for commercial use on macOS/Windows"
+      ]
+    },
+    "gvisor": {
+      "description": "gVisor user-space kernel (runsc do)",
+      "status": "PASS",
+      "total_ms": 1474,
+      "init_ms": 1455,
+      "discovery_ms": 7,
+      "call_ms": 10,
+      "overhead_ms": 944,
+      "overhead_pct": "178%",
+      "tools_found": 2,
+      "isolation_level": "user-space kernel (syscall interception)",
+      "platform": "Linux only",
+      "install": "apt install runsc (from gvisor.dev repo)",
+      "pros": [
+        "Strongest self-hosted isolation without a VM",
+        "Intercepts ALL syscalls — host kernel never exposed",
+        "Also works as Docker --runtime=runsc",
+        "Used by Google Cloud Run and GKE Sandbox"
+      ],
+      "cons": [
+        "Linux only",
+        "~950ms overhead per sandbox",
+        "May need root or CAP_SYS_ADMIN",
+        "Not all syscalls are implemented (some programs may fail)"
+      ]
+    },
+    "anthropic_srt": {
+      "description": "Anthropic srt (bwrap on Linux, sandbox-exec on macOS + network proxy)",
+      "status": "PASS",
+      "total_ms": 1688,
+      "init_ms": 1584,
+      "discovery_ms": 5,
+      "call_ms": 9,
+      "overhead_ms": 1158,
+      "overhead_pct": "218%",
+      "tools_found": 2,
+      "isolation_level": "namespace + network domain proxy",
+      "platform": "Linux, macOS",
+      "install": "npm install -g @anthropic-ai/sandbox-runtime",
+      "pros": [
+        "Cross-platform (Linux + macOS)",
+        "Network domain allowlisting (block all except specific domains)",
+        "Built by Anthropic for AI agent use cases",
+        "Uses native OS sandboxing (bwrap on Linux, sandbox-exec on macOS)"
+      ],
+      "cons": [
+        "Slowest lightweight option (~1158ms overhead)",
+        "Requires Node.js/npm",
+        "Requires ripgrep dependency on Linux",
+        "Relatively new, less battle-tested"
+      ]
+    },
+    "kata_containers": {
+      "description": "Kata Containers (Firecracker/Cloud Hypervisor microVM)",
+      "status": "SKIP — not installed, OCI-compatible so works with Docker --runtime=kata-runtime",
+      "total_ms": null,
+      "overhead_ms": null,
+      "isolation_level": "microVM (dedicated kernel via KVM)",
+      "platform": "Linux only (requires KVM)",
+      "install": "kata-containers.io",
+      "pros": [
+        "Strongest isolation (dedicated kernel per sandbox)",
+        "OCI-compatible — works as Docker runtime, no new code needed",
+        "Used in multi-tenant cloud environments"
+      ],
+      "cons": [
+        "Complex installation",
+        "Requires KVM/hardware virtualization",
+        "Higher overhead than containers (VM boot)",
+        "Linux only"
+      ]
+    },
+    "novavm": {
+      "description": "NovaVM KVM micro-VM (v0.1.0)",
+      "status": "FAIL — nova shell uses PTY/console, not piped stdin/stdout",
+      "total_ms": null,
+      "overhead_ms": null,
+      "isolation_level": "microVM (dedicated kernel via KVM)",
+      "platform": "Linux only",
+      "install": "github.com/harishsg993010/novaVM",
+      "incompatibility": "nova shell attaches to interactive console (PTY), corrupting JSON-RPC data. MCP SDK requires clean piped stdin/stdout."
+    },
+    "microsandbox": {
+      "description": "Microsandbox libkrun microVM",
+      "status": "SKIP — Python SDK on PyPI but requires running microsandbox server (beta)",
+      "total_ms": null,
+      "overhead_ms": null,
+      "isolation_level": "microVM (libkrun)",
+      "platform": "Linux, macOS (Apple Silicon)",
+      "install": "pip install microsandbox"
+    },
+    "e2b": {
+      "description": "E2B managed cloud sandbox (Firecracker microVM)",
+      "status": "NOT IMPLEMENTED — requires new provider + E2B API key",
+      "total_ms": null,
+      "overhead_ms": null,
+      "isolation_level": "microVM (dedicated kernel, cloud-hosted)",
+      "platform": "Any (cloud API)",
+      "install": "pip install e2b",
+      "notes": "Managed service, not self-hosted. Would need SDK-level transport bridge (create_sandboxed_transport pattern). See sandbox_walkthrough.md for required code changes."
+    }
+  },
+  "recommendation": {
+    "production_ready": ["docker", "bubblewrap", "gvisor", "anthropic_srt"],
+    "fastest": "bubblewrap — 573ms total, 43ms overhead, Linux only",
+    "most_portable": "docker — 1020ms total, works on Linux/macOS/Windows",
+    "strongest_self_hosted": "gvisor — 1474ms total, user-space kernel, Linux only",
+    "best_for_macos": "anthropic_srt — 1688ms total, works on macOS without Docker",
+    "strongest_overall": "kata_containers — dedicated kernel per sandbox via KVM (OCI-compatible, works as Docker runtime)",
+    "future_cloud": "e2b — managed Firecracker VMs, needs provider implementation"
+  }
+}

@@ -2,7 +2,7 @@
 
 import os
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Header, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
@@ -46,22 +46,56 @@ class ConfigRenameRequest(BaseModel):
     new_name: str
 
 
+class SandboxConfig(BaseModel):
+    """Per-server sandbox configuration (all fields optional, merged with global defaults)."""
+
+    enabled: Optional[bool] = None
+    runtime: Optional[str] = Field(None, description="docker | podman | bwrap | microsandbox | novavm")
+    image: Optional[str] = Field(None, description="Container image (Docker/Podman only)")
+    memory_limit: Optional[str] = Field(None, description="e.g. '512m', '1g'")
+    cpu_limit: Optional[str] = Field(None, description="e.g. '1.0', '2'")
+    pids_limit: Optional[int] = None
+    network: Optional[str] = Field(None, description="'none' = no network, 'host' = full network access, 'bridge' = Docker bridge (Docker only)")
+    read_only: Optional[bool] = None
+    allowed_env: Optional[List[str]] = Field(
+        None, description="Allowlist of env var names passed into the sandbox"
+    )
+    nova_api_url: Optional[str] = Field(None, description="NovaVM API endpoint")
+    nova_socket: Optional[str] = Field(None, description="NovaVM socket path")
+
+
+# Deny-list entry. Either a bare tool-name string (supports fnmatch globs)
+# or a dict with at least a ``name`` key.  We keep the alias permissive so
+# callers can mix-and-match in the same array.
+DenyToolEntry = Any
+
+
 class ServerAddRequest(BaseModel):
     server_name: str
     server_command: str
     server_args: Optional[List[str]] = None
     description: Optional[str] = None
+    sandbox: Optional[SandboxConfig] = None
+    denied_tools: Optional[List[DenyToolEntry]] = Field(
+        None,
+        description=(
+            "Tools to deny. Each entry is a tool-name string (supports fnmatch "
+            "globs like 'tool_a_*' or '*') or an object with 'name', 'reason', "
+            "and optional 'description' fields."
+        ),
+    )
 
 
 class ServerUpdateRequest(BaseModel):
     server_command: Optional[str] = None
     server_args: Optional[List[str]] = None
     description: Optional[str] = None
+    sandbox: Optional[SandboxConfig] = None
 
 
 class ServerGuardrailsRequest(BaseModel):
     enabled: bool = True
-    policy_name: Optional[str] = None
+    guardrail_name: Optional[str] = None
 
 
 class ConfigValidateRequest(BaseModel):
@@ -142,28 +176,44 @@ class SystemResetRequest(BaseModel):
     confirm: bool = False
 
 
+# MCP Health Check Models
+class MCPServerConfigBody(BaseModel):
+    command: str
+    args: List[str]
+    env: Optional[Dict[str, str]] = None
+
+
+class MCPServerRequest(BaseModel):
+    server_name: str
+    config: MCPServerConfigBody
+    description: Optional[str] = ""
+    sandbox: Optional[SandboxConfig] = Field(
+        None,
+        description=(
+            "Per-call sandbox override. Health endpoints sandbox by default "
+            "(enabled=True). Set 'enabled': false here to opt out, or override "
+            "runtime / resource limits for this single call."
+        ),
+    )
+
+
+class MCPToolRequest(MCPServerRequest):
+    tool_name: str
+    tool_args: Optional[Dict[str, Any]] = None
+
+
 # =============================================================================
 # AUTHENTICATION DEPENDENCY
 # =============================================================================
 
 
-def get_api_key(authorization: Optional[str] = Header(None)) -> str:
-    """Extract and validate admin API key from Authorization header."""
-    if not authorization:
+def get_api_key(apikey: Optional[str] = Header(None)) -> str:
+    """Extract and validate API key from the 'apikey' header (cloud-compatible)."""
+    if not apikey:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization header required",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="apikey header required",
         )
-
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization format. Use 'Bearer <api_key>'",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    api_key = authorization[7:]  # Remove "Bearer " prefix
 
     # Validate admin API key exists in config
     try:
@@ -176,14 +226,13 @@ def get_api_key(authorization: Optional[str] = Header(None)) -> str:
                 detail="Admin API key not configured. Please regenerate configuration.",
             )
 
-        if api_key != config["admin_apikey"]:
+        if apikey != config["admin_apikey"]:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid admin API key. Administrative operations require admin_apikey.",
-                headers={"WWW-Authenticate": "Bearer"},
+                detail="Invalid API key.",
             )
 
-        return api_key
+        return apikey
     except FileNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

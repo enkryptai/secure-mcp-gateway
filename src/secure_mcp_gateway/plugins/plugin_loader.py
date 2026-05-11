@@ -51,9 +51,19 @@ class PluginLoader:
             provider_name = plugin_config["provider"]
             provider_config = plugin_config.get("config", {})
 
-            # Map provider names to their classes
+            # Map provider names to their classes.
+            #
+            # The default fallback (when no provider is specified) is still
+            # ``LocalApiKeyProvider`` for backwards compatibility, but
+            # ``provider: "enkrypt"`` now explicitly resolves to the cloud-
+            # backed ``EnkryptAuthProvider`` introduced in v2.2 (see
+            # ``plugins/auth/enkrypt_provider.py``).
             provider_class_mapping = {
-                "enkrypt": PluginLoader.DEFAULT_PROVIDERS[plugin_type]["class"],
+                "enkrypt": (
+                    "secure_mcp_gateway.plugins.auth.enkrypt_provider.EnkryptAuthProvider"
+                    if plugin_type == "auth"
+                    else PluginLoader.DEFAULT_PROVIDERS[plugin_type]["class"]
+                ),
                 "local_apikey": "secure_mcp_gateway.plugins.auth.local_apikey_provider.LocalApiKeyProvider",
                 "otel": PluginLoader.DEFAULT_PROVIDERS["telemetry"]["class"],
                 "opentelemetry": PluginLoader.DEFAULT_PROVIDERS["telemetry"]["class"],

@@ -702,8 +702,8 @@ enkrypt gateway create-key --project myproject
 mcp_config = [{
     "server_name": "github",
     "tools": {"list_repos": {}, "create_issue": {}},  # Allowlist
-    "input_guardrails_policy": "production-policy",
-    "output_guardrails_policy": "production-policy"
+    "input_guardrails_config": "production-policy",
+    "output_guardrails_config": "production-policy"
 }]
 
 ```

@@ -27,7 +27,47 @@ from secure_mcp_gateway.plugins.guardrails.base import (
     ToolRegistrationRequest,
     ViolationType,
 )
+from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+    record_guardrail_api,
+    record_pii_redaction,
+)
 from secure_mcp_gateway.utils import logger
+
+
+async def _post_with_metrics(
+    url: str,
+    payload: dict,
+    headers: dict,
+    *,
+    direction: str,
+    check_kind: str,
+    provider: str = "enkrypt",
+) -> tuple[int, dict]:
+    """Send a POST and record guardrail-API metrics regardless of outcome.
+
+    Returns ``(status_code, parsed_json)``.  Network failures yield
+    ``(0, {"error": str(exc)})`` and still emit a metric (so failed external
+    calls show up in latency/throughput dashboards).
+    """
+    started = time.monotonic()
+    status_code = 0
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as response:
+                status_code = response.status
+                result = await response.json()
+        return status_code, result
+    except Exception as exc:
+        return 0, {"error": str(exc)}
+    finally:
+        duration_ms = (time.monotonic() - started) * 1000.0
+        record_guardrail_api(
+            direction=direction,
+            status_code=status_code,
+            duration_ms=duration_ms,
+            provider=provider,
+            check_kind=check_kind,
+        )
 
 
 class EnkryptInputGuardrail:
@@ -41,12 +81,12 @@ class EnkryptInputGuardrail:
         self.config = config
         self.api_key = api_key
         self.base_url = base_url
-        self.policy_name = config.get("policy_name", "")
+        self.guardrail_name = config.get("guardrail_name") or config.get("policy_name", "")
         self.block_list = config.get("block", [])
         self.additional_config = config.get("additional_config", {})
 
         # API endpoints
-        self.guardrail_url = f"{base_url}/guardrails/policy/detect"
+        self.guardrail_url = f"{base_url}/guardrails/guardrail/detect"
 
         # Debug mode
         self.debug = config.get("debug", False)
@@ -61,7 +101,7 @@ class EnkryptInputGuardrail:
             server_name=getattr(request, "server_name", None),
             tool_name=request.tool_name,
             additional_context={
-                "policy_name": self.policy_name,
+                "guardrail_name": self.guardrail_name,
                 "content_length": len(request.content),
             },
         )
@@ -71,7 +111,8 @@ class EnkryptInputGuardrail:
                 # Prepare payload
                 payload = {"text": request.content}
                 headers = {
-                    "X-Enkrypt-Policy": self.policy_name,
+                    "X-Enkrypt-Guardrail": self.guardrail_name,
+                    "X-Enkrypt-Mode": "prompt",
                     "apikey": self.api_key,
                     "Content-Type": "application/json",
                     "X-Enkrypt-Source-Name": "mcp-gateway",
@@ -80,16 +121,18 @@ class EnkryptInputGuardrail:
 
                 if self.debug:
                     logger.debug(
-                        f"[EnkryptInputGuardrail] Validating with policy: {self.policy_name}"
+                        f"[EnkryptInputGuardrail] Validating with guardrail: {self.guardrail_name}"
                     )
                     logger.debug(f"[EnkryptInputGuardrail] Payload: {payload}")
 
                 # Make API call
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        self.guardrail_url, json=payload, headers=headers
-                    ) as response:
-                        resp_json = await response.json()
+                _, resp_json = await _post_with_metrics(
+                    self.guardrail_url,
+                    payload,
+                    headers,
+                    direction="input",
+                    check_kind="guardrail",
+                )
 
                 if self.debug:
                     logger.debug(f"[EnkryptInputGuardrail] Response: {resp_json}")
@@ -161,7 +204,7 @@ class EnkryptInputGuardrail:
                     violations=violations,
                     modified_content=None,
                     metadata={
-                        "policy_name": self.policy_name,
+                        "guardrail_name": self.guardrail_name,
                         "enkrypt_response": resp_json,
                     },
                     processing_time_ms=processing_time_ms,
@@ -241,12 +284,12 @@ class EnkryptOutputGuardrail:
         self.config = config
         self.api_key = api_key
         self.base_url = base_url
-        self.policy_name = config.get("policy_name", "")
+        self.guardrail_name = config.get("guardrail_name") or config.get("policy_name", "")
         self.block_list = config.get("block", [])
         self.additional_config = config.get("additional_config", {})
 
         # API endpoints
-        self.guardrail_url = f"{base_url}/guardrails/policy/detect"
+        self.guardrail_url = f"{base_url}/guardrails/guardrail/detect"
         self.relevancy_url = f"{base_url}/guardrails/relevancy"
         self.adherence_url = f"{base_url}/guardrails/adherence"
         self.hallucination_url = f"{base_url}/guardrails/hallucination"
@@ -414,11 +457,12 @@ class EnkryptOutputGuardrail:
             )
 
     async def _check_policy(self, text: str) -> Dict[str, Any]:
-        """Check against policy using Enkrypt API."""
+        """Check against guardrail using Enkrypt API."""
         try:
             payload = {"text": text}
             headers = {
-                "X-Enkrypt-Policy": self.policy_name,
+                "X-Enkrypt-Guardrail": self.guardrail_name,
+                "X-Enkrypt-Mode": "response",
                 "apikey": self.api_key,
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
@@ -427,17 +471,19 @@ class EnkryptOutputGuardrail:
 
             if self.debug:
                 logger.debug(
-                    f"[EnkryptOutputGuardrail] Policy check for: {self.policy_name}"
+                    f"[EnkryptOutputGuardrail] Guardrail check for: {self.guardrail_name}"
                 )
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.guardrail_url, json=payload, headers=headers
-                ) as response:
-                    result = await response.json()
+            _, result = await _post_with_metrics(
+                self.guardrail_url,
+                payload,
+                headers,
+                direction="output",
+                check_kind="guardrail",
+            )
 
             if self.debug:
-                logger.debug(f"[EnkryptOutputGuardrail] Policy result: {result}")
+                logger.debug(f"[EnkryptOutputGuardrail] Guardrail result: {result}")
 
             return result
 
@@ -459,11 +505,13 @@ class EnkryptOutputGuardrail:
             if self.debug:
                 logger.debug("[EnkryptOutputGuardrail] Checking relevancy")
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.relevancy_url, json=payload, headers=headers
-                ) as response:
-                    result = await response.json()
+            _, result = await _post_with_metrics(
+                self.relevancy_url,
+                payload,
+                headers,
+                direction="output",
+                check_kind="relevancy",
+            )
 
             if self.debug:
                 logger.debug(f"[EnkryptOutputGuardrail] Relevancy result: {result}")
@@ -488,11 +536,13 @@ class EnkryptOutputGuardrail:
             if self.debug:
                 logger.debug("[EnkryptOutputGuardrail] Checking adherence")
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.adherence_url, json=payload, headers=headers
-                ) as response:
-                    result = await response.json()
+            _, result = await _post_with_metrics(
+                self.adherence_url,
+                payload,
+                headers,
+                direction="output",
+                check_kind="adherence",
+            )
 
             if self.debug:
                 logger.debug(f"[EnkryptOutputGuardrail] Adherence result: {result}")
@@ -523,11 +573,13 @@ class EnkryptOutputGuardrail:
             if self.debug:
                 logger.debug("[EnkryptOutputGuardrail] Checking hallucination")
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.hallucination_url, json=payload, headers=headers
-                ) as response:
-                    result = await response.json()
+            _, result = await _post_with_metrics(
+                self.hallucination_url,
+                payload,
+                headers,
+                direction="output",
+                check_kind="hallucination",
+            )
 
             if self.debug:
                 logger.debug(f"[EnkryptOutputGuardrail] Hallucination result: {result}")
@@ -588,11 +640,13 @@ class EnkryptPIIHandler:
                 "X-Enkrypt-Source-Event": "pii-detect",
             }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.pii_url, json=payload, headers=headers
-                ) as response:
-                    result = await response.json()
+            _, result = await _post_with_metrics(
+                self.pii_url,
+                payload,
+                headers,
+                direction="input",
+                check_kind="pii_detect",
+            )
 
             violations = []
 
@@ -628,14 +682,20 @@ class EnkryptPIIHandler:
                 "X-Enkrypt-Source-Event": "pii-redact",
             }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.pii_url, json=payload, headers=headers
-                ) as response:
-                    result = await response.json()
+            _, result = await _post_with_metrics(
+                self.pii_url,
+                payload,
+                headers,
+                direction="input",
+                check_kind="pii_redact",
+            )
 
             redacted_text = result.get("text", content)
             pii_key = result.get("key", "")
+
+            # If the text was actually changed, count it as a redaction event.
+            if redacted_text != content:
+                record_pii_redaction("input")
 
             return redacted_text, {"key": pii_key}
 
@@ -658,13 +718,18 @@ class EnkryptPIIHandler:
                 "X-Enkrypt-Source-Event": "pii-restore",
             }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.pii_url, json=payload, headers=headers
-                ) as response:
-                    result = await response.json()
+            _, result = await _post_with_metrics(
+                self.pii_url,
+                payload,
+                headers,
+                direction="output",
+                check_kind="pii_restore",
+            )
 
-            return result.get("text", content)
+            restored = result.get("text", content)
+            if restored != content:
+                record_pii_redaction("output")
+            return restored
 
         except Exception as e:
             logger.error(f"[EnkryptPIIHandler] PII restoration error: {e}")
@@ -722,7 +787,7 @@ class EnkryptServerRegistrationGuardrail:
     def _build_detectors(
         cls,
         block_list: List[str],
-        policy_name: Optional[str] = None,
+        guardrail_name: Optional[str] = None,
         context: str = "tool",
     ) -> Dict[str, Any]:
         """
@@ -732,7 +797,7 @@ class EnkryptServerRegistrationGuardrail:
 
         Args:
             block_list: List of detector names to enable (e.g. ["injection_attack", "nsfw"])
-            policy_name: Optional policy name for the policy_violation detector
+            guardrail_name: Optional guardrail name for the policy_violation detector
             context: Either "tool" or "server" - used for default policy_text
 
         Returns:
@@ -745,8 +810,8 @@ class EnkryptServerRegistrationGuardrail:
 
             # Set policy_text for policy_violation
             if detector_name == "policy_violation" and is_enabled:
-                if policy_name:
-                    config["policy_text"] = policy_name
+                if guardrail_name:
+                    config["policy_text"] = guardrail_name
                 else:
                     config["policy_text"] = (
                         f"Allow only safe {context}s to be registered for this MCP server "
@@ -814,8 +879,8 @@ class EnkryptServerRegistrationGuardrail:
                 )
                 logger.debug(f"[EnkryptServerRegistration] Text: {server_text}")
 
-            # Build detectors from tool_guardrails_policy (required since v2.1.7)
-            policy = getattr(request, "tool_guardrails_policy", None) or {}
+            # Build detectors from tool_guardrails_config (required since v2.1.7)
+            policy = getattr(request, "tool_guardrails_config", None) or {}
             block_list = policy.get("block", [])
 
             # If block list is empty, no blocking — monitor/log only
@@ -842,7 +907,7 @@ class EnkryptServerRegistrationGuardrail:
             else:
                 detectors = self._build_detectors(
                     block_list=block_list,
-                    policy_name=policy.get("policy_name"),
+                    guardrail_name=policy.get("guardrail_name") or policy.get("policy_name"),
                     context="server",
                 )
 
@@ -1044,8 +1109,8 @@ class EnkryptServerRegistrationGuardrail:
                     f"[EnkryptToolRegistration] Validating {len(texts)} tools for {request.server_name}"
                 )
 
-            # Build detectors from tool_guardrails_policy (required since v2.1.7)
-            policy = getattr(request, "tool_guardrails_policy", None) or {}
+            # Build detectors from tool_guardrails_config (required since v2.1.7)
+            policy = getattr(request, "tool_guardrails_config", None) or {}
             block_list = policy.get("block", [])
 
             # If block list is empty, no blocking — monitor/log only
@@ -1073,7 +1138,7 @@ class EnkryptServerRegistrationGuardrail:
             else:
                 detectors = self._build_detectors(
                     block_list=block_list,
-                    policy_name=policy.get("policy_name"),
+                    guardrail_name=policy.get("guardrail_name") or policy.get("policy_name"),
                     context="tool",
                 )
 
@@ -1526,14 +1591,13 @@ class EnkryptGuardrailProvider(GuardrailProvider):
     def validate_config(self, config: Dict[str, Any]) -> bool:
         """Validate Enkrypt configuration."""
         if config.get("enabled", False):
-            # Policy name is required when enabled
-            if not config.get("policy_name"):
+            if not (config.get("guardrail_name") or config.get("policy_name")):
                 return False
         return True
 
     def get_required_config_keys(self) -> List[str]:
         """Get required config keys."""
-        return ["enabled", "policy_name"]
+        return ["enabled", "guardrail_name"]
 
     async def validate_server_registration(
         self, request: ServerRegistrationRequest

@@ -1,6 +1,6 @@
 """Guardrail configuration manager."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from secure_mcp_gateway.plugins.guardrails.base import (
     GuardrailFactory,
@@ -34,10 +34,10 @@ class GuardrailConfigManager:
         # Load from config
         config = {
             "server_name": "github_server",
-            "input_guardrails_policy": {
+            "input_guardrails_config": {
                 "enabled": True,
                 "provider": "enkrypt",  # New field
-                "policy_name": "GitHub Policy",
+                "guardrail_name": "GitHub Policy",
                 "block": ["policy_violation"]
             }
         }
@@ -76,7 +76,7 @@ class GuardrailConfigManager:
         self,
         api_key: str,
         base_url: str = "https://api.enkryptai.com",
-        config: Dict[str, Any] = None,
+        config: dict[str, Any] = None,
     ) -> None:
         """
         Register the Enkrypt provider with credentials.
@@ -90,8 +90,8 @@ class GuardrailConfigManager:
         self.register_provider(enkrypt_provider)
 
     def get_input_guardrail(
-        self, server_config: Dict[str, Any]
-    ) -> Optional[InputGuardrail]:
+        self, server_config: dict[str, Any]
+    ) -> InputGuardrail | None:
         """
         Get input guardrail instance from server configuration.
 
@@ -101,7 +101,7 @@ class GuardrailConfigManager:
         Returns:
             InputGuardrail instance or None if not enabled
         """
-        policy_config = server_config.get("input_guardrails_policy", {})
+        policy_config = server_config.get("input_guardrails_config", {})
 
         if not policy_config.get("enabled", False):
             return None
@@ -118,8 +118,8 @@ class GuardrailConfigManager:
             return None
 
     def get_output_guardrail(
-        self, server_config: Dict[str, Any]
-    ) -> Optional[OutputGuardrail]:
+        self, server_config: dict[str, Any]
+    ) -> OutputGuardrail | None:
         """
         Get output guardrail instance from server configuration.
 
@@ -129,7 +129,7 @@ class GuardrailConfigManager:
         Returns:
             OutputGuardrail instance or None if not enabled
         """
-        policy_config = server_config.get("output_guardrails_policy", {})
+        policy_config = server_config.get("output_guardrails_config", {})
 
         if not policy_config.get("enabled", False):
             return None
@@ -145,7 +145,7 @@ class GuardrailConfigManager:
             )
             return None
 
-    def get_pii_handler(self, server_config: Dict[str, Any]) -> Optional[PIIHandler]:
+    def get_pii_handler(self, server_config: dict[str, Any]) -> PIIHandler | None:
         """
         Get PII handler instance from server configuration.
 
@@ -155,7 +155,7 @@ class GuardrailConfigManager:
         Returns:
             PIIHandler instance or None if not enabled
         """
-        input_policy = server_config.get("input_guardrails_policy", {})
+        input_policy = server_config.get("input_guardrails_config", {})
         additional_config = input_policy.get("additional_config", {})
 
         if not additional_config.get("pii_redaction", False):
@@ -169,7 +169,7 @@ class GuardrailConfigManager:
             logger.error(f"[GuardrailConfigManager] Error creating PII handler: {e}")
             return None
 
-    def list_providers(self) -> List[str]:
+    def list_providers(self) -> list[str]:
         """
         Get list of registered provider names.
 
@@ -178,7 +178,7 @@ class GuardrailConfigManager:
         """
         return self.registry.list_providers()
 
-    def get_provider_metadata(self, provider_name: str) -> Optional[Dict[str, Any]]:
+    def get_provider_metadata(self, provider_name: str) -> dict[str, Any] | None:
         """
         Get metadata for a specific provider.
 
@@ -193,7 +193,7 @@ class GuardrailConfigManager:
             return provider.get_metadata()
         return None
 
-    def get_all_providers_metadata(self) -> Dict[str, Dict[str, Any]]:
+    def get_all_providers_metadata(self) -> dict[str, dict[str, Any]]:
         """
         Get metadata for all registered providers.
 
@@ -209,8 +209,8 @@ class GuardrailConfigManager:
         return metadata
 
     async def validate_server_registration(
-        self, server_name: str, server_config: Dict[str, Any]
-    ) -> Optional[Any]:  # GuardrailResponse
+        self, server_name: str, server_config: dict[str, Any]
+    ) -> Any | None:  # GuardrailResponse
         """
         Validate a server during registration/discovery.
 
@@ -228,8 +228,8 @@ class GuardrailConfigManager:
         if not provider:
             return None
 
-        # Extract tool_guardrails_policy from server_config to pass through
-        tool_guardrails_policy = server_config.get("tool_guardrails_policy")
+        # Extract tool_guardrails_config from server_config to pass through
+        tool_guardrails_config = server_config.get("tool_guardrails_config")
 
         request = ServerRegistrationRequest(
             server_name=server_name,
@@ -237,7 +237,7 @@ class GuardrailConfigManager:
             server_description=server_config.get("description"),
             server_command=server_config.get("command"),
             server_metadata=server_config,
-            tool_guardrails_policy=tool_guardrails_policy,
+            tool_guardrails_config=tool_guardrails_config,
         )
 
         return await provider.validate_server_registration(request)
@@ -245,10 +245,10 @@ class GuardrailConfigManager:
     async def validate_tool_registration(
         self,
         server_name: str,
-        tools: List[Dict[str, Any]],
+        tools: list[dict[str, Any]],
         mode: str = "filter",
-        tool_guardrails_policy: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Any]:  # GuardrailResponse
+        tool_guardrails_config: dict[str, Any] | None = None,
+    ) -> Any | None:  # GuardrailResponse
         """
         Validate and filter tools during discovery.
 
@@ -256,8 +256,8 @@ class GuardrailConfigManager:
             server_name: Name of the server
             tools: List of tool dictionaries
             mode: "filter" to filter unsafe tools, "block_all" to block if any unsafe
-            tool_guardrails_policy: Optional per-server tool guardrails policy with
-                "block" list and "policy_name"
+            tool_guardrails_config: Optional per-server tool guardrails config with
+                "block" list and "guardrail_name"
 
         Returns:
             GuardrailResponse or None if no provider supports registration
@@ -274,7 +274,7 @@ class GuardrailConfigManager:
             server_name=server_name,
             tools=tools,
             validation_mode=mode,
-            tool_guardrails_policy=tool_guardrails_policy,
+            tool_guardrails_config=tool_guardrails_config,
         )
 
         return await provider.validate_tool_registration(request)
@@ -285,7 +285,7 @@ class GuardrailConfigManager:
 # ============================================================================
 
 
-def get_guardrail_config_schema() -> Dict[str, Any]:
+def get_guardrail_config_schema() -> dict[str, Any]:
     """
     Get the JSON schema for guardrail configuration.
 
@@ -303,7 +303,7 @@ def get_guardrail_config_schema() -> Dict[str, Any]:
                 "description": "Guardrail provider name (e.g., 'enkrypt', 'openai-moderation')",
                 "default": "enkrypt",
             },
-            "policy_name": {
+            "guardrail_name": {
                 "type": "string",
                 "description": "Name of the guardrail policy",
             },
@@ -327,7 +327,7 @@ def get_guardrail_config_schema() -> Dict[str, Any]:
     }
 
 
-def validate_guardrail_config(config: Dict[str, Any]) -> tuple[bool, Optional[str]]:
+def validate_guardrail_config(config: dict[str, Any]) -> tuple[bool, str | None]:
     """
     Validate guardrail configuration.
 
@@ -346,11 +346,14 @@ def validate_guardrail_config(config: Dict[str, Any]) -> tuple[bool, Optional[st
     if not isinstance(config["enabled"], bool):
         return False, "'enabled' must be a boolean"
 
-    if config.get("enabled") and not config.get("policy_name"):
-        # Some providers might not need policy_name
+    if config.get("enabled") and not (
+        config.get("guardrail_name") or config.get("policy_name")
+    ):
         provider = config.get("provider", "enkrypt")
-        if provider == "enkrypt" and not config.get("policy_name"):
-            return False, "Enkrypt provider requires 'policy_name' when enabled"
+        if provider == "enkrypt" and not (
+            config.get("guardrail_name") or config.get("policy_name")
+        ):
+            return False, "Enkrypt provider requires 'guardrail_name' when enabled"
 
     return True, None
 
@@ -360,7 +363,7 @@ def validate_guardrail_config(config: Dict[str, Any]) -> tuple[bool, Optional[st
 # ============================================================================
 
 
-def migrate_legacy_config(server_config: Dict[str, Any]) -> Dict[str, Any]:
+def migrate_legacy_config(server_config: dict[str, Any]) -> dict[str, Any]:
     """
     Migrate legacy guardrail configuration to new format.
 
@@ -376,14 +379,14 @@ def migrate_legacy_config(server_config: Dict[str, Any]) -> Dict[str, Any]:
     migrated = server_config.copy()
 
     # Migrate input guardrails
-    if "input_guardrails_policy" in migrated:
-        input_policy = migrated["input_guardrails_policy"]
+    if "input_guardrails_config" in migrated:
+        input_policy = migrated["input_guardrails_config"]
         if "provider" not in input_policy:
             input_policy["provider"] = "enkrypt"
 
     # Migrate output guardrails
-    if "output_guardrails_policy" in migrated:
-        output_policy = migrated["output_guardrails_policy"]
+    if "output_guardrails_config" in migrated:
+        output_policy = migrated["output_guardrails_config"]
         if "provider" not in output_policy:
             output_policy["provider"] = "enkrypt"
 
@@ -395,7 +398,7 @@ def migrate_legacy_config(server_config: Dict[str, Any]) -> Dict[str, Any]:
 # ============================================================================
 
 # Singleton instance for global access
-_guardrail_config_manager: Optional[GuardrailConfigManager] = None
+_guardrail_config_manager: GuardrailConfigManager | None = None
 
 
 def get_guardrail_config_manager() -> GuardrailConfigManager:

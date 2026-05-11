@@ -105,11 +105,24 @@ class AuthConfigManager:
 
             credentials.headers = mask_sensitive_headers(dict(headers))
 
-        # Fallback to environment variables
+        # Fallback to environment variables.
+        #
+        # ``ENKRYPT_APIKEY`` is the cloud-auth env var emitted by
+        # ``secure-mcp-gateway install ... --apikey <key>`` when the gateway
+        # is configured with ``auth.provider: "enkrypt"``. We check it first
+        # so cloud-mode stdio installs (Claude Desktop / Cursor / Claude
+        # Code) work without callers also having to set the legacy
+        # ``ENKRYPT_GATEWAY_KEY``. Both are honored to keep local-mode
+        # installs unchanged.
         import os
 
         if not credentials.gateway_key:
-            credentials.gateway_key = os.environ.get("ENKRYPT_GATEWAY_KEY")
+            credentials.gateway_key = (
+                os.environ.get("ENKRYPT_APIKEY")
+                or os.environ.get("ENKRYPT_GATEWAY_KEY")
+            )
+        if not credentials.api_key:
+            credentials.api_key = os.environ.get("ENKRYPT_APIKEY")
         if not credentials.project_id:
             credentials.project_id = os.environ.get("ENKRYPT_PROJECT_ID")
         if not credentials.user_id:
@@ -372,8 +385,22 @@ class AuthConfigManager:
     ) -> str:
         """
         Backward-compatible method for creating session keys.
+
+        Any ``None`` / empty component is coerced to ``"not_provided"`` so the
+        key produced here matches the one built by service-layer call sites
+        (which already coerce via ``credentials.get(k) or "not_provided"``).
+        Without this coercion, cloud-auth requests (which send no
+        ``project_id`` / ``user_id`` headers) would store the session under
+        ``..._None_None_...`` while the lookup site uses
+        ``..._not_provided_not_provided_...`` and every cached-session lookup
+        would raise ``Session not found``.
         """
-        return f"{gateway_key}_{project_id}_{user_id}_{mcp_config_id}"
+        return (
+            f"{gateway_key or 'not_provided'}"
+            f"_{project_id or 'not_provided'}"
+            f"_{user_id or 'not_provided'}"
+            f"_{mcp_config_id or 'not_provided'}"
+        )
 
     def is_session_authenticated(self, session_key: str) -> bool:
         """

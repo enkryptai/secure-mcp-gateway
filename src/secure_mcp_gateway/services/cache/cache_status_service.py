@@ -23,6 +23,7 @@ from secure_mcp_gateway.exceptions import (
     create_auth_error,
     create_configuration_error,
 )
+from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes, SpanNames
 from secure_mcp_gateway.utils import (
     IS_DEBUG_LOG_LEVEL,
     build_log_extra,
@@ -67,12 +68,12 @@ class CacheStatusService:
                 - status: Success/error status
                 - cache_status: Detailed cache statistics and status
         """
-        with tracer.start_as_current_span("cache_status.get_cache_status") as main_span:
+        with tracer.start_as_current_span(SpanNames.CACHE_STATUS) as main_span:
             try:
                 logger.info("[get_cache_status] Request received")
                 custom_id = generate_custom_id()
-                main_span.set_attribute("request_id", ctx.request_id)
-                main_span.set_attribute("custom_id", custom_id)
+                main_span.set_attribute(SpanAttributes.REQUEST_ID, ctx.request_id)
+                main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
 
                 # Authentication and setup
                 auth_result = await self._authenticate_and_setup(
@@ -100,7 +101,7 @@ class CacheStatusService:
                 )
 
                 # Set final span attributes
-                main_span.set_attribute("success", True)
+                main_span.set_attribute(SpanAttributes.SUCCESS, True)
 
                 logger.debug(
                     f"[get_cache_status] Returning cache status for Gateway or User {id}"
@@ -109,7 +110,7 @@ class CacheStatusService:
 
             except Exception as e:
                 main_span.record_exception(e)
-                main_span.set_attribute("error", str(e))
+                main_span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
                 logger.error(f"[get_cache_status] Critical error: {e}")
                 logger.error(
                     "cache_status.get_cache_status.critical_error",
@@ -119,11 +120,14 @@ class CacheStatusService:
 
     async def _authenticate_and_setup(self, ctx, custom_id, main_span, logger):
         """Handle authentication and setup for cache status operations."""
-        with tracer.start_as_current_span("cache_status.authenticate") as auth_span:
+        with tracer.start_as_current_span(SpanNames.CACHE_STATUS_AUTH) as auth_span:
             credentials = self.auth_manager.get_gateway_credentials(ctx)
-            enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
-            enkrypt_project_id = credentials.get("project_id", "not_provided")
-            enkrypt_user_id = credentials.get("user_id", "not_provided")
+            # See discovery_service.py for the rationale: ``or`` so a
+            # ``None`` credential value is coerced to ``"not_provided"``
+            # (cloud-auth MCP clients don't send project_id/user_id headers).
+            enkrypt_gateway_key = credentials.get("gateway_key") or "not_provided"
+            enkrypt_project_id = credentials.get("project_id") or "not_provided"
+            enkrypt_user_id = credentials.get("user_id") or "not_provided"
 
             gateway_config = await self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
@@ -149,17 +153,25 @@ class CacheStatusService:
             enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
 
             # Set span attributes
-            auth_span.set_attribute("gateway_key", mask_key(enkrypt_gateway_key))
-            auth_span.set_attribute("enkrypt_project_id", enkrypt_project_id)
-            auth_span.set_attribute("enkrypt_user_id", enkrypt_user_id)
-            auth_span.set_attribute("enkrypt_mcp_config_id", enkrypt_mcp_config_id)
-            auth_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
-            auth_span.set_attribute("enkrypt_email", enkrypt_email)
+            auth_span.set_attribute(SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key))
+            auth_span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
+            auth_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
+            auth_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
+            auth_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            auth_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
 
-            session_key = f"{credentials.get('gateway_key')}_{credentials.get('project_id')}_{credentials.get('user_id')}_{enkrypt_mcp_config_id}"
+            # Funnel through ``create_session_key`` so a ``None`` credential
+            # field (cloud-auth requests omit project_id/user_id headers) is
+            # canonicalized to the same string the store side produces.
+            session_key = self.auth_manager.create_session_key(
+                credentials.get("gateway_key"),
+                credentials.get("project_id"),
+                credentials.get("user_id"),
+                enkrypt_mcp_config_id,
+            )
 
             if not self.auth_manager.is_session_authenticated(session_key):
-                auth_span.set_attribute("requires_auth", True)
+                auth_span.set_attribute(SpanAttributes.REQUIRES_AUTH, True)
                 from secure_mcp_gateway.gateway import enkrypt_authenticate
 
                 result = await enkrypt_authenticate(ctx)
@@ -169,7 +181,7 @@ class CacheStatusService:
                     detail = f"Authentication failed: {auth_msg}"
                     if auth_err and auth_err != auth_msg:
                         detail += f" ({auth_err})"
-                    auth_span.set_attribute("error", detail)
+                    auth_span.set_attribute(SpanAttributes.ERROR_MESSAGE, detail)
                     logger.error(f"[get_cache_status] {detail}")
                     logger.error(
                         "cache_status.get_cache_status.not_authenticated",
@@ -188,10 +200,10 @@ class CacheStatusService:
                     )
                     return create_error_response(err)
             else:
-                auth_span.set_attribute("requires_auth", False)
+                auth_span.set_attribute(SpanAttributes.REQUIRES_AUTH, False)
 
             id = self.auth_manager.get_session_gateway_config(session_key)["id"]
-            main_span.set_attribute("gateway_id", id)
+            main_span.set_attribute(SpanAttributes.CUSTOM_ID, id)
 
             return {
                 "status": "success",
@@ -202,7 +214,7 @@ class CacheStatusService:
     async def _get_cache_statistics(self, ctx, custom_id, main_span, logger):
         """Get global cache statistics."""
         with tracer.start_as_current_span(
-            "cache_status.get_cache_statistics"
+            SpanNames.CACHE_STATUS_GLOBAL
         ) as stats_span:
             logger.info("[get_cache_status] Getting cache statistics")
             stats = self.cache_service.get_cache_statistics()
@@ -237,9 +249,9 @@ class CacheStatusService:
     ):
         """Check gateway config cache status."""
         with tracer.start_as_current_span(
-            "cache_status.check_gateway_config_cache"
+            SpanNames.CACHE_STATUS_CONFIG
         ) as config_span:
-            config_span.set_attribute("gateway_id", id)
+            config_span.set_attribute(SpanAttributes.CUSTOM_ID, id)
 
             logger.info(
                 f"[get_cache_status] Getting gateway config for Gateway or User {id}"
@@ -281,7 +293,7 @@ class CacheStatusService:
                     else:
                         expires_at = None
 
-                config_span.set_attribute("cache_hit", True)
+                config_span.set_attribute(SpanAttributes.CACHE_HIT, True)
                 config_span.set_attribute("expires_at", expires_at)
                 if expires_at:
                     config_span.set_attribute(
@@ -316,7 +328,7 @@ class CacheStatusService:
 
                 telemetry_mgr = get_telemetry_config_manager()
                 telemetry_mgr.cache_miss_counter.add(1, attributes=build_log_extra(ctx))
-                config_span.set_attribute("cache_hit", False)
+                config_span.set_attribute(SpanAttributes.CACHE_HIT, False)
 
                 logger.debug(
                     f"[get_cache_status] No cached gateway config found for {id}"
@@ -338,7 +350,7 @@ class CacheStatusService:
     ):
         """Check server tools cache status."""
         with tracer.start_as_current_span(
-            "cache_status.check_server_tools_cache"
+            SpanNames.CACHE_STATUS_SERVERS
         ) as servers_span:
             logger.debug("[get_cache_status] Getting server cache status")
             logger.info(
@@ -349,7 +361,7 @@ class CacheStatusService:
             mcp_config = self.auth_manager.get_session_gateway_config(session_key).get(
                 "mcp_config", []
             )
-            servers_span.set_attribute("total_servers", len(mcp_config))
+            servers_span.set_attribute(SpanAttributes.TOTAL_SERVERS, len(mcp_config))
 
             if IS_DEBUG_LOG_LEVEL:
                 # Mask sensitive data in debug logs
@@ -370,7 +382,7 @@ class CacheStatusService:
 
             # Get local gateway config for tool definitions
             credentials = self.auth_manager.get_gateway_credentials(ctx)
-            enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
+            enkrypt_gateway_key = credentials.get("gateway_key") or "not_provided"
             local_gateway_config = await self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key
             )
@@ -414,8 +426,8 @@ class CacheStatusService:
                 if server_result["needs_discovery"]:
                     servers_need_discovery += 1
 
-            servers_span.set_attribute("cached_servers", cached_servers)
-            servers_span.set_attribute("servers_need_discovery", servers_need_discovery)
+            servers_span.set_attribute(SpanAttributes.CACHED_SERVERS, cached_servers)
+            servers_span.set_attribute(SpanAttributes.SERVERS_NEED_DISCOVERY, servers_need_discovery)
 
             cache_status["gateway_specific"]["tools"] = {
                 "server_count": len(servers_cache),
@@ -423,52 +435,49 @@ class CacheStatusService:
             }
 
             # Set final span attributes
-            main_span.set_attribute("total_servers", len(mcp_config))
-            main_span.set_attribute("cached_servers", cached_servers)
-            main_span.set_attribute("servers_need_discovery", servers_need_discovery)
+            main_span.set_attribute(SpanAttributes.TOTAL_SERVERS, len(mcp_config))
+            main_span.set_attribute(SpanAttributes.CACHED_SERVERS, cached_servers)
+            main_span.set_attribute(SpanAttributes.SERVERS_NEED_DISCOVERY, servers_need_discovery)
 
     async def _check_single_server_cache(
         self, ctx, custom_id, id, server_name, local_gateway_config, parent_span
     ):
         """Check cache status for a single server."""
         with tracer.start_as_current_span(
-            f"cache_status.check_server_cache_{server_name}"
+            SpanNames.CACHE_STATUS_SERVER
         ) as server_span:
-            server_span.set_attribute("server_name", server_name)
-            server_span.set_attribute("gateway_id", id)
+            server_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            server_span.set_attribute(SpanAttributes.CUSTOM_ID, id)
 
             if IS_DEBUG_LOG_LEVEL:
                 logger.debug(
                     f"[get_cache_status] Getting tool cache for server: {server_name}"
                 )
 
-            cached_result = self.cache_service.get_cached_tools(id, server_name)
+            cached_result = self.cache_service.get_cached_tools_with_expiry(
+                id, server_name
+            )
             if IS_DEBUG_LOG_LEVEL:
                 logger.debug(f"[get_cache_status] Cached result: {cached_result}")
 
             if cached_result:
-                # Handle both tuple (local cache) and non-tuple (external cache) returns
-                if isinstance(cached_result, tuple) and len(cached_result) == 2:
-                    tools, expires_at = cached_result
-                else:
-                    # External cache returns just the tools data - query TTL from Redis
-                    tools = cached_result
-                    if ENKRYPT_MCP_USE_EXTERNAL_CACHE:
-                        # Get the hashed key for the server tools
-                        tools_key = self.cache_service.get_server_hashed_key(
-                            id, server_name
+                tools, expires_at = cached_result
+                # Local cache provides ``expires_at`` directly; external cache
+                # doesn't surface it through the client wrapper, so query Redis
+                # for the TTL when running with the external cache enabled.
+                if expires_at is None and ENKRYPT_MCP_USE_EXTERNAL_CACHE:
+                    tools_key = self.cache_service.get_server_hashed_key(
+                        id, server_name
+                    )
+                    ttl_seconds, expires_at = self.cache_service.get_redis_ttl(
+                        tools_key
+                    )
+                    if IS_DEBUG_LOG_LEVEL:
+                        logger.debug(
+                            f"[get_cache_status] Redis TTL for {server_name}: ttl_seconds={ttl_seconds}, expires_at={expires_at}"
                         )
-                        ttl_seconds, expires_at = self.cache_service.get_redis_ttl(
-                            tools_key
-                        )
-                        if IS_DEBUG_LOG_LEVEL:
-                            logger.debug(
-                                f"[get_cache_status] Redis TTL for {server_name}: ttl_seconds={ttl_seconds}, expires_at={expires_at}"
-                            )
-                    else:
-                        expires_at = None
 
-                server_span.set_attribute("cache_hit", True)
+                server_span.set_attribute(SpanAttributes.CACHE_HIT, True)
                 server_span.set_attribute("expires_at", expires_at)
                 if expires_at:
                     server_span.set_attribute(
@@ -492,7 +501,7 @@ class CacheStatusService:
                     "is_expired": False,
                 }
             else:
-                server_span.set_attribute("cache_hit", False)
+                server_span.set_attribute(SpanAttributes.CACHE_HIT, False)
                 needs_discovery = True
                 are_tools_explicitly_defined = False
                 explicit_tool_count = 0

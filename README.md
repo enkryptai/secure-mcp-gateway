@@ -40,14 +40,15 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 - [10. (Optional) Protect GitHub MCP Server and Test Echo Server 🔒](#10-optional-protect-github-mcp-server-and-test-echo-server)
 - [11. Recommendations for using Guardrails 💡](#11-recommendations-for-using-guardrails)
 - [12. Other tools available 🔧](#12-other-tools-available)
-- [13. Deployment Patterns 🪂](#13-deployment-patterns)
-- [14. Uninstall the Gateway 🗑️](#14-uninstall-the-gateway)
-- [15. Troubleshooting 🕵](#15-troubleshooting)
-- [16. Known Issues being worked on 🏗️](#16-known-issues-being-worked-on)
-- [17. Known Limitations ⚠️](#17-known-limitations)
-- [18. Contribute 🤝](#18-contribute)
-- [19. Testing 🧪](#19-testing)
-- [20. License](#20-license)
+- [13. (Optional) Sandbox Isolation 🛡️](#13-optional-sandbox-isolation)
+- [14. Deployment Patterns 🪂](#14-deployment-patterns)
+- [15. Uninstall the Gateway 🗑️](#15-uninstall-the-gateway)
+- [16. Troubleshooting 🕵](#16-troubleshooting)
+- [17. Known Issues being worked on 🏗️](#17-known-issues-being-worked-on)
+- [18. Known Limitations ⚠️](#18-known-limitations)
+- [19. Contribute 🤝](#19-contribute)
+- [20. Testing 🧪](#20-testing)
+- [21. License](#21-license)
 
 ## 1. Features
 
@@ -68,6 +69,8 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 6. **Guardrails**: You can configure guardrails for each MCP server in Enkrypt both on input side (before sending the request to the MCP server) and output side (after receiving the response from the MCP server)
 
 7. **Logging**: We log every request and response from the Gateway locally in your MCP logs and also forward them to Enkrypt *(Coming soon)* for monitoring. This enables you to see all the calls made in your account, servers used, tools invoked, requests blocked, etc.
+
+8. **Sandbox Isolation**: MCP servers can be launched inside isolated sandbox environments (Docker, Podman, or microVMs) so that a compromised or malicious server cannot access the host filesystem, network, or other resources. Each sandbox is ephemeral — created per session and destroyed when done.
 
 ### 1.1 Guardrails
 
@@ -374,9 +377,9 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
             ]
           },
           "tools": {},
-          "input_guardrails_policy": {
+          "input_guardrails_config": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "pii_redaction": false
             },
@@ -384,9 +387,9 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
               "policy_violation"
             ]
           },
-          "output_guardrails_policy": {
+          "output_guardrails_config": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "relevancy": false,
               "hallucination": false,
@@ -472,9 +475,9 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
             ]
           },
           "tools": {},
-          "input_guardrails_policy": {
+          "input_guardrails_config": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "pii_redaction": false
             },
@@ -482,9 +485,9 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
               "policy_violation"
             ]
           },
-          "output_guardrails_policy": {
+          "output_guardrails_config": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "relevancy": false,
               "hallucination": false,
@@ -1160,9 +1163,9 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
             ]
           },
           "tools": {},
-          "input_guardrails_policy": {
+          "input_guardrails_config": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "pii_redaction": false
             },
@@ -1170,9 +1173,9 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
               "policy_violation"
             ]
           },
-          "output_guardrails_policy": {
+          "output_guardrails_config": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "relevancy": false,
               "hallucination": false,
@@ -1956,9 +1959,9 @@ The observability stack includes:
               ]
             },
             "tools": {},
-            "input_guardrails_policy": {
+            "input_guardrails_config": {
               "enabled": false,
-              "policy_name": "Sample Airline Guardrail",
+              "guardrail_name": "Sample Airline Guardrail",
               "additional_config": {
                 "pii_redaction": false
               },
@@ -1966,9 +1969,9 @@ The observability stack includes:
                 "policy_violation"
               ]
             },
-            "output_guardrails_policy": {
+            "output_guardrails_config": {
               "enabled": false,
-              "policy_name": "Sample Airline Guardrail",
+              "guardrail_name": "Sample Airline Guardrail",
               "additional_config": {
                 "relevancy": false,
                 "hallucination": false,
@@ -2079,8 +2082,8 @@ The observability stack includes:
                 "tools": {},
                 "enable_server_info_validation": false,
                 "enable_tool_guardrails": false,
-                "input_guardrails_policy": {...},
-                "output_guardrails_policy": {...}
+                "input_guardrails_config": {...},
+                "output_guardrails_config": {...}
               },
               {
                 "server_name": "MCP_SERVER_NAME_2",
@@ -2089,8 +2092,8 @@ The observability stack includes:
                 "tools": {},
                 "enable_server_info_validation": false,
                 "enable_tool_guardrails": false,
-                "input_guardrails_policy": {...},
-                "output_guardrails_policy": {...}
+                "input_guardrails_config": {...},
+                "output_guardrails_config": {...}
               }
             ]
           },
@@ -2202,9 +2205,9 @@ The observability stack includes:
 
 - **Inside each MCP server config, you can set the following:**
 
-  - `input_guardrails_policy`: Use this if we plan to use Enkrypt Guardrails on input side
+  - `input_guardrails_config`: Use this if we plan to use Enkrypt Guardrails on input side
 
-  - `policy_name`: Name of the guardrails policy that you have created in the Enkrypt App or using the API/SDK
+  - `guardrail_name`: Name of the guardrails policy that you have created in the Enkrypt App or using the API/SDK
 
   - `enabled`: Whether to enable guardrails on the input side or not. This is `false` in the example config file
 
@@ -2224,9 +2227,9 @@ The observability stack includes:
 
       - This is similar to our AI Proxy deployments config. [Refer to our docs](https://docs.enkryptai.com/deployments-api-reference/endpoint/add-deployment#body-input-guardrails-policy-block)
 
-- `output_guardrails_policy`: Use this if we plan to use Enkrypt Guardrails on output side
+- `output_guardrails_config`: Use this if we plan to use Enkrypt Guardrails on output side
 
-  - `policy_name`: Name of the guardrails policy that you have created in the Enkrypt App or using the API/SDK
+  - `guardrail_name`: Name of the guardrails policy that you have created in the Enkrypt App or using the API/SDK
 
   - `enabled`: Whether to enable guardrails on the output side or not. This is `false` in the example config file
 
@@ -2758,8 +2761,8 @@ secure-mcp-gateway --docker system health-check
           "description": "Simple Echo Server",
           "config": {...},
           "tools": {},
-          "input_guardrails_policy": {...},
-          "output_guardrails_policy": {...}
+          "input_guardrails_config": {...},
+          "output_guardrails_config": {...}
         },
         {
           "server_name": "github_server",
@@ -2781,9 +2784,9 @@ secure-mcp-gateway --docker system health-check
           "tools": {},
           "enable_server_info_validation": false,
           "enable_tool_guardrails": false,
-          "input_guardrails_policy": {
+          "input_guardrails_config": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "pii_redaction": false
             },
@@ -2791,9 +2794,9 @@ secure-mcp-gateway --docker system health-check
               "policy_violation"
             ]
           },
-          "output_guardrails_policy": {
+          "output_guardrails_config": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "relevancy": false,
               "hallucination": false,
@@ -2850,9 +2853,9 @@ If you're running the Enkrypt Gateway in Docker or prefer not to use Docker-in-D
   "tools": {},
   "enable_server_info_validation": false,
   "enable_tool_guardrails": false,
-  "input_guardrails_policy": {
+  "input_guardrails_config": {
     "enabled": false,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "additional_config": {
       "pii_redaction": false
     },
@@ -2860,9 +2863,9 @@ If you're running the Enkrypt Gateway in Docker or prefer not to use Docker-in-D
       "policy_violation"
     ]
   },
-  "output_guardrails_policy": {
+  "output_guardrails_config": {
     "enabled": false,
-    "policy_name": "Sample Airline Guardrail",
+    "guardrail_name": "Sample Airline Guardrail",
     "additional_config": {
       "relevancy": false,
       "hallucination": false,
@@ -2942,10 +2945,10 @@ For machine-to-machine authentication, use the Client Credentials flow:
   "tools": {},
   "enable_server_info_validation": false,
   "enable_tool_guardrails": false,
-  "input_guardrails_policy": {
+  "input_guardrails_config": {
     "enabled": false
   },
-  "output_guardrails_policy": {
+  "output_guardrails_config": {
     "enabled": false
   }
 }
@@ -3079,10 +3082,10 @@ If you want to use a remote callback URL (professional, branded experience):
    ```bash
    # Quick start with Python
    python host_oauth_callback.py
-   
+
    # Or with Docker
    docker-compose -f docker-compose.oauth-callback.yml up -d
-   
+
    # Or deploy oauth_callback.html to any static hosting
    # (GitHub Pages, Vercel, Netlify, AWS S3, etc.)
    ```
@@ -3170,10 +3173,10 @@ Add this configuration to your `enkrypt_mcp_config.json` in the `mcp_config` arr
   "tools": {},
   "enable_server_info_validation": false,
   "enable_tool_guardrails": false,
-  "input_guardrails_policy": {
+  "input_guardrails_config": {
     "enabled": false
   },
-  "output_guardrails_policy": {
+  "output_guardrails_config": {
     "enabled": false
   }
 }
@@ -3451,13 +3454,13 @@ Enforce strict context boundaries across repositories.
 
 - Inside the **`GitHub`** server block we added in the previous section,
 
-  - Add the newly created Guardrail `GitHub Guardrail` to the `input_guardrails_policy` and `output_guardrails_policy` sections
+  - Add the newly created Guardrail `GitHub Guardrail` to the `input_guardrails_config` and `output_guardrails_config` sections
 
-  - By replacing `"policy_name": "Sample Airline Guardrail"` with `"policy_name": "GitHub Guardrail"`
+  - By replacing `"guardrail_name": "Sample Airline Guardrail"` with `"guardrail_name": "GitHub Guardrail"`
 
-  - Now change `enabled` to `true` for `input_guardrails_policy` from previous `false`
+  - Now change `enabled` to `true` for `input_guardrails_config` from previous `false`
 
-    - We will leave `output_guardrails_policy` as `false` for now
+    - We will leave `output_guardrails_config` as `false` for now
 
   - We already should have `policy_violation` in the `block` array for both policies
 
@@ -3498,17 +3501,17 @@ Enforce strict context boundaries across repositories.
             "tools": {},
             "enable_server_info_validation": false,
             "enable_tool_guardrails": false,
-            "input_guardrails_policy": {
+            "input_guardrails_config": {
               "enabled": true,
-              "policy_name": "GitHub Guardrail",
+              "guardrail_name": "GitHub Guardrail",
               "additional_config": {
                 "pii_redaction": false
               },
               "block": ["policy_violation"]
             },
-            "output_guardrails_policy": {
+            "output_guardrails_config": {
               "enabled": false,
-              "policy_name": "GitHub Guardrail",
+              "guardrail_name": "GitHub Guardrail",
               "additional_config": {
                 "relevancy": false,
                 "hallucination": false,
@@ -3633,10 +3636,10 @@ Controls whether server descriptions are validated during discovery/registration
   },
   "enable_server_info_validation": false,
   "enable_tool_guardrails": false,
-  "input_guardrails_policy": {
+  "input_guardrails_config": {
     "enabled": false
   },
-  "output_guardrails_policy": {
+  "output_guardrails_config": {
     "enabled": false
   }
 }
@@ -3660,7 +3663,7 @@ The gateway has three distinct levels of guardrails:
    - **What**: Validates tool descriptions and schemas
    - **Blocks**: Individual tools with harmful content
 
-3. **Runtime Guardrails** (`input_guardrails_policy` / `output_guardrails_policy`)
+3. **Runtime Guardrails** (`input_guardrails_config` / `output_guardrails_config`)
    - **When**: During tool execution (input before, output after)
    - **What**: Validates tool arguments and responses
    - **Blocks**: Requests/responses violating policies
@@ -3783,38 +3786,100 @@ For complete API documentation and examples, see:
 </details>
 </details>
 
-## 13. Deployment patterns
+## 13. (Optional) Sandbox Isolation
+
+Sandbox isolation lets you run each MCP server inside an isolated container or microVM, reducing the blast radius if a server is compromised or malicious. When enabled, every MCP server launch is transparently wrapped — no changes to your MCP clients or servers are needed.
+
+### What does the sandbox protect against?
+
+| Threat | Without Sandbox | With Sandbox |
+|---|---|---|
+| Filesystem access | Full host filesystem | Read-only `/app` mount only |
+| Network access | Full network | Blocked (`--network=none`) |
+| Resource exhaustion (fork bomb, OOM) | Can crash host | Capped at container limits |
+| Environment variable theft | All env vars visible | Only allowlisted vars passed |
+| Persistence across calls | Processes can persist | Ephemeral — destroyed after each session |
+
+### Quick enable
+
+```bash
+# 1. Enable sandbox in global config
+secure-mcp-gateway config update-sandbox --enabled --runtime docker
+
+# 2. Build a Docker image with MCP dependencies
+docker build -t sandbox-test-mcp -f tests/Dockerfile.sandbox-test .
+
+# 3. Enable for a specific server with a custom image
+secure-mcp-gateway config update-server-sandbox \
+    --config-name default_config \
+    --server-name echo_server \
+    --enabled \
+    --image sandbox-test-mcp
+```
+
+### Per-server configuration
+
+Each server can override global sandbox defaults:
+
+```json
+{
+    "server_name": "untrusted_server",
+    "config": { "command": "python", "args": ["server.py"] },
+    "sandbox": {
+        "enabled": true,
+        "runtime": "docker",
+        "image": "my-mcp-image:latest",
+        "memory_limit": "256m",
+        "cpu_limit": "0.5",
+        "network": "none",
+        "allowed_env": ["GITHUB_TOKEN"]
+    }
+}
+```
+
+### Supported runtimes
+
+| Runtime | Isolation | Platform | Status |
+|---|---|---|---|
+| Docker | Namespace + cgroup | Linux, macOS, Windows | Production ready |
+| Podman | Namespace + cgroup (rootless) | Linux, macOS | Production ready |
+| Microsandbox | Hardware microVM (libkrun) | Linux, macOS | SDK pending |
+| NovaVM | Hardware microVM (KVM) | Linux | CLI pending |
+
+> For the full setup guide, configuration reference, testing instructions, and troubleshooting, see **[Sandbox Isolation Walkthrough](./docs/sandbox_walkthrough.md)**.
+
+## 14. Deployment patterns
 
 <details>
 <summary><strong>🪂 Deployment Patterns </strong></summary>
 
-1. [Local Gateway, Local Guardrails and Local MCP Server](#131-local-gateway-local-guardrails-and-local-mcp-server)
+1. [Local Gateway, Local Guardrails and Local MCP Server](#141-local-gateway-local-guardrails-and-local-mcp-server)
 
-2. [Local Gateway, Local MCP Server with Remote Guardrails](#132-local-gateway-local-mcp-server-with-remote-guardrails)
+2. [Local Gateway, Local MCP Server with Remote Guardrails](#142-local-gateway-local-mcp-server-with-remote-guardrails)
 
-3. [Local Gateway with Remote MCP Server and Remote Guardrails](#133-local-gateway-with-remote-mcp-server-and-remote-guardrails)
+3. [Local Gateway with Remote MCP Server and Remote Guardrails](#143-local-gateway-with-remote-mcp-server-and-remote-guardrails)
 
-4. [Remote Gateway, Remote MCP Server and Remote Guardrails](#134-remote-gateway-remote-mcp-server-and-remote-guardrails)
+4. [Remote Gateway, Remote MCP Server and Remote Guardrails](#144-remote-gateway-remote-mcp-server-and-remote-guardrails)
 
-### 13.1 Local Gateway, Local Guardrails and Local MCP Server
+### 14.1 Local Gateway, Local Guardrails and Local MCP Server
 
 ![Local Gateway with Local Guardrails Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20All%20Local.drawio.png)
 
-### 13.2 Local Gateway, Local MCP Server with Remote Guardrails
+### 14.2 Local Gateway, Local MCP Server with Remote Guardrails
 
 ![Local Gateway with Remote Guardrails Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20Local.drawio.png)
 
-### 13.3 Local Gateway with Remote MCP Server and Remote Guardrails
+### 14.3 Local Gateway with Remote MCP Server and Remote Guardrails
 
 ![Local Gateway with Remote Guardrails and Remote MCP Server Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20Local%20with%20Remote.drawio.png)
 
-### 13.4 Remote Gateway, Remote MCP Server and Remote Guardrails
+### 14.4 Remote Gateway, Remote MCP Server and Remote Guardrails
 
 ![Remote Gateway with Remote Guardrails and Remote MCP Server Flow](./docs/images/enkryptai-apiaas-MCP%20Gateway%20Full%20Remote.drawio.png)
 
 </details>
 
-## 14. Uninstall the Gateway
+## 15. Uninstall the Gateway
 
 <details>
 <summary><strong>🗑️ Uninstall the Gateway </strong></summary>
@@ -3831,7 +3896,7 @@ For complete API documentation and examples, see:
 
 </details>
 
-## 15. Troubleshooting
+## 16. Troubleshooting
 
 <details>
 <summary><strong>🕵 Troubleshooting </strong></summary>
@@ -3851,7 +3916,7 @@ For complete API documentation and examples, see:
 
 - If we need more detailed logs, please set the `enkrypt_log_level` to `debug` in the `enkrypt_mcp_config.json` file and restart the MCP client.
 
-### 15.1 OpenTelemetry Troubleshooting
+### 16.1 OpenTelemetry Troubleshooting
 
 1. **SSL Handshake Errors**
 
@@ -3906,15 +3971,15 @@ For complete API documentation and examples, see:
 
 </details>
 
-## 16. Known Issues being worked on
+## 17. Known Issues being worked on
 
 - Output guardrails are not being applied to non-text tool results. Support for other media types like images, audio, etc. is coming soon.
 
-## 17. Known Limitations
+## 18. Known Limitations
 
 - The Gateway does not support a scenario where the Gateway is deployed remotely but the MCP server is deployed locally (without being exposed to the internet). This is because the Gateway needs to know the MCP server's address to forward requests to it.
 
-## 18. Contribute
+## 19. Contribute
 
 We welcome contributions. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for how to submit changes and our [Contributor License Agreement (CLA)](CLA.md), which you agree to by submitting a pull request.
 
@@ -3926,7 +3991,7 @@ We welcome contributions. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for how
 
 - Report or fix any bugs you encounter 😊
 
-## 19. Testing
+## 20. Testing
 
 <details>
 <summary><strong>🧪 Running Tests </strong></summary>
@@ -4080,15 +4145,15 @@ Total Duration: 45.67s
 
 </details>
 
-## 20. License
+## 21. License
 
-### 20.1 Enkrypt AI MCP Gateway Core
+### 21.1 Enkrypt AI MCP Gateway Core
 
 This project's core functionality is licensed under the Apache License, Version 2.0.
 
 For the full license text, see the `LICENSE` file in this repository.
 
-### 20.2 Enkrypt AI Guardrails, Logo, and Branding
+### 21.2 Enkrypt AI Guardrails, Logo, and Branding
 
 © 2025 Enkrypt AI. All rights reserved.
 

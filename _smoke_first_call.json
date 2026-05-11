@@ -1,0 +1,112 @@
+{
+  "list_all_servers": {
+    "status": "success",
+    "available_servers": {
+      "my-filesystem-server": {
+        "server_name": "my-filesystem-server",
+        "description": "Updated filesystem access with enhanced security",
+        "config": {
+          "args": [
+            "-y",
+            "@modelcontextprotocol/server-filesystem",
+            "/tmp"
+          ],
+          "command": "npx"
+        },
+        "tools": {},
+        "enable_server_info_validation": true,
+        "enable_tool_guardrails": false,
+        "tool_guardrails_config": {
+          "enabled": false,
+          "guardrail_name": "",
+          "additional_config": {},
+          "block": []
+        },
+        "input_guardrails_config": {
+          "enabled": true,
+          "guardrail_name": "Updated Guardrail",
+          "additional_config": {},
+          "block": [
+            "topic_detector",
+            "nsfw",
+            "keyword_detector"
+          ]
+        },
+        "output_guardrails_config": {
+          "enabled": false,
+          "guardrail_name": "",
+          "additional_config": {},
+          "block": []
+        },
+        "sandbox": {
+          "enabled": false
+        },
+        "denied_tools": [
+          {
+            "pattern": "delete_*",
+            "reason": "deny destructive ops as a smoke-test demo"
+          }
+        ],
+        "has_cached_tools": false,
+        "tools_source": "needs_discovery"
+      }
+    },
+    "servers_needing_discovery": [
+      "my-filesystem-server"
+    ]
+  },
+  "get_server_info": {
+    "status": "success",
+    "server_name": "my-filesystem-server",
+    "server_info": {
+      "server_name": "my-filesystem-server",
+      "description": "Updated filesystem access with enhanced security",
+      "config": {
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "/tmp"
+        ],
+        "command": "npx"
+      },
+      "tools": {},
+      "enable_server_info_validation": true,
+      "enable_tool_guardrails": false,
+      "tool_guardrails_config": {
+        "enabled": false,
+        "guardrail_name": "",
+        "additional_config": {},
+        "block": []
+      },
+      "input_guardrails_config": {
+        "enabled": true,
+        "guardrail_name": "Updated Guardrail",
+        "additional_config": {},
+        "block": [
+          "topic_detector",
+          "nsfw",
+          "keyword_detector"
+        ]
+      },
+      "output_guardrails_config": {
+        "enabled": false,
+        "guardrail_name": "",
+        "additional_config": {},
+        "block": []
+      },
+      "sandbox": {
+        "enabled": false
+      },
+      "denied_tools": [
+        {
+          "pattern": "delete_*",
+          "reason": "deny destructive ops as a smoke-test demo"
+        }
+      ],
+      "has_cached_tools": false,
+      "tools_source": "needs_discovery"
+    },
+    "policy_denied_tools": [],
+    "policy_denied_count": 0
+  }
+}

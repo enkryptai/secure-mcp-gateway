@@ -68,10 +68,9 @@ RUN pip3 install --break-system-packages uv
 RUN pip3 install --break-system-packages --upgrade pipx \
     && pipx ensurepath
 
-# Install Node.js LTS (22.x) and npm
+# Install Node.js LTS (22.x); npm bundled with the package is recent enough
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
-    && npm install -g npm@latest \
     && rm -rf /var/lib/apt/lists/*
 
 # # NOTE: Only use if you are fine with risks of running Docker inside the container
@@ -104,20 +103,17 @@ RUN echo "=== Verifying Installations ===" \
 
 # Install the dependencies
 COPY requirements.txt .
-COPY requirements-dev.txt .
 RUN pip3 install --break-system-packages --upgrade --ignore-installed pip setuptools wheel \
-    && pip3 install --break-system-packages --ignore-installed -r requirements.txt \
-    && pip3 install --break-system-packages --ignore-installed -r requirements-dev.txt
+    && pip3 install --break-system-packages --ignore-installed -r requirements.txt
 
 # Copy source code
 COPY src src
-COPY setup.py setup.py
 COPY MANIFEST.in MANIFEST.in
 COPY pyproject.toml pyproject.toml
 
 # Other files
 COPY CHANGELOG.md CHANGELOG.md
-COPY LICENSE.txt LICENSE.txt
+COPY LICENSE LICENSE
 COPY README.md README.md
 COPY README_PYPI.md README_PYPI.md
 
@@ -125,10 +121,7 @@ COPY README_PYPI.md README_PYPI.md
 ENV HOST=0.0.0.0
 ENV FASTAPI_HOST=0.0.0.0
 
-# Build the package
-RUN python3 -m build
-
-# Install the package
+# Install the package (PEP 517 build via setuptools.build_meta)
 RUN pip3 install --break-system-packages .
 EXPOSE 8000
 

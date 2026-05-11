@@ -29,7 +29,7 @@ Quick Start:
 
     # Use in server config
     server_config = {
-        "input_guardrails_policy": {
+        "input_guardrails_config": {
             "enabled": True,
             "provider": "my-custom-provider",
             ...

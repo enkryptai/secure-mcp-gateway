@@ -19,6 +19,11 @@ HOST_DOCKER_CONFIG_PATH = os.path.join(
     os.path.expanduser("~"), ".enkrypt", "docker", CONFIG_NAME
 )
 
+# TTL for the in-process cache that the Enkrypt cloud-auth provider uses to
+# avoid hitting GET /mcp-gateway/get-gateway-config on every tool call.
+# Operators can override per-deployment via auth.config.cache_ttl_seconds.
+ENKRYPT_REMOTE_CONFIG_TTL_SECONDS = 600
+
 BASE_DIR = files("secure_mcp_gateway")
 EXAMPLE_CONFIG_NAME = f"example_{CONFIG_NAME}"
 EXAMPLE_CONFIG_PATH = os.path.join(BASE_DIR, EXAMPLE_CONFIG_NAME)
@@ -39,6 +44,22 @@ DEFAULT_COMMON_CONFIG = {
     "enkrypt_gateway_cache_expiration": 24,
     "enkrypt_async_input_guardrails_enabled": False,
     "enkrypt_async_output_guardrails_enabled": False,
+    # Session Pool Configuration
+    "session_pool_enabled": True,
+    "session_pool_ttl": 300,
+    # Sandbox Configuration
+    "sandbox": {
+        "enabled": False,
+        "runtime": "docker",
+        "default_image": "python:3.11-slim",
+        "default_memory_limit": "512m",
+        "default_cpu_limit": "1.0",
+        "default_pids_limit": 100,
+        "default_network": "none",
+        "default_read_only": True,
+        "container_cli": "auto",
+        "nova_api_url": "http://localhost:9800",
+    },
     # Timeout Management Configuration
     "timeout_settings": {
         "default_timeout": 30,

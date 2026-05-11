@@ -16,6 +16,7 @@ from secure_mcp_gateway.exceptions import (
 )
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
+from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes, SpanNames
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 from secure_mcp_gateway.utils import (
     build_log_extra,
@@ -86,21 +87,28 @@ class DiscoveryService:
         )
 
         with tracer_obj.start_as_current_span(
-            "enkrypt_discover_all_tools"
+            SpanNames.DISCOVERY
         ) as main_span:
-            main_span.set_attribute("server_name", server_name or "all")
-            main_span.set_attribute("custom_id", custom_id)
-            main_span.set_attribute("job", "enkrypt")
-            main_span.set_attribute("env", "dev")
+            main_span.set_attribute(SpanAttributes.SERVER_NAME, server_name or "all")
+            main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
+            main_span.set_attribute(SpanAttributes.JOB, "enkrypt")
+            main_span.set_attribute(SpanAttributes.ENV, "dev")
             main_span.set_attribute(
                 "discovery_mode", "single" if server_name else "all"
             )
 
             # Get credentials and config
             credentials = self.auth_manager.get_gateway_credentials(ctx)
-            enkrypt_gateway_key = credentials.get("gateway_key", "not_provided")
-            enkrypt_project_id = credentials.get("project_id", "not_provided")
-            enkrypt_user_id = credentials.get("user_id", "not_provided")
+            # NOTE: ``dict.get(k, default)`` only substitutes when ``k`` is
+            # missing — a present-but-``None`` value still returns ``None``.
+            # With cloud auth the calling MCP client only sends ``apikey`` (no
+            # ``project_id`` / ``user_id`` headers), so those credential
+            # fields arrive as ``None`` rather than absent. Use ``or`` so we
+            # coerce both cases to the placeholder string and avoid OTel
+            # ``Invalid type NoneType for attribute`` warnings downstream.
+            enkrypt_gateway_key = credentials.get("gateway_key") or "not_provided"
+            enkrypt_project_id = credentials.get("project_id") or "not_provided"
+            enkrypt_user_id = credentials.get("user_id") or "not_provided"
             gateway_config = await self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
             )
@@ -137,13 +145,21 @@ class DiscoveryService:
             main_span.set_attribute(
                 "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
             )
-            main_span.set_attribute("enkrypt_project_id", enkrypt_project_id)
-            main_span.set_attribute("enkrypt_user_id", enkrypt_user_id)
-            main_span.set_attribute("enkrypt_mcp_config_id", enkrypt_mcp_config_id)
-            main_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
-            main_span.set_attribute("enkrypt_email", enkrypt_email)
+            main_span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
+            main_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
+            main_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
+            main_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            main_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
 
-            session_key = f"{credentials.get('gateway_key')}_{credentials.get('project_id')}_{credentials.get('user_id')}_{enkrypt_mcp_config_id}"
+            # Funnel through ``create_session_key`` so a ``None`` credential
+            # field (cloud-auth requests omit project_id/user_id headers) is
+            # canonicalized to the same string the store side produces.
+            session_key = self.auth_manager.create_session_key(
+                credentials.get("gateway_key"),
+                credentials.get("project_id"),
+                credentials.get("user_id"),
+                enkrypt_mcp_config_id,
+            )
 
             try:
                 # Authentication check
@@ -188,7 +204,7 @@ class DiscoveryService:
 
             except Exception as e:
                 main_span.record_exception(e)
-                main_span.set_attribute("error", str(e))
+                main_span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
 
                 # Use standardized error handling
                 context = ErrorContext(
@@ -244,12 +260,12 @@ class DiscoveryService:
     ):
         """Check authentication and return error if needed."""
         if not self.auth_manager.is_session_authenticated(session_key):
-            with tracer_obj.start_as_current_span("check_auth") as auth_span:
-                auth_span.set_attribute("custom_id", custom_id)
+            with tracer_obj.start_as_current_span(SpanNames.AUTH) as auth_span:
+                auth_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
                 auth_span.set_attribute(
                     "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
                 )
-                auth_span.set_attribute("is_authenticated", False)
+                auth_span.set_attribute(SpanAttributes.IS_AUTHENTICATED, False)
 
                 # Import here to avoid circular imports
                 from secure_mcp_gateway.gateway import enkrypt_authenticate
@@ -262,7 +278,7 @@ class DiscoveryService:
                     detail = f"Authentication failed: {auth_msg}"
                     if auth_err and auth_err != auth_msg:
                         detail += f" ({auth_err})"
-                    auth_span.set_attribute("error", detail)
+                    auth_span.set_attribute(SpanAttributes.ERROR_MESSAGE, detail)
                     logger.warning(
                         "enkrypt_discover_all_tools.not_authenticated",
                         extra=build_log_extra(ctx, custom_id, server_name),
@@ -300,13 +316,13 @@ class DiscoveryService:
     ):
         """Discover tools for all servers using three-phase parallel approach."""
         with tracer_obj.start_as_current_span("discover_all_servers") as all_span:
-            all_span.set_attribute("custom_id", custom_id)
+            all_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             all_span.set_attribute("discovery_started", True)
             all_span.set_attribute("project_id", enkrypt_project_id)
             all_span.set_attribute("user_id", enkrypt_user_id)
             all_span.set_attribute("mcp_config_id", enkrypt_mcp_config_id)
-            all_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
-            all_span.set_attribute("enkrypt_email", enkrypt_email)
+            all_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            all_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
 
             logger.info(
                 "[discover_server_tools] Discovering tools for all servers using three-phase parallel approach"
@@ -336,8 +352,20 @@ class DiscoveryService:
 
             status = "success"
             message = "Tools discovery tried for all servers"
-            discovery_failed_servers = []
-            discovery_success_servers = []
+            # When ``discover_tools=True``, ``enkrypt_list_all_servers`` does
+            # the per-server discovery itself and returns the success/failure
+            # buckets. Seed our state from those rather than starting empty,
+            # otherwise the top-level ``discovery_success_servers`` /
+            # ``discovery_failed_servers`` arrays come back empty even when
+            # every server in ``available_servers`` has a clear status — the
+            # subsequent Phase 1/2/3 pipeline only acts on
+            # ``servers_needing_discovery`` (which is empty in this branch).
+            discovery_success_servers = list(
+                all_servers.get("discovery_success_servers", [])
+            )
+            discovery_failed_servers = list(
+                all_servers.get("discovery_failed_servers", [])
+            )
 
             import asyncio
 
@@ -495,8 +523,8 @@ class DiscoveryService:
             with tracer_obj.start_as_current_span(
                 f"validate_server_{server_name}"
             ) as server_span:
-                server_span.set_attribute("server_name", server_name)
-                server_span.set_attribute("custom_id", custom_id)
+                server_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+                server_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
 
                 try:
                     # Get server info
@@ -631,8 +659,8 @@ class DiscoveryService:
         with tracer_obj.start_as_current_span(
             f"validate_config_tools_{server_name}"
         ) as span:
-            span.set_attribute("server_name", server_name)
-            span.set_attribute("custom_id", custom_id)
+            span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
 
             try:
                 # Get server info and config tools
@@ -659,8 +687,8 @@ class DiscoveryService:
                 blocked_reasons_list = []
 
                 # Validate config tools with guardrails
-                tool_guardrails_policy = server_info.get("tool_guardrails_policy", {})
-                enable_tool_guardrails = tool_guardrails_policy.get("enabled", False)
+                tool_guardrails_config = server_info.get("tool_guardrails_config", {})
+                enable_tool_guardrails = tool_guardrails_config.get("enabled", False)
 
                 if (
                     self.registration_validation_enabled
@@ -696,7 +724,7 @@ class DiscoveryService:
                             server_name=server_name,
                             tools=tool_list,
                             mode="filter",
-                            tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
+                            tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
                         )
                     )
 
@@ -751,7 +779,7 @@ class DiscoveryService:
                 }
 
             except Exception as e:
-                span.set_attribute("error", str(e))
+                span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
 
                 # Use standardized error handling
                 context = ErrorContext(
@@ -789,8 +817,8 @@ class DiscoveryService:
         with tracer_obj.start_as_current_span(
             f"discover_and_validate_{server_name}"
         ) as span:
-            span.set_attribute("server_name", server_name)
-            span.set_attribute("custom_id", custom_id)
+            span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
 
             try:
                 # Get server info
@@ -856,8 +884,8 @@ class DiscoveryService:
                 blocked_tools_count = 0
                 blocked_reasons_list = []
 
-                tool_guardrails_policy = server_info.get("tool_guardrails_policy", {})
-                enable_tool_guardrails = tool_guardrails_policy.get("enabled", False)
+                tool_guardrails_config = server_info.get("tool_guardrails_config", {})
+                enable_tool_guardrails = tool_guardrails_config.get("enabled", False)
 
                 if (
                     self.registration_validation_enabled
@@ -877,7 +905,7 @@ class DiscoveryService:
                             server_name=server_name,
                             tools=tool_list,
                             mode="filter",
-                            tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
+                            tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
                         )
                     )
 
@@ -933,7 +961,7 @@ class DiscoveryService:
                 }
 
             except Exception as e:
-                span.set_attribute("error", str(e))
+                span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
 
                 # Use standardized error handling
                 context = ErrorContext(
@@ -970,7 +998,7 @@ class DiscoveryService:
         """Discover tools for a single server."""
         # Server info check
         with tracer_obj.start_as_current_span("get_server_info") as info_span:
-            info_span.set_attribute("server_name", server_name)
+            info_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
 
             server_info = get_server_info_by_name(
                 self.auth_manager.get_session_gateway_config(session_key), server_name
@@ -979,7 +1007,7 @@ class DiscoveryService:
 
             if not server_info:
                 info_span.set_attribute(
-                    "error", f"Server '{server_name}' not available"
+                    SpanAttributes.ERROR_MESSAGE, f"Server '{server_name}' not available"
                 )
                 if IS_DEBUG_LOG_LEVEL:
                     logger.error(
@@ -1017,7 +1045,7 @@ class DiscoveryService:
                 with tracer_obj.start_as_current_span(
                     "validate_server_registration"
                 ) as server_validation_span:
-                    server_validation_span.set_attribute("server_name", server_name)
+                    server_validation_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
 
                     logger.info(
                         f"[discover_server_tools] Validating server registration for {server_name}"
@@ -1299,8 +1327,8 @@ class DiscoveryService:
                 blocked_reasons_list = []
 
                 # NEW: Validate config tools with guardrails before returning
-                tool_guardrails_policy = server_info.get("tool_guardrails_policy", {})
-                enable_tool_guardrails = tool_guardrails_policy.get("enabled", False)
+                tool_guardrails_config = server_info.get("tool_guardrails_config", {})
+                enable_tool_guardrails = tool_guardrails_config.get("enabled", False)
                 logger.info(
                     f"[discover_server_tools] enable_tool_guardrails={enable_tool_guardrails} for {server_name}"
                 )
@@ -1316,7 +1344,7 @@ class DiscoveryService:
                     with tracer_obj.start_as_current_span(
                         "validate_config_tool_registration"
                     ) as validation_span:
-                        validation_span.set_attribute("server_name", server_name)
+                        validation_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
 
                         # Convert config tools to list format for validation
                         tool_list = []
@@ -1355,7 +1383,7 @@ class DiscoveryService:
                                 server_name=server_name,
                                 tools=tool_list,
                                 mode="filter",  # Filter unsafe tools but allow safe ones
-                                tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
+                                tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
                             )
 
                             if validation_response and validation_response.metadata:
@@ -1667,7 +1695,7 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_dynamic_server_description_config"
                         ) as dynamic_desc_span:
-                            dynamic_desc_span.set_attribute("server_name", server_name)
+                            dynamic_desc_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
                             dynamic_desc_span.set_attribute(
                                 "description_source", "dynamic"
                             )
@@ -1684,7 +1712,7 @@ class DiscoveryService:
                                 }
                                 resp = await self.guardrail_manager.validate_tool_registration(
                                     server_name=server_name, tools=[tool], mode="block",
-                                    tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
+                                    tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
                                 )
                                 if resp and resp.metadata:
                                     blocked = resp.metadata.get(
@@ -1722,7 +1750,7 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_static_server_description_config"
                         ) as static_desc_span:
-                            static_desc_span.set_attribute("server_name", server_name)
+                            static_desc_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
                             static_desc_span.set_attribute(
                                 "description_source", "static"
                             )
@@ -1739,7 +1767,7 @@ class DiscoveryService:
                                 }
                                 resp = await self.guardrail_manager.validate_tool_registration(
                                     server_name=server_name, tools=[tool], mode="block",
-                                    tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
+                                    tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
                                 )
                                 if resp and resp.metadata:
                                     if resp.metadata.get("timeout", False):
@@ -1909,7 +1937,7 @@ class DiscoveryService:
 
         # Tool discovery
         with tracer_obj.start_as_current_span("discover_tools") as discover_span:
-            discover_span.set_attribute("server_name", server_name)
+            discover_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
 
             # Cache check
             with tracer_obj.start_as_current_span("check_tools_cache") as cache_span:
@@ -2032,8 +2060,8 @@ class DiscoveryService:
                 enable_server_info_validation = server_info.get(
                     "enable_server_info_validation", True
                 )
-                # Get tool_guardrails_policy for description validation detectors
-                tool_guardrails_policy = server_info.get("tool_guardrails_policy", {})
+                # Get tool_guardrails_config for description validation detectors
+                tool_guardrails_config = server_info.get("tool_guardrails_config", {})
                 if (
                     self.registration_validation_enabled
                     and self.guardrail_manager
@@ -2060,7 +2088,7 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_dynamic_server_description"
                         ) as dynamic_desc_span:
-                            dynamic_desc_span.set_attribute("server_name", server_name)
+                            dynamic_desc_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
                             logger.info(
                                 f"[discover_server_tools] Validating dynamic server description: '{dynamic_description}'"
                             )
@@ -2074,7 +2102,7 @@ class DiscoveryService:
                                 }
                                 resp = await self.guardrail_manager.validate_tool_registration(
                                     server_name=server_name, tools=[tool], mode="block",
-                                    tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
+                                    tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
                                 )
                                 if resp and resp.metadata:
                                     blocked = resp.metadata.get(
@@ -2113,7 +2141,7 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_static_server_description"
                         ) as static_desc_span:
-                            static_desc_span.set_attribute("server_name", server_name)
+                            static_desc_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
                             static_desc_span.set_attribute(
                                 "description_source", "static"
                             )
@@ -2130,7 +2158,7 @@ class DiscoveryService:
                                 }
                                 resp = await self.guardrail_manager.validate_tool_registration(
                                     server_name=server_name, tools=[tool], mode="block",
-                                    tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
+                                    tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
                                 )
                                 if resp and resp.metadata:
                                     if resp.metadata.get("timeout", False):
@@ -2299,10 +2327,10 @@ class DiscoveryService:
                         )
 
                     # NEW: Validate tools with guardrails before caching
-                    tool_guardrails_policy = server_info.get(
-                        "tool_guardrails_policy", {}
+                    tool_guardrails_config = server_info.get(
+                        "tool_guardrails_config", {}
                     )
-                    enable_tool_guardrails = tool_guardrails_policy.get(
+                    enable_tool_guardrails = tool_guardrails_config.get(
                         "enabled", False
                     )
                     logger.info(
@@ -2320,7 +2348,7 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_tool_registration"
                         ) as validation_span:
-                            validation_span.set_attribute("server_name", server_name)
+                            validation_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
 
                             # Extract tool list from ListToolsResult or dict
                             if hasattr(tools, "tools"):
@@ -2343,7 +2371,7 @@ class DiscoveryService:
                                     server_name=server_name,
                                     tools=tool_list,
                                     mode="filter",  # Filter unsafe tools but allow safe ones
-                                    tool_guardrails_policy=tool_guardrails_policy if tool_guardrails_policy else None,
+                                    tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
                                 )
 
                                 if validation_response and validation_response.metadata:
@@ -2586,7 +2614,7 @@ class DiscoveryService:
                     with tracer_obj.start_as_current_span(
                         "cache_tools"
                     ) as cache_write_span:
-                        cache_write_span.set_attribute("server_name", server_name)
+                        cache_write_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
                         self.cache_service.cache_tools(id, server_name, tools)
                         cache_write_span.set_attribute("cache_write_success", True)
                 else:

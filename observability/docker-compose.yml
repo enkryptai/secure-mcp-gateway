@@ -1,0 +1,88 @@
+name: secure-mcp-gateway-observability
+
+services:
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.134.1
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel_collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus metrics
+    depends_on:
+      - jaeger
+      - loki
+
+  # Jaeger for trace visualization
+  jaeger:
+    image: jaegertracing/all-in-one:1.73.0
+    ports:
+      - "16686:16686"  # Web UI
+      - "14250:14250"  # gRPC for collector
+      - "16685:16685"  # Query port for Grafana
+    environment:
+      - LOG_LEVEL=debug
+      - QUERY_BASE_PATH=/jaeger
+      - COLLECTOR_OTLP_ENABLED=true
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+
+  # Loki for log aggregation
+  loki:
+    image: grafana/loki:main-cadc824
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
+
+  # Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    depends_on:
+      - otel-collector
+
+  # Promtail for log collection
+  promtail:
+    image: grafana/promtail:3.5.0
+    volumes:
+      - ./promtail/promtail-config.yaml:/etc/promtail/config.yaml
+      - /var/log:/var/log:ro
+    command: -config.file=/etc/promtail/config.yaml
+    depends_on:
+      - loki
+
+  # Grafana for visualization
+  # NOTE: published on host port 3001 (container still listens on 3000) to avoid
+  # clashing with a native Windows Grafana service that binds 0.0.0.0:3000.
+  # Override with GRAFANA_HOST_PORT in observability/.env if needed.
+  grafana:
+    image: grafana/grafana:12.2.0-17535958692
+    ports:
+      - "${GRAFANA_HOST_PORT:-3001}:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      # Crank notifier subsystem to debug so successful Slack POSTs are logged
+      # as `msg="Notify success"`.  At info level Grafana stays silent on
+      # success and only logs failures, which made the pipeline look broken
+      # during validation.  Safe to keep at debug — only the notifier
+      # subsystem is verbose, not the whole Grafana process.
+      - GF_LOG_FILTERS=ngalert.notifier:debug
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - loki
+      - otel-collector
+      - prometheus

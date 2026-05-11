@@ -115,7 +115,7 @@ curl -X PUT "http://localhost:8001/api/v1/configs/test-config-1/servers/echo_ser
   -d '{
     "policy": {
       "enabled": true,
-      "policy_name": "Input Guardrail Policy",
+      "guardrail_name": "Input Guardrail Policy",
       "additional_config": {
         "pii_redaction": true
       },
@@ -131,7 +131,7 @@ curl -X PUT "http://localhost:8001/api/v1/configs/test-config-1/servers/echo_ser
   -d '{
     "policy": {
       "enabled": true,
-      "policy_name": "Output Guardrail Policy",
+      "guardrail_name": "Output Guardrail Policy",
       "additional_config": {
         "relevancy": true,
         "hallucination": true
@@ -148,11 +148,11 @@ curl -X PUT "http://localhost:8001/api/v1/configs/test-config-1/servers/echo_ser
   -d '{
     "input_policy": {
       "enabled": true,
-      "policy_name": "Input Policy"
+      "guardrail_name": "Input Policy"
     },
     "output_policy": {
       "enabled": true,
-      "policy_name": "Output Policy"
+      "guardrail_name": "Output Policy"
     }
   }'
 
@@ -572,7 +572,7 @@ curl -X PUT "http://localhost:8001/api/v1/configs/staging-config/servers/securit
   -d '{
     "policy": {
       "enabled": true,
-      "policy_name": "Enhanced Input Policy",
+      "guardrail_name": "Enhanced Input Policy",
       "additional_config": {
         "pii_redaction": true,
         "content_filtering": true
@@ -589,7 +589,7 @@ curl -X PUT "http://localhost:8001/api/v1/configs/staging-config/servers/securit
   -d '{
     "policy": {
       "enabled": true,
-      "policy_name": "Enhanced Output Policy",
+      "guardrail_name": "Enhanced Output Policy",
       "additional_config": {
         "relevancy": true,
         "hallucination": true,
@@ -607,7 +607,7 @@ curl -X PUT "http://localhost:8001/api/v1/configs/staging-config/servers/securit
   -d '{
     "input_policy": {
       "enabled": true,
-      "policy_name": "Updated Input Policy",
+      "guardrail_name": "Updated Input Policy",
       "additional_config": {
         "pii_redaction": false,
         "content_filtering": true
@@ -616,7 +616,7 @@ curl -X PUT "http://localhost:8001/api/v1/configs/staging-config/servers/securit
     },
     "output_policy": {
       "enabled": true,
-      "policy_name": "Updated Output Policy",
+      "guardrail_name": "Updated Output Policy",
       "additional_config": {
         "relevancy": false,
         "hallucination": true,

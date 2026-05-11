@@ -13,6 +13,7 @@ from mcp import ClientSession, StdioServerParameters
 # https://github.com/modelcontextprotocol/python-sdk/blob/main/src/mcp/client/stdio/__init__.py
 from mcp.client.stdio import stdio_client
 
+from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params
 from secure_mcp_gateway.services.oauth.integration import (
     inject_oauth_into_args,
     inject_oauth_into_env,
@@ -245,8 +246,8 @@ async def get_server_metadata_only(server_name, gateway_config=None):
         masked_env = mask_sensitive_data(env or {}) if env else None
         logger.debug(f"[get_server_metadata_only] Env: {masked_env}")
 
-    async with stdio_client(
-        StdioServerParameters(command=command, args=command_args, env=env)
+    async with build_server_params(
+        server_entry, command, command_args, env
     ) as (read, write):
         async with ClientSession(read, write) as session:
             # Initialize and capture server metadata ONLY
@@ -365,8 +366,8 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
         masked_env = mask_sensitive_data(env or {}) if env else None
         logger.debug(f"[forward_tool_call] Env: {masked_env}")
 
-    async with stdio_client(
-        StdioServerParameters(command=command, args=command_args, env=env)
+    async with build_server_params(
+        server_entry, command, command_args, env
     ) as (read, write):
         async with ClientSession(read, write) as session:
             # Initialize and capture server metadata

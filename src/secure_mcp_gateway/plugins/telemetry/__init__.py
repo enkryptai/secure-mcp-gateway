@@ -52,20 +52,35 @@ from secure_mcp_gateway.plugins.telemetry.config_manager import (
     get_telemetry_config_manager,
     initialize_telemetry_system,
 )
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    METRIC_DESCRIPTIONS,
+    MetricNames,
+    SourceProduct,
+    SpanAttributes,
+    SpanNames,
+)
 from secure_mcp_gateway.plugins.telemetry.opentelemetry_provider import (
     OpenTelemetryProvider,
 )
+from secure_mcp_gateway.plugins.telemetry.redaction import (
+    PayloadPolicy,
+    sanitize_attributes,
+)
 
 __all__ = [
-    # Base classes
+    "METRIC_DESCRIPTIONS",
+    "MetricNames",
+    "OpenTelemetryProvider",
+    "PayloadPolicy",
+    "SourceProduct",
+    "SpanAttributes",
+    "SpanNames",
+    "TelemetryConfigManager",
+    "TelemetryLevel",
     "TelemetryProvider",
     "TelemetryRegistry",
     "TelemetryResult",
-    "TelemetryLevel",
-    # Config manager
-    "TelemetryConfigManager",
     "get_telemetry_config_manager",
     "initialize_telemetry_system",
-    # Providers
-    "OpenTelemetryProvider",
+    "sanitize_attributes",
 ]

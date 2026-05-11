@@ -55,14 +55,18 @@ if is_docker_running:
     # not the host's home (e.g. /Users/keirand), producing incorrect paths
     # in generated MCP client configs.
     if HOST_ENKRYPT_HOME.startswith("~"):
-        print("ERROR: HOST_ENKRYPT_HOME contains '~' which cannot be resolved correctly inside Docker.")
-        print("ERROR: The '~' would expand to the container's home directory, not your host home.")
+        print(
+            "ERROR: HOST_ENKRYPT_HOME contains '~' which cannot be resolved correctly inside Docker."
+        )
+        print(
+            "ERROR: The '~' would expand to the container's home directory, not your host home."
+        )
         print("ERROR: Please use an absolute path instead:")
         print("  macOS:   -e HOST_ENKRYPT_HOME=/Users/<username>/.enkrypt")
         print("  Linux:   -e HOST_ENKRYPT_HOME=/home/<username>/.enkrypt")
         print("  Windows: -e HOST_ENKRYPT_HOME=C:\\Users\\<username>\\.enkrypt")
-        print(f"\nHint: On macOS/Linux, use $HOME instead of ~:")
-        print(f"  -e HOST_ENKRYPT_HOME=$HOME/.enkrypt")
+        print("\nHint: On macOS/Linux, use $HOME instead of ~:")
+        print("  -e HOST_ENKRYPT_HOME=$HOME/.enkrypt")
         sys.exit(1)
     print(f"INFO: HOST_OS: {HOST_OS}")
     print(f"INFO: HOST_ENKRYPT_HOME: {HOST_ENKRYPT_HOME}")
@@ -364,10 +368,11 @@ def generate_default_config():
                             "OAUTH_CUSTOM_HEADERS": {},
                         },
                         "tools": {},
+                        "denied_tools": [],
                         "enable_server_info_validation": False,
-                        "tool_guardrails_policy": {
+                        "tool_guardrails_config": {
                             "enabled": False,
-                            "policy_name": "Sample Airline Guardrail",
+                            "guardrail_name": "Sample Airline Guardrail",
                             "block": [
                                 "policy_violation",
                                 "injection_attack",
@@ -380,9 +385,9 @@ def generate_default_config():
                                 "sponge_attack",
                             ],
                         },
-                        "input_guardrails_policy": {
+                        "input_guardrails_config": {
                             "enabled": False,
-                            "policy_name": "Sample Airline Guardrail",
+                            "guardrail_name": "Sample Airline Guardrail",
                             "additional_config": {"pii_redaction": False},
                             "block": [
                                 "policy_violation",
@@ -396,9 +401,9 @@ def generate_default_config():
                                 "sponge_attack",
                             ],
                         },
-                        "output_guardrails_policy": {
+                        "output_guardrails_config": {
                             "enabled": False,
-                            "policy_name": "Sample Airline Guardrail",
+                            "guardrail_name": "Sample Airline Guardrail",
                             "additional_config": {
                                 "relevancy": False,
                                 "hallucination": False,
@@ -446,6 +451,83 @@ def generate_default_config():
     return config
 
 
+def _detect_auth_provider(config: dict) -> str:
+    """Return the configured auth provider name.
+
+    Falls back to ``"local_apikey"`` when ``plugins.auth.provider`` is
+    missing — matches the runtime default in ``plugin_loader.py``.
+    """
+    return (config.get("plugins") or {}).get("auth", {}).get(
+        "provider"
+    ) or "local_apikey"
+
+
+def get_install_credentials(config_path: str, override_apikey: str | None = None):
+    """Build the credential payloads needed to install the gateway in an MCP client.
+
+    Returns a dict with three keys:
+
+      * ``provider``    — ``"enkrypt"`` or ``"local_apikey"``
+      * ``env``         — env-var dict for stdio installs (keys are env var
+                          names the gateway will read in
+                          ``extract_credentials``)
+      * ``headers``     — header dict for streamable-HTTP installs (keys are
+                          HTTP header names the gateway will read in
+                          ``extract_credentials``)
+
+    The shape is provider-aware:
+
+      * ``enkrypt`` (cloud auth) — single credential: ``apikey``. Sourced
+        from ``override_apikey`` (i.e. ``--apikey`` on the CLI), falling
+        back to ``auth.config.apikey`` in the local config file. No
+        ``project_id`` / ``user_id`` are emitted because cloud auth derives
+        identity from the apikey itself.
+
+      * ``local_apikey`` — three credentials: gateway_key + project_id +
+        user_id, read from the local ``apikeys`` / ``projects`` blocks.
+        Matches the historical install behaviour exactly.
+
+    Raises ``ValueError`` if the configured provider lacks the credentials
+    it needs (e.g. ``enkrypt`` mode with no apikey anywhere, or
+    ``local_apikey`` mode with no ``apikeys`` block).
+    """
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found at path: {config_path}")
+
+    config = load_config(config_path)
+    provider = _detect_auth_provider(config)
+
+    if provider == "enkrypt":
+        cloud_cfg = (config.get("plugins") or {}).get("auth", {}).get("config") or {}
+        apikey = override_apikey or cloud_cfg.get("apikey")
+        if not apikey:
+            raise ValueError(
+                "auth.provider is 'enkrypt' but no apikey was supplied. "
+                "Pass it via 'secure-mcp-gateway install ... --apikey <key>' "
+                "or set 'plugins.auth.config.apikey' in the local config file."
+            )
+        return {
+            "provider": "enkrypt",
+            "env": {"ENKRYPT_APIKEY": apikey},
+            "headers": {"apikey": apikey},
+        }
+
+    creds = get_gateway_credentials(config_path)
+    return {
+        "provider": "local_apikey",
+        "env": {
+            "ENKRYPT_GATEWAY_KEY": creds["gateway_key"],
+            "ENKRYPT_PROJECT_ID": creds["project_id"],
+            "ENKRYPT_USER_ID": creds["user_id"],
+        },
+        "headers": {
+            "ENKRYPT_GATEWAY_KEY": creds["gateway_key"],
+            "project_id": creds["project_id"],
+            "user_id": creds["user_id"],
+        },
+    }
+
+
 def get_gateway_credentials(config_path):
     """Extract gateway credentials from config."""
     if not os.path.exists(config_path):
@@ -467,7 +549,7 @@ def get_gateway_credentials(config_path):
         project_data = config["projects"][project_id]
         if "mcp_config_id" in project_data:
             mcp_config_id = project_data["mcp_config_id"]
-        elif "mcp_configs" in project_data and project_data["mcp_configs"]:
+        elif project_data.get("mcp_configs"):
             mcp_config_id = project_data["mcp_configs"][0].get("mcp_config_id")
 
     return {
@@ -611,7 +693,7 @@ def copy_config(config_path, source_config, target_config):
     config = load_config(config_path)
 
     # Find source config
-    source_id, source_data = find_config_by_name_or_id(config, source_config)
+    _source_id, source_data = find_config_by_name_or_id(config, source_config)
     if not source_data:
         print(f"ERROR: Error: Source config '{source_config}' not found.")
         sys.exit(1)
@@ -648,7 +730,7 @@ def rename_config(config_path, config_identifier, new_name):
     config = load_config(config_path)
 
     # Find config
-    config_id, config_data = find_config_by_name_or_id(config, config_identifier)
+    _config_id, config_data = find_config_by_name_or_id(config, config_identifier)
     if not config_data:
         print(f"ERROR: Error: Config '{config_identifier}' not found.")
         sys.exit(1)
@@ -695,7 +777,7 @@ def list_config_servers(config_path, config_identifier):
     """List servers in a specific config."""
     config = load_config(config_path)
 
-    config_id, config_data = find_config_by_name_or_id(config, config_identifier)
+    _config_id, config_data = find_config_by_name_or_id(config, config_identifier)
     if not config_data:
         print(f"ERROR: Error: Config '{config_identifier}' not found.")
         sys.exit(1)
@@ -710,10 +792,10 @@ def list_config_servers(config_path, config_identifier):
                 "args": server.get("config", {}).get("args", []),
                 "tools": len(server.get("tools", {})),
                 "input_guardrails_enabled": server.get(
-                    "input_guardrails_policy", {}
+                    "input_guardrails_config", {}
                 ).get("enabled", False),
                 "output_guardrails_enabled": server.get(
-                    "output_guardrails_policy", {}
+                    "output_guardrails_config", {}
                 ).get("enabled", False),
             }
         )
@@ -725,7 +807,7 @@ def get_config_server(config_path, config_identifier, server_name):
     """Get specific server details from config."""
     config = load_config(config_path)
 
-    config_id, config_data = find_config_by_name_or_id(config, config_identifier)
+    _config_id, config_data = find_config_by_name_or_id(config, config_identifier)
     if not config_data:
         print(f"ERROR: Error: Config '{config_identifier}' not found.")
         sys.exit(1)
@@ -756,11 +838,15 @@ def update_config_server(
     env=None,
     tools=None,
     description=None,
+    input_guardrails=None,
+    output_guardrails=None,
+    tool_guardrails=None,
+    enable_server_info_validation=None,
 ):
     """Update server configuration."""
     config = load_config(config_path)
 
-    config_id, config_data = find_config_by_name_or_id(config, config_identifier)
+    _config_id, config_data = find_config_by_name_or_id(config, config_identifier)
     if not config_data:
         print(f"ERROR: Error: Config '{config_identifier}' not found.")
         sys.exit(1)
@@ -792,6 +878,20 @@ def update_config_server(
         server_data["tools"] = validate_json_input(tools, "tools configuration")
     if description:
         server_data["description"] = description
+    if input_guardrails:
+        server_data["input_guardrails_config"] = validate_json_input(
+            input_guardrails, "input guardrails config"
+        )
+    if output_guardrails:
+        server_data["output_guardrails_config"] = validate_json_input(
+            output_guardrails, "output guardrails config"
+        )
+    if tool_guardrails:
+        server_data["tool_guardrails_config"] = validate_json_input(
+            tool_guardrails, "tool guardrails config"
+        )
+    if enable_server_info_validation is not None:
+        server_data["enable_server_info_validation"] = enable_server_info_validation
 
     server_data["updated_at"] = datetime.now().isoformat()
 
@@ -810,10 +910,13 @@ def add_server_to_config(
     description="",
     input_guardrails=None,
     output_guardrails=None,
+    denied_tools=None,
+    tool_guardrails=None,
+    enable_server_info_validation=None,
 ):
     """Add server to MCP configuration with validation."""
     config = load_config(config_path)
-    config_id, config_data = find_config_by_name_or_id(config, config_identifier)
+    _config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
         print(f"ERROR: Error: Config '{config_identifier}' not found.")
@@ -830,6 +933,9 @@ def add_server_to_config(
     # Validate JSON inputs
     env_data = validate_json_input(env, "environment variables") if env else None
     tools_data = validate_json_input(tools, "tools configuration") if tools else None
+    denied_tools_data = (
+        validate_json_input(denied_tools, "denied tools list") if denied_tools else None
+    )
     input_guardrails_data = (
         validate_json_input(input_guardrails, "input guardrails policy")
         if input_guardrails
@@ -838,6 +944,11 @@ def add_server_to_config(
     output_guardrails_data = (
         validate_json_input(output_guardrails, "output guardrails policy")
         if output_guardrails
+        else None
+    )
+    tool_guardrails_data = (
+        validate_json_input(tool_guardrails, "tool guardrails policy")
+        if tool_guardrails
         else None
     )
 
@@ -850,10 +961,16 @@ def add_server_to_config(
         "description": description,
         "config": {"command": command, "args": args_list},
         "tools": tools_data or {},
-        "enable_server_info_validation": False,
-        "tool_guardrails_policy": {
+        "denied_tools": denied_tools_data or [],
+        "enable_server_info_validation": (
+            enable_server_info_validation
+            if enable_server_info_validation is not None
+            else False
+        ),
+        "tool_guardrails_config": tool_guardrails_data
+        or {
             "enabled": False,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "block": [
                 "policy_violation",
                 "injection_attack",
@@ -866,17 +983,17 @@ def add_server_to_config(
                 "sponge_attack",
             ],
         },
-        "input_guardrails_policy": input_guardrails_data
+        "input_guardrails_config": input_guardrails_data
         or {
             "enabled": False,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {"pii_redaction": False},
             "block": ["policy_violation"],
         },
-        "output_guardrails_policy": output_guardrails_data
+        "output_guardrails_config": output_guardrails_data
         or {
             "enabled": False,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
                 "relevancy": False,
                 "hallucination": False,
@@ -911,7 +1028,7 @@ def get_config(config_path, config_identifier):
 def remove_server_from_config(config_path, config_identifier, server_name):
     """Remove server from MCP configuration."""
     config = load_config(config_path)
-    config_id, config_data = find_config_by_name_or_id(config, config_identifier)
+    _config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
         print(f"ERROR: Error: Config '{config_identifier}' not found.")
@@ -938,7 +1055,7 @@ def remove_server_from_config(config_path, config_identifier, server_name):
 def remove_all_servers_from_config(config_path, config_identifier):
     """Remove all servers from MCP configuration."""
     config = load_config(config_path)
-    config_id, config_data = find_config_by_name_or_id(config, config_identifier)
+    _config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
         print(f"ERROR: Error: Config '{config_identifier}' not found.")
@@ -991,7 +1108,7 @@ def remove_config(config_path, config_identifier):
 def validate_config(config_path, config_identifier):
     """Validate MCP configuration."""
     config = load_config(config_path)
-    config_id, config_data = find_config_by_name_or_id(config, config_identifier)
+    _config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
         print(f"ERROR: Error: Config '{config_identifier}' not found.")
@@ -1023,7 +1140,7 @@ def validate_config(config_path, config_identifier):
 
             if server_issues:
                 issues.append(
-                    f"Server {i+1} ({server.get('server_name', 'unknown')}): {', '.join(server_issues)}"
+                    f"Server {i + 1} ({server.get('server_name', 'unknown')}): {', '.join(server_issues)}"
                 )
 
     if issues:
@@ -1159,7 +1276,7 @@ def update_server_input_guardrails(
 ):
     """Update server input guardrails policy."""
     config = load_config(config_path)
-    config_id, config_data = find_config_by_name_or_id(config, config_identifier)
+    _config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
         print(f"ERROR: Error: Config '{config_identifier}' not found.")
@@ -1183,7 +1300,7 @@ def update_server_input_guardrails(
     policy_data = load_policy_from_file_or_string(policy_file, policy_string, "input")
 
     # Update policy
-    server_data["input_guardrails_policy"] = policy_data
+    server_data["input_guardrails_config"] = policy_data
     server_data["updated_at"] = datetime.now().isoformat()
 
     save_config(config_path, config)
@@ -1198,7 +1315,7 @@ def update_server_output_guardrails(
 ):
     """Update server output guardrails policy."""
     config = load_config(config_path)
-    config_id, config_data = find_config_by_name_or_id(config, config_identifier)
+    _config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
         print(f"ERROR: Error: Config '{config_identifier}' not found.")
@@ -1222,7 +1339,7 @@ def update_server_output_guardrails(
     policy_data = load_policy_from_file_or_string(policy_file, policy_string, "output")
 
     # Update policy
-    server_data["output_guardrails_policy"] = policy_data
+    server_data["output_guardrails_config"] = policy_data
     server_data["updated_at"] = datetime.now().isoformat()
 
     save_config(config_path, config)
@@ -1243,7 +1360,7 @@ def update_server_guardrails(
 ):
     """Update server guardrails policies (both input and output)."""
     config = load_config(config_path)
-    config_id, config_data = find_config_by_name_or_id(config, config_identifier)
+    _config_id, config_data = find_config_by_name_or_id(config, config_identifier)
 
     if not config_data:
         print(f"ERROR: Error: Config '{config_identifier}' not found.")
@@ -1270,7 +1387,7 @@ def update_server_guardrails(
         input_policy_data = load_policy_from_file_or_string(
             input_policy_file, input_policy_string, "input"
         )
-        server_data["input_guardrails_policy"] = input_policy_data
+        server_data["input_guardrails_config"] = input_policy_data
         updated_policies.append("input")
 
     # Update output policy if provided
@@ -1278,7 +1395,7 @@ def update_server_guardrails(
         output_policy_data = load_policy_from_file_or_string(
             output_policy_file, output_policy_string, "output"
         )
-        server_data["output_guardrails_policy"] = output_policy_data
+        server_data["output_guardrails_config"] = output_policy_data
         updated_policies.append("output")
 
     if not updated_policies:
@@ -1389,6 +1506,180 @@ def configure_telemetry(config_path, enabled=None, url=None, insecure=None):
 
 
 # =============================================================================
+# SANDBOX COMMANDS
+# =============================================================================
+
+
+def update_sandbox_config(
+    config_path,
+    enabled=None,
+    disabled=False,
+    runtime=None,
+    default_image=None,
+    default_memory_limit=None,
+    default_cpu_limit=None,
+    default_pids_limit=None,
+    default_network=None,
+    default_read_only=None,
+    container_cli=None,
+    nova_api_url=None,
+):
+    """Update global sandbox configuration in common_mcp_gateway_config."""
+    config = load_config(config_path)
+
+    common = config.get("common_mcp_gateway_config", {})
+    if "sandbox" not in common:
+        common["sandbox"] = {}
+    sandbox = common["sandbox"]
+
+    updated = []
+
+    if enabled:
+        sandbox["enabled"] = True
+        updated.append("enabled=true")
+    elif disabled:
+        sandbox["enabled"] = False
+        updated.append("enabled=false")
+
+    if runtime is not None:
+        sandbox["runtime"] = runtime
+        updated.append(f"runtime={runtime}")
+    if default_image is not None:
+        sandbox["default_image"] = default_image
+        updated.append(f"default_image={default_image}")
+    if default_memory_limit is not None:
+        sandbox["default_memory_limit"] = default_memory_limit
+        updated.append(f"default_memory_limit={default_memory_limit}")
+    if default_cpu_limit is not None:
+        sandbox["default_cpu_limit"] = default_cpu_limit
+        updated.append(f"default_cpu_limit={default_cpu_limit}")
+    if default_pids_limit is not None:
+        sandbox["default_pids_limit"] = default_pids_limit
+        updated.append(f"default_pids_limit={default_pids_limit}")
+    if default_network is not None:
+        sandbox["default_network"] = default_network
+        updated.append(f"default_network={default_network}")
+    if default_read_only is not None:
+        sandbox["default_read_only"] = default_read_only
+        updated.append(f"default_read_only={default_read_only}")
+    if container_cli is not None:
+        sandbox["container_cli"] = container_cli
+        updated.append(f"container_cli={container_cli}")
+    if nova_api_url is not None:
+        sandbox["nova_api_url"] = nova_api_url
+        updated.append(f"nova_api_url={nova_api_url}")
+
+    if not updated:
+        print("ERROR: At least one sandbox option must be provided")
+        sys.exit(1)
+
+    config["common_mcp_gateway_config"] = common
+    save_config(config_path, config)
+    print(f"INFO: Global sandbox configuration updated: {', '.join(updated)}")
+
+
+def get_sandbox_config(config_path):
+    """Display current global sandbox configuration."""
+    config = load_config(config_path)
+    common = config.get("common_mcp_gateway_config", {})
+    sandbox = common.get("sandbox", {})
+
+    if not sandbox:
+        print("INFO: No sandbox configuration found. Sandbox is disabled by default.")
+        print(
+            "INFO: Use 'config update-sandbox --enabled --runtime <docker|bwrap>' to enable."
+        )
+        return
+
+    print("INFO: Global sandbox configuration:")
+    print(json.dumps(sandbox, indent=2))
+
+
+def update_server_sandbox_config(
+    config_path,
+    config_identifier,
+    server_name,
+    enabled=None,
+    disabled=False,
+    runtime=None,
+    image=None,
+    memory_limit=None,
+    cpu_limit=None,
+    network=None,
+    read_only=None,
+    allowed_env=None,
+    nova_api_url=None,
+):
+    """Update sandbox configuration for a specific server."""
+    config = load_config(config_path)
+    _config_id, config_data = find_config_by_name_or_id(config, config_identifier)
+
+    if not config_data:
+        print(f"ERROR: Config '{config_identifier}' not found.")
+        sys.exit(1)
+
+    server_data = None
+    for server in config_data.get("mcp_config", []):
+        if server.get("server_name") == server_name:
+            server_data = server
+            break
+
+    if not server_data:
+        print(
+            f"ERROR: Server '{server_name}' not found in config '{config_identifier}'."
+        )
+        sys.exit(1)
+
+    if "sandbox" not in server_data:
+        server_data["sandbox"] = {}
+    sandbox = server_data["sandbox"]
+
+    updated = []
+
+    if enabled:
+        sandbox["enabled"] = True
+        updated.append("enabled=true")
+    elif disabled:
+        sandbox["enabled"] = False
+        updated.append("enabled=false")
+
+    if runtime is not None:
+        sandbox["runtime"] = runtime
+        updated.append(f"runtime={runtime}")
+    if image is not None:
+        sandbox["image"] = image
+        updated.append(f"image={image}")
+    if memory_limit is not None:
+        sandbox["memory_limit"] = memory_limit
+        updated.append(f"memory_limit={memory_limit}")
+    if cpu_limit is not None:
+        sandbox["cpu_limit"] = cpu_limit
+        updated.append(f"cpu_limit={cpu_limit}")
+    if network is not None:
+        sandbox["network"] = network
+        updated.append(f"network={network}")
+    if read_only is not None:
+        sandbox["read_only"] = read_only
+        updated.append(f"read_only={read_only}")
+    if allowed_env is not None:
+        sandbox["allowed_env"] = [e.strip() for e in allowed_env.split(",")]
+        updated.append(f"allowed_env={sandbox['allowed_env']}")
+    if nova_api_url is not None:
+        sandbox["nova_api_url"] = nova_api_url
+        updated.append(f"nova_api_url={nova_api_url}")
+
+    if not updated:
+        print("ERROR: At least one sandbox option must be provided")
+        sys.exit(1)
+
+    save_config(config_path, config)
+    print(
+        f"INFO: Sandbox configuration for server '{server_name}' "
+        f"in config '{config_identifier}' updated: {', '.join(updated)}"
+    )
+
+
+# =============================================================================
 # PROJECT COMMANDS (ENHANCED)
 # =============================================================================
 
@@ -1460,7 +1751,7 @@ def assign_config_to_project(config_path, project_identifier, config_identifier)
     """Assign MCP config to project."""
     config = load_config(config_path)
 
-    project_id, project_data = find_project_by_name_or_id(config, project_identifier)
+    _project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
         print(f"ERROR: Error: Project '{project_identifier}' not found.")
         sys.exit(1)
@@ -1493,7 +1784,7 @@ def unassign_config_from_project(config_path, project_identifier):
     """Unassign MCP config from project."""
     config = load_config(config_path)
 
-    project_id, project_data = find_project_by_name_or_id(config, project_identifier)
+    _project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
         print(f"ERROR: Error: Project '{project_identifier}' not found.")
         sys.exit(1)
@@ -1516,7 +1807,7 @@ def get_project_config(config_path, project_identifier):
     """Get config assigned to project."""
     config = load_config(config_path)
 
-    project_id, project_data = find_project_by_name_or_id(config, project_identifier)
+    _project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
         print(f"ERROR: Error: Project '{project_identifier}' not found.")
         sys.exit(1)
@@ -1626,7 +1917,7 @@ def add_user_to_project(config_path, project_identifier, user_identifier):
     """Add user to project."""
     config = load_config(config_path)
 
-    project_id, project_data = find_project_by_name_or_id(config, project_identifier)
+    _project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
         print(f"ERROR: Error: Project '{project_identifier}' not found.")
         sys.exit(1)
@@ -1655,7 +1946,7 @@ def remove_user_from_project(config_path, project_identifier, user_identifier):
     """Remove user from project."""
     config = load_config(config_path)
 
-    project_id, project_data = find_project_by_name_or_id(config, project_identifier)
+    _project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
         print(f"ERROR: Error: Project '{project_identifier}' not found.")
         sys.exit(1)
@@ -1684,7 +1975,7 @@ def remove_all_users_from_project(config_path, project_identifier):
     """Remove all users from project."""
     config = load_config(config_path)
 
-    project_id, project_data = find_project_by_name_or_id(config, project_identifier)
+    _project_id, project_data = find_project_by_name_or_id(config, project_identifier)
     if not project_data:
         print(f"ERROR: Error: Project '{project_identifier}' not found.")
         sys.exit(1)
@@ -1884,7 +2175,7 @@ def update_user(config_path, user_identifier, new_email):
     """Update user email."""
     config = load_config(config_path)
 
-    user_id, user_data = find_user_by_email_or_id(config, user_identifier)
+    _user_id, user_data = find_user_by_email_or_id(config, user_identifier)
     if not user_data:
         print(f"ERROR: Error: User '{user_identifier}' not found.")
         sys.exit(1)
@@ -2656,7 +2947,9 @@ def run_via_docker(args, original_argv):
         print("ERROR: Install Docker: https://docs.docker.com/get-docker/")
         sys.exit(1)
     except subprocess.CalledProcessError:
-        print("ERROR: Docker is not running. Please start Docker Desktop or the Docker daemon.")
+        print(
+            "ERROR: Docker is not running. Please start Docker Desktop or the Docker daemon."
+        )
         sys.exit(1)
 
     # Auto-detect host values
@@ -2704,7 +2997,8 @@ def run_via_docker(args, original_argv):
         "--entrypoint",
         "secure-mcp-gateway",
         image,
-    ] + pass_through
+        *pass_through,
+    ]
 
     print(f"INFO: Running inside Docker ({image})...")
     print(f"INFO: > {' '.join(docker_cmd)}")
@@ -2754,7 +3048,42 @@ def main():
         "install", help="Install gateway for a client"
     )
     install_parser.add_argument(
-        "--client", type=str, required=True, help="Client name (claude-desktop, cursor, or claude-code)"
+        "--client",
+        type=str,
+        required=True,
+        help="Client name (claude-desktop, cursor, or claude-code)",
+    )
+    install_parser.add_argument(
+        "--apikey",
+        type=str,
+        default=None,
+        help=(
+            "Enkrypt cloud apikey to embed in the client config. Only used "
+            "when the gateway's auth.provider is 'enkrypt'. If omitted, "
+            "falls back to auth.config.apikey from the local config file."
+        ),
+    )
+    install_parser.add_argument(
+        "--transport",
+        type=str,
+        choices=["stdio", "http"],
+        default="stdio",
+        help=(
+            "Transport for the MCP client connection. 'stdio' (default) "
+            "spawns the gateway as a subprocess with credentials passed via "
+            "env vars. 'http' assumes the gateway is already running on a "
+            "URL and writes credentials as request headers. 'http' is "
+            "supported for claude-desktop and cursor only."
+        ),
+    )
+    install_parser.add_argument(
+        "--url",
+        type=str,
+        default="http://localhost:8000/mcp/",
+        help=(
+            "Gateway URL to use when --transport=http. Ignored for stdio "
+            "installs. Defaults to the local streamable-HTTP endpoint."
+        ),
     )
 
     # =========================================================================
@@ -2860,13 +3189,17 @@ def main():
     config_add_server_parser.add_argument("--env", help="Environment variables (JSON)")
     config_add_server_parser.add_argument("--tools", help="Tools configuration (JSON)")
     config_add_server_parser.add_argument(
+        "--denied-tools",
+        help="Denied tools list (JSON array of strings/objects with name, reason, description)",
+    )
+    config_add_server_parser.add_argument(
         "--description", default="", help="Server description"
     )
     config_add_server_parser.add_argument(
-        "--input-guardrails-policy", help="Input guardrails policy (JSON)"
+        "--input-guardrails-config", help="Input guardrails config (JSON)"
     )
     config_add_server_parser.add_argument(
-        "--output-guardrails-policy", help="Output guardrails policy (JSON)"
+        "--output-guardrails-config", help="Output guardrails config (JSON)"
     )
 
     # config get
@@ -3031,6 +3364,118 @@ def main():
         "--insecure",
         type=lambda x: x.lower() in ("true", "1", "yes"),
         help="Use insecure connection (true/false)",
+    )
+
+    # config update-sandbox
+    config_update_sandbox_parser = config_subparsers.add_parser(
+        "update-sandbox", help="Update global sandbox configuration"
+    )
+    config_update_sandbox_parser.add_argument(
+        "--enabled", action="store_true", default=False, help="Enable sandbox isolation"
+    )
+    config_update_sandbox_parser.add_argument(
+        "--disabled",
+        action="store_true",
+        default=False,
+        help="Disable sandbox isolation",
+    )
+    config_update_sandbox_parser.add_argument(
+        "--runtime",
+        choices=["docker", "podman", "bwrap", "microsandbox", "novavm"],
+        help="Sandbox runtime to use",
+    )
+    config_update_sandbox_parser.add_argument(
+        "--default-image", help="Default container image (e.g., python:3.11-slim)"
+    )
+    config_update_sandbox_parser.add_argument(
+        "--default-memory-limit", help="Default memory limit (e.g., 512m, 1g)"
+    )
+    config_update_sandbox_parser.add_argument(
+        "--default-cpu-limit", help="Default CPU limit (e.g., 1.0, 2.0)"
+    )
+    config_update_sandbox_parser.add_argument(
+        "--default-pids-limit", type=int, help="Default max processes per sandbox"
+    )
+    config_update_sandbox_parser.add_argument(
+        "--default-network",
+        choices=["none", "bridge", "host"],
+        help="Default network mode (none = no network access)",
+    )
+    config_update_sandbox_parser.add_argument(
+        "--default-read-only",
+        type=lambda x: x.lower() in ("true", "1", "yes"),
+        help="Default read-only filesystem (true/false)",
+    )
+    config_update_sandbox_parser.add_argument(
+        "--container-cli",
+        choices=["auto", "docker", "podman"],
+        help="Container CLI to use (auto = detect)",
+    )
+    config_update_sandbox_parser.add_argument(
+        "--nova-api-url", help="NovaVM daemon API URL"
+    )
+
+    # config get-sandbox
+    config_subparsers.add_parser(
+        "get-sandbox", help="Display current global sandbox configuration"
+    )
+
+    # config update-server-sandbox
+    config_update_server_sandbox_parser = config_subparsers.add_parser(
+        "update-server-sandbox",
+        help="Update sandbox configuration for a specific server",
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--config-name", help="Configuration name"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--config-id", help="Configuration ID"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--server-name", required=True, help="Server name"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--enabled",
+        action="store_true",
+        default=False,
+        help="Enable sandbox for this server",
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--disabled",
+        action="store_true",
+        default=False,
+        help="Disable sandbox for this server",
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--runtime",
+        choices=["docker", "podman", "bwrap", "microsandbox", "novavm"],
+        help="Sandbox runtime override",
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--image", help="Container image for this server"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--memory-limit", help="Memory limit (e.g., 256m, 1g)"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--cpu-limit", help="CPU limit (e.g., 0.5, 1.0)"
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--network",
+        choices=["none", "bridge", "host"],
+        help="Network mode (none = no network access)",
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--read-only",
+        type=lambda x: x.lower() in ("true", "1", "yes"),
+        help="Read-only filesystem (true/false)",
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--allowed-env",
+        help="Comma-separated list of env var names to pass into sandbox",
+    )
+    config_update_server_sandbox_parser.add_argument(
+        "--nova-api-url", help="NovaVM daemon API URL override"
     )
 
     # =========================================================================
@@ -3415,9 +3860,10 @@ def main():
                 args.args,
                 args.env,
                 args.tools,
-                args.description,  # Changed from args.command to args.server_command
-                args.input_guardrails_policy,
-                args.output_guardrails_policy,
+                args.description,
+                args.input_guardrails_config,
+                args.output_guardrails_config,
+                getattr(args, "denied_tools", None),
             )
         elif args.config_command == "get":
             config_identifier = args.config_name or args.config_id
@@ -3512,6 +3958,46 @@ def main():
                 enabled=args.enabled,
                 url=args.url,
                 insecure=args.insecure,
+            )
+
+        elif args.config_command == "update-sandbox":
+            update_sandbox_config(
+                config_path,
+                enabled=args.enabled,
+                disabled=args.disabled,
+                runtime=args.runtime,
+                default_image=args.default_image,
+                default_memory_limit=args.default_memory_limit,
+                default_cpu_limit=args.default_cpu_limit,
+                default_pids_limit=args.default_pids_limit,
+                default_network=args.default_network,
+                default_read_only=args.default_read_only,
+                container_cli=args.container_cli,
+                nova_api_url=args.nova_api_url,
+            )
+
+        elif args.config_command == "get-sandbox":
+            get_sandbox_config(config_path)
+
+        elif args.config_command == "update-server-sandbox":
+            config_identifier = args.config_name or args.config_id
+            if not config_identifier:
+                print("ERROR: Either --config-name or --config-id is required")
+                sys.exit(1)
+            update_server_sandbox_config(
+                config_path,
+                config_identifier,
+                args.server_name,
+                enabled=args.enabled,
+                disabled=args.disabled,
+                runtime=args.runtime,
+                image=args.image,
+                memory_limit=args.memory_limit,
+                cpu_limit=args.cpu_limit,
+                network=args.network,
+                read_only=args.read_only,
+                allowed_env=args.allowed_env,
+                nova_api_url=args.nova_api_url,
             )
 
         sys.exit(0)
@@ -3717,23 +4203,171 @@ def main():
         sys.exit(0)
 
     elif args.command == "install":
-        credentials = get_gateway_credentials(config_path)
-        gateway_key = credentials.get("gateway_key")
-        project_id = credentials.get("project_id")
-        user_id = credentials.get("user_id")
-
-        if not gateway_key:
+        # Provider-aware credential resolution. ``get_install_credentials``
+        # inspects ``plugins.auth.provider`` in the local config and returns
+        # the right shape: a single ``apikey`` for cloud auth, the legacy
+        # gateway_key+project_id+user_id triple for local_apikey.
+        try:
+            install_creds = get_install_credentials(
+                config_path, override_apikey=args.apikey
+            )
+        except FileNotFoundError as e:
+            print(f"ERROR: {e}")
             print(
-                "INFO: ",
-                f"Gateway key not found in {config_path}. Please generate a new config file using 'generate-config' subcommand and try again.",
+                "INFO: Generate a config file with 'secure-mcp-gateway generate-config'."
             )
             sys.exit(1)
+        except ValueError as e:
+            print(f"ERROR: {e}")
+            sys.exit(1)
 
-        env = {
-            "ENKRYPT_GATEWAY_KEY": gateway_key,
-            "ENKRYPT_PROJECT_ID": project_id,
-            "ENKRYPT_USER_ID": user_id,
+        provider = install_creds["provider"]
+        env = install_creds["env"]
+        headers = install_creds["headers"]
+        transport = args.transport.lower()
+
+        # Help operators see exactly which auth shape is being installed —
+        # this is the diagnostic that would have made the
+        # "ENKRYPT_GATEWAY_KEY -> 401" debugging session 30 seconds long.
+        masked_creds = {
+            k: ("****" + v[-4:] if isinstance(v, str) and len(v) >= 4 else "****")
+            for k, v in env.items()
         }
+        print(
+            f"INFO: Installing with auth.provider='{provider}' "
+            f"transport='{transport}' credentials={masked_creds}"
+        )
+
+        # Backward-compat: keep the legacy gateway_key/project_id/user_id
+        # locals around for branches that still reference them. They are
+        # ``None`` in cloud mode but every cloud-mode codepath below is
+        # guarded by the provider check before it reads them.
+        gateway_key = env.get("ENKRYPT_GATEWAY_KEY")
+        project_id = env.get("ENKRYPT_PROJECT_ID")
+        user_id = env.get("ENKRYPT_USER_ID")
+
+        # ---------------------------------------------------------------
+        # Streamable-HTTP install path (--transport http)
+        # ---------------------------------------------------------------
+        # Writes a ``{ "url": ..., "headers": {...} }`` entry into the
+        # client's MCP config instead of spawning the gateway as a stdio
+        # subprocess. Targets the case where the gateway is running as a
+        # long-lived HTTP server (the production deployment shape) and the
+        # client just connects to its URL.
+        #
+        # Currently supports claude-desktop and cursor (both of which
+        # accept the same {url, headers} shape in their mcp.json /
+        # claude_desktop_config.json). claude-code uses its own CLI for
+        # http installs, so we tell the operator to run it directly.
+        if transport == "http":
+            client_lc = args.client.lower()
+
+            if client_lc == "claude-code":
+                print(
+                    "ERROR: --transport http is not supported for claude-code "
+                    "via this CLI. Run 'claude mcp add --transport http "
+                    '<name> --header "<header>=<value>" -- <url>\' directly.'
+                )
+                sys.exit(1)
+
+            if client_lc not in ("claude", "claude-desktop", "cursor"):
+                print(
+                    f"ERROR: --transport http does not support client '{args.client}'. "
+                    "Use 'claude-desktop' or 'cursor'."
+                )
+                sys.exit(1)
+
+            entry = {"url": args.url, "headers": headers}
+
+            if client_lc == "cursor":
+                base_path = "/app" if is_docker_running else HOME_DIR
+                cursor_config_path = os.path.join(base_path, ".cursor", "mcp.json")
+                cursor_config = {}
+                if os.path.exists(cursor_config_path):
+                    try:
+                        with open(cursor_config_path) as f:
+                            content = f.read().strip()
+                            if content:
+                                cursor_config = json.loads(content)
+                    except json.JSONDecodeError as e:
+                        print(f"ERROR: Could not parse {cursor_config_path}: {e}")
+                        sys.exit(1)
+                cursor_config.setdefault("mcpServers", {})[
+                    "Enkrypt Secure MCP Gateway"
+                ] = entry
+
+                os.makedirs(os.path.dirname(cursor_config_path), exist_ok=True)
+                if os.name == "posix":
+                    os.chmod(os.path.dirname(cursor_config_path), 0o700)
+                with open(cursor_config_path, "w") as f:
+                    json.dump(cursor_config, f, indent=2)
+                if os.name == "posix":
+                    os.chmod(cursor_config_path, 0o600)
+
+                print(
+                    f"INFO: Successfully configured Cursor for streamable-HTTP "
+                    f"transport at {args.url}"
+                )
+                print(f"INFO: Config updated at: {cursor_config_path}")
+                print("INFO: Reload Cursor MCP servers to pick up the change.")
+                sys.exit(0)
+
+            # claude / claude-desktop branch
+            if is_docker_running:
+                claude_desktop_config_path = os.path.join(
+                    "/app", ".claude", "claude_desktop_config.json"
+                )
+            elif sys.platform == "darwin":
+                claude_desktop_config_path = os.path.join(
+                    HOME_DIR,
+                    "Library",
+                    "Application Support",
+                    "Claude",
+                    "claude_desktop_config.json",
+                )
+            elif sys.platform == "win32":
+                appdata = os.environ.get("APPDATA")
+                claude_desktop_config_path = (
+                    os.path.join(appdata, "Claude", "claude_desktop_config.json")
+                    if appdata
+                    else None
+                )
+            else:
+                claude_desktop_config_path = os.path.join(
+                    HOME_DIR, ".claude", "claude_desktop_config.json"
+                )
+
+            if not claude_desktop_config_path:
+                print(
+                    "ERROR: Could not determine Claude Desktop config path on this OS."
+                )
+                sys.exit(1)
+
+            claude_desktop_config = {"mcpServers": {}}
+            if os.path.exists(claude_desktop_config_path):
+                try:
+                    with open(claude_desktop_config_path) as f:
+                        content = f.read().strip()
+                        if content:
+                            claude_desktop_config = json.loads(content)
+                except json.JSONDecodeError as e:
+                    print(f"ERROR: Could not parse {claude_desktop_config_path}: {e}")
+                    sys.exit(1)
+            claude_desktop_config.setdefault("mcpServers", {})[
+                "Enkrypt Secure MCP Gateway"
+            ] = entry
+
+            os.makedirs(os.path.dirname(claude_desktop_config_path), exist_ok=True)
+            with open(claude_desktop_config_path, "w") as f:
+                json.dump(claude_desktop_config, f, indent=2)
+
+            print(
+                f"INFO: Successfully configured Claude Desktop for "
+                f"streamable-HTTP transport at {args.url}"
+            )
+            print(f"INFO: Config updated at: {claude_desktop_config_path}")
+            print("INFO: Restart Claude Desktop to pick up the change.")
+            sys.exit(0)
 
         if args.client.lower() == "claude" or args.client.lower() == "claude-desktop":
             client = args.client
@@ -3751,7 +4385,9 @@ def main():
                     with open(claude_desktop_config_path) as f:
                         try:
                             content = f.read().strip()
-                            claude_desktop_config = json.loads(content) if content else {}
+                            claude_desktop_config = (
+                                json.loads(content) if content else {}
+                            )
                         except json.JSONDecodeError as e:
                             print(
                                 "INFO: ",
@@ -3776,20 +4412,19 @@ def main():
                 print("INFO: Please restart Claude Desktop to use the new gateway.")
                 sys.exit(0)
             else:
-                # non-Docker logic
+                # non-Docker logic. Build --env-var flags dynamically from
+                # the provider-aware ``env`` dict so cloud-auth installs
+                # emit ENKRYPT_APIKEY=... (only) and local_apikey installs
+                # emit the legacy three-var triple.
                 cmd = [
                     "mcp",
                     "install",
                     GATEWAY_PY_PATH,
                     "--name",
                     "Enkrypt Secure MCP Gateway",
-                    "--env-var",
-                    f"ENKRYPT_GATEWAY_KEY={gateway_key}",
-                    "--env-var",
-                    f"ENKRYPT_PROJECT_ID={project_id}",
-                    "--env-var",
-                    f"ENKRYPT_USER_ID={user_id}",
                 ]
+                for k, v in env.items():
+                    cmd.extend(["--env-var", f"{k}={v}"])
                 result = subprocess.run(cmd, capture_output=True, text=True)
                 if result.returncode != 0:
                     print(f"INFO: Error installing gateway: {result.stderr}")
@@ -3823,7 +4458,9 @@ def main():
                         try:
                             with open(claude_desktop_config_path) as f:
                                 content = f.read().strip()
-                                claude_desktop_config = json.loads(content) if content else {}
+                                claude_desktop_config = (
+                                    json.loads(content) if content else {}
+                                )
                                 if (
                                     "mcpServers" in claude_desktop_config
                                     and "Enkrypt Secure MCP Gateway"
@@ -3903,33 +4540,38 @@ def main():
                 capture_output=True,
             )
 
+            # Build --env flags dynamically from the provider-aware env
+            # dict (cloud auth -> ENKRYPT_APIKEY only; local_apikey ->
+            # legacy gateway_key/project_id/user_id triple).
             cmd = [
                 claude_bin,
                 "mcp",
                 "add",
                 "--transport",
                 "stdio",
-                "--env",
-                f"ENKRYPT_GATEWAY_KEY={gateway_key}",
-                "--env",
-                f"ENKRYPT_PROJECT_ID={project_id}",
-                "--env",
-                f"ENKRYPT_USER_ID={user_id}",
-                "--scope",
-                "user",
-                server_name,
-                "--",
-                "mcp",
-                "run",
-                GATEWAY_PY_PATH,
             ]
+            for k, v in env.items():
+                cmd.extend(["--env", f"{k}={v}"])
+            cmd.extend(
+                [
+                    "--scope",
+                    "user",
+                    server_name,
+                    "--",
+                    "mcp",
+                    "run",
+                    GATEWAY_PY_PATH,
+                ]
+            )
 
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
-                print(f"ERROR: Error installing gateway for Claude Code: {result.stderr}")
+                print(
+                    f"ERROR: Error installing gateway for Claude Code: {result.stderr}"
+                )
                 sys.exit(1)
             else:
-                print(f"INFO: Successfully installed gateway for Claude Code")
+                print("INFO: Successfully installed gateway for Claude Code")
                 print(f"INFO: Server name: {server_name}")
                 print("INFO: Scope: user (available across all Claude Code projects)")
                 print("INFO: Verify with: claude mcp list")

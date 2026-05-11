@@ -342,15 +342,15 @@ get_id_from_key(cache_client, gateway_key)
           },
           "tools": {},
           "enable_tool_guardrails": true,
-          "input_guardrails_policy": {
+          "input_guardrails_config": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": { "pii_redaction": false },
             "block": ["policy_violation", "injection_attack", ...]
           },
-          "output_guardrails_policy": {
+          "output_guardrails_config": {
             "enabled": false,
-            "policy_name": "Sample Airline Guardrail",
+            "guardrail_name": "Sample Airline Guardrail",
             "additional_config": {
               "relevancy": false,
               "hallucination": false,
@@ -1283,7 +1283,7 @@ secure-mcp-gateway config add-server --config-name "<config_name>" \
 
 ```bash
 secure-mcp-gateway config update-server-guardrails <config_id> github \
-  --input-policy '{"enabled": true, "policy_name": "Sample Airline Guardrail", "block": ["policy_violation"]}'
+  --input-policy '{"enabled": true, "guardrail_name": "Sample Airline Guardrail", "block": ["policy_violation"]}'
 
 ```
 
