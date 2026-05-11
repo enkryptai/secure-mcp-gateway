@@ -13,7 +13,7 @@ from mcp import ClientSession, StdioServerParameters
 # https://github.com/modelcontextprotocol/python-sdk/blob/main/src/mcp/client/stdio/__init__.py
 from mcp.client.stdio import stdio_client
 
-from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params
+from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params, is_url_config
 from secure_mcp_gateway.services.oauth.integration import (
     inject_oauth_into_args,
     inject_oauth_into_env,
@@ -203,7 +203,7 @@ async def get_server_metadata_only(server_name, gateway_config=None):
         raise ValueError(f"No config found for server: {server_name}")
 
     config = server_entry["config"]
-    is_url_server = bool(config.get("url"))
+    is_url_server = is_url_config(config)
     command = config.get("command") if not is_url_server else None
     command_args = config.get("args", []) if not is_url_server else []
     env = config.get("env", None)
@@ -329,7 +329,7 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
         raise ValueError(f"No config found for server: {server_name}")
 
     config = server_entry["config"]
-    is_url_server = bool(config.get("url"))
+    is_url_server = is_url_config(config)
     command = config.get("command") if not is_url_server else None
     command_args = config.get("args", []) if not is_url_server else []
     env = config.get("env", None)

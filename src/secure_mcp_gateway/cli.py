@@ -916,6 +916,7 @@ def add_server_to_config(
     server_url=None,
     transport=None,
     headers=None,
+    server_type=None,
 ):
     """Add server to MCP configuration with validation."""
     config = load_config(config_path)
@@ -959,10 +960,15 @@ def add_server_to_config(
     # Build the inner "config" block depending on transport type
     if server_url:
         inner_config = {"url": server_url}
+        if server_type and server_type in ("http", "sse"):
+            inner_config["type"] = server_type
         if transport:
             inner_config["transport"] = transport
         if headers_data:
             inner_config["headers"] = headers_data
+    elif server_type in ("http", "sse"):
+        print("ERROR: --type http/sse requires --server-url")
+        sys.exit(1)
     else:
         args_list = [arg.strip() for arg in args.split(",")] if args else []
         inner_config = {"command": command, "args": args_list}
@@ -1146,10 +1152,11 @@ def validate_config(config_path, config_identifier):
                 server_issues.append("Missing 'config' section")
             else:
                 has_url = "url" in server["config"]
+                has_type_http = server["config"].get("type", "").lower() in ("http", "sse")
                 has_command = "command" in server["config"]
-                if not has_url and not has_command:
+                if not has_url and not has_type_http and not has_command:
                     server_issues.append(
-                        "Missing 'command' or 'url' in config"
+                        "Missing 'command', 'url', or 'type' (http/sse) in config"
                     )
                 if has_command and "args" not in server["config"]:
                     server_issues.append("Missing 'args' in config")
@@ -3238,6 +3245,14 @@ def main():
         help="Transport for URL servers (default: streamable_http). Ignored for stdio servers.",
     )
     config_add_server_parser.add_argument(
+        "--type",
+        choices=["http", "sse", "stdio"],
+        default=None,
+        dest="server_type",
+        help="Standard MCP server type (http, sse, stdio). "
+        "Alternative to --transport for compatibility with VS Code / Claude configs.",
+    )
+    config_add_server_parser.add_argument(
         "--args", help="Server arguments (comma-separated, e.g., '-y,@org/package')"
     )
     config_add_server_parser.add_argument("--env", help="Environment variables (JSON)")
@@ -3912,6 +3927,7 @@ def main():
                 sys.exit(1)
             server_url = getattr(args, "server_url", None)
             server_command = getattr(args, "server_command", None)
+            server_type = getattr(args, "server_type", None)
             if not server_url and not server_command:
                 print(
                     "ERROR: Either --server-command or --server-url is required"
@@ -3937,6 +3953,7 @@ def main():
                 server_url=server_url,
                 transport=getattr(args, "transport", None),
                 headers=getattr(args, "headers", None),
+                server_type=server_type,
             )
         elif args.config_command == "get":
             config_identifier = args.config_name or args.config_id

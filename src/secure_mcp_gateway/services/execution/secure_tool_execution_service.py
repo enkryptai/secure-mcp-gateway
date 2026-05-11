@@ -25,6 +25,7 @@ from secure_mcp_gateway.services.execution.execution_utils import (
 from secure_mcp_gateway.services.execution.tool_execution_service import (
     ToolExecutionService,
 )
+from secure_mcp_gateway.plugins.sandbox.server_params import is_url_config
 from secure_mcp_gateway.services.session.session_pool import get_session_pool
 
 # Get tracer from telemetry manager
@@ -561,7 +562,7 @@ class SecureToolExecutionService:
         # ``server_config_tools`` which may have been replaced by discovery.
         configured_allowed_tools = server_info.get("tools", {}) or {}
 
-        is_url_server = bool(server_config.get("url"))
+        is_url_server = is_url_config(server_config)
         server_command = server_config.get("command") if not is_url_server else None
         server_args = server_config.get("args", []) if not is_url_server else []
         server_env = server_config.get("env", None)
@@ -637,11 +638,14 @@ class SecureToolExecutionService:
 
         pool = get_session_pool()
         if is_url_server:
+            from secure_mcp_gateway.plugins.sandbox.server_params import _resolve_transport
             server_cfg = {
-                "url": server_config["url"],
-                "transport": server_config.get("transport", "streamable_http"),
+                "url": server_config.get("url", ""),
+                "transport": _resolve_transport(server_config),
                 "headers": server_config.get("headers", {}),
             }
+            if server_config.get("type"):
+                server_cfg["type"] = server_config["type"]
         else:
             server_cfg = {"command": server_command, "args": server_args, "env": server_env}
         session = None

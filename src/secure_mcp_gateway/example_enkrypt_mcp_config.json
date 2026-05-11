@@ -170,13 +170,45 @@
           }
         },
         {
-          "_doc_url_server": "URL-based servers connect directly over HTTP instead of spawning a subprocess. Use 'url' instead of 'command'+'args'. Transport defaults to streamable_http; set to 'sse' for legacy SSE servers.",
+          "_doc_url_server": "URL-based servers connect directly over HTTP instead of spawning a subprocess. Use 'url' instead of 'command'+'args'. Transport defaults to streamable_http; set to 'sse' for legacy SSE servers. You can also use the standard MCP 'type' field: 'http' (streamable HTTP) or 'sse'.",
           "server_name": "example_remote_server",
           "description": "Example remote MCP server (URL-based)",
           "config": {
             "url": "https://mcp.example.com/mcp",
             "transport": "streamable_http",
             "headers": {}
+          },
+          "tools": {},
+          "denied_tools": [],
+          "enable_server_info_validation": false,
+          "tool_guardrails_config": {
+            "enabled": false,
+            "guardrail_name": "Sample Airline Guardrail",
+            "block": ["policy_violation", "injection_attack"]
+          },
+          "input_guardrails_config": {
+            "enabled": false,
+            "guardrail_name": "Sample Airline Guardrail",
+            "additional_config": { "pii_redaction": false },
+            "block": ["policy_violation"]
+          },
+          "output_guardrails_config": {
+            "enabled": false,
+            "guardrail_name": "Sample Airline Guardrail",
+            "additional_config": { "relevancy": false, "hallucination": false, "adherence": false },
+            "block": ["policy_violation"]
+          }
+        },
+        {
+          "_doc_type_http": "Standard MCP config format using 'type' field. Compatible with VS Code, Claude Desktop, and Cursor config snippets. 'type: http' maps to streamable HTTP transport; 'type: sse' maps to legacy SSE.",
+          "server_name": "example_standard_remote_server",
+          "description": "Example using standard MCP type:http format",
+          "config": {
+            "type": "http",
+            "url": "https://api.example.com/mcp/",
+            "headers": {
+              "Authorization": "Bearer YOUR_TOKEN"
+            }
           },
           "tools": {},
           "denied_tools": [],

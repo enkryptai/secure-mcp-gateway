@@ -6,7 +6,7 @@ from typing import Any, AsyncIterator
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params
+from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params, is_url_config
 
 
 class ToolExecutionService:
@@ -128,7 +128,7 @@ class ToolExecutionService:
         For URL servers: server_config must provide url (and optionally transport, headers).
         server_entry is the full per-server config dict (needed for sandbox/URL lookup).
         """
-        is_url = bool(server_config.get("url"))
+        is_url = is_url_config(server_config)
         command = server_config.get("command") if not is_url else None
         args: list[str] = server_config.get("args", []) if not is_url else []
         env: dict[str, str] | None = server_config.get("env")
