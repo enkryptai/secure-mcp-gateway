@@ -112,10 +112,10 @@ def test_constructor_rejects_removed_legacy_keys() -> None:
     assert "api_key" in str(exc.value)
 
 
-def test_constructor_requires_gateway_name() -> None:
-    with pytest.raises(ValueError) as exc:
-        EnkryptAuthProvider(apikey="x")
-    assert "gateway_name" in str(exc.value)
+def test_constructor_allows_missing_gateway_name() -> None:
+    """gateway_name is optional at boot — it can come from the request header."""
+    p = EnkryptAuthProvider(apikey="x")
+    assert p.gateway_name is None
 
 
 def test_constructor_applies_defaults() -> None:
@@ -668,7 +668,7 @@ async def test_cache_hit_short_circuits_second_fetch(monkeypatch) -> None:
 
     call_count = {"n": 0}
 
-    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str):
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
         call_count["n"] += 1
         return sample_response()
 
@@ -694,7 +694,7 @@ async def test_cache_separated_per_apikey(monkeypatch) -> None:
 
     call_count = {"n": 0}
 
-    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str):
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
         call_count["n"] += 1
         return sample_response()
 
@@ -719,7 +719,7 @@ async def test_cache_expires_after_ttl(monkeypatch) -> None:
 
     call_count = {"n": 0}
 
-    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str):
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
         call_count["n"] += 1
         return sample_response()
 
@@ -760,7 +760,7 @@ def test_invalidate_cache_clears_all_entries() -> None:
 async def test_authenticate_succeeds_with_stubbed_cloud(monkeypatch) -> None:
     p = make_provider()
 
-    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str):
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
         return sample_response()
 
     async def empty_overrides(self: EnkryptAuthProvider):
@@ -794,10 +794,79 @@ async def test_authenticate_rejects_missing_apikey() -> None:
 
 
 @pytest.mark.asyncio
+async def test_authenticate_rejects_missing_gateway_name() -> None:
+    """When neither config nor header supplies a gateway_name, auth must fail."""
+    p = EnkryptAuthProvider(apikey="x")  # no gateway_name at boot
+    creds = AuthCredentials(api_key="x", gateway_key="x")
+    result = await p.authenticate(creds)
+    assert result.authenticated is False
+    assert result.status == AuthStatus.INVALID_CREDENTIALS
+    assert "gateway" in (result.error or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_authenticate_uses_header_gateway_name(monkeypatch) -> None:
+    """Header gateway_name overrides config and is used for cloud fetch."""
+    p = make_provider()  # config has gateway_name="test-gateway"
+
+    seen_gateway = {}
+
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
+        seen_gateway["name"] = kw.get("gateway_name")
+        return sample_response()
+
+    async def empty_overrides(self: EnkryptAuthProvider):
+        return {}
+
+    monkeypatch.setattr(
+        EnkryptAuthProvider, "_fetch_remote_gateway_config", fake_fetch
+    )
+    monkeypatch.setattr(
+        EnkryptAuthProvider, "_load_local_server_overrides", empty_overrides
+    )
+
+    creds = AuthCredentials(
+        api_key="x", gateway_key="x", gateway_name="header-override-gw"
+    )
+    result = await p.authenticate(creds)
+    assert result.authenticated is True
+    assert result.metadata["gateway_name"] == "header-override-gw"
+    assert seen_gateway["name"] == "header-override-gw"
+
+
+@pytest.mark.asyncio
+async def test_authenticate_falls_back_to_config_gateway_name(monkeypatch) -> None:
+    """When header has no gateway_name, config value is used."""
+    p = make_provider()  # config has gateway_name="test-gateway"
+
+    seen_gateway = {}
+
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
+        seen_gateway["name"] = kw.get("gateway_name")
+        return sample_response()
+
+    async def empty_overrides(self: EnkryptAuthProvider):
+        return {}
+
+    monkeypatch.setattr(
+        EnkryptAuthProvider, "_fetch_remote_gateway_config", fake_fetch
+    )
+    monkeypatch.setattr(
+        EnkryptAuthProvider, "_load_local_server_overrides", empty_overrides
+    )
+
+    creds = AuthCredentials(api_key="x", gateway_key="x")  # no gateway_name
+    result = await p.authenticate(creds)
+    assert result.authenticated is True
+    assert result.metadata["gateway_name"] == "test-gateway"
+    assert seen_gateway["name"] == "test-gateway"
+
+
+@pytest.mark.asyncio
 async def test_authenticate_hard_fails_on_cloud_error(monkeypatch) -> None:
     p = make_provider()
 
-    async def boom(self: EnkryptAuthProvider, gateway_key: str):
+    async def boom(self: EnkryptAuthProvider, gateway_key: str, **kw):
         raise _CloudFetchError("HTTP 503 from upstream")
 
     async def empty_overrides(self: EnkryptAuthProvider):

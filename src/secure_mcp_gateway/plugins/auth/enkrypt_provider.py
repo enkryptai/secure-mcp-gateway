@@ -161,13 +161,8 @@ class EnkryptAuthProvider(AuthProvider):
                 list(legacy_kwargs.keys()),
             )
 
-        if not gateway_name:
-            raise ValueError(
-                "EnkryptAuthProvider: 'gateway_name' is required in auth.config"
-            )
-
         self.apikey = apikey or ""
-        self.gateway_name = gateway_name
+        self.gateway_name = gateway_name or None
         self.gateway_version = gateway_version or DEFAULT_GATEWAY_VERSION
         self.project_name = project_name or None  # treat empty string as absent
         self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
@@ -179,7 +174,7 @@ class EnkryptAuthProvider(AuthProvider):
         logger.info(
             "[EnkryptAuthProvider] initialised: gateway_name=%s gateway_version=%s "
             "project_name=%s base_url=%s ttl=%ss",
-            self.gateway_name,
+            self.gateway_name or "(from request header X-Enkrypt-MCP-Gateway)",
             self.gateway_version,
             self.project_name or "(inferred from apikey)",
             self.base_url,
@@ -200,10 +195,10 @@ class EnkryptAuthProvider(AuthProvider):
         return [AuthMethod.API_KEY]
 
     def validate_config(self, config: dict[str, Any]) -> bool:
-        return bool(self.gateway_name)
+        return True
 
     def get_required_config_keys(self) -> list[str]:
-        return ["gateway_name"]
+        return []
 
     # ------------------------------------------------------------------
     # Public auth surface
@@ -230,11 +225,33 @@ class EnkryptAuthProvider(AuthProvider):
                 error="Missing apikey on request and no boot-time fallback configured",
             )
 
+        # Header overrides config; config is the fallback.
+        effective_gateway = credentials.gateway_name or self.gateway_name
+        if not effective_gateway:
+            return AuthResult(
+                status=AuthStatus.INVALID_CREDENTIALS,
+                authenticated=False,
+                message="No gateway name provided",
+                error=(
+                    "Missing X-Enkrypt-MCP-Gateway header and no "
+                    "gateway_name in auth.config"
+                ),
+            )
+
+        if credentials.gateway_name and credentials.gateway_name != self.gateway_name:
+            logger.info(
+                "[EnkryptAuthProvider] gateway_name overridden by request header: "
+                "%s (config=%s)",
+                credentials.gateway_name,
+                self.gateway_name or "(none)",
+            )
+
         try:
             mapped = await self._get_local_config(
                 gateway_key,
                 credentials.project_id,
                 credentials.user_id,
+                gateway_name=effective_gateway,
             )
         except _CloudFetchError as exc:
             return AuthResult(
@@ -272,7 +289,7 @@ class EnkryptAuthProvider(AuthProvider):
             metadata={
                 "source": "enkrypt-cloud",
                 "config_id": mapped.get("mcp_config_id"),
-                "gateway_name": self.gateway_name,
+                "gateway_name": effective_gateway,
                 "gateway_version": self.gateway_version,
                 **mapped.get("_request_context_extra", {}),
             },
@@ -297,6 +314,8 @@ class EnkryptAuthProvider(AuthProvider):
         gateway_key: str,
         project_id: str | None = None,
         user_id: str | None = None,
+        *,
+        gateway_name: str | None = None,
     ) -> dict[str, Any] | None:
         """Return the internal ``gateway_config`` dict for a given apikey.
 
@@ -305,18 +324,28 @@ class EnkryptAuthProvider(AuthProvider):
         discovery_service, etc.) work unchanged. ``project_id`` / ``user_id``
         are accepted but ignored: cloud auth derives them from the apikey
         and the response's ``request_context`` block.
+
+        ``gateway_name`` overrides ``self.gateway_name`` when provided (i.e.
+        the caller extracted it from a request header).
         """
-        cache_key = self._cache_key(gateway_key)
+        effective_gateway = gateway_name or self.gateway_name
+        cache_key = self._cache_key(gateway_key, effective_gateway)
         cached = self._cache_get(cache_key)
         if cached is not None:
             return cached
 
-        response = await self._fetch_remote_gateway_config(gateway_key)
+        response = await self._fetch_remote_gateway_config(
+            gateway_key, gateway_name=effective_gateway,
+        )
         if response is None:
             return None
 
         local_overrides = await self._load_local_server_overrides()
-        mapped = self._map_response(response, local_overrides=local_overrides)
+        mapped = self._map_response(
+            response,
+            local_overrides=local_overrides,
+            effective_gateway_name=effective_gateway,
+        )
         self._cache_put(cache_key, mapped)
         return mapped
 
@@ -325,17 +354,23 @@ class EnkryptAuthProvider(AuthProvider):
     # ------------------------------------------------------------------
 
     async def _fetch_remote_gateway_config(
-        self, gateway_key: str
+        self,
+        gateway_key: str,
+        *,
+        gateway_name: str | None = None,
     ) -> dict[str, Any] | None:
         """Call ``GET /mcp-gateway/get-gateway-config`` and return the body.
 
         Raises ``_CloudFetchError`` on transport / HTTP failures so the
         caller can surface a clear AuthResult.ERROR.
+
+        ``gateway_name`` overrides ``self.gateway_name`` for this request.
         """
+        effective_gateway = gateway_name or self.gateway_name
         url = f"{self.base_url}/mcp-gateway/get-gateway-config"
         headers = {
             "apikey": gateway_key,
-            "X-Enkrypt-MCP-Gateway": self.gateway_name,
+            "X-Enkrypt-MCP-Gateway": effective_gateway,
             "X-Enkrypt-MCP-Gateway-Version": self.gateway_version,
         }
         if self.project_name:
@@ -346,7 +381,7 @@ class EnkryptAuthProvider(AuthProvider):
         logger.info(
             "[EnkryptAuthProvider] fetching gateway config: gateway=%s/%s "
             "project=%s apikey=%s",
-            self.gateway_name,
+            effective_gateway,
             self.gateway_version,
             self.project_name or "(inferred)",
             mask_key(gateway_key),
@@ -396,6 +431,7 @@ class EnkryptAuthProvider(AuthProvider):
         self,
         response: dict[str, Any],
         local_overrides: dict[str, dict[str, Any]] | None = None,
+        effective_gateway_name: str | None = None,
     ) -> dict[str, Any]:
         """Map ``ExpandedGatewayConfig`` → internal gateway-config dict.
 
@@ -421,6 +457,7 @@ class EnkryptAuthProvider(AuthProvider):
         gateway_id = str(
             response.get("gateway_id")
             or response.get("gateway_saved_name")
+            or effective_gateway_name
             or self.gateway_name
         )
         # Prefer end-user (forwarded_*) if the calling app forwarded it,
@@ -640,13 +677,16 @@ class EnkryptAuthProvider(AuthProvider):
     # Cache
     # ------------------------------------------------------------------
 
-    def _cache_key(self, gateway_key: str) -> str:
+    def _cache_key(
+        self, gateway_key: str, effective_gateway: str | None = None,
+    ) -> str:
         # Hash the apikey so even an in-memory dump doesn't leak it. The
         # gateway_name+version+project_name are part of the key so a single
         # process that handles multiple gateways/projects (uncommon, but
         # supported) doesn't cross-contaminate.
+        gw = effective_gateway or self.gateway_name or ""
         h = hashlib.sha256(
-            f"{gateway_key}|{self.gateway_name}|{self.gateway_version}|{self.project_name or ''}".encode()
+            f"{gateway_key}|{gw}|{self.gateway_version}|{self.project_name or ''}".encode()
         ).hexdigest()
         return h[:16]
 

@@ -93,6 +93,7 @@ class AuthConfigManager:
             credentials.gateway_key = headers.get("ENKRYPT_GATEWAY_KEY") or headers.get(
                 "apikey"
             )
+            credentials.gateway_name = headers.get("X-Enkrypt-MCP-Gateway")
             credentials.project_id = headers.get("project_id")
             credentials.user_id = headers.get("user_id")
             credentials.access_token = headers.get("Authorization", "").replace(
@@ -357,13 +358,14 @@ class AuthConfigManager:
         """
         Backward-compatible method matching auth_service.get_gateway_credentials()
 
-        Returns dict with keys: gateway_key, project_id, user_id
+        Returns dict with keys: gateway_key, project_id, user_id, gateway_name
         """
         creds = self.extract_credentials(ctx)
         return {
             "gateway_key": creds.gateway_key or creds.api_key,
             "project_id": creds.project_id,
             "user_id": creds.user_id,
+            "gateway_name": creds.gateway_name,
         }
 
     async def get_local_mcp_config(
