@@ -879,14 +879,24 @@ class EnkryptServerRegistrationGuardrail:
                 )
                 logger.debug(f"[EnkryptServerRegistration] Text: {server_text}")
 
-            # Build detectors from tool_guardrails_config (required since v2.1.7)
+            # ``tool_guardrails_config`` is gateway-wide only (sourced from
+            # ``common_overrides.tool_guardrails_config``). The new
+            # ``/guardrails/guardrail/batch/detect`` endpoint is policy-driven
+            # via X-Enkrypt-Guardrail header; the inline-detectors variant
+            # rejects ``detectors.<name>.enabled``. For now server-registration
+            # validation also uses this policy; once the cloud exposes a
+            # dedicated ``server_registration_guardrails_config`` we'll split
+            # the source.
             policy = getattr(request, "tool_guardrails_config", None) or {}
-            block_list = policy.get("block", [])
+            policy_guardrail_name = policy.get("guardrail_name") or policy.get(
+                "policy_name"
+            )
 
-            # If block list is empty, no blocking — monitor/log only
-            if not block_list and not self._custom_server_detectors:
+            if not policy_guardrail_name:
                 logger.info(
-                    f"[EnkryptServerRegistration] No detectors in block list for server '{request.server_name}' — monitor only, allowing through"
+                    f"[EnkryptServerRegistration] No guardrail policy configured in "
+                    f"common_overrides.tool_guardrails_config for server '{request.server_name}' "
+                    f"— skipping server registration check, allowing through"
                 )
                 return GuardrailResponse(
                     is_safe=True,
@@ -896,25 +906,16 @@ class EnkryptServerRegistrationGuardrail:
                         "provider": "enkrypt",
                         "mode": "monitor",
                         "server_name": request.server_name,
-                        "message": "No detectors configured in block list, server allowed",
+                        "message": "No common_overrides.tool_guardrails_config.guardrail_name configured, server allowed",
                         "processing_time": time.time() - start_time,
                     },
                 )
 
-            # Allow custom override from provider config
-            if self._custom_server_detectors:
-                detectors = self._custom_server_detectors
-            else:
-                detectors = self._build_detectors(
-                    block_list=block_list,
-                    guardrail_name=policy.get("guardrail_name")
-                    or policy.get("policy_name"),
-                    context="server",
-                )
-
-            # Call Enkrypt batch API
+            # Policy-driven batch call — cloud applies the named guardrail.
             response = await self._call_batch_api(
-                texts=[server_text], detectors=detectors
+                texts=[server_text],
+                detectors=None,
+                guardrail_name=policy_guardrail_name,
             )
 
             if self.debug:
@@ -1114,78 +1115,47 @@ class EnkryptServerRegistrationGuardrail:
             # ``common_overrides.tool_guardrails_config`` in EnkryptAuthProvider.
             # If the operator hasn't set common_overrides, this is None / empty
             # and we no-op (per the "assume false" contract).
+            #
+            # Both ``kind="tool_list"`` and ``kind="server_description"``
+            # currently use policy mode against the new
+            # ``/guardrails/guardrail/batch/detect`` endpoint with
+            # ``tool_guardrails_config.guardrail_name`` as the shared policy.
+            # The inline-detectors variant of this endpoint rejects the
+            # ``detectors.<name>.enabled`` schema, so we can't fall back to it.
+            # ``kind`` is preserved on the request so we can route to separate
+            # policy names (e.g. ``tool_guardrails_config`` vs.
+            # ``server_description_guardrails_config``) once those exist.
             policy = getattr(request, "tool_guardrails_config", None) or {}
-            kind = getattr(request, "kind", "tool_list")
             policy_guardrail_name = policy.get("guardrail_name") or policy.get(
                 "policy_name"
             )
 
-            if kind == "tool_list":
-                # Policy-driven batch call: cloud uses the named guardrail
-                # (X-Enkrypt-Guardrail header) to decide; we do NOT send
-                # inline detectors. Skip entirely when no policy is
-                # configured — there's nothing for the cloud to check
-                # against.
-                if not policy_guardrail_name:
-                    logger.info(
-                        f"[EnkryptToolRegistration] No guardrail policy configured in "
-                        f"common_overrides.tool_guardrails_config for server '{request.server_name}' "
-                        f"— skipping tool registration check, allowing all {len(texts)} tools through"
-                    )
-                    return GuardrailResponse(
-                        is_safe=True,
-                        action=GuardrailAction.ALLOW,
-                        violations=[],
-                        metadata={
-                            "provider": "enkrypt",
-                            "mode": "monitor",
-                            "server_name": request.server_name,
-                            "tools_count": len(texts),
-                            "message": "No common_overrides.tool_guardrails_config.guardrail_name configured, all tools allowed",
-                            "processing_time": time.time() - start_time,
-                        },
-                    )
-
-                response = await self._call_batch_api(
-                    texts=texts,
-                    detectors=None,
-                    guardrail_name=policy_guardrail_name,
+            if not policy_guardrail_name:
+                logger.info(
+                    f"[EnkryptToolRegistration] No guardrail policy configured in "
+                    f"common_overrides.tool_guardrails_config for server '{request.server_name}' "
+                    f"— skipping {getattr(request, 'kind', 'tool_list')} check, "
+                    f"allowing all {len(texts)} texts through"
                 )
-            else:
-                # Inline-detectors batch call: used by server-description
-                # validation. Detectors are built locally from the block
-                # list (and any custom override from provider config). If
-                # there's nothing to check against, no-op.
-                block_list = policy.get("block", [])
+                return GuardrailResponse(
+                    is_safe=True,
+                    action=GuardrailAction.ALLOW,
+                    violations=[],
+                    metadata={
+                        "provider": "enkrypt",
+                        "mode": "monitor",
+                        "server_name": request.server_name,
+                        "tools_count": len(texts),
+                        "message": "No common_overrides.tool_guardrails_config.guardrail_name configured, all texts allowed",
+                        "processing_time": time.time() - start_time,
+                    },
+                )
 
-                if not block_list and not self._custom_tool_detectors:
-                    logger.info(
-                        f"[EnkryptToolRegistration] No detectors in block list for server '{request.server_name}' — monitor only, allowing all {len(texts)} tools through"
-                    )
-                    return GuardrailResponse(
-                        is_safe=True,
-                        action=GuardrailAction.ALLOW,
-                        violations=[],
-                        metadata={
-                            "provider": "enkrypt",
-                            "mode": "monitor",
-                            "server_name": request.server_name,
-                            "tools_count": len(texts),
-                            "message": "No detectors configured in block list, all tools allowed",
-                            "processing_time": time.time() - start_time,
-                        },
-                    )
-
-                if self._custom_tool_detectors:
-                    detectors = self._custom_tool_detectors
-                else:
-                    detectors = self._build_detectors(
-                        block_list=block_list,
-                        guardrail_name=policy_guardrail_name,
-                        context="tool",
-                    )
-
-                response = await self._call_batch_api(texts=texts, detectors=detectors)
+            response = await self._call_batch_api(
+                texts=texts,
+                detectors=None,
+                guardrail_name=policy_guardrail_name,
+            )
 
             if self.debug:
                 logger.debug(
