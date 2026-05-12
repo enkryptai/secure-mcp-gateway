@@ -1729,6 +1729,7 @@ class DiscoveryService:
                                     tool_guardrails_config=tool_guardrails_config
                                     if tool_guardrails_config
                                     else None,
+                                    kind="server_description",
                                 )
                                 if resp and resp.metadata:
                                     blocked = resp.metadata.get(
@@ -1790,6 +1791,7 @@ class DiscoveryService:
                                     tool_guardrails_config=tool_guardrails_config
                                     if tool_guardrails_config
                                     else None,
+                                    kind="server_description",
                                 )
                                 if resp and resp.metadata:
                                     if resp.metadata.get("timeout", False):
@@ -2097,7 +2099,7 @@ class DiscoveryService:
                     logger.info(
                         f"[discover_server_tools]   Dynamic description: '{dynamic_description}'"
                     )
-                    logger.error(
+                    logger.info(
                         f"[discover_server_tools]   Static description: '{server_info.get('description', '')}'"
                     )
 
@@ -2131,6 +2133,7 @@ class DiscoveryService:
                                     tool_guardrails_config=tool_guardrails_config
                                     if tool_guardrails_config
                                     else None,
+                                    kind="server_description",
                                 )
                                 if resp and resp.metadata:
                                     blocked = resp.metadata.get(
@@ -2193,6 +2196,7 @@ class DiscoveryService:
                                     tool_guardrails_config=tool_guardrails_config
                                     if tool_guardrails_config
                                     else None,
+                                    kind="server_description",
                                 )
                                 if resp and resp.metadata:
                                     if resp.metadata.get("timeout", False):

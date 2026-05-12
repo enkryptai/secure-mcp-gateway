@@ -572,17 +572,22 @@ class EnkryptAuthProvider(AuthProvider):
     ) -> dict[str, Any]:
         """Map one ``expanded_servers[]`` entry → one local mcp_config[] entry.
 
-        Override precedence (first match wins):
+        Override precedence:
 
-        1. ``common_overrides.<policy>`` — gateway-wide override applied to
-           every server. **Always wins** when set, even over a per-server
-           ``gateway_overrides.<policy>`` echo (cloud already strips the key
-           from this server's ``mcp_config``).
-        2. ``gateway_overrides.<policy>`` — per-server override, effective
-           only when ``common_overrides`` does not also set this key.
-        3. ``mcp_config.<policy>`` — registry server base value.
-        4. Layer ``local_server_overrides[saved_name]`` on top for fields
-           the cloud doesn't model yet (sandbox / oauth_config / denied_tools).
+        - ``input_guardrails_config`` / ``output_guardrails_config`` — first
+          match wins across ``common_overrides`` → ``gateway_overrides`` →
+          ``mcp_config``. Cloud often returns partial policy objects; missing
+          keys are filled from the empty-policy template so downstream
+          consumers can safely index ``policy["block"]`` etc.
+        - ``tool_guardrails_config`` — **common-only.** The tool registration
+          batch check is gateway-wide by design (it's batched across all
+          servers and uses a single named policy via header), so the policy
+          ONLY comes from ``common_overrides``. Per-server ``mcp_config`` and
+          ``gateway_overrides`` echoes for this key are intentionally
+          ignored. If ``common_overrides.tool_guardrails_config`` is unset,
+          tool guardrails are treated as disabled (no batch call).
+        - Layer ``local_server_overrides[saved_name]`` on top for fields the
+          cloud doesn't model yet (sandbox / oauth_config / denied_tools).
         """
         common_overrides = common_overrides or {}
         saved_name = server.get("saved_name") or server.get("server_name") or "unknown"
@@ -604,7 +609,16 @@ class EnkryptAuthProvider(AuthProvider):
                 return None
             return {**_empty_config(), **chosen}
 
-        tool_config = _pick_config("tool_guardrails_config")
+        def _pick_common_only(name: str) -> dict[str, Any] | None:
+            """Strict variant for ``tool_guardrails_config``: ignore any
+            per-server values so the batched, policy-driven tool registration
+            check uses a single gateway-wide guardrail name."""
+            common = common_overrides.get(name)
+            if common:
+                return {**_empty_config(), **common}
+            return None
+
+        tool_config = _pick_common_only("tool_guardrails_config")
         input_config = _pick_config("input_guardrails_config")
         output_config = _pick_config("output_guardrails_config")
 

@@ -248,6 +248,7 @@ class GuardrailConfigManager:
         tools: list[dict[str, Any]],
         mode: str = "filter",
         tool_guardrails_config: dict[str, Any] | None = None,
+        kind: str = "tool_list",
     ) -> Any | None:  # GuardrailResponse
         """
         Validate and filter tools during discovery.
@@ -256,8 +257,12 @@ class GuardrailConfigManager:
             server_name: Name of the server
             tools: List of tool dictionaries
             mode: "filter" to filter unsafe tools, "block_all" to block if any unsafe
-            tool_guardrails_config: Optional per-server tool guardrails config with
-                "block" list and "guardrail_name"
+            tool_guardrails_config: tool guardrails policy (gateway-wide via
+                ``common_overrides``). Carries ``guardrail_name`` for policy-mode
+                calls and ``block`` for inline-detector calls.
+            kind: Which Enkrypt batch protocol to use:
+                ``"tool_list"`` (policy-driven via X-Enkrypt-Guardrail header)
+                or ``"server_description"`` (inline detectors, current behavior).
 
         Returns:
             GuardrailResponse or None if no provider supports registration
@@ -275,6 +280,7 @@ class GuardrailConfigManager:
             tools=tools,
             validation_mode=mode,
             tool_guardrails_config=tool_guardrails_config,
+            kind=kind,
         )
 
         return await provider.validate_tool_registration(request)
