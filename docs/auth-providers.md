@@ -115,13 +115,29 @@ The regression tests `test_map_response_filters_null_values_from_request_context
 `test_map_response_handles_real_cloud_shape` lock in this behaviour;
 update them if the cloud team changes the contract.
 
-## `gateway_overrides`
+## Override resolution
 
-If a server entry in the cloud response carries
-`gateway_overrides.<policy>` for `tool_guardrails_config`,
-`input_guardrails_config`, `output_guardrails_config` or `oauth_config`,
-that whole-policy value wins over the corresponding `mcp_config.<policy>`
-field. Matches cloud-side merge semantics.
+For each of the four guardrail-style fields — `input_guardrails_config`,
+`output_guardrails_config`, `tool_guardrails_config`,
+`enable_server_info_validation` — the mapper picks the effective value
+per server using this precedence (first match wins):
+
+1. **`response.common_overrides.<key>`** — gateway-wide override. **Always
+   wins** when set. The cloud already strips the same key from each
+   server's `mcp_config` for us, but it still echoes any per-server
+   value in `gateway_overrides` for visibility; the mapper ignores that
+   echo when common is set so the runtime matches the cloud's
+   "common always wins" contract.
+2. **`expanded_servers[].gateway_overrides.<key>`** — per-server override,
+   effective only when `common_overrides` doesn't also set this key.
+3. **`expanded_servers[].mcp_config.<key>`** — registry server base value.
+
+Empty `{}` is treated as "not set" and falls through to the next layer,
+matching the existing per-server convention.
+
+`oauth_config` is **not** part of the four common-override fields — it
+lives only on `mcp_config` / per-server `gateway_overrides`, and is
+layered on top of the local `oauth_config` fallback if present.
 
 ## `local_server_overrides`
 
