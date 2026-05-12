@@ -903,7 +903,7 @@ def add_server_to_config(
     config_path,
     config_identifier,
     server_name,
-    command,
+    command=None,
     args=None,
     env=None,
     tools=None,
@@ -913,6 +913,10 @@ def add_server_to_config(
     denied_tools=None,
     tool_guardrails=None,
     enable_server_info_validation=None,
+    server_url=None,
+    transport=None,
+    headers=None,
+    server_type=None,
 ):
     """Add server to MCP configuration with validation."""
     config = load_config(config_path)
@@ -932,6 +936,7 @@ def add_server_to_config(
 
     # Validate JSON inputs
     env_data = validate_json_input(env, "environment variables") if env else None
+    headers_data = validate_json_input(headers, "headers") if headers else None
     tools_data = validate_json_input(tools, "tools configuration") if tools else None
     denied_tools_data = (
         validate_json_input(denied_tools, "denied tools list") if denied_tools else None
@@ -952,14 +957,27 @@ def add_server_to_config(
         else None
     )
 
-    # Parse comma-separated args into list
-    args_list = [arg.strip() for arg in args.split(",")] if args else []
+    # Build the inner "config" block depending on transport type
+    if server_url:
+        inner_config = {"url": server_url}
+        if server_type and server_type in ("http", "sse"):
+            inner_config["type"] = server_type
+        if transport:
+            inner_config["transport"] = transport
+        if headers_data:
+            inner_config["headers"] = headers_data
+    elif server_type in ("http", "sse"):
+        print("ERROR: --type http/sse requires --server-url")
+        sys.exit(1)
+    else:
+        args_list = [arg.strip() for arg in args.split(",")] if args else []
+        inner_config = {"command": command, "args": args_list}
 
     # Build server config
     server_config = {
         "server_name": server_name,
         "description": description,
-        "config": {"command": command, "args": args_list},
+        "config": inner_config,
         "tools": tools_data or {},
         "denied_tools": denied_tools_data or [],
         "enable_server_info_validation": (
@@ -1133,9 +1151,14 @@ def validate_config(config_path, config_identifier):
             if "config" not in server:
                 server_issues.append("Missing 'config' section")
             else:
-                if "command" not in server["config"]:
-                    server_issues.append("Missing 'command' in config")
-                if "args" not in server["config"]:
+                has_url = "url" in server["config"]
+                has_type_http = server["config"].get("type", "").lower() in ("http", "sse")
+                has_command = "command" in server["config"]
+                if not has_url and not has_type_http and not has_command:
+                    server_issues.append(
+                        "Missing 'command', 'url', or 'type' (http/sse) in config"
+                    )
+                if has_command and "args" not in server["config"]:
                     server_issues.append("Missing 'args' in config")
 
             if server_issues:
@@ -2994,11 +3017,37 @@ def run_via_docker(args, original_argv):
         f"HOST_ENKRYPT_HOME={host_enkrypt_home}",
         "-v",
         f"{docker_volume_src}:/app/.enkrypt/docker",
+    ]
+
+    # When running `install`, mount the host client config directories so the
+    # container can read/write the actual config files on the host filesystem.
+    if "install" in pass_through:
+        cursor_dir = os.path.join(home, ".cursor")
+        if os.path.isdir(cursor_dir):
+            docker_cmd.extend(["-v", f"{cursor_dir}:/app/.cursor"])
+
+        # Claude Desktop config directory varies by OS
+        if host_os == "macos":
+            claude_dir = os.path.join(
+                home, "Library", "Application Support", "Claude"
+            )
+        elif host_os == "windows":
+            claude_dir = os.path.join(
+                os.environ.get("APPDATA", os.path.join(home, "AppData", "Roaming")),
+                "Claude",
+            )
+        else:
+            claude_dir = os.path.join(home, ".claude")
+
+        if os.path.isdir(claude_dir):
+            docker_cmd.extend(["-v", f"{claude_dir}:/app/.claude"])
+
+    docker_cmd.extend([
         "--entrypoint",
         "secure-mcp-gateway",
         image,
         *pass_through,
-    ]
+    ])
 
     print(f"INFO: Running inside Docker ({image})...")
     print(f"INFO: > {' '.join(docker_cmd)}")
@@ -3181,12 +3230,36 @@ def main():
         "--server-name", required=True, help="Server name"
     )
     config_add_server_parser.add_argument(
-        "--server-command", required=True, help="Server command"
+        "--server-command",
+        help="Server command (required for stdio servers, omit for URL servers)",
+    )
+    config_add_server_parser.add_argument(
+        "--server-url",
+        help="Remote MCP server URL (e.g., https://mcp.example.com/mcp). "
+        "Use instead of --server-command for remote HTTP servers.",
+    )
+    config_add_server_parser.add_argument(
+        "--transport",
+        choices=["streamable_http", "sse"],
+        default=None,
+        help="Transport for URL servers (default: streamable_http). Ignored for stdio servers.",
+    )
+    config_add_server_parser.add_argument(
+        "--type",
+        choices=["http", "sse", "stdio"],
+        default=None,
+        dest="server_type",
+        help="Standard MCP server type (http, sse, stdio). "
+        "Alternative to --transport for compatibility with VS Code / Claude configs.",
     )
     config_add_server_parser.add_argument(
         "--args", help="Server arguments (comma-separated, e.g., '-y,@org/package')"
     )
     config_add_server_parser.add_argument("--env", help="Environment variables (JSON)")
+    config_add_server_parser.add_argument(
+        "--headers",
+        help="HTTP headers for URL servers (JSON, e.g., '{\"Authorization\": \"Bearer ...\"}')",
+    )
     config_add_server_parser.add_argument("--tools", help="Tools configuration (JSON)")
     config_add_server_parser.add_argument(
         "--denied-tools",
@@ -3852,11 +3925,24 @@ def main():
             if not config_identifier:
                 print("ERROR: Either --config-name or --config-id is required")
                 sys.exit(1)
+            server_url = getattr(args, "server_url", None)
+            server_command = getattr(args, "server_command", None)
+            server_type = getattr(args, "server_type", None)
+            if not server_url and not server_command:
+                print(
+                    "ERROR: Either --server-command or --server-url is required"
+                )
+                sys.exit(1)
+            if server_url and server_command:
+                print(
+                    "ERROR: --server-command and --server-url are mutually exclusive"
+                )
+                sys.exit(1)
             add_server_to_config(
                 config_path,
                 config_identifier,
                 args.server_name,
-                args.server_command,
+                server_command,
                 args.args,
                 args.env,
                 args.tools,
@@ -3864,6 +3950,10 @@ def main():
                 args.input_guardrails_config,
                 args.output_guardrails_config,
                 getattr(args, "denied_tools", None),
+                server_url=server_url,
+                transport=getattr(args, "transport", None),
+                headers=getattr(args, "headers", None),
+                server_type=server_type,
             )
         elif args.config_command == "get":
             config_identifier = args.config_name or args.config_id

@@ -25,6 +25,7 @@ from secure_mcp_gateway.services.execution.execution_utils import (
 from secure_mcp_gateway.services.execution.tool_execution_service import (
     ToolExecutionService,
 )
+from secure_mcp_gateway.plugins.sandbox.server_params import is_url_config
 from secure_mcp_gateway.services.session.session_pool import get_session_pool
 
 # Get tracer from telemetry manager
@@ -561,8 +562,9 @@ class SecureToolExecutionService:
         # ``server_config_tools`` which may have been replaced by discovery.
         configured_allowed_tools = server_info.get("tools", {}) or {}
 
-        server_command = server_config["command"]
-        server_args = server_config["args"]
+        is_url_server = is_url_config(server_config)
+        server_command = server_config.get("command") if not is_url_server else None
+        server_args = server_config.get("args", []) if not is_url_server else []
         server_env = server_config.get("env", None)
 
         # OAuth Integration: Inject OAuth headers for remote servers
@@ -594,15 +596,17 @@ class SecureToolExecutionService:
             logger.error(
                 f"[_execute_tools_with_guardrails] OAuth preparation failed for {server_name}: {oauth_error}"
             )
-            # Continue without OAuth - let the server handle authentication failure
         elif oauth_data:
             logger.info(
                 f"[_execute_tools_with_guardrails] OAuth configured for {server_name}, injecting credentials"
             )
-            # Inject OAuth environment variables
-            server_env = inject_oauth_into_env(server_env, oauth_data)
-            # Inject OAuth header arguments for remote servers
-            server_args = inject_oauth_into_args(server_args, oauth_data)
+            if is_url_server:
+                headers = server_config.setdefault("headers", {})
+                if oauth_data.get("access_token"):
+                    headers["Authorization"] = f"Bearer {oauth_data['access_token']}"
+            else:
+                server_env = inject_oauth_into_env(server_env, oauth_data)
+                server_args = inject_oauth_into_args(server_args, oauth_data)
 
         logger.info(
             f"[secure_call_tools] Starting secure batch call for {len(tool_calls)} tools for server: {server_name}"
@@ -615,9 +619,14 @@ class SecureToolExecutionService:
         )
 
         if self.IS_DEBUG_LOG_LEVEL:
-            logger.debug(
-                f"[secure_call_tools] Using command: {server_command} with args: {server_args}"
-            )
+            if is_url_server:
+                logger.debug(
+                    f"[secure_call_tools] Using URL: {server_config['url']}"
+                )
+            else:
+                logger.debug(
+                    f"[secure_call_tools] Using command: {server_command} with args: {server_args}"
+                )
             logger.info(
                 "secure_tool_execution.execute_secure_tools.using_command",
                 extra=build_log_extra(
@@ -628,7 +637,17 @@ class SecureToolExecutionService:
         results = []
 
         pool = get_session_pool()
-        server_cfg = {"command": server_command, "args": server_args, "env": server_env}
+        if is_url_server:
+            from secure_mcp_gateway.plugins.sandbox.server_params import _resolve_transport
+            server_cfg = {
+                "url": server_config.get("url", ""),
+                "transport": _resolve_transport(server_config),
+                "headers": server_config.get("headers", {}),
+            }
+            if server_config.get("type"):
+                server_cfg["type"] = server_config["type"]
+        else:
+            server_cfg = {"command": server_command, "args": server_args, "env": server_env}
         session = None
         reused = False
         try:

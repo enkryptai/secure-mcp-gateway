@@ -19,11 +19,23 @@ Design decisions
    the caller. Operational decision recorded in CHANGELOG and observability
    docs.
 
-3. **Per-server ``gateway_overrides`` merge.** When the cloud response
-   includes ``expanded_servers[].gateway_overrides.<policy>``, that value
-   wins over the corresponding ``mcp_config.<policy>`` field. Otherwise the
-   base policy is used as-is. The merge is shallow (whole-policy
-   replacement), matching what the cloud already does internally.
+3. **Override resolution (common-wins).** For each of the four override
+   keys (``input_guardrails_config``, ``output_guardrails_config``,
+   ``tool_guardrails_config``, ``enable_server_info_validation``), the
+   effective value per server is picked in this order — first match wins:
+
+   a. ``response.common_overrides.<key>`` — gateway-wide override. **Always
+      wins** when set. The cloud already strips the same key from every
+      server's ``mcp_config`` for us, but still echoes any per-server
+      value in ``gateway_overrides`` for visibility — we must ignore that
+      echo when common is set so the runtime stays consistent with the
+      cloud's "common always wins" contract.
+   b. ``expanded_servers[].gateway_overrides.<key>`` — per-server override,
+      effective only when ``common_overrides`` does not also set this key.
+   c. ``expanded_servers[].mcp_config.<key>`` — registry server base value.
+
+   The merge is shallow (whole-policy replacement at the key level),
+   matching what the cloud does internally.
 
 4. **Local-only fields layered on top.** ``sandbox`` / ``oauth_config`` /
    ``denied_tools`` are not yet part of the cloud spec but are first-class
@@ -430,6 +442,16 @@ class EnkryptAuthProvider(AuthProvider):
 
         composite_id = f"{user_id}_{project_id}_{gateway_id}"
 
+        # Gateway-wide common overrides (always win — see module docstring).
+        # Cloud strips any key set here from each server's ``mcp_config`` and
+        # echoes it once at the top level. Map it once and apply per server.
+        common_overrides = response.get("common_overrides") or {}
+        if not isinstance(common_overrides, dict):
+            logger.warning(
+                "[EnkryptAuthProvider] common_overrides is not an object — ignoring"
+            )
+            common_overrides = {}
+
         # Cloud may mark individual servers as ``is_active: false`` (soft-
         # delete / disabled in the dashboard). Treat that as "do not surface
         # this server" — skip it before the per-server merge so it never
@@ -448,7 +470,7 @@ class EnkryptAuthProvider(AuthProvider):
                     self.gateway_version,
                 )
                 continue
-            servers_out.append(self._map_server(srv, local_overrides))
+            servers_out.append(self._map_server(srv, local_overrides, common_overrides))
 
         # Audit context: anything in request_context that we didn't promote
         # to a top-level field stays here for log enrichment. ``None`` values
@@ -486,27 +508,36 @@ class EnkryptAuthProvider(AuthProvider):
         self,
         server: dict[str, Any],
         local_overrides: dict[str, dict[str, Any]],
+        common_overrides: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Map one ``expanded_servers[]`` entry → one local mcp_config[] entry.
 
-        The mapping is order-sensitive:
+        Override precedence (first match wins):
 
-        1. Take the registry-shipped policy from ``mcp_config.<policy>``.
-        2. If ``gateway_overrides.<policy>`` is non-null, replace the whole
-           policy with it (cloud-spec semantics: gateway-level beats
-           server-level).
-        3. Layer ``local_server_overrides[saved_name]`` on top for fields
+        1. ``common_overrides.<policy>`` — gateway-wide override applied to
+           every server. **Always wins** when set, even over a per-server
+           ``gateway_overrides.<policy>`` echo (cloud already strips the key
+           from this server's ``mcp_config``).
+        2. ``gateway_overrides.<policy>`` — per-server override, effective
+           only when ``common_overrides`` does not also set this key.
+        3. ``mcp_config.<policy>`` — registry server base value.
+        4. Layer ``local_server_overrides[saved_name]`` on top for fields
            the cloud doesn't model yet (sandbox / oauth_config / denied_tools).
         """
+        common_overrides = common_overrides or {}
         saved_name = server.get("saved_name") or server.get("server_name") or "unknown"
         cloud_mcp = server.get("mcp_config") or {}
         gateway_overrides = server.get("gateway_overrides") or {}
 
-        # Policy fields: gateway_overrides wins when present. The cloud
-        # often returns partial policy objects (e.g. only ``enabled`` and
-        # ``guardrail_name``); fill missing keys from the empty-policy template
-        # so downstream consumers can safely index ``policy["block"]`` etc.
+        # Policy fields: common_overrides → gateway_overrides → base. The
+        # cloud often returns partial policy objects (e.g. only ``enabled``
+        # and ``guardrail_name``); fill missing keys from the empty-policy
+        # template so downstream consumers can safely index ``policy["block"]``
+        # etc.
         def _pick_config(name: str) -> dict[str, Any] | None:
+            common = common_overrides.get(name)
+            if common:
+                return {**_empty_config(), **common}
             override = gateway_overrides.get(name)
             chosen = override if override else cloud_mcp.get(name)
             if chosen is None:
@@ -517,16 +548,15 @@ class EnkryptAuthProvider(AuthProvider):
         input_config = _pick_config("input_guardrails_config")
         output_config = _pick_config("output_guardrails_config")
 
-        # Boolean / scalar override: key-presence semantics so a caller can
-        # intentionally override to False. ``_pick_config``'s truthiness check
-        # would conflate "unset" with "explicitly False" here.
-        if (
-            "enable_server_info_validation" in gateway_overrides
-            and gateway_overrides["enable_server_info_validation"] is not None
-        ):
-            enable_server_info_validation = gateway_overrides[
-                "enable_server_info_validation"
-            ]
+        # Boolean / scalar override: same precedence with ``is not None``
+        # semantics so an intentional False is honoured (truthiness would
+        # conflate "unset" with "explicitly False").
+        common_esiv = common_overrides.get("enable_server_info_validation")
+        gw_esiv = gateway_overrides.get("enable_server_info_validation")
+        if common_esiv is not None:
+            enable_server_info_validation = common_esiv
+        elif gw_esiv is not None:
+            enable_server_info_validation = gw_esiv
         else:
             enable_server_info_validation = cloud_mcp.get(
                 "enable_server_info_validation", False

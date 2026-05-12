@@ -31,7 +31,7 @@ from secure_mcp_gateway.plugins.auth import enkrypt_provider as ep_mod
 from secure_mcp_gateway.plugins.auth.enkrypt_provider import (
     EnkryptAuthProvider,
     _CloudFetchError,
-    _empty_policy,
+    _empty_config,
 )
 
 
@@ -345,7 +345,7 @@ def test_map_response_handles_real_cloud_shape() -> None:
     assert server["enable_server_info_validation"] is True
 
     # Cloud returned a partial tool_guardrails_config — missing keys filled
-    # in from _empty_policy.
+    # in from _empty_config.
     tool_policy = server["tool_guardrails_config"]
     assert tool_policy == {
         "enabled": False,
@@ -469,13 +469,13 @@ def test_map_server_uses_base_policy_when_no_gateway_override() -> None:
     assert server["input_guardrails_config"]["guardrail_name"] == "Base Input"
 
 
-def test_map_server_returns_empty_policy_when_neither_set() -> None:
+def test_map_server_returns_empty_config_when_neither_set() -> None:
     p = make_provider()
     resp = sample_response()
     resp["expanded_servers"][0]["mcp_config"]["input_guardrails_config"] = None
     out = p._map_response(resp)
     server = out["mcp_config"][0]
-    assert server["input_guardrails_config"] == _empty_policy()
+    assert server["input_guardrails_config"] == _empty_config()
 
 
 def test_map_server_layers_local_overrides_for_unmapped_fields() -> None:
@@ -490,6 +490,158 @@ def test_map_server_layers_local_overrides_for_unmapped_fields() -> None:
     server = out["mcp_config"][0]
     assert server["sandbox"]["enabled"] is True
     assert server["denied_tools"][0]["pattern"] == "delete_*"
+
+
+def test_map_server_common_overrides_win_over_per_server_and_base() -> None:
+    """When ``response.common_overrides.<key>`` is set, it must win even if
+    the per-server entry also set ``gateway_overrides.<key>`` (echoed by the
+    cloud for visibility) and even when the registry base ``mcp_config.<key>``
+    is set. Common-wins is the contract; the cloud already strips the key
+    from the per-server ``mcp_config``, but we must also ignore the
+    ``gateway_overrides`` echo so the runtime stays consistent."""
+    p = make_provider()
+    resp = sample_response()
+    # Per-server tries to set input_guardrails_config — it's echoed by the
+    # cloud but must NOT win because common_overrides also sets the same key.
+    resp["expanded_servers"][0]["gateway_overrides"] = {
+        "input_guardrails_config": {
+            "enabled": True,
+            "guardrail_name": "Per-Server Loses",
+            "additional_config": {},
+            "block": ["pii"],
+        }
+    }
+    resp["common_overrides"] = {
+        "input_guardrails_config": {
+            "enabled": True,
+            "guardrail_name": "Org Wins",
+            "additional_config": {},
+            "block": ["injection_attack", "topic_detector"],
+        }
+    }
+    out = p._map_response(resp)
+    server = out["mcp_config"][0]
+    assert server["input_guardrails_config"]["guardrail_name"] == "Org Wins"
+    assert server["input_guardrails_config"]["block"] == [
+        "injection_attack",
+        "topic_detector",
+    ]
+
+
+def test_map_server_common_overrides_apply_when_no_per_server_or_base() -> None:
+    """common_overrides supplies the policy even when neither per-server
+    gateway_overrides nor the per-server mcp_config carry it. The cloud
+    strips the key from mcp_config when common_overrides has it; we must
+    still produce a fully-populated policy on the merged server."""
+    p = make_provider()
+    resp = sample_response()
+    # Simulate the dedup the cloud does: tool_guardrails_config absent
+    # from this server's mcp_config because common_overrides handles it.
+    resp["expanded_servers"][0]["mcp_config"].pop("tool_guardrails_config", None)
+    resp["expanded_servers"][0]["gateway_overrides"] = {}
+    resp["common_overrides"] = {
+        "tool_guardrails_config": {
+            "enabled": True,
+            "guardrail_name": "Org Tool Guardrail",
+            "block": ["policy_violation"],
+        }
+    }
+    out = p._map_response(resp)
+    server = out["mcp_config"][0]
+    # Missing keys filled from _empty_config template.
+    assert server["tool_guardrails_config"] == {
+        "enabled": True,
+        "guardrail_name": "Org Tool Guardrail",
+        "additional_config": {},
+        "block": ["policy_violation"],
+    }
+    assert server["enable_tool_guardrails"] is True
+
+
+def test_map_server_per_server_override_used_when_common_misses_that_key() -> None:
+    """common_overrides and per-server gateway_overrides for *different* keys
+    coexist fine. The per-server override is effective for the key common
+    doesn't set; common's separate key applies to every server."""
+    p = make_provider()
+    resp = sample_response()
+    resp["expanded_servers"][0]["gateway_overrides"] = {
+        "input_guardrails_config": {
+            "enabled": True,
+            "guardrail_name": "Per-Server Input",
+            "additional_config": {},
+            "block": ["pii"],
+        }
+    }
+    resp["common_overrides"] = {
+        "output_guardrails_config": {
+            "enabled": True,
+            "guardrail_name": "Org Output",
+            "additional_config": {},
+            "block": ["hallucination"],
+        }
+    }
+    out = p._map_response(resp)
+    server = out["mcp_config"][0]
+    # Per-server wins for input (common doesn't set it).
+    assert server["input_guardrails_config"]["guardrail_name"] == "Per-Server Input"
+    # Common wins for output (per-server doesn't set it).
+    assert server["output_guardrails_config"]["guardrail_name"] == "Org Output"
+
+
+def test_map_server_common_overrides_enable_server_info_validation_honours_false() -> None:
+    """The ``enable_server_info_validation`` boolean must use ``is not None``
+    semantics so an explicit False from common_overrides is respected and
+    not coalesced with 'unset'."""
+    p = make_provider()
+    resp = sample_response()
+    # Base value would say True; common explicitly turns it off for the gateway.
+    resp["expanded_servers"][0]["mcp_config"]["enable_server_info_validation"] = True
+    resp["common_overrides"] = {"enable_server_info_validation": False}
+    out = p._map_response(resp)
+    server = out["mcp_config"][0]
+    assert server["enable_server_info_validation"] is False
+
+
+def test_map_server_empty_common_overrides_dict_falls_through_to_per_server() -> None:
+    """An empty `{}` for a specific policy in common_overrides is treated
+    the same as 'not set' — fall through to per-server / base. Matches the
+    existing truthiness convention for gateway_overrides."""
+    p = make_provider()
+    resp = sample_response()
+    resp["expanded_servers"][0]["gateway_overrides"] = {
+        "input_guardrails_config": {
+            "enabled": True,
+            "guardrail_name": "Per-Server Used",
+            "additional_config": {},
+            "block": ["pii"],
+        }
+    }
+    # Empty dict for the same key — should NOT win, per-server takes over.
+    resp["common_overrides"] = {"input_guardrails_config": {}}
+    out = p._map_response(resp)
+    server = out["mcp_config"][0]
+    assert server["input_guardrails_config"]["guardrail_name"] == "Per-Server Used"
+
+
+def test_map_server_missing_common_overrides_key_does_not_break() -> None:
+    """Responses pre-dating the common_overrides field must still map cleanly
+    — the mapper treats the absent key as `{}` and per-server behaviour is
+    unchanged."""
+    p = make_provider()
+    resp = sample_response()
+    resp.pop("common_overrides", None)
+    # Sanity: existing per-server-only behavior still works.
+    resp["expanded_servers"][0]["gateway_overrides"] = {
+        "input_guardrails_config": {
+            "enabled": True,
+            "guardrail_name": "Per-Server Only",
+            "additional_config": {},
+            "block": ["pii"],
+        }
+    }
+    out = p._map_response(resp)
+    server = out["mcp_config"][0]
+    assert server["input_guardrails_config"]["guardrail_name"] == "Per-Server Only"
 
 
 def test_map_server_does_not_clobber_cloud_oauth_with_local() -> None:

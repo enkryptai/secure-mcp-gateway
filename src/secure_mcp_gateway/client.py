@@ -13,7 +13,7 @@ from mcp import ClientSession, StdioServerParameters
 # https://github.com/modelcontextprotocol/python-sdk/blob/main/src/mcp/client/stdio/__init__.py
 from mcp.client.stdio import stdio_client
 
-from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params
+from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params, is_url_config
 from secure_mcp_gateway.services.oauth.integration import (
     inject_oauth_into_args,
     inject_oauth_into_env,
@@ -203,12 +203,14 @@ async def get_server_metadata_only(server_name, gateway_config=None):
         raise ValueError(f"No config found for server: {server_name}")
 
     config = server_entry["config"]
-    command = config["command"]
-    command_args = config["args"]
+    is_url_server = is_url_config(config)
+    command = config.get("command") if not is_url_server else None
+    command_args = config.get("args", []) if not is_url_server else []
     env = config.get("env", None)
 
     logger.info(
         f"[get_server_metadata_only] Getting metadata for server: {server_name}"
+        f" (transport={'url' if is_url_server else 'stdio'})"
     )
 
     # Prepare OAuth for this server if configured
@@ -227,20 +229,24 @@ async def get_server_metadata_only(server_name, gateway_config=None):
         logger.error(
             f"[get_server_metadata_only] OAuth preparation failed for {server_name}: {oauth_error}"
         )
-        # Continue without OAuth - let the server handle authentication failure
     elif oauth_data:
         logger.info(
             f"[get_server_metadata_only] OAuth configured for {server_name}, injecting credentials"
         )
-        # Inject OAuth environment variables
-        env = inject_oauth_into_env(env, oauth_data)
-        # Inject OAuth header arguments for remote servers
-        command_args = inject_oauth_into_args(command_args, oauth_data)
+        if is_url_server:
+            headers = config.setdefault("headers", {})
+            if oauth_data.get("access_token"):
+                headers["Authorization"] = f"Bearer {oauth_data['access_token']}"
+        else:
+            env = inject_oauth_into_env(env, oauth_data)
+            command_args = inject_oauth_into_args(command_args, oauth_data)
 
     if IS_DEBUG_LOG_LEVEL:
-        logger.debug(f"[get_server_metadata_only] Command: {command}")
-        logger.debug(f"[get_server_metadata_only] Command args: {command_args}")
-        # Mask sensitive environment variables
+        if is_url_server:
+            logger.debug(f"[get_server_metadata_only] URL: {config['url']}")
+        else:
+            logger.debug(f"[get_server_metadata_only] Command: {command}")
+            logger.debug(f"[get_server_metadata_only] Command args: {command_args}")
         from secure_mcp_gateway.utils import mask_sensitive_data
 
         masked_env = mask_sensitive_data(env or {}) if env else None
@@ -323,12 +329,14 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
         raise ValueError(f"No config found for server: {server_name}")
 
     config = server_entry["config"]
-    command = config["command"]
-    command_args = config["args"]
+    is_url_server = is_url_config(config)
+    command = config.get("command") if not is_url_server else None
+    command_args = config.get("args", []) if not is_url_server else []
     env = config.get("env", None)
 
     logger.info(
         f"[forward_tool_call] Starting tool call for server: {server_name} and tool: {tool_name}"
+        f" (transport={'url' if is_url_server else 'stdio'})"
     )
 
     # Prepare OAuth for this server if configured
@@ -347,20 +355,24 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
         logger.error(
             f"[forward_tool_call] OAuth preparation failed for {server_name}: {oauth_error}"
         )
-        # Continue without OAuth - let the server handle authentication failure
     elif oauth_data:
         logger.info(
             f"[forward_tool_call] OAuth configured for {server_name}, injecting credentials"
         )
-        # Inject OAuth environment variables
-        env = inject_oauth_into_env(env, oauth_data)
-        # Inject OAuth header arguments for remote servers
-        command_args = inject_oauth_into_args(command_args, oauth_data)
+        if is_url_server:
+            headers = config.setdefault("headers", {})
+            if oauth_data.get("access_token"):
+                headers["Authorization"] = f"Bearer {oauth_data['access_token']}"
+        else:
+            env = inject_oauth_into_env(env, oauth_data)
+            command_args = inject_oauth_into_args(command_args, oauth_data)
 
     if IS_DEBUG_LOG_LEVEL:
-        logger.debug(f"[forward_tool_call] Command: {command}")
-        logger.debug(f"[forward_tool_call] Command args: {command_args}")
-        # Mask sensitive environment variables
+        if is_url_server:
+            logger.debug(f"[forward_tool_call] URL: {config['url']}")
+        else:
+            logger.debug(f"[forward_tool_call] Command: {command}")
+            logger.debug(f"[forward_tool_call] Command args: {command_args}")
         from secure_mcp_gateway.utils import mask_sensitive_data
 
         masked_env = mask_sensitive_data(env or {}) if env else None
