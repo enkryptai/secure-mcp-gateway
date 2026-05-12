@@ -80,6 +80,16 @@ class ErrorCode(Enum):
     CACHE_OPERATION_FAILED = "CACHE_002"
     CACHE_SERIALIZATION_ERROR = "CACHE_003"
 
+    # Transport Errors (1900-1999)
+    TRANSPORT_HTTP_UNAUTHORIZED = "TRANS_001"
+    TRANSPORT_HTTP_FORBIDDEN = "TRANS_002"
+    TRANSPORT_HTTP_ERROR = "TRANS_003"
+    TRANSPORT_CONNECTION_ERROR = "TRANS_004"
+    TRANSPORT_TIMEOUT = "TRANS_005"
+    TRANSPORT_OAUTH_REQUIRED = "TRANS_006"
+    TRANSPORT_STDIO_CONNECT = "TRANS_007"
+    TRANSPORT_STDIO_CLOSED = "TRANS_008"
+
 
 class ErrorSeverity(Enum):
     """Error severity levels."""
@@ -344,6 +354,31 @@ class SystemError(MCPGatewayError):
             message=message,
             severity=severity,
             recovery_strategy=RecoveryStrategy.ESCALATE,
+            context=context,
+            cause=cause,
+        )
+
+
+class TransportError(MCPGatewayError):
+    """HTTP transport errors for URL-based MCP servers."""
+
+    def __init__(
+        self,
+        code: ErrorCode,
+        message: str,
+        severity: ErrorSeverity = ErrorSeverity.MEDIUM,
+        context: Optional[ErrorContext] = None,
+        cause: Optional[Exception] = None,
+        status_code: Optional[int] = None,
+        url: Optional[str] = None,
+    ):
+        self.status_code = status_code
+        self.url = url
+        super().__init__(
+            code=code,
+            message=message,
+            severity=severity,
+            recovery_strategy=RecoveryStrategy.RETRY,
             context=context,
             cause=cause,
         )
@@ -621,4 +656,19 @@ def create_auth_config_error(
         message=message,
         context=context,
         cause=cause,
+    )
+
+
+def create_transport_error(
+    code: ErrorCode,
+    message: str,
+    context: Optional[ErrorContext] = None,
+    cause: Optional[Exception] = None,
+    status_code: Optional[int] = None,
+    url: Optional[str] = None,
+) -> TransportError:
+    """Create a transport error."""
+    return TransportError(
+        code, message, context=context, cause=cause,
+        status_code=status_code, url=url,
     )

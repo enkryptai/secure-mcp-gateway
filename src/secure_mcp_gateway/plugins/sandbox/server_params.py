@@ -28,9 +28,16 @@ dict is expected.
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
+import httpx
 from mcp import StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from secure_mcp_gateway.exceptions import (
+    ErrorCode,
+    ErrorContext,
+    TransportError,
+    create_transport_error,
+)
 from secure_mcp_gateway.plugins.sandbox.config_manager import get_sandbox_config_manager
 from secure_mcp_gateway.utils import logger
 
@@ -75,15 +82,149 @@ def _is_url_server(server_entry: Dict[str, Any]) -> bool:
     return is_url_config(config)
 
 
+def _extract_http_error(exc: BaseException) -> Optional[httpx.HTTPStatusError]:
+    """Unwrap an ExceptionGroup to find an httpx.HTTPStatusError, if any."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc
+    if isinstance(exc, BaseExceptionGroup):
+        for sub in exc.exceptions:
+            found = _extract_http_error(sub)
+            if found is not None:
+                return found
+    return None
+
+
+def _unwrap_exception_group(exc: BaseException) -> BaseException:
+    """Recursively unwrap single-child ExceptionGroups to find the root cause."""
+    while isinstance(exc, BaseExceptionGroup) and len(exc.exceptions) == 1:
+        exc = exc.exceptions[0]
+    return exc
+
+
+def _raise_transport_error(
+    exc: BaseException,
+    url: str,
+    server_name: str,
+) -> None:
+    """Convert raw transport exceptions into structured TransportError."""
+    ctx = ErrorContext(server_name=server_name, operation="transport.connect")
+
+    http_err = _extract_http_error(exc)
+    if http_err is not None:
+        status = http_err.response.status_code
+        if status == 401:
+            raise create_transport_error(
+                code=ErrorCode.TRANSPORT_HTTP_UNAUTHORIZED,
+                message=(
+                    f"Server '{server_name}' returned 401 Unauthorized for {url}. "
+                    "The server requires authentication. If it supports MCP OAuth, "
+                    "enable mcp_oauth in the server config."
+                ),
+                context=ctx, cause=http_err, status_code=status, url=url,
+            ) from exc
+        if status == 403:
+            raise create_transport_error(
+                code=ErrorCode.TRANSPORT_HTTP_FORBIDDEN,
+                message=(
+                    f"Server '{server_name}' returned 403 Forbidden for {url}. "
+                    "Access denied — check credentials or token scopes."
+                ),
+                context=ctx, cause=http_err, status_code=status, url=url,
+            ) from exc
+        raise create_transport_error(
+            code=ErrorCode.TRANSPORT_HTTP_ERROR,
+            message=f"Server '{server_name}' returned HTTP {status} for {url}.",
+            context=ctx, cause=http_err, status_code=status, url=url,
+        ) from exc
+
+    if isinstance(exc, (httpx.ConnectError, ConnectionError)):
+        raise create_transport_error(
+            code=ErrorCode.TRANSPORT_CONNECTION_ERROR,
+            message=f"Connection to '{server_name}' at {url} failed: {exc}",
+            context=ctx, cause=exc if isinstance(exc, Exception) else None, url=url,
+        ) from exc
+
+    if isinstance(exc, (httpx.TimeoutException,)):
+        raise create_transport_error(
+            code=ErrorCode.TRANSPORT_TIMEOUT,
+            message=f"Connection to '{server_name}' at {url} timed out.",
+            context=ctx, cause=exc, url=url,
+        ) from exc
+
+    import asyncio
+    if isinstance(exc, (asyncio.CancelledError, TimeoutError)):
+        raise create_transport_error(
+            code=ErrorCode.TRANSPORT_TIMEOUT,
+            message=(
+                f"Connection to '{server_name}' at {url} was cancelled or timed out. "
+                "If the server requires OAuth, the authorization flow may not have "
+                "completed in time."
+            ),
+            context=ctx, cause=None, url=url,
+        ) from exc
+
+    desc = str(exc) or type(exc).__name__
+    raise create_transport_error(
+        code=ErrorCode.TRANSPORT_HTTP_ERROR,
+        message=f"Transport error for '{server_name}' at {url}: {desc}",
+        context=ctx, cause=exc if isinstance(exc, Exception) else None, url=url,
+    ) from exc
+
+
+def _raise_stdio_error(
+    exc: BaseException,
+    server_name: str,
+    command: Optional[str] = None,
+) -> None:
+    """Convert raw stdio transport exceptions into structured TransportError."""
+    ctx = ErrorContext(server_name=server_name, operation="transport.stdio")
+    root = _unwrap_exception_group(exc)
+    root_msg = str(root)
+
+    if "Connection closed" in root_msg or "BrokenPipeError" in root_msg:
+        cmd_hint = f" (command: {command})" if command else ""
+        raise create_transport_error(
+            code=ErrorCode.TRANSPORT_STDIO_CLOSED,
+            message=(
+                f"Server '{server_name}' connection closed unexpectedly{cmd_hint}. "
+                "The server process may have crashed or the command may not be installed."
+            ),
+            context=ctx,
+            cause=root if isinstance(root, Exception) else None,
+        ) from exc
+
+    if "No such file" in root_msg or "not found" in root_msg.lower() or "ModuleNotFoundError" in root_msg:
+        raise create_transport_error(
+            code=ErrorCode.TRANSPORT_STDIO_CONNECT,
+            message=(
+                f"Server '{server_name}' failed to start: {root_msg}. "
+                "Check that the command and required packages are installed."
+            ),
+            context=ctx,
+            cause=root if isinstance(root, Exception) else None,
+        ) from exc
+
+    raise create_transport_error(
+        code=ErrorCode.TRANSPORT_STDIO_CONNECT,
+        message=f"Server '{server_name}' stdio transport error: {root_msg}",
+        context=ctx,
+        cause=root if isinstance(root, Exception) else None,
+    ) from exc
+
+
 @asynccontextmanager
 async def _open_url_transport(
     server_entry: Dict[str, Any],
     headers: Optional[Dict[str, str]] = None,
+    auth: Optional[httpx.Auth] = None,
 ) -> AsyncIterator[Tuple[Any, Any]]:
     """Yield ``(read, write)`` for a URL-based remote MCP server.
 
     Transport is resolved via :func:`_resolve_transport` — the ``transport``
     field, the standard ``type`` field, or the default (streamable HTTP).
+
+    An optional *auth* (httpx.Auth) may be provided for MCP OAuth handling.
+    HTTP errors are caught and re-raised as structured :class:`TransportError`.
     """
     config = server_entry.get("config", {})
     url = config.get("url") or config.get("serverUrl", "")
@@ -96,20 +237,23 @@ async def _open_url_transport(
         f"[build_server_params] URL transport={transport} url={url} server={server_name}"
     )
 
-    if transport == "sse":
-        from mcp.client.sse import sse_client
+    try:
+        if transport == "sse":
+            from mcp.client.sse import sse_client
 
-        async with sse_client(url, headers=merged_headers) as (read, write):
-            yield read, write
-    else:
-        from mcp.client.streamable_http import streamablehttp_client
+            async with sse_client(url, headers=merged_headers) as (read, write):
+                yield read, write
+        else:
+            from mcp.client.streamable_http import streamablehttp_client
 
-        async with streamablehttp_client(url, headers=merged_headers) as (
-            read,
-            write,
-            _get_session_id,
-        ):
-            yield read, write
+            async with streamablehttp_client(
+                url, headers=merged_headers, auth=auth,
+            ) as (read, write, _get_session_id):
+                yield read, write
+    except TransportError:
+        raise
+    except BaseException as exc:
+        _raise_transport_error(exc, url, server_name)
 
 
 @asynccontextmanager
@@ -133,7 +277,16 @@ async def build_server_params(
 
     # --- URL-based remote servers (streamable HTTP / SSE) ---
     if _is_url_server(server_entry):
-        async with _open_url_transport(server_entry) as (read, write):
+        auth = None
+        try:
+            from secure_mcp_gateway.services.oauth.mcp_oauth_provider import (
+                build_mcp_oauth_auth,
+            )
+            auth = await build_mcp_oauth_auth(server_entry)
+        except Exception as exc:
+            logger.warning(f"[build_server_params] Could not build MCP OAuth auth: {exc}")
+
+        async with _open_url_transport(server_entry, auth=auth) as (read, write):
             yield read, write
         return
 
@@ -183,5 +336,10 @@ async def build_server_params(
     else:
         params = StdioServerParameters(command=command, args=args, env=env)
 
-    async with stdio_client(params) as (read, write):
-        yield read, write
+    try:
+        async with stdio_client(params) as (read, write):
+            yield read, write
+    except TransportError:
+        raise
+    except BaseException as exc:
+        _raise_stdio_error(exc, server_name, command)

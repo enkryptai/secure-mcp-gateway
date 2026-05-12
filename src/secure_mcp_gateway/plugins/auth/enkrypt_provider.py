@@ -582,11 +582,18 @@ class EnkryptAuthProvider(AuthProvider):
         if oauth_config:
             merged["oauth_config"] = oauth_config
 
+        # MCP-native OAuth (mcp_oauth) — same precedence as oauth_config.
+        mcp_oauth = gateway_overrides.get("mcp_oauth") or cloud_mcp.get(
+            "mcp_oauth"
+        )
+        if mcp_oauth:
+            merged["mcp_oauth"] = mcp_oauth
+
         # Layer local-only fields the cloud spec doesn't carry yet.
         # Cloud value (when ever it lands in spec) will win — local overrides
         # are intentionally fall-throughs, not authoritative.
         local = local_overrides.get(saved_name) or {}
-        for field_name in ("sandbox", "denied_tools", "oauth_config"):
+        for field_name in ("sandbox", "denied_tools", "oauth_config", "mcp_oauth"):
             if field_name not in merged and field_name in local:
                 merged[field_name] = local[field_name]
 
