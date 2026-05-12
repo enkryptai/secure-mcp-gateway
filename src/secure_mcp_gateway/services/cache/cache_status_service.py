@@ -130,7 +130,10 @@ class CacheStatusService:
             enkrypt_user_id = credentials.get("user_id") or "not_provided"
 
             gateway_config = await self.auth_manager.get_local_mcp_config(
-                enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
+                enkrypt_gateway_key,
+                enkrypt_project_id,
+                enkrypt_user_id,
+                gateway_name=credentials.get("gateway_name"),
             )
 
             if not gateway_config:
@@ -153,7 +156,9 @@ class CacheStatusService:
             enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
 
             # Set span attributes
-            auth_span.set_attribute(SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key))
+            auth_span.set_attribute(
+                SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
+            )
             auth_span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
             auth_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
             auth_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
@@ -185,9 +190,7 @@ class CacheStatusService:
                     logger.error(f"[get_cache_status] {detail}")
                     logger.error(
                         "cache_status.get_cache_status.not_authenticated",
-                        extra=build_log_extra(
-                            ctx, custom_id, error=detail
-                        ),
+                        extra=build_log_extra(ctx, custom_id, error=detail),
                     )
                     context = ErrorContext(
                         operation="cache_status.auth",
@@ -213,9 +216,7 @@ class CacheStatusService:
 
     async def _get_cache_statistics(self, ctx, custom_id, main_span, logger):
         """Get global cache statistics."""
-        with tracer.start_as_current_span(
-            SpanNames.CACHE_STATUS_GLOBAL
-        ) as stats_span:
+        with tracer.start_as_current_span(SpanNames.CACHE_STATUS_GLOBAL) as stats_span:
             logger.info("[get_cache_status] Getting cache statistics")
             stats = self.cache_service.get_cache_statistics()
             stats_span.set_attribute("total_gateways", stats.get("total_gateways", 0))
@@ -248,9 +249,7 @@ class CacheStatusService:
         self, ctx, custom_id, id, cache_status, main_span, logger
     ):
         """Check gateway config cache status."""
-        with tracer.start_as_current_span(
-            SpanNames.CACHE_STATUS_CONFIG
-        ) as config_span:
+        with tracer.start_as_current_span(SpanNames.CACHE_STATUS_CONFIG) as config_span:
             config_span.set_attribute(SpanAttributes.CUSTOM_ID, id)
 
             logger.info(
@@ -384,7 +383,8 @@ class CacheStatusService:
             credentials = self.auth_manager.get_gateway_credentials(ctx)
             enkrypt_gateway_key = credentials.get("gateway_key") or "not_provided"
             local_gateway_config = await self.auth_manager.get_local_mcp_config(
-                enkrypt_gateway_key
+                enkrypt_gateway_key,
+                gateway_name=credentials.get("gateway_name"),
             )
             if not local_gateway_config:
                 logger.error(
@@ -427,7 +427,9 @@ class CacheStatusService:
                     servers_need_discovery += 1
 
             servers_span.set_attribute(SpanAttributes.CACHED_SERVERS, cached_servers)
-            servers_span.set_attribute(SpanAttributes.SERVERS_NEED_DISCOVERY, servers_need_discovery)
+            servers_span.set_attribute(
+                SpanAttributes.SERVERS_NEED_DISCOVERY, servers_need_discovery
+            )
 
             cache_status["gateway_specific"]["tools"] = {
                 "server_count": len(servers_cache),
@@ -437,15 +439,15 @@ class CacheStatusService:
             # Set final span attributes
             main_span.set_attribute(SpanAttributes.TOTAL_SERVERS, len(mcp_config))
             main_span.set_attribute(SpanAttributes.CACHED_SERVERS, cached_servers)
-            main_span.set_attribute(SpanAttributes.SERVERS_NEED_DISCOVERY, servers_need_discovery)
+            main_span.set_attribute(
+                SpanAttributes.SERVERS_NEED_DISCOVERY, servers_need_discovery
+            )
 
     async def _check_single_server_cache(
         self, ctx, custom_id, id, server_name, local_gateway_config, parent_span
     ):
         """Check cache status for a single server."""
-        with tracer.start_as_current_span(
-            SpanNames.CACHE_STATUS_SERVER
-        ) as server_span:
+        with tracer.start_as_current_span(SpanNames.CACHE_STATUS_SERVER) as server_span:
             server_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
             server_span.set_attribute(SpanAttributes.CUSTOM_ID, id)
 

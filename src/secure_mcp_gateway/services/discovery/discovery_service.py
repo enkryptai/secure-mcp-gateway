@@ -86,9 +86,7 @@ class DiscoveryService:
             },
         )
 
-        with tracer_obj.start_as_current_span(
-            SpanNames.DISCOVERY
-        ) as main_span:
+        with tracer_obj.start_as_current_span(SpanNames.DISCOVERY) as main_span:
             main_span.set_attribute(SpanAttributes.SERVER_NAME, server_name or "all")
             main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             main_span.set_attribute(SpanAttributes.JOB, "enkrypt")
@@ -110,7 +108,10 @@ class DiscoveryService:
             enkrypt_project_id = credentials.get("project_id") or "not_provided"
             enkrypt_user_id = credentials.get("user_id") or "not_provided"
             gateway_config = await self.auth_manager.get_local_mcp_config(
-                enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
+                enkrypt_gateway_key,
+                enkrypt_project_id,
+                enkrypt_user_id,
+                gateway_name=credentials.get("gateway_name"),
             )
 
             # Generate session key if not provided (for backward compatibility)
@@ -284,9 +285,7 @@ class DiscoveryService:
                         extra=build_log_extra(ctx, custom_id, server_name),
                     )
                     if logger_instance and logger_instance.level <= 10:  # DEBUG level
-                        logger_instance.error(
-                            f"[discover_server_tools] {detail}"
-                        )
+                        logger_instance.error(f"[discover_server_tools] {detail}")
                     context = ErrorContext(
                         operation="discover.auth",
                         request_id=getattr(ctx, "request_id", None),
@@ -724,7 +723,9 @@ class DiscoveryService:
                             server_name=server_name,
                             tools=tool_list,
                             mode="filter",
-                            tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
+                            tool_guardrails_config=tool_guardrails_config
+                            if tool_guardrails_config
+                            else None,
                         )
                     )
 
@@ -905,7 +906,9 @@ class DiscoveryService:
                             server_name=server_name,
                             tools=tool_list,
                             mode="filter",
-                            tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
+                            tool_guardrails_config=tool_guardrails_config
+                            if tool_guardrails_config
+                            else None,
                         )
                     )
 
@@ -1007,7 +1010,8 @@ class DiscoveryService:
 
             if not server_info:
                 info_span.set_attribute(
-                    SpanAttributes.ERROR_MESSAGE, f"Server '{server_name}' not available"
+                    SpanAttributes.ERROR_MESSAGE,
+                    f"Server '{server_name}' not available",
                 )
                 if IS_DEBUG_LOG_LEVEL:
                     logger.error(
@@ -1045,7 +1049,9 @@ class DiscoveryService:
                 with tracer_obj.start_as_current_span(
                     "validate_server_registration"
                 ) as server_validation_span:
-                    server_validation_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+                    server_validation_span.set_attribute(
+                        SpanAttributes.SERVER_NAME, server_name
+                    )
 
                     logger.info(
                         f"[discover_server_tools] Validating server registration for {server_name}"
@@ -1344,7 +1350,9 @@ class DiscoveryService:
                     with tracer_obj.start_as_current_span(
                         "validate_config_tool_registration"
                     ) as validation_span:
-                        validation_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+                        validation_span.set_attribute(
+                            SpanAttributes.SERVER_NAME, server_name
+                        )
 
                         # Convert config tools to list format for validation
                         tool_list = []
@@ -1383,7 +1391,9 @@ class DiscoveryService:
                                 server_name=server_name,
                                 tools=tool_list,
                                 mode="filter",  # Filter unsafe tools but allow safe ones
-                                tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
+                                tool_guardrails_config=tool_guardrails_config
+                                if tool_guardrails_config
+                                else None,
                             )
 
                             if validation_response and validation_response.metadata:
@@ -1695,7 +1705,9 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_dynamic_server_description_config"
                         ) as dynamic_desc_span:
-                            dynamic_desc_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+                            dynamic_desc_span.set_attribute(
+                                SpanAttributes.SERVER_NAME, server_name
+                            )
                             dynamic_desc_span.set_attribute(
                                 "description_source", "dynamic"
                             )
@@ -1711,8 +1723,12 @@ class DiscoveryService:
                                     "annotations": {},
                                 }
                                 resp = await self.guardrail_manager.validate_tool_registration(
-                                    server_name=server_name, tools=[tool], mode="block",
-                                    tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
+                                    server_name=server_name,
+                                    tools=[tool],
+                                    mode="block",
+                                    tool_guardrails_config=tool_guardrails_config
+                                    if tool_guardrails_config
+                                    else None,
                                 )
                                 if resp and resp.metadata:
                                     blocked = resp.metadata.get(
@@ -1750,7 +1766,9 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_static_server_description_config"
                         ) as static_desc_span:
-                            static_desc_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+                            static_desc_span.set_attribute(
+                                SpanAttributes.SERVER_NAME, server_name
+                            )
                             static_desc_span.set_attribute(
                                 "description_source", "static"
                             )
@@ -1766,8 +1784,12 @@ class DiscoveryService:
                                     "annotations": {},
                                 }
                                 resp = await self.guardrail_manager.validate_tool_registration(
-                                    server_name=server_name, tools=[tool], mode="block",
-                                    tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
+                                    server_name=server_name,
+                                    tools=[tool],
+                                    mode="block",
+                                    tool_guardrails_config=tool_guardrails_config
+                                    if tool_guardrails_config
+                                    else None,
                                 )
                                 if resp and resp.metadata:
                                     if resp.metadata.get("timeout", False):
@@ -2088,7 +2110,9 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_dynamic_server_description"
                         ) as dynamic_desc_span:
-                            dynamic_desc_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+                            dynamic_desc_span.set_attribute(
+                                SpanAttributes.SERVER_NAME, server_name
+                            )
                             logger.info(
                                 f"[discover_server_tools] Validating dynamic server description: '{dynamic_description}'"
                             )
@@ -2101,8 +2125,12 @@ class DiscoveryService:
                                     "annotations": {},
                                 }
                                 resp = await self.guardrail_manager.validate_tool_registration(
-                                    server_name=server_name, tools=[tool], mode="block",
-                                    tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
+                                    server_name=server_name,
+                                    tools=[tool],
+                                    mode="block",
+                                    tool_guardrails_config=tool_guardrails_config
+                                    if tool_guardrails_config
+                                    else None,
                                 )
                                 if resp and resp.metadata:
                                     blocked = resp.metadata.get(
@@ -2141,7 +2169,9 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_static_server_description"
                         ) as static_desc_span:
-                            static_desc_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+                            static_desc_span.set_attribute(
+                                SpanAttributes.SERVER_NAME, server_name
+                            )
                             static_desc_span.set_attribute(
                                 "description_source", "static"
                             )
@@ -2157,8 +2187,12 @@ class DiscoveryService:
                                     "annotations": {},
                                 }
                                 resp = await self.guardrail_manager.validate_tool_registration(
-                                    server_name=server_name, tools=[tool], mode="block",
-                                    tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
+                                    server_name=server_name,
+                                    tools=[tool],
+                                    mode="block",
+                                    tool_guardrails_config=tool_guardrails_config
+                                    if tool_guardrails_config
+                                    else None,
                                 )
                                 if resp and resp.metadata:
                                     if resp.metadata.get("timeout", False):
@@ -2348,7 +2382,9 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_tool_registration"
                         ) as validation_span:
-                            validation_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+                            validation_span.set_attribute(
+                                SpanAttributes.SERVER_NAME, server_name
+                            )
 
                             # Extract tool list from ListToolsResult or dict
                             if hasattr(tools, "tools"):
@@ -2371,7 +2407,9 @@ class DiscoveryService:
                                     server_name=server_name,
                                     tools=tool_list,
                                     mode="filter",  # Filter unsafe tools but allow safe ones
-                                    tool_guardrails_config=tool_guardrails_config if tool_guardrails_config else None,
+                                    tool_guardrails_config=tool_guardrails_config
+                                    if tool_guardrails_config
+                                    else None,
                                 )
 
                                 if validation_response and validation_response.metadata:
@@ -2614,7 +2652,9 @@ class DiscoveryService:
                     with tracer_obj.start_as_current_span(
                         "cache_tools"
                     ) as cache_write_span:
-                        cache_write_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+                        cache_write_span.set_attribute(
+                            SpanAttributes.SERVER_NAME, server_name
+                        )
                         self.cache_service.cache_tools(id, server_name, tools)
                         cache_write_span.set_attribute("cache_write_success", True)
                 else:

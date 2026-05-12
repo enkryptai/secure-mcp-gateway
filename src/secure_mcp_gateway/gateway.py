@@ -219,7 +219,7 @@ if ENKRYPT_USE_REMOTE_MCP_CONFIG:
     logger.info(
         f"enkrypt_remote_mcp_gateway_version: {ENKRYPT_REMOTE_MCP_GATEWAY_VERSION}"
     )
-logger.info(f'guardrail_api_key: {"****" + GUARDRAIL_API_KEY[-4:]}')
+logger.info(f"guardrail_api_key: {'****' + GUARDRAIL_API_KEY[-4:]}")
 logger.info(f"enkrypt_tool_cache_expiration: {ENKRYPT_TOOL_CACHE_EXPIRATION}")
 logger.info(f"enkrypt_gateway_cache_expiration: {ENKRYPT_GATEWAY_CACHE_EXPIRATION}")
 logger.info(f"enkrypt_mcp_use_external_cache: {ENKRYPT_MCP_USE_EXTERNAL_CACHE}")
@@ -271,10 +271,14 @@ def get_gateway_credentials(ctx: Context):
 
 
 # Read from local MCP config file
-async def get_local_mcp_config(gateway_key, project_id=None, user_id=None):
+async def get_local_mcp_config(
+    gateway_key, project_id=None, user_id=None, gateway_name=None
+):
     """Wrapper for getting local MCP config using the auth manager."""
     auth_manager = get_auth_config_manager()
-    return await auth_manager.get_local_mcp_config(gateway_key, project_id, user_id)
+    return await auth_manager.get_local_mcp_config(
+        gateway_key, project_id, user_id, gateway_name=gateway_name
+    )
 
 
 async def enkrypt_authenticate(ctx: Context):
@@ -448,7 +452,9 @@ def _filter_tools_payload(tools, denied, allowed):
     return tools, []
 
 
-def _filter_denied_from_discovery(result, local_config, server_name, filter_denied_tools):
+def _filter_denied_from_discovery(
+    result, local_config, server_name, filter_denied_tools
+):
     """
     Remove denied tools from discovery results in-place and **always** attach
     ``policy_denied_tools`` (list) and ``policy_denied_count`` (int) so callers
@@ -531,11 +537,12 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
     gateway_key = creds.get("gateway_key")
     project_id = creds.get("project_id")
     user_id = creds.get("user_id")
+    gateway_name = creds.get("gateway_name")
 
     # Get mcp_config_id from local config
     auth_manager = get_auth_config_manager()
     local_config = await auth_manager.get_local_mcp_config(
-        gateway_key, project_id, user_id
+        gateway_key, project_id, user_id, gateway_name=gateway_name
     )
     mcp_config_id = (
         local_config.get("mcp_config_id", "not_provided")

@@ -71,7 +71,10 @@ class ServerInfoService:
         enkrypt_project_id = credentials.get("project_id") or "not_provided"
         enkrypt_user_id = credentials.get("user_id") or "not_provided"
         gateway_config = await self.auth_manager.get_local_mcp_config(
-            enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
+            enkrypt_gateway_key,
+            enkrypt_project_id,
+            enkrypt_user_id,
+            gateway_name=credentials.get("gateway_name"),
         )
 
         if not gateway_config:
@@ -261,7 +264,9 @@ class ServerInfoService:
                 from secure_mcp_gateway.gateway import enkrypt_authenticate
 
                 result = await enkrypt_authenticate(ctx)
-                auth_span.set_attribute(SpanAttributes.AUTH_RESULT, result.get("status"))
+                auth_span.set_attribute(
+                    SpanAttributes.AUTH_RESULT, result.get("status")
+                )
                 if result.get("status") != "success":
                     auth_msg = result.get("message", "Unknown auth error")
                     auth_err = result.get("error", "")
@@ -300,11 +305,14 @@ class ServerInfoService:
             server_info = get_server_info_by_name(
                 self.auth_manager.get_session_gateway_config(session_key), server_name
             )
-            server_span.set_attribute(SpanAttributes.TOOL_FOUND, server_info is not None)
+            server_span.set_attribute(
+                SpanAttributes.TOOL_FOUND, server_info is not None
+            )
 
             if not server_info:
                 server_span.set_attribute(
-                    SpanAttributes.ERROR_MESSAGE, f"Server '{server_name}' not available"
+                    SpanAttributes.ERROR_MESSAGE,
+                    f"Server '{server_name}' not available",
                 )
                 logger.warning(
                     f"[get_server_info] Server '{server_name}' not available"

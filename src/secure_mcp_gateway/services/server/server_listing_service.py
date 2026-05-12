@@ -85,7 +85,10 @@ class ServerListingService:
             enkrypt_project_id = credentials.get("project_id") or "not_provided"
             enkrypt_user_id = credentials.get("user_id") or "not_provided"
             gateway_config = await self.auth_manager.get_local_mcp_config(
-                enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
+                enkrypt_gateway_key,
+                enkrypt_project_id,
+                enkrypt_user_id,
+                gateway_name=credentials.get("gateway_name"),
             )
 
             if not gateway_config:
@@ -249,7 +252,8 @@ class ServerListingService:
                 "mcp_config_id", credentials.get("mcp_config_id") or "not_provided"
             )
             auth_span.set_attribute(
-                "enkrypt_project_name", credentials.get("project_name") or "not_provided"
+                "enkrypt_project_name",
+                credentials.get("project_name") or "not_provided",
             )
             auth_span.set_attribute(
                 "enkrypt_email", credentials.get("email") or "not_provided"

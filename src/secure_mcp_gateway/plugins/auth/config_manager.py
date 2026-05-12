@@ -1,7 +1,7 @@
 """Authentication configuration manager."""
 
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 from mcp.server.fastmcp import Context
 
@@ -24,7 +24,7 @@ class AuthConfigManager:
     def __init__(self):
         """Initialize the auth config manager."""
         self.registry = AuthProviderRegistry()
-        self.sessions: Dict[str, SessionData] = {}
+        self.sessions: dict[str, SessionData] = {}
         self.default_provider = "enkrypt"
 
         # Import cache service
@@ -52,7 +52,7 @@ class AuthConfigManager:
         self.registry.unregister(name)
         logger.info(f"Unregistered auth provider: {name}")
 
-    def get_provider(self, name: Optional[str] = None) -> Optional[AuthProvider]:
+    def get_provider(self, name: str | None = None) -> AuthProvider | None:
         """
         Get the registered provider.
 
@@ -64,7 +64,7 @@ class AuthConfigManager:
         """
         return self.registry.get_provider(name)
 
-    def list_providers(self) -> List[str]:
+    def list_providers(self) -> list[str]:
         """
         List all registered providers.
 
@@ -118,10 +118,9 @@ class AuthConfigManager:
         import os
 
         if not credentials.gateway_key:
-            credentials.gateway_key = (
-                os.environ.get("ENKRYPT_APIKEY")
-                or os.environ.get("ENKRYPT_GATEWAY_KEY")
-            )
+            credentials.gateway_key = os.environ.get(
+                "ENKRYPT_APIKEY"
+            ) or os.environ.get("ENKRYPT_GATEWAY_KEY")
         if not credentials.api_key:
             credentials.api_key = os.environ.get("ENKRYPT_APIKEY")
         if not credentials.project_id:
@@ -132,7 +131,7 @@ class AuthConfigManager:
         return credentials
 
     async def authenticate(
-        self, ctx: Context, provider_name: Optional[str] = None
+        self, ctx: Context, provider_name: str | None = None
     ) -> AuthResult:
         """
         Authenticate a request using the specified provider with cache integration.
@@ -162,7 +161,9 @@ class AuthConfigManager:
             )
 
         # Get local config to find mcp_config_id
-        local_config = await self.get_local_mcp_config(gateway_key, project_id, user_id)
+        local_config = await self.get_local_mcp_config(
+            gateway_key, project_id, user_id, gateway_name=credentials.gateway_name
+        )
         if not local_config:
             return AuthResult(
                 status=AuthStatus.INVALID_CREDENTIALS,
@@ -279,7 +280,7 @@ class AuthConfigManager:
         data = f"{auth_result.user_id}_{auth_result.project_id}_{time.time()}"
         return hashlib.sha256(data.encode()).hexdigest()
 
-    def get_session(self, session_id: str) -> Optional[SessionData]:
+    def get_session(self, session_id: str) -> SessionData | None:
         """
         Get session data.
 
@@ -333,7 +334,7 @@ class AuthConfigManager:
 
         return len(expired_keys)
 
-    def get_session_stats(self) -> Dict[str, Any]:
+    def get_session_stats(self) -> dict[str, Any]:
         """
         Get session statistics.
 
@@ -354,7 +355,7 @@ class AuthConfigManager:
     # BACKWARD-COMPATIBLE METHODS (matching auth_service API)
     # ========================================================================
 
-    def get_gateway_credentials(self, ctx: Context) -> Dict[str, str]:
+    def get_gateway_credentials(self, ctx: Context) -> dict[str, str]:
         """
         Backward-compatible method matching auth_service.get_gateway_credentials()
 
@@ -369,18 +370,29 @@ class AuthConfigManager:
         }
 
     async def get_local_mcp_config(
-        self, gateway_key: str, project_id: str = None, user_id: str = None
-    ) -> Dict[str, Any]:
+        self,
+        gateway_key: str,
+        project_id: str = None,
+        user_id: str = None,
+        gateway_name: str = None,
+    ) -> dict[str, Any]:
         """
         Backward-compatible method matching auth_service.get_local_mcp_config()
 
-        Delegates to EnkryptAuthProvider._get_local_config()
+        Delegates to EnkryptAuthProvider._get_local_config().
+
+        ``gateway_name`` should be supplied from the request's
+        ``X-Enkrypt-MCP-Gateway`` header (extracted via
+        ``get_gateway_credentials``). Without it, the cloud provider can't
+        identify which gateway config to fetch and the call fails.
         """
         provider = self.get_provider("enkrypt")
         if not provider or not hasattr(provider, "_get_local_config"):
             return {}
 
-        return await provider._get_local_config(gateway_key, project_id, user_id)
+        return await provider._get_local_config(
+            gateway_key, project_id, user_id, gateway_name=gateway_name
+        )
 
     def create_session_key(
         self, gateway_key: str, project_id: str, user_id: str, mcp_config_id: str
@@ -411,7 +423,7 @@ class AuthConfigManager:
         session = self.sessions.get(session_key)
         return session is not None and session.authenticated
 
-    def create_session(self, session_key: str, gateway_config: Dict[str, Any]) -> None:
+    def create_session(self, session_key: str, gateway_config: dict[str, Any]) -> None:
         """
         Backward-compatible session creation.
         """
@@ -445,7 +457,9 @@ class AuthConfigManager:
             return False
 
         # Get MCP config to get mcp_config_id
-        local_config = await self.get_local_mcp_config(gateway_key, project_id, user_id)
+        local_config = await self.get_local_mcp_config(
+            gateway_key, project_id, user_id, gateway_name=credentials.gateway_name
+        )
         if not local_config:
             return False
 
@@ -458,7 +472,7 @@ class AuthConfigManager:
         )
         return self.is_session_authenticated(session_key)
 
-    def require_authentication(self, ctx: Context) -> Tuple[bool, Dict[str, Any]]:
+    def require_authentication(self, ctx: Context) -> tuple[bool, dict[str, Any]]:
         """
         Backward-compatible authentication requirement check.
 
@@ -479,7 +493,7 @@ class AuthConfigManager:
             "error": auth_result.error,
         }
 
-    async def get_authenticated_session(self, ctx: Context) -> Optional[SessionData]:
+    async def get_authenticated_session(self, ctx: Context) -> SessionData | None:
         """
         Backward-compatible authenticated session retrieval.
         """
@@ -491,7 +505,9 @@ class AuthConfigManager:
         if not all([gateway_key, project_id, user_id]):
             return None
 
-        local_config = await self.get_local_mcp_config(gateway_key, project_id, user_id)
+        local_config = await self.get_local_mcp_config(
+            gateway_key, project_id, user_id, gateway_name=credentials.gateway_name
+        )
         if not local_config:
             return None
 
@@ -516,7 +532,9 @@ class AuthConfigManager:
         if not all([gateway_key, project_id, user_id]):
             return False
 
-        local_config = await self.get_local_mcp_config(gateway_key, project_id, user_id)
+        local_config = await self.get_local_mcp_config(
+            gateway_key, project_id, user_id, gateway_name=credentials.gateway_name
+        )
         if not local_config:
             return False
 
@@ -530,7 +548,7 @@ class AuthConfigManager:
         return self.delete_session(session_key)
 
     async def get_session_gateway_config_key_suffix(
-        self, credentials: Dict[str, Any]
+        self, credentials: dict[str, Any]
     ) -> str:
         """
         Backward-compatible config key suffix extraction.
@@ -539,9 +557,10 @@ class AuthConfigManager:
             gateway_key = credentials.get("gateway_key")
             project_id = credentials.get("project_id")
             user_id = credentials.get("user_id")
+            gateway_name = credentials.get("gateway_name")
 
             local_cfg = await self.get_local_mcp_config(
-                gateway_key, project_id, user_id
+                gateway_key, project_id, user_id, gateway_name=gateway_name
             )
             if not local_cfg:
                 return "not_provided"
@@ -549,7 +568,7 @@ class AuthConfigManager:
         except Exception:
             return "not_provided"
 
-    def get_session_gateway_config(self, session_key: str) -> Dict[str, Any]:
+    def get_session_gateway_config(self, session_key: str) -> dict[str, Any]:
         """
         Backward-compatible gateway config retrieval from session.
         """
@@ -571,7 +590,7 @@ class AuthConfigManager:
 # ============================================================================
 
 
-def convert_auth_result_to_legacy_format(auth_result: AuthResult) -> Dict[str, Any]:
+def convert_auth_result_to_legacy_format(auth_result: AuthResult) -> dict[str, Any]:
     """
     Convert new AuthResult to legacy dict format for backward compatibility.
 
@@ -600,7 +619,7 @@ def convert_auth_result_to_legacy_format(auth_result: AuthResult) -> Dict[str, A
         }
 
 
-def convert_legacy_format_to_auth_result(legacy_result: Dict[str, Any]) -> AuthResult:
+def convert_legacy_format_to_auth_result(legacy_result: dict[str, Any]) -> AuthResult:
     """
     Convert legacy dict format to new AuthResult format.
 
@@ -637,7 +656,7 @@ def convert_legacy_format_to_auth_result(legacy_result: Dict[str, Any]) -> AuthR
 # Global Instance
 # ============================================================================
 
-_auth_config_manager: Optional[AuthConfigManager] = None
+_auth_config_manager: AuthConfigManager | None = None
 
 
 def get_auth_config_manager() -> AuthConfigManager:
@@ -653,7 +672,7 @@ def get_auth_config_manager() -> AuthConfigManager:
     return _auth_config_manager
 
 
-def initialize_auth_system(config: Dict[str, Any] = None) -> AuthConfigManager:
+def initialize_auth_system(config: dict[str, Any] = None) -> AuthConfigManager:
     """
     Initialize the authentication system with providers.
 

@@ -11,6 +11,7 @@ from secure_mcp_gateway.plugins.guardrails import (
     GuardrailRequest,
     get_guardrail_config_manager,
 )
+from secure_mcp_gateway.plugins.sandbox.server_params import is_url_config
 from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
 from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes, SpanNames
 from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
@@ -25,7 +26,6 @@ from secure_mcp_gateway.services.execution.execution_utils import (
 from secure_mcp_gateway.services.execution.tool_execution_service import (
     ToolExecutionService,
 )
-from secure_mcp_gateway.plugins.sandbox.server_params import is_url_config
 from secure_mcp_gateway.services.session.session_pool import get_session_pool
 
 # Get tracer from telemetry manager
@@ -92,9 +92,7 @@ class SecureToolExecutionService:
         num_tool_calls = len(tool_calls)
         custom_id = generate_custom_id()
 
-        with tracer.start_as_current_span(
-            SpanNames.TOOL_EXECUTE
-        ) as main_span:
+        with tracer.start_as_current_span(SpanNames.TOOL_EXECUTE) as main_span:
             # Set main span attributes
             main_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
             main_span.set_attribute(SpanAttributes.NUM_TOOL_CALLS, num_tool_calls)
@@ -210,9 +208,7 @@ class SecureToolExecutionService:
         self, ctx, custom_id, server_name, main_span, logger
     ):
         """Handle authentication and setup for secure tool execution."""
-        with tracer.start_as_current_span(
-            SpanNames.AUTH
-        ) as auth_span:
+        with tracer.start_as_current_span(SpanNames.AUTH) as auth_span:
             # Gather credentials
             creds = self.auth_manager.get_gateway_credentials(ctx)
 
@@ -260,10 +256,13 @@ class SecureToolExecutionService:
                     creds.get("gateway_key"),
                     creds.get("project_id"),
                     creds.get("user_id"),
+                    gateway_name=creds.get("gateway_name"),
                 )
 
                 if not local_config:
-                    auth_span.set_attribute(SpanAttributes.ERROR_MESSAGE, "No local config found")
+                    auth_span.set_attribute(
+                        SpanAttributes.ERROR_MESSAGE, "No local config found"
+                    )
                     from secure_mcp_gateway.error_handling import create_error_response
                     from secure_mcp_gateway.exceptions import (
                         ErrorCode,
@@ -340,7 +339,8 @@ class SecureToolExecutionService:
             # Validate server availability
             if not server_info:
                 auth_span.set_attribute(
-                    SpanAttributes.ERROR_MESSAGE, f"Server '{server_name}' not available"
+                    SpanAttributes.ERROR_MESSAGE,
+                    f"Server '{server_name}' not available",
                 )
                 logger.warning(
                     f"[secure_call_tools] Server '{server_name}' not available",
@@ -385,8 +385,12 @@ class SecureToolExecutionService:
 
         input_policy_enabled = input_guardrails_config["enabled"]
         output_policy_enabled = output_guardrails_config["enabled"]
-        input_policy_name = input_guardrails_config.get("guardrail_name") or input_guardrails_config.get("policy_name", "")
-        output_policy_name = output_guardrails_config.get("guardrail_name") or output_guardrails_config.get("policy_name", "")
+        input_policy_name = input_guardrails_config.get(
+            "guardrail_name"
+        ) or input_guardrails_config.get("policy_name", "")
+        output_policy_name = output_guardrails_config.get(
+            "guardrail_name"
+        ) or output_guardrails_config.get("policy_name", "")
         input_blocks = input_guardrails_config["block"]
         output_blocks = output_guardrails_config["block"]
         pii_redaction = input_guardrails_config["additional_config"].get(
@@ -403,8 +407,12 @@ class SecureToolExecutionService:
         )
 
         # Set guardrails attributes on main span
-        main_span.set_attribute(SpanAttributes.INPUT_GUARDRAILS_ENABLED, input_policy_enabled)
-        main_span.set_attribute(SpanAttributes.OUTPUT_GUARDRAILS_ENABLED, output_policy_enabled)
+        main_span.set_attribute(
+            SpanAttributes.INPUT_GUARDRAILS_ENABLED, input_policy_enabled
+        )
+        main_span.set_attribute(
+            SpanAttributes.OUTPUT_GUARDRAILS_ENABLED, output_policy_enabled
+        )
         main_span.set_attribute(SpanAttributes.PII_REDACTION_ENABLED, pii_redaction)
         main_span.set_attribute(SpanAttributes.RELEVANCY_ENABLED, relevancy)
         main_span.set_attribute(SpanAttributes.ADHERENCE_ENABLED, adherence)
@@ -429,13 +437,13 @@ class SecureToolExecutionService:
         self, ctx, custom_id, server_name, server_info, session_key, main_span, logger
     ):
         """Handle tool discovery for the server."""
-        with tracer.start_as_current_span(
-            SpanNames.DISCOVERY
-        ) as discovery_span:
+        with tracer.start_as_current_span(SpanNames.DISCOVERY) as discovery_span:
             discovery_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
 
             server_config_tools = server_info.get("tools", {})
-            discovery_span.set_attribute(SpanAttributes.HAS_CACHED_TOOLS, bool(server_config_tools))
+            discovery_span.set_attribute(
+                SpanAttributes.HAS_CACHED_TOOLS, bool(server_config_tools)
+            )
 
             if self.IS_DEBUG_LOG_LEVEL:
                 logger.debug(
@@ -447,7 +455,9 @@ class SecureToolExecutionService:
                 server_config_tools = self.cache_service.get_cached_tools(
                     id, server_name
                 )
-                discovery_span.set_attribute(SpanAttributes.CACHE_HIT, bool(server_config_tools))
+                discovery_span.set_attribute(
+                    SpanAttributes.CACHE_HIT, bool(server_config_tools)
+                )
 
                 if server_config_tools:
                     from secure_mcp_gateway.plugins.telemetry import (
@@ -475,7 +485,9 @@ class SecureToolExecutionService:
                         1, attributes=build_log_extra(ctx)
                     )
                     try:
-                        discovery_span.set_attribute(SpanAttributes.DISCOVERY_REQUIRED, True)
+                        discovery_span.set_attribute(
+                            SpanAttributes.DISCOVERY_REQUIRED, True
+                        )
 
                         telemetry_mgr.list_servers_call_count.add(
                             1, attributes=build_log_extra(ctx, custom_id)
@@ -494,7 +506,9 @@ class SecureToolExecutionService:
                         )
 
                         if discovery_result.get("status") != "success":
-                            discovery_span.set_attribute(SpanAttributes.ERROR_MESSAGE, "Discovery failed")
+                            discovery_span.set_attribute(
+                                SpanAttributes.ERROR_MESSAGE, "Discovery failed"
+                            )
                             logger.error(
                                 "secure_tool_execution.execute_secure_tools.discovery_failed",
                                 extra=build_log_extra(
@@ -620,9 +634,7 @@ class SecureToolExecutionService:
 
         if self.IS_DEBUG_LOG_LEVEL:
             if is_url_server:
-                logger.debug(
-                    f"[secure_call_tools] Using URL: {server_config['url']}"
-                )
+                logger.debug(f"[secure_call_tools] Using URL: {server_config['url']}")
             else:
                 logger.debug(
                     f"[secure_call_tools] Using command: {server_command} with args: {server_args}"
@@ -638,7 +650,10 @@ class SecureToolExecutionService:
 
         pool = get_session_pool()
         if is_url_server:
-            from secure_mcp_gateway.plugins.sandbox.server_params import _resolve_transport
+            from secure_mcp_gateway.plugins.sandbox.server_params import (
+                _resolve_transport,
+            )
+
             server_cfg = {
                 "url": server_config.get("url", ""),
                 "transport": _resolve_transport(server_config),
@@ -647,12 +662,19 @@ class SecureToolExecutionService:
             if server_config.get("type"):
                 server_cfg["type"] = server_config["type"]
         else:
-            server_cfg = {"command": server_command, "args": server_args, "env": server_env}
+            server_cfg = {
+                "command": server_command,
+                "args": server_args,
+                "env": server_env,
+            }
         session = None
         reused = False
         try:
             session, reused = await pool.acquire(
-                session_key, server_name, server_cfg, server_info,
+                session_key,
+                server_name,
+                server_cfg,
+                server_info,
             )
             logger.info(
                 f"[secure_call_tools] Session initialized successfully for {server_name}"
@@ -728,9 +750,7 @@ class SecureToolExecutionService:
         callers that don't have auth context (tests, backfills) still work.
         """
         auth_context = auth_context or {}
-        with tracer.start_as_current_span(
-            SpanNames.TOOL_CALL
-        ) as tool_span:
+        with tracer.start_as_current_span(SpanNames.TOOL_CALL) as tool_span:
             tool_name = (
                 tool_call.get("name")
                 or tool_call.get("tool_name")
@@ -757,7 +777,9 @@ class SecureToolExecutionService:
                 )
 
                 if not tool_name:
-                    tool_span.set_attribute(SpanAttributes.ERROR_MESSAGE, "No tool_name provided")
+                    tool_span.set_attribute(
+                        SpanAttributes.ERROR_MESSAGE, "No tool_name provided"
+                    )
                     return {
                         "status": "error",
                         "error": "No tool_name provided",
@@ -804,7 +826,10 @@ class SecureToolExecutionService:
                         configured_allowed_tools or {},
                     )
                     if deny_match:
-                        reason = deny_match.get("reason") or "tool is on the server deny list"
+                        reason = (
+                            deny_match.get("reason")
+                            or "tool is on the server deny list"
+                        )
                         logger.warning(
                             f"[secure_call_tools] Tool '{tool_name}' denied: {reason} "
                             f"(pattern={deny_match['pattern']})",
@@ -821,7 +846,9 @@ class SecureToolExecutionService:
                             ),
                         )
                         tool_span.set_attribute("tool.denied", True)
-                        tool_span.set_attribute("tool.deny_pattern", deny_match["pattern"])
+                        tool_span.set_attribute(
+                            "tool.deny_pattern", deny_match["pattern"]
+                        )
                         record_tool_call_outcome(
                             server_name,
                             tool_name,
@@ -1023,7 +1050,9 @@ class SecureToolExecutionService:
 
                 tool_span.record_exception(tool_error)
                 tool_span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(tool_error))
-                tool_span.set_attribute(SpanAttributes.CORRELATION_ID, context.correlation_id)
+                tool_span.set_attribute(
+                    SpanAttributes.CORRELATION_ID, context.correlation_id
+                )
                 logger.error(
                     f"[secure_call_tools] Error in call {i} ({tool_name}): {tool_error}"
                 )
@@ -1055,9 +1084,7 @@ class SecureToolExecutionService:
 
     def _validate_tool(self, tool_name, server_config_tools, tool_span):
         """Validate that the tool exists and is available."""
-        with tracer.start_as_current_span(
-            SpanNames.TOOL_VALIDATE
-        ) as validate_span:
+        with tracer.start_as_current_span(SpanNames.TOOL_VALIDATE) as validate_span:
             validate_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
 
             # Normalize possible formats and check membership
@@ -1068,7 +1095,9 @@ class SecureToolExecutionService:
                 server_config_tools
             )
             if not valid_format:
-                validate_span.set_attribute(SpanAttributes.ERROR_MESSAGE, "Unknown tool format")
+                validate_span.set_attribute(
+                    SpanAttributes.ERROR_MESSAGE, "Unknown tool format"
+                )
                 logger.error(
                     f"[secure_call_tools] Unknown tool format: {type(server_config_tools)}"
                 )
@@ -1093,7 +1122,9 @@ class SecureToolExecutionService:
             tool_found = tool_name in names
             validate_span.set_attribute(SpanAttributes.TOOL_FOUND, tool_found)
             if not tool_found:
-                validate_span.set_attribute(SpanAttributes.ERROR_MESSAGE, "Tool not found")
+                validate_span.set_attribute(
+                    SpanAttributes.ERROR_MESSAGE, "Tool not found"
+                )
                 logger.error(
                     f"[enkrypt_secure_call_tools] Tool '{tool_name}' not found for this server."
                 )
@@ -1138,9 +1169,7 @@ class SecureToolExecutionService:
         # legacy code paths that don't pass auth.
         auth_context = auth_context or {}
         """Execute tool with input guardrails enabled."""
-        with tracer.start_as_current_span(
-            SpanNames.GUARDRAIL_INPUT
-        ) as input_span:
+        with tracer.start_as_current_span(SpanNames.GUARDRAIL_INPUT) as input_span:
             input_span.set_attribute(
                 "pii_redaction", guardrails_config["pii_redaction"]
             )
@@ -1359,9 +1388,7 @@ class SecureToolExecutionService:
         logger,
     ):
         """Execute tool without input guardrails."""
-        with tracer.start_as_current_span(
-            SpanNames.TOOL_FORWARD
-        ) as exec_span:
+        with tracer.start_as_current_span(SpanNames.TOOL_FORWARD) as exec_span:
             exec_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
             exec_span.set_attribute(SpanAttributes.ASYNC_GUARDRAILS, False)
 
@@ -1410,9 +1437,7 @@ class SecureToolExecutionService:
         auth_context=None,
     ):
         """Process output with guardrails."""
-        with tracer.start_as_current_span(
-            SpanNames.GUARDRAIL_OUTPUT
-        ) as output_span:
+        with tracer.start_as_current_span(SpanNames.GUARDRAIL_OUTPUT) as output_span:
             output_span.set_attribute(
                 SpanAttributes.RELEVANCY_ENABLED, guardrails_config["relevancy"]
             )
@@ -1533,7 +1558,8 @@ class SecureToolExecutionService:
 
             if has_blocking:
                 output_span.set_attribute(
-                    SpanAttributes.ERROR_MESSAGE, f"Output violations: {violation_types}"
+                    SpanAttributes.ERROR_MESSAGE,
+                    f"Output violations: {violation_types}",
                 )
                 logger.info(
                     f"[secure_call_tools] Call {i}: Blocked due to output violations: {violation_types}"
@@ -1774,7 +1800,9 @@ class SecureToolExecutionService:
         auth_context = auth_context or {}
         # status is e.g. "blocked_input", "blocked_output", "blocked_*";
         # extract the reason for the metric label.
-        block_reason = status.replace("blocked_", "") if isinstance(status, str) else "unknown"
+        block_reason = (
+            status.replace("blocked_", "") if isinstance(status, str) else "unknown"
+        )
         record_tool_call_outcome(
             server_name,
             tool_name,
@@ -1795,9 +1823,7 @@ class SecureToolExecutionService:
             "enkrypt_policy_detections": {
                 "input_guardrail_name": guardrails_config["input_guardrails_config"],
                 "input_guardrail_response": {},
-                "output_guardrail_name": guardrails_config[
-                    "output_guardrails_config"
-                ],
+                "output_guardrail_name": guardrails_config["output_guardrails_config"],
                 "output_guardrail_response": output_guardrail_response,
                 "output_relevancy_response": output_relevancy_response,
                 "output_adherence_response": output_adherence_response,
@@ -1848,9 +1874,7 @@ class SecureToolExecutionService:
             "enkrypt_policy_detections": {
                 "input_guardrail_name": guardrails_config["input_guardrails_config"],
                 "input_guardrail_response": input_guardrail_response,
-                "output_guardrail_name": guardrails_config[
-                    "output_guardrails_config"
-                ],
+                "output_guardrail_name": guardrails_config["output_guardrails_config"],
                 "output_guardrail_response": output_guardrail_response,
                 "output_relevancy_response": output_relevancy_response,
                 "output_adherence_response": output_adherence_response,

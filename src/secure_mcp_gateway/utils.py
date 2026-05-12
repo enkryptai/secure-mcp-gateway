@@ -8,7 +8,7 @@ import string
 import sys
 import threading
 import time
-from typing import Any, Dict, Union
+from typing import Any
 from urllib.parse import urlparse
 
 from secure_mcp_gateway.consts import (
@@ -265,7 +265,6 @@ def generate_custom_id():
         return f"fallback_{int(time.time())}"
 
 
-
 def mask_key(key):
     """
     Masks the last 4 characters of the key.
@@ -298,6 +297,7 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
             gateway_key = credentials.get("gateway_key")
             project_id = credentials.get("project_id", project_id)
             user_id = credentials.get("user_id", user_id)
+            gateway_name = credentials.get("gateway_name")
 
             if gateway_key:
                 try:
@@ -316,7 +316,10 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
                             gateway_config = (
                                 asyncio.run(
                                     auth_manager.get_local_mcp_config(
-                                        gateway_key, project_id, user_id
+                                        gateway_key,
+                                        project_id,
+                                        user_id,
+                                        gateway_name=gateway_name,
                                     )
                                 )
                                 or {}
@@ -470,8 +473,8 @@ def get_server_info_by_name(gateway_config, server_name):
 
 
 def mask_sensitive_headers(
-    headers: Union[Dict[str, str], Dict[str, Any]],
-) -> Dict[str, str]:
+    headers: dict[str, str] | dict[str, Any],
+) -> dict[str, str]:
     """
     Mask sensitive information in HTTP headers for logging purposes.
 
@@ -569,8 +572,8 @@ def mask_sensitive_headers(
 
 
 def mask_sensitive_data(
-    data: Dict[str, Any], sensitive_keys: list = None
-) -> Dict[str, Any]:
+    data: dict[str, Any], sensitive_keys: list = None
+) -> dict[str, Any]:
     """
     Recursively mask sensitive information in a dictionary.
 

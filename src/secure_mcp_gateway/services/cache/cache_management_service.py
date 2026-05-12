@@ -180,7 +180,10 @@ class CacheManagementService:
             enkrypt_user_id = credentials.get("user_id") or "not_provided"
 
             gateway_config = await self.auth_manager.get_local_mcp_config(
-                enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
+                enkrypt_gateway_key,
+                enkrypt_project_id,
+                enkrypt_user_id,
+                gateway_name=credentials.get("gateway_name"),
             )
 
             if not gateway_config:
@@ -236,9 +239,7 @@ class CacheManagementService:
                     logger.error(f"[clear_cache] {detail}")
                     logger.error(
                         "cache_management.clear_cache.not_authenticated",
-                        extra=build_log_extra(
-                            ctx, custom_id, error=detail
-                        ),
+                        extra=build_log_extra(ctx, custom_id, error=detail),
                     )
                     context = ErrorContext(
                         operation="cache_management.auth",

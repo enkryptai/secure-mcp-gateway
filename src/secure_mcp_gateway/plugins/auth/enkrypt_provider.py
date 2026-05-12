@@ -225,8 +225,11 @@ class EnkryptAuthProvider(AuthProvider):
                 error="Missing apikey on request and no boot-time fallback configured",
             )
 
-        # Header overrides config; config is the fallback.
-        effective_gateway = credentials.gateway_name or self.gateway_name
+        # Config wins; header is the fallback. If ``auth.config.gateway_name``
+        # is set we use it and ignore the X-Enkrypt-MCP-Gateway request header.
+        # Only when the gateway is configured without a fixed gateway_name do
+        # we look at the per-request header.
+        effective_gateway = self.gateway_name or credentials.gateway_name
         if not effective_gateway:
             return AuthResult(
                 status=AuthStatus.INVALID_CREDENTIALS,
@@ -238,12 +241,16 @@ class EnkryptAuthProvider(AuthProvider):
                 ),
             )
 
-        if credentials.gateway_name and credentials.gateway_name != self.gateway_name:
+        if (
+            credentials.gateway_name
+            and self.gateway_name
+            and credentials.gateway_name != self.gateway_name
+        ):
             logger.info(
-                "[EnkryptAuthProvider] gateway_name overridden by request header: "
-                "%s (config=%s)",
+                "[EnkryptAuthProvider] ignoring X-Enkrypt-MCP-Gateway header "
+                "(%s); auth.config.gateway_name wins (%s)",
                 credentials.gateway_name,
-                self.gateway_name or "(none)",
+                self.gateway_name,
             )
 
         try:
@@ -325,17 +332,19 @@ class EnkryptAuthProvider(AuthProvider):
         are accepted but ignored: cloud auth derives them from the apikey
         and the response's ``request_context`` block.
 
-        ``gateway_name`` overrides ``self.gateway_name`` when provided (i.e.
-        the caller extracted it from a request header).
+        ``gateway_name`` is the per-request header (``X-Enkrypt-MCP-Gateway``)
+        the caller extracted. ``self.gateway_name`` (from ``auth.config``) wins
+        when set — the header is only consulted as a fallback.
         """
-        effective_gateway = gateway_name or self.gateway_name
+        effective_gateway = self.gateway_name or gateway_name
         cache_key = self._cache_key(gateway_key, effective_gateway)
         cached = self._cache_get(cache_key)
         if cached is not None:
             return cached
 
         response = await self._fetch_remote_gateway_config(
-            gateway_key, gateway_name=effective_gateway,
+            gateway_key,
+            gateway_name=effective_gateway,
         )
         if response is None:
             return None
@@ -364,9 +373,23 @@ class EnkryptAuthProvider(AuthProvider):
         Raises ``_CloudFetchError`` on transport / HTTP failures so the
         caller can surface a clear AuthResult.ERROR.
 
-        ``gateway_name`` overrides ``self.gateway_name`` for this request.
+        ``self.gateway_name`` (from ``auth.config``) wins when set; the
+        per-request ``gateway_name`` (X-Enkrypt-MCP-Gateway header) is the
+        fallback used only when the gateway is configured without one.
         """
-        effective_gateway = gateway_name or self.gateway_name
+        effective_gateway = self.gateway_name or gateway_name
+        if not effective_gateway:
+            # Fail clearly *before* the aiohttp call: a ``None`` header value
+            # makes multidict raise ``TypeError: Cannot serialize non-str key
+            # None`` which is uncaught (not an ``aiohttp.ClientError``) and
+            # surfaces to the MCP client as a cryptic, misleading
+            # serialization error.
+            raise _CloudFetchError(
+                "Missing X-Enkrypt-MCP-Gateway header and no gateway_name in "
+                "auth.config — cannot fetch gateway config without a gateway "
+                "name. Set auth.config.gateway_name in the gateway config, or "
+                "have the MCP client send the X-Enkrypt-MCP-Gateway header."
+            )
         url = f"{self.base_url}/mcp-gateway/get-gateway-config"
         headers = {
             "apikey": gateway_key,
@@ -620,9 +643,7 @@ class EnkryptAuthProvider(AuthProvider):
             merged["oauth_config"] = oauth_config
 
         # MCP-native OAuth (mcp_oauth) — same precedence as oauth_config.
-        mcp_oauth = gateway_overrides.get("mcp_oauth") or cloud_mcp.get(
-            "mcp_oauth"
-        )
+        mcp_oauth = gateway_overrides.get("mcp_oauth") or cloud_mcp.get("mcp_oauth")
         if mcp_oauth:
             merged["mcp_oauth"] = mcp_oauth
 
@@ -678,7 +699,9 @@ class EnkryptAuthProvider(AuthProvider):
     # ------------------------------------------------------------------
 
     def _cache_key(
-        self, gateway_key: str, effective_gateway: str | None = None,
+        self,
+        gateway_key: str,
+        effective_gateway: str | None = None,
     ) -> str:
         # Hash the apikey so even an in-memory dump doesn't leak it. The
         # gateway_name+version+project_name are part of the key so a single
