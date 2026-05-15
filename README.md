@@ -56,9 +56,9 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 
 Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 
-1. **Authentication**: We use Unique Key to authenticate with the Gateway. We also use Enkrypt API Key if you want to protect your MCPs with Enkrypt Guardrails. Additionally, a secure `admin_apikey` (256-character random string) is automatically generated for administrative REST API operations.
+1. **Authentication**: We use Unique Key to authenticate with the Gateway. We also use Enkrypt API Key if you want to protect your MCPs with Enkrypt Guardrails. Additionally, a secure `admin_apikey` (256-character random string) is automatically generated at the **root** of the config for administrative REST API operations. (When `plugins.auth.provider` is `enkrypt`, `admin_apikey` is **optional** — the Enkrypt cloud `api_key` doubles as the admin credential.)
 
-2. **Ease of use**: You can configure all your MCP servers locally in the config file or better yet in Enkrypt *(Coming soon)* and use them in the Gateway by using their name
+2. **Ease of use**: You can configure all your MCP servers either locally in `enkrypt_mcp_config.json` or — better yet for teams and production — in **Enkrypt cloud** (run `secure-mcp-gateway generate-config --provider enkrypt`). The cloud owns the server list, guardrail policies, and `common_overrides`, and the gateway pulls them at request time with a 5-minute TTL.
 
 3. **Dynamic Tool Discovery**: The Gateway discovers tools from the MCP servers dynamically and makes them available to the MCP client
 
@@ -109,7 +109,7 @@ Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 
 1. Your MCP client connects to the Secure MCP Gateway server with API Key (handled by `src/secure_mcp_gateway/gateway.py`).
 
-2. Gateway server fetches gateway config from local `enkrypt_mcp_config.json` file or remote Enkrypt Auth server *(Coming soon)*.
+2. Gateway server fetches the gateway config from either the local `enkrypt_mcp_config.json` file (`plugins.auth.provider = "local_apikey"`) or the **remote Enkrypt cloud** at `https://api.enkryptai.com/mcp-gateway/get-gateway-config` (`plugins.auth.provider = "enkrypt"`). See [§14.5 Gateway Config Schema](#145-gateway-config-schema) for both shapes.
 
     - It caches the config locally or in an external cache server like KeyDB if configured to improve performance.
 
@@ -287,8 +287,38 @@ If you want to protect your MCPs with Enkrypt Guardrails, you need to do the fol
   secure-mcp-gateway generate-config
   ```
 
+##### Choosing an auth provider at generation time
+
+The default command emits the full **local-apikey** schema — a sample echo server, a default project, a user, and an auto-generated gateway API key — everything you need to boot offline. If you instead want the gateway to source its servers/projects/users from **Enkrypt cloud**, generate the minimal cloud-backed config:
+
+```bash
+secure-mcp-gateway generate-config --provider enkrypt
+```
+
+This writes a much shorter file containing only:
+
+- `enkrypt_config.api_key` and `base_url` (you fill in the apikey)
+- `plugins.auth.provider = "enkrypt"` with a `gateway_name` placeholder
+- `plugins.guardrails.provider = "enkrypt"`
+- `plugins.telemetry.provider = "opentelemetry"` (OTLP gRPC to `localhost:4317`, matching the local-apikey default and the bundled Prometheus/Grafana/Jaeger/Loki stack — set `config.enabled: false` if you don't have a collector running)
+- Two commonly-tweaked entries under `common_mcp_gateway_config` (`enkrypt_log_level`, `enkrypt_gateway_cache_expiration_minutes`)
+
+No local `mcp_configs` / `projects` / `users` / `apikeys` blocks — the cloud owns those. After generation, edit the file and set:
+
+1. `enkrypt_config.api_key` → your Enkrypt cloud apikey
+2. `plugins.auth.config.gateway_name` → the `saved_name` of the gateway you created in the Enkrypt console
+
+The shipped reference file is `src/secure_mcp_gateway/example_enkrypt_cloud_config.json` — same shape the CLI generates. Use it as a template for hand-written configs.
+
+Supported flag values:
+
+| `--provider` | Behavior |
+|---|---|
+| `local_apikey` (default) | Full local schema with sample echo server, project, user, API key, and a root-level `admin_apikey` for the REST admin API. Backward-compatible with all pre-2.2 setups. |
+| `enkrypt` | Minimal cloud-backed schema. No `admin_apikey` baked in — the cloud `enkrypt_config.api_key` doubles as the admin credential (see [Admin API Key Authentication](#admin-api-key-authentication)). |
+
 <details>
-<summary><strong>🖨️ Example output</strong></summary>
+<summary><strong>🖨️ Example output — <code>--provider local_apikey</code> (default)</strong></summary>
 <br>
 
 ```bash
@@ -316,7 +346,6 @@ ENKRYPT_GATEWAY_KEY: ****NULL
 enkrypt_log_level: info
 is_debug_log_level: False
 enkrypt_base_url: https://api.enkryptai.com
-enkrypt_use_remote_mcp_config: False
 enkrypt_api_key: ****_KEY
 enkrypt_tool_cache_expiration: 4
 enkrypt_gateway_cache_expiration: 24
@@ -331,7 +360,30 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
 
 </details>
 
+<details>
+<summary><strong>🖨️ Example output — <code>--provider enkrypt</code> (cloud)</strong></summary>
+<br>
+
+```bash
+INFO: Initializing Enkrypt Secure MCP Gateway CLI Module v2.2.0
+INFO: HOME_DIR: C:\Users\PC
+INFO: GATEWAY_PY_PATH:  C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\gateway.py
+INFO: ECHO_SERVER_PATH:  C:\Users\PC\Documents\GitHub\EnkryptAI\secure-mcp-gateway\.secure-mcp-gateway-venv\Lib\site-packages\secure_mcp_gateway\bad_mcps\echo_oauth_mcp.py
+INFO: PICKED_CONFIG_PATH:  C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
+INFO: Generating minimal Enkrypt-cloud configuration (plugins.auth.provider=enkrypt)...
+SUCCESS: Generated config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
+INFO: Before starting the gateway, edit the file and set:
+  * enkrypt_config.api_key            (replace 'YOUR_ENKRYPT_API_KEY' with your Enkrypt cloud apikey)
+  * plugins.auth.config.gateway_name  (replace 'your-gateway-saved-name' with the saved_name of the gateway you created in Enkrypt cloud)
+```
+
+> Notice the cloud variant skips the long boot/dependency banner — it's a fast, focused command. The two `INFO: Before starting…` lines are the operator-must-edit checklist; the gateway will fail with a 401 from Enkrypt cloud on first boot if you skip them.
+
+</details>
+
 #### 4.1.3 Example of the generated config file
+
+> **Note:** The examples below show the **full** schema emitted by `secure-mcp-gateway generate-config` (default `--provider local_apikey`). Every field is included so you can compare your generated file 1:1. The `oauth_config` block ships disabled (`"enabled": false`) — its keys are placeholders you only need to fill in if a server uses OAuth. The `timeout_settings` block holds the per-operation timeouts the gateway uses internally; defaults are sane and rarely need editing.
 
 <details>
 <summary><strong>🍎 Example file in macOS</strong></summary>
@@ -341,13 +393,13 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
 
 ```json
 {
+  "admin_apikey": "AUTO_GENERATED_256_CHAR_KEY",
+  "enkrypt_config": {
+    "api_key": "YOUR_ENKRYPT_API_KEY",
+    "base_url": "https://api.enkryptai.com"
+  },
   "common_mcp_gateway_config": {
     "enkrypt_log_level": "INFO",
-    "enkrypt_base_url": "https://api.enkryptai.com",
-    "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
-    "enkrypt_use_remote_mcp_config": false,
-    "enkrypt_remote_mcp_gateway_name": "enkrypt-secure-mcp-gateway-1",
-    "enkrypt_remote_mcp_gateway_version": "v1",
     "enkrypt_mcp_use_external_cache": false,
     "enkrypt_cache_host": "localhost",
     "enkrypt_cache_port": 6379,
@@ -355,17 +407,57 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
     "enkrypt_cache_password": null,
     "enkrypt_tool_cache_expiration": 4,
     "enkrypt_gateway_cache_expiration": 24,
+    "enkrypt_gateway_cache_expiration_minutes": 5,
+    "enkrypt_config_watcher_poll_seconds": 2.0,
     "enkrypt_async_input_guardrails_enabled": false,
     "enkrypt_async_output_guardrails_enabled": false,
-    "enkrypt_telemetry": {
-      "enabled": true,
-      "insecure": true,
-      "endpoint": "http://localhost:4317"
+    "timeout_settings": {
+      "default_timeout": 30,
+      "guardrail_timeout": 15,
+      "auth_timeout": 10,
+      "tool_execution_timeout": 60,
+      "discovery_timeout": 180,
+      "cache_timeout": 5,
+      "connectivity_timeout": 2,
+      "escalation_policies": {
+        "warn_threshold": 0.8,
+        "timeout_threshold": 1.0,
+        "fail_threshold": 1.2
+      }
+    }
+  },
+  "plugins": {
+    "auth": { "provider": "local_apikey", "config": {} },
+    "guardrails": { "provider": "enkrypt", "config": {} },
+    "telemetry": {
+      "provider": "opentelemetry",
+      "config": {
+        "enabled": true,
+        "url": "http://localhost:4317",
+        "insecure": true
+      }
     }
   },
   "mcp_configs": {
     "fcbd4508-1432-4f13-abb9-c495c946f638": {
       "mcp_config_name": "default_config",
+      "common_overrides": {
+        "server_tools_guardrails_config": {
+          "enabled": false,
+          "guardrail_name": "Sample Airline Guardrail",
+          "block": [
+            "policy_violation",
+            "injection_attack",
+            "topic_detector",
+            "nsfw",
+            "toxicity",
+            "pii",
+            "keyword_detector",
+            "bias",
+            "sponge_attack"
+          ]
+        }
+      },
       "mcp_config": [
         {
           "server_name": "echo_server",
@@ -376,7 +468,33 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
               "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/secure_mcp_gateway/bad_mcps/echo_mcp.py"
             ]
           },
+          "oauth_config": {
+            "enabled": false,
+            "is_remote": false,
+            "OAUTH_VERSION": "2.1",
+            "OAUTH_GRANT_TYPE": "client_credentials",
+            "OAUTH_CLIENT_ID": "your-client-id",
+            "OAUTH_CLIENT_SECRET": "your-client-secret",
+            "OAUTH_TOKEN_URL": "https://auth.example.com/oauth/token",
+            "OAUTH_AUDIENCE": "https://api.example.com",
+            "OAUTH_ORGANIZATION": "your-org-id",
+            "OAUTH_SCOPE": "read write",
+            "OAUTH_RESOURCE": "https://resource.example.com",
+            "OAUTH_TOKEN_EXPIRY_BUFFER": 300,
+            "OAUTH_USE_BASIC_AUTH": true,
+            "OAUTH_ENFORCE_HTTPS": true,
+            "OAUTH_TOKEN_IN_HEADER_ONLY": true,
+            "OAUTH_VALIDATE_SCOPES": true,
+            "OAUTH_USE_MTLS": false,
+            "OAUTH_CLIENT_CERT_PATH": null,
+            "OAUTH_CLIENT_KEY_PATH": null,
+            "OAUTH_CA_BUNDLE_PATH": null,
+            "OAUTH_REVOCATION_URL": null,
+            "OAUTH_ADDITIONAL_PARAMS": {},
+            "OAUTH_CUSTOM_HEADERS": {}
+          },
           "tools": {},
+          "denied_tools": [],
           "input_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
@@ -384,7 +502,15 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
               "pii_redaction": false
             },
             "block": [
-              "policy_violation"
+              "policy_violation",
+              "injection_attack",
+              "topic_detector",
+              "nsfw",
+              "toxicity",
+              "pii",
+              "keyword_detector",
+              "bias",
+              "sponge_attack"
             ]
           },
           "output_guardrails_config": {
@@ -396,7 +522,15 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
               "adherence": false
             },
             "block": [
-              "policy_violation"
+              "policy_violation",
+              "injection_attack",
+              "topic_detector",
+              "nsfw",
+              "toxicity",
+              "pii",
+              "keyword_detector",
+              "bias",
+              "sponge_attack"
             ]
           }
         }
@@ -439,13 +573,13 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
 
 ```json
 {
+  "admin_apikey": "AUTO_GENERATED_256_CHAR_KEY",
+  "enkrypt_config": {
+    "api_key": "YOUR_ENKRYPT_API_KEY",
+    "base_url": "https://api.enkryptai.com"
+  },
   "common_mcp_gateway_config": {
     "enkrypt_log_level": "INFO",
-    "enkrypt_base_url": "https://api.enkryptai.com",
-    "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
-    "enkrypt_use_remote_mcp_config": false,
-    "enkrypt_remote_mcp_gateway_name": "enkrypt-secure-mcp-gateway-1",
-    "enkrypt_remote_mcp_gateway_version": "v1",
     "enkrypt_mcp_use_external_cache": false,
     "enkrypt_cache_host": "localhost",
     "enkrypt_cache_port": 6379,
@@ -453,17 +587,57 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
     "enkrypt_cache_password": null,
     "enkrypt_tool_cache_expiration": 4,
     "enkrypt_gateway_cache_expiration": 24,
+    "enkrypt_gateway_cache_expiration_minutes": 5,
+    "enkrypt_config_watcher_poll_seconds": 2.0,
     "enkrypt_async_input_guardrails_enabled": false,
     "enkrypt_async_output_guardrails_enabled": false,
-    "enkrypt_telemetry": {
-      "enabled": true,
-      "insecure": true,
-      "endpoint": "http://localhost:4317"
+    "timeout_settings": {
+      "default_timeout": 30,
+      "guardrail_timeout": 15,
+      "auth_timeout": 10,
+      "tool_execution_timeout": 60,
+      "discovery_timeout": 180,
+      "cache_timeout": 5,
+      "connectivity_timeout": 2,
+      "escalation_policies": {
+        "warn_threshold": 0.8,
+        "timeout_threshold": 1.0,
+        "fail_threshold": 1.2
+      }
+    }
+  },
+  "plugins": {
+    "auth": { "provider": "local_apikey", "config": {} },
+    "guardrails": { "provider": "enkrypt", "config": {} },
+    "telemetry": {
+      "provider": "opentelemetry",
+      "config": {
+        "enabled": true,
+        "url": "http://localhost:4317",
+        "insecure": true
+      }
     }
   },
   "mcp_configs": {
     "fcbd4508-1432-4f13-abb9-c495c946f638": {
       "mcp_config_name": "default_config",
+      "common_overrides": {
+        "server_tools_guardrails_config": {
+          "enabled": false,
+          "guardrail_name": "Sample Airline Guardrail",
+          "block": [
+            "policy_violation",
+            "injection_attack",
+            "topic_detector",
+            "nsfw",
+            "toxicity",
+            "pii",
+            "keyword_detector",
+            "bias",
+            "sponge_attack"
+          ]
+        }
+      },
       "mcp_config": [
         {
           "server_name": "echo_server",
@@ -474,7 +648,33 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
               "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\bad_mcps\\echo_mcp.py"
             ]
           },
+          "oauth_config": {
+            "enabled": false,
+            "is_remote": false,
+            "OAUTH_VERSION": "2.1",
+            "OAUTH_GRANT_TYPE": "client_credentials",
+            "OAUTH_CLIENT_ID": "your-client-id",
+            "OAUTH_CLIENT_SECRET": "your-client-secret",
+            "OAUTH_TOKEN_URL": "https://auth.example.com/oauth/token",
+            "OAUTH_AUDIENCE": "https://api.example.com",
+            "OAUTH_ORGANIZATION": "your-org-id",
+            "OAUTH_SCOPE": "read write",
+            "OAUTH_RESOURCE": "https://resource.example.com",
+            "OAUTH_TOKEN_EXPIRY_BUFFER": 300,
+            "OAUTH_USE_BASIC_AUTH": true,
+            "OAUTH_ENFORCE_HTTPS": true,
+            "OAUTH_TOKEN_IN_HEADER_ONLY": true,
+            "OAUTH_VALIDATE_SCOPES": true,
+            "OAUTH_USE_MTLS": false,
+            "OAUTH_CLIENT_CERT_PATH": null,
+            "OAUTH_CLIENT_KEY_PATH": null,
+            "OAUTH_CA_BUNDLE_PATH": null,
+            "OAUTH_REVOCATION_URL": null,
+            "OAUTH_ADDITIONAL_PARAMS": {},
+            "OAUTH_CUSTOM_HEADERS": {}
+          },
           "tools": {},
+          "denied_tools": [],
           "input_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
@@ -482,7 +682,15 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
               "pii_redaction": false
             },
             "block": [
-              "policy_violation"
+              "policy_violation",
+              "injection_attack",
+              "topic_detector",
+              "nsfw",
+              "toxicity",
+              "pii",
+              "keyword_detector",
+              "bias",
+              "sponge_attack"
             ]
           },
           "output_guardrails_config": {
@@ -494,7 +702,15 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
               "adherence": false
             },
             "block": [
-              "policy_violation"
+              "policy_violation",
+              "injection_attack",
+              "topic_detector",
+              "nsfw",
+              "toxicity",
+              "pii",
+              "keyword_detector",
+              "bias",
+              "sponge_attack"
             ]
           }
         }
@@ -527,6 +743,63 @@ Generated default config at C:\Users\PC\.enkrypt\enkrypt_mcp_config.json
 }
 
 ```
+
+</details>
+
+<details>
+<summary><strong>☁️ Example file with <code>--provider enkrypt</code> (cloud-backed, all platforms)</strong></summary>
+<br>
+
+- This is the **complete** file emitted by `secure-mcp-gateway generate-config --provider enkrypt`. Same shape on macOS, Linux, and Windows — only the on-disk path differs (`~/.enkrypt/...` vs `%USERPROFILE%\.enkrypt\...`).
+
+```json
+{
+  "enkrypt_config": {
+    "api_key": "YOUR_ENKRYPT_API_KEY",
+    "base_url": "https://api.enkryptai.com"
+  },
+  "plugins": {
+    "auth": {
+      "provider": "enkrypt",
+      "config": {
+        "gateway_name": "your-gateway-saved-name",
+        "gateway_version": "v1",
+        "cache_ttl_seconds": 300
+      }
+    },
+    "guardrails": {
+      "provider": "enkrypt",
+      "config": {}
+    },
+    "telemetry": {
+      "provider": "opentelemetry",
+      "config": {
+        "enabled": true,
+        "url": "http://localhost:4317",
+        "insecure": true
+      }
+    }
+  },
+  "common_mcp_gateway_config": {
+    "enkrypt_log_level": "INFO",
+    "enkrypt_gateway_cache_expiration_minutes": 5
+  }
+}
+
+```
+
+**What's intentionally NOT here (cloud owns these):**
+
+- No `mcp_configs` / `projects` / `users` / `apikeys` blocks — the gateway resolves them from Enkrypt cloud via `/mcp-gateway/get-gateway-config` on every authenticated request.
+- No root-level `admin_apikey` — the cloud `enkrypt_config.api_key` doubles as the admin credential for the local REST API (see [Admin API Key Authentication](#admin-api-key-authentication)). If you want a separate admin secret, add `"admin_apikey": "<256-char-key>"` at the root.
+- No legacy `enkrypt_use_remote_mcp_config` / `enkrypt_remote_mcp_gateway_*` flags — those only drive the deprecated `local_apikey` remote-fetch fallback. The `enkrypt` provider has its own cleaner cloud-config flow in `EnkryptAuthProvider`.
+
+**Two operator-must-edit values before first boot:**
+
+1. `enkrypt_config.api_key` → your real Enkrypt cloud apikey
+2. `plugins.auth.config.gateway_name` → the `saved_name` of the gateway you created in the Enkrypt console
+
+The shipped reference file at `src/secure_mcp_gateway/example_enkrypt_cloud_config.json` is byte-for-byte identical to this example.
 
 </details>
 
@@ -571,7 +844,6 @@ ENKRYPT_GATEWAY_KEY: ****NULL
 enkrypt_log_level: info
 is_debug_log_level: False
 enkrypt_base_url: https://api.enkryptai.com
-enkrypt_use_remote_mcp_config: False
 enkrypt_api_key: ****_KEY
 enkrypt_tool_cache_expiration: 4
 enkrypt_gateway_cache_expiration: 24
@@ -594,11 +866,16 @@ Please restart Claude Desktop to use the gateway.
 
 #### 4.1.5 Example of the Claude Desktop Config after installation
 
+> **The env-var shape depends on your gateway's `plugins.auth.provider`.** Same dichotomy as the Cursor section [below](#416-install-the-gateway-for-cursor):
+>
+> - **`local_apikey` provider** (default) → three env vars: `ENKRYPT_GATEWAY_KEY` + `ENKRYPT_PROJECT_ID` + `ENKRYPT_USER_ID`
+> - **`enkrypt` cloud provider** → single env var: `ENKRYPT_APIKEY`
+
 <details>
 <summary><strong>🍎 Example file in macOS</strong></summary>
 <br>
 
-- `~/Library/Application Support/Claude/claude_desktop_config.json`
+- `~/Library/Application Support/Claude/claude_desktop_config.json` — **local_apikey provider** (default)
 
   ```json
   {
@@ -619,12 +896,31 @@ Please restart Claude Desktop to use the gateway.
   }
   ```
 
+- `~/Library/Application Support/Claude/claude_desktop_config.json` — **enkrypt cloud provider** (when generated with `--provider enkrypt`)
+
+  ```json
+  {
+    "mcpServers": {
+      "Enkrypt Secure MCP Gateway": {
+        "command": "mcp",
+        "args": [
+          "run",
+          "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/secure_mcp_gateway/gateway.py"
+        ],
+        "env": {
+          "ENKRYPT_APIKEY": "your-enkrypt-cloud-apikey"
+        }
+      }
+    }
+  }
+  ```
+
 </details>
 <details>
 <summary><strong>🪟 Example file in Windows</strong></summary>
 <br>
 
-- `%USERPROFILE%\AppData\Roaming\Claude\claude_desktop_config.json`
+- `%USERPROFILE%\AppData\Roaming\Claude\claude_desktop_config.json` — **local_apikey provider** (default)
 
   ```json
   {
@@ -639,6 +935,25 @@ Please restart Claude Desktop to use the gateway.
           "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
           "ENKRYPT_PROJECT_ID": "3c09f06c-1f0d-4153-9ac5-366397937641",
           "ENKRYPT_USER_ID": "6469a670-1d64-4da5-b2b3-790de21ac726"
+        }
+      }
+    }
+  }
+  ```
+
+- `%USERPROFILE%\AppData\Roaming\Claude\claude_desktop_config.json` — **enkrypt cloud provider** (when generated with `--provider enkrypt`)
+
+  ```json
+  {
+    "mcpServers": {
+      "Enkrypt Secure MCP Gateway": {
+        "command": "mcp",
+        "args": [
+          "run",
+          "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\gateway.py"
+        ],
+        "env": {
+          "ENKRYPT_APIKEY": "your-enkrypt-cloud-apikey"
         }
       }
     }
@@ -659,11 +974,20 @@ Please restart Claude Desktop to use the gateway.
 
 - *Although it is not usually required to restart, if you see it in loading state for a long time, please restart Cursor*
 
+> **The env-var shape depends on your gateway's `plugins.auth.provider`.** The install command writes whichever shape matches:
+>
+> | Provider | Env vars written | Used for |
+> |---|---|---|
+> | `local_apikey` (default) | `ENKRYPT_GATEWAY_KEY` + `ENKRYPT_PROJECT_ID` + `ENKRYPT_USER_ID` | Looking up the local apikey + project + user in your local config |
+> | `enkrypt` (cloud) | `ENKRYPT_APIKEY` | Single cloud apikey; project/user come from Enkrypt cloud |
+>
+> Both `mcp.json` shapes below are valid — pick the one matching how you generated your config. See [Section 4.1.2](#412-run-the-generate-command) for the `--provider enkrypt` flag.
+
 <details>
 <summary><strong>🍎 Example file in macOS</strong></summary>
 <br>
 
-- `~/.cursor/mcp.json`
+- `~/.cursor/mcp.json` — **local_apikey provider** (default)
 
   ```json
   {
@@ -684,23 +1008,38 @@ Please restart Claude Desktop to use the gateway.
   }
   ```
 
-</details>
-<details>
-<summary><strong>🪟 Example file in Windows</strong></summary>
-<br>
-
-- `%USERPROFILE%\.cursor\mcp.json`
+- `~/.cursor/mcp.json` — **enkrypt cloud provider** (when generated with `--provider enkrypt`)
 
   ```json
   {
     "mcpServers": {
       "Enkrypt Secure MCP Gateway": {
-        "command": "uv",
+        "command": "mcp",
         "args": [
           "run",
-          "--with",
-          "mcp[cli]",
-          "mcp",
+          "/Users/user/enkryptai/secure-mcp-gateway/venv/lib/python3.13/site-packages/secure_mcp_gateway/gateway.py"
+        ],
+        "env": {
+          "ENKRYPT_APIKEY": "your-enkrypt-cloud-apikey"
+        }
+      }
+    }
+  }
+  ```
+
+</details>
+<details>
+<summary><strong>🪟 Example file in Windows</strong></summary>
+<br>
+
+- `%USERPROFILE%\.cursor\mcp.json` — **local_apikey provider** (default)
+
+  ```json
+  {
+    "mcpServers": {
+      "Enkrypt Secure MCP Gateway": {
+        "command": "mcp",
+        "args": [
           "run",
           "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\gateway.py"
         ],
@@ -708,6 +1047,34 @@ Please restart Claude Desktop to use the gateway.
           "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
           "ENKRYPT_PROJECT_ID": "3c09f06c-1f0d-4153-9ac5-366397937641",
           "ENKRYPT_USER_ID": "6469a670-1d64-4da5-b2b3-790de21ac726"
+        }
+      }
+    }
+  }
+  ```
+
+  > If `mcp` is not on your PATH (e.g. you didn't activate the venv), you can wrap it through `uv` instead:
+  >
+  > ```json
+  > "command": "uv",
+  > "args": ["run", "--with", "mcp[cli]", "mcp", "run", "<full path to gateway.py>"]
+  > ```
+  >
+  > The `secure-mcp-gateway install --client cursor` command always emits the bare `"mcp"` form above — switch to the `uv` wrapper only if you hit a `mcp: command not found` error.
+
+- `%USERPROFILE%\.cursor\mcp.json` — **enkrypt cloud provider** (when generated with `--provider enkrypt`)
+
+  ```json
+  {
+    "mcpServers": {
+      "Enkrypt Secure MCP Gateway": {
+        "command": "mcp",
+        "args": [
+          "run",
+          "C:\\Users\\<User>\\Documents\\GitHub\\EnkryptAI\\secure-mcp-gateway\\.secure-mcp-gateway-venv\\Lib\\site-packages\\secure_mcp_gateway\\gateway.py"
+        ],
+        "env": {
+          "ENKRYPT_APIKEY": "your-enkrypt-cloud-apikey"
         }
       }
     }
@@ -729,9 +1096,11 @@ secure-mcp-gateway install --client claude-code
 ```
 
 This automatically:
-- Reads your gateway key, project ID, and user ID from the generated config
-- Runs `claude mcp add` with the correct credentials and gateway path
-- Registers the server with `--scope user` (available across all Claude Code projects)
+- Reads the gateway credentials from your generated config (provider-aware):
+  - **`local_apikey` provider** (default) → emits three `--env` flags: `ENKRYPT_GATEWAY_KEY`, `ENKRYPT_PROJECT_ID`, `ENKRYPT_USER_ID`
+  - **`enkrypt` cloud provider** → emits a single `--env` flag: `ENKRYPT_APIKEY` (sourced from `enkrypt_config.api_key`, or `--apikey <key>` if you pass it on the CLI)
+- Runs `claude mcp add` with `--transport stdio` and the correct credentials and gateway path
+- Registers the server as `Enkrypt-Secure-MCP-Gateway` with `--scope user` (available across all Claude Code projects)
 
 **Step 2: Verify the server was added**
 
@@ -759,10 +1128,18 @@ Get your credentials from the generated `enkrypt_mcp_config.json` and the gatewa
 python -c "import secure_mcp_gateway.gateway; print(secure_mcp_gateway.gateway.__file__)"
 ```
 
-Then add the gateway manually:
+Then add the gateway manually. The exact command depends on your gateway's `plugins.auth.provider` (see [§4.1.2](#412-run-the-generate-command)):
+
+**For `local_apikey` provider** (default):
 
 ```bash
 claude mcp add --transport stdio --env ENKRYPT_GATEWAY_KEY=YOUR_GATEWAY_KEY --env ENKRYPT_PROJECT_ID=YOUR_PROJECT_ID --env ENKRYPT_USER_ID=YOUR_USER_ID --scope user Enkrypt-Secure-MCP-Gateway -- mcp run /path/to/secure_mcp_gateway/gateway.py
+```
+
+**For `enkrypt` cloud provider** (when generated with `--provider enkrypt`):
+
+```bash
+claude mcp add --transport stdio --env ENKRYPT_APIKEY=YOUR_ENKRYPT_CLOUD_APIKEY --scope user Enkrypt-Secure-MCP-Gateway -- mcp run /path/to/secure_mcp_gateway/gateway.py
 ```
 
 > **Note:** The server name must use hyphens or underscores — Claude Code does not allow spaces in names.
@@ -939,7 +1316,6 @@ ENKRYPT_GATEWAY_KEY: ****BN8_
 enkrypt_log_level: info
 is_debug_log_level: False
 enkrypt_base_url: https://api.enkryptai.com
-enkrypt_use_remote_mcp_config: False
 enkrypt_api_key: ****_KEY
 enkrypt_tool_cache_expiration: 4
 enkrypt_gateway_cache_expiration: 24
@@ -966,7 +1342,6 @@ ENKRYPT_GATEWAY_KEY: ****BN8_
 enkrypt_log_level: info
 is_debug_log_level: False
 enkrypt_base_url: https://api.enkryptai.com
-enkrypt_use_remote_mcp_config: False
 enkrypt_api_key: ****_KEY
 enkrypt_tool_cache_expiration: 4
 enkrypt_gateway_cache_expiration: 24
@@ -1027,10 +1402,14 @@ Installation complete. Check the claude_desktop_config.json file as per the read
   python -c "import secure_mcp_gateway.gateway; print(secure_mcp_gateway.gateway.__file__)"
   ```
 
-- Add the gateway to Claude Code:
+- Add the gateway to Claude Code. The env vars differ by auth provider:
 
   ```bash
+  # For local_apikey provider (default)
   claude mcp add --transport stdio --env ENKRYPT_GATEWAY_KEY=YOUR_GATEWAY_KEY --env ENKRYPT_PROJECT_ID=YOUR_PROJECT_ID --env ENKRYPT_USER_ID=YOUR_USER_ID --scope user Enkrypt-Secure-MCP-Gateway -- mcp run /path/to/secure_mcp_gateway/gateway.py
+
+  # For enkrypt cloud provider (generated with --provider enkrypt)
+  claude mcp add --transport stdio --env ENKRYPT_APIKEY=YOUR_ENKRYPT_CLOUD_APIKEY --scope user Enkrypt-Secure-MCP-Gateway -- mcp run /path/to/secure_mcp_gateway/gateway.py
   ```
 
 - Verify: `claude mcp list`
@@ -1127,13 +1506,13 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
 
 ```json
 {
+  "admin_apikey": "AUTO_GENERATED_256_CHAR_KEY",
+  "enkrypt_config": {
+    "api_key": "YOUR_ENKRYPT_API_KEY",
+    "base_url": "https://api.enkryptai.com"
+  },
   "common_mcp_gateway_config": {
     "enkrypt_log_level": "INFO",
-    "enkrypt_base_url": "https://api.enkryptai.com",
-    "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
-    "enkrypt_use_remote_mcp_config": false,
-    "enkrypt_remote_mcp_gateway_name": "enkrypt-secure-mcp-gateway-1",
-    "enkrypt_remote_mcp_gateway_version": "v1",
     "enkrypt_mcp_use_external_cache": false,
     "enkrypt_cache_host": "localhost",
     "enkrypt_cache_port": 6379,
@@ -1141,17 +1520,29 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
     "enkrypt_cache_password": null,
     "enkrypt_tool_cache_expiration": 4,
     "enkrypt_gateway_cache_expiration": 24,
+    "enkrypt_gateway_cache_expiration_minutes": 5,
+    "enkrypt_config_watcher_poll_seconds": 2.0,
     "enkrypt_async_input_guardrails_enabled": false,
-    "enkrypt_async_output_guardrails_enabled": false,
-    "enkrypt_telemetry": {
-      "enabled": true,
-      "insecure": true,
-      "endpoint": "http://localhost:4317"
+    "enkrypt_async_output_guardrails_enabled": false
+  },
+  "plugins": {
+    "auth": { "provider": "local_apikey", "config": {} },
+    "guardrails": { "provider": "enkrypt", "config": {} },
+    "telemetry": {
+      "provider": "opentelemetry",
+      "config": {
+        "enabled": true,
+        "url": "http://localhost:4317",
+        "insecure": true
+      }
     }
   },
   "mcp_configs": {
     "fcbd4508-1432-4f13-abb9-c495c946f638": {
       "mcp_config_name": "default_config",
+      "common_overrides": {
+        "server_tools_guardrails_config": { "enabled": false }
+      },
       "mcp_config": [
         {
           "server_name": "echo_server",
@@ -1241,8 +1632,10 @@ docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.en
 
 #### 4.3.4 Example Claude Desktop config file
 
+> The `env` block depends on your gateway's `plugins.auth.provider` (see [§4.1.2](#412-run-the-generate-command)). Both shapes are shown below.
+
 <details>
-<summary><strong>🪟 Example Windows claude_desktop_config.json</strong></summary>
+<summary><strong>🪟 Example Windows claude_desktop_config.json — local_apikey provider</strong></summary>
 <br>
 
 ```json
@@ -1264,6 +1657,35 @@ docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.en
         "ENKRYPT_GATEWAY_KEY": "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat",
         "ENKRYPT_PROJECT_ID": "3c09f06c-1f0d-4153-9ac5-366397937641",
         "ENKRYPT_USER_ID": "6469a670-1d64-4da5-b2b3-790de21ac726"
+      }
+    }
+  }
+}
+
+```
+
+</details>
+<details>
+<summary><strong>🪟 Example Windows claude_desktop_config.json — enkrypt cloud provider</strong></summary>
+<br>
+
+```json
+{
+  "mcpServers": {
+    "Enkrypt Secure MCP Gateway": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-e",
+        "MCP_TRANSPORT=stdio",
+        "-v",
+        "C:\\Users\\<user>\\.enkrypt\\docker:/app/.enkrypt/docker",
+        "secure-mcp-gateway"
+      ],
+      "env": {
+        "ENKRYPT_APIKEY": "your-enkrypt-cloud-apikey"
       }
     }
   }
@@ -1314,17 +1736,23 @@ docker run -d --name enkrypt-gateway -p 8000:8000 -v "$env:USERPROFILE\.enkrypt\
 
 **Step 2: Add the gateway to Claude Code**
 
+The HTTP headers differ by auth provider:
+
 ```bash
+# For local_apikey provider (default)
 claude mcp add --transport http --header "apikey:YOUR_GATEWAY_KEY" --header "project_id:YOUR_PROJECT_ID" --header "user_id:YOUR_USER_ID" --scope user Enkrypt-Secure-MCP-Gateway http://localhost:8000/mcp/
+
+# For enkrypt cloud provider (generated with --provider enkrypt)
+claude mcp add --transport http --header "apikey:YOUR_ENKRYPT_CLOUD_APIKEY" --scope user Enkrypt-Secure-MCP-Gateway http://localhost:8000/mcp/
 ```
 
-Replace `YOUR_GATEWAY_KEY`, `YOUR_PROJECT_ID`, and `YOUR_USER_ID` with the values from your `enkrypt_mcp_config.json`.
+Replace the placeholders with the values from your `enkrypt_mcp_config.json` (`apikeys.<key>` and the matching project/user IDs for local_apikey, or `enkrypt_config.api_key` for enkrypt cloud).
 
 <details>
 <summary><strong>Alternative: stdio mode via Docker</strong></summary>
 <br>
 
-If you prefer stdio mode (no persistent container), you can add Claude Code's MCP config using JSON directly. Create or edit `~/.claude.json` and add the server under `mcpServers`:
+If you prefer stdio mode (no persistent container), you can add Claude Code's MCP config using JSON directly. Create or edit `~/.claude.json` and add the server under `mcpServers`. The `env` block depends on your auth provider:
 
 ```json
 {
@@ -1351,9 +1779,18 @@ If you prefer stdio mode (no persistent container), you can add Claude Code's MC
 }
 ```
 
+For the `enkrypt` cloud provider, the `env` block is simply:
+
+```json
+"env": {
+  "ENKRYPT_APIKEY": "YOUR_ENKRYPT_CLOUD_APIKEY"
+}
+```
+
 Or use the Claude Code CLI:
 
 ```bash
+# For local_apikey provider (default)
 claude mcp add-json Enkrypt-Secure-MCP-Gateway '{
   "type": "stdio",
   "command": "docker",
@@ -1362,6 +1799,16 @@ claude mcp add-json Enkrypt-Secure-MCP-Gateway '{
     "ENKRYPT_GATEWAY_KEY": "YOUR_GATEWAY_KEY",
     "ENKRYPT_PROJECT_ID": "YOUR_PROJECT_ID",
     "ENKRYPT_USER_ID": "YOUR_USER_ID"
+  }
+}'
+
+# For enkrypt cloud provider (generated with --provider enkrypt)
+claude mcp add-json Enkrypt-Secure-MCP-Gateway '{
+  "type": "stdio",
+  "command": "docker",
+  "args": ["run", "--rm", "-i", "-e", "MCP_TRANSPORT=stdio", "-v", "/Users/<user>/.enkrypt/docker:/app/.enkrypt/docker", "secure-mcp-gateway"],
+  "env": {
+    "ENKRYPT_APIKEY": "YOUR_ENKRYPT_CLOUD_APIKEY"
   }
 }'
 ```
@@ -1382,16 +1829,20 @@ Launch Claude Code and try prompts like `list all servers, get all tools availab
 
 #### 4.3.7 Running Gateway with Docker Run (Advanced)
 
-For advanced Docker deployments, you can run the gateway container directly with custom configurations:
+For advanced Docker deployments, you can run the gateway container directly with custom configurations. The auth env vars depend on your gateway's `plugins.auth.provider` (see [§4.1.2](#412-run-the-generate-command)):
 
 ```bash
-# Basic Docker run command
+# Basic Docker run command — local_apikey provider (default)
 docker run -d --name enkrypt-gateway -p 8000:8000 -v ~/.enkrypt/docker:/app/.enkrypt/docker -e ENKRYPT_GATEWAY_KEY="your-gateway-key" -e ENKRYPT_PROJECT_ID="your-project-id" -e ENKRYPT_USER_ID="your-user-id" secure-mcp-gateway:latest
+
+# Basic Docker run command — enkrypt cloud provider (generated with --provider enkrypt)
+docker run -d --name enkrypt-gateway -p 8000:8000 -v ~/.enkrypt/docker:/app/.enkrypt/docker -e ENKRYPT_APIKEY="your-enkrypt-cloud-apikey" secure-mcp-gateway:latest
 ```
 
 **Windows PowerShell:**
 
 ```powershell
+# local_apikey provider (default)
 docker run -d `
   --name enkrypt-gateway `
   -p 8000:8000 `
@@ -1400,15 +1851,26 @@ docker run -d `
   -e ENKRYPT_PROJECT_ID="your-project-id" `
   -e ENKRYPT_USER_ID="your-user-id" `
   secure-mcp-gateway:latest
+
+# enkrypt cloud provider
+docker run -d `
+  --name enkrypt-gateway `
+  -p 8000:8000 `
+  -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" `
+  -e ENKRYPT_APIKEY="your-enkrypt-cloud-apikey" `
+  secure-mcp-gateway:latest
 ```
 
 ##### Environment Variables
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `ENKRYPT_GATEWAY_KEY` | API key for authentication | - | Yes |
-| `ENKRYPT_PROJECT_ID` | Project ID from config | - | Yes |
-| `ENKRYPT_USER_ID` | User ID from config | - | Yes |
+Auth env vars are **provider-dependent** — exactly one of the two shapes below is required:
+
+| Variable | Description | Default | Required (provider) |
+|----------|-------------|---------|---------|
+| `ENKRYPT_GATEWAY_KEY` | API key for authentication | - | Yes (`local_apikey`) |
+| `ENKRYPT_PROJECT_ID` | Project ID from config | - | Yes (`local_apikey`) |
+| `ENKRYPT_USER_ID` | User ID from config | - | Yes (`local_apikey`) |
+| `ENKRYPT_APIKEY` | Enkrypt cloud API key (project/user resolved by Enkrypt) | - | Yes (`enkrypt`) |
 | `MCP_TRANSPORT` | Transport mode: `streamable-http` or `stdio` | `streamable-http` | No |
 | `SKIP_DEPENDENCY_INSTALL` | Skip runtime dependency installation | `true` (Docker), `false` (other) | No |
 | `HOST` | Gateway bind address | `0.0.0.0` | No |
@@ -1426,7 +1888,11 @@ The `MCP_TRANSPORT` environment variable controls the transport mode for the gat
 **Example for stdio mode (Claude Desktop, Cursor):**
 
 ```bash
-docker run --rm -i -e MCP_TRANSPORT=stdio -v ~/.enkrypt/docker:/app/.enkrypt/docker -e ENKRYPT_GATEWAY_KEY="your-gateway-key" secure-mcp-gateway
+# local_apikey provider (default) — pass all 3 env vars
+docker run --rm -i -e MCP_TRANSPORT=stdio -v ~/.enkrypt/docker:/app/.enkrypt/docker -e ENKRYPT_GATEWAY_KEY="your-gateway-key" -e ENKRYPT_PROJECT_ID="your-project-id" -e ENKRYPT_USER_ID="your-user-id" secure-mcp-gateway
+
+# enkrypt cloud provider — pass a single env var
+docker run --rm -i -e MCP_TRANSPORT=stdio -v ~/.enkrypt/docker:/app/.enkrypt/docker -e ENKRYPT_APIKEY="your-enkrypt-cloud-apikey" secure-mcp-gateway
 ```
 
 ##### SKIP_DEPENDENCY_INSTALL
@@ -1453,18 +1919,22 @@ The `SKIP_DEPENDENCY_INSTALL` environment variable controls whether the gateway 
 **Example with docker-compose integration:**
 
 ```bash
-# Connect to observability stack network
+# Connect to observability stack network — local_apikey provider (default)
 # Note: SKIP_DEPENDENCY_INSTALL defaults to true in Docker, so it's optional
-docker run -d --name enkrypt-gateway --network secure-mcp-gateway-infra_default -p 8000:8000 -p 8080:8080 -v ~/.enkrypt/docker:/app/.enkrypt/docker -e ENKRYPT_GATEWAY_KEY="your-gateway-key" -e ENKRYPT_PROJECT_ID="your-project-id" -e ENKRYPT_USER_ID="your-user-id" secure-mcp-gateway:latest
+docker run -d --name enkrypt-gateway --network secure-mcp-gateway-observability_default -p 8000:8000 -p 8080:8080 -v ~/.enkrypt/docker:/app/.enkrypt/docker -e ENKRYPT_GATEWAY_KEY="your-gateway-key" -e ENKRYPT_PROJECT_ID="your-project-id" -e ENKRYPT_USER_ID="your-user-id" secure-mcp-gateway:latest
+
+# Same, but for the enkrypt cloud provider
+docker run -d --name enkrypt-gateway --network secure-mcp-gateway-observability_default -p 8000:8000 -p 8080:8080 -v ~/.enkrypt/docker:/app/.enkrypt/docker -e ENKRYPT_APIKEY="your-enkrypt-cloud-apikey" secure-mcp-gateway:latest
 ```
 
 **Windows PowerShell:**
 
 ```powershell
 # Note: SKIP_DEPENDENCY_INSTALL defaults to true in Docker, so it's optional
+# local_apikey provider (default)
 docker run -d `
   --name enkrypt-gateway `
-  --network secure-mcp-gateway-infra_default `
+  --network secure-mcp-gateway-observability_default `
   -p 8000:8000 `
   -p 8080:8080 `
   -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" `
@@ -1472,9 +1942,19 @@ docker run -d `
   -e ENKRYPT_PROJECT_ID="your-project-id" `
   -e ENKRYPT_USER_ID="your-user-id" `
   secure-mcp-gateway:latest
+
+# enkrypt cloud provider
+docker run -d `
+  --name enkrypt-gateway `
+  --network secure-mcp-gateway-observability_default `
+  -p 8000:8000 `
+  -p 8080:8080 `
+  -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" `
+  -e ENKRYPT_APIKEY="your-enkrypt-cloud-apikey" `
+  secure-mcp-gateway:latest
 ```
 
-**Note:** The `--network` flag connects the gateway to the observability stack (Grafana, Prometheus, Loki, Jaeger) if you're running the monitoring services from section 5.
+**Note:** The `--network` flag connects the gateway to the observability stack (Grafana, Prometheus, Loki, Jaeger, plus the 9 Slack alert rules) if you're running the monitoring services from [section 5](#5-optional-observability-stack--logs-metrics-traces--slack-alerts). The network name (`secure-mcp-gateway-observability_default`) is derived from the compose project name set at the top of [`observability/docker-compose.yml`](./observability/docker-compose.yml).
 
 ##### Port Mapping
 
@@ -1591,7 +2071,9 @@ python gateway.py
   - macOS: `~/.cursor`
   - Windows: `%USERPROFILE%\.cursor`
 
-- Replace the `ENKRYPT_GATEWAY_KEY` with the key you got from the `enkrypt_mcp_config.json` file
+- Replace the credentials with values from your `enkrypt_mcp_config.json`. The credential shape depends on your gateway's `plugins.auth.provider`:
+  - **`local_apikey`** (default) — `apikey` + `project_id` + `user_id` headers, sourced from `apikeys.<key>` and the matching project/user IDs
+  - **`enkrypt` cloud** — single `apikey` header, sourced from `enkrypt_config.api_key`
 
 - Replace the `http://0.0.0.0:8000/mcp/` with the `http(s)://<remote_server_ip>:<port>/mcp/`
 
@@ -1606,7 +2088,9 @@ python gateway.py
 
 - **NOTE: Make sure to use the trailing slash `/` in the MCP URL like `/mcp/`**
 
-**For Claude Desktop and Cursor** — add the following to your `claude_desktop_config.json` or `mcp.json`:
+**For Claude Desktop and Cursor** — add the following to your `claude_desktop_config.json` or `mcp.json`.
+
+`local_apikey` provider (default) — three headers:
 
 ```json
 {
@@ -1635,78 +2119,133 @@ python gateway.py
 
 ```
 
+`enkrypt` cloud provider (generated with `--provider enkrypt`) — single header:
+
+```json
+{
+  "mcpServers": {
+    "Enkrypt Secure MCP Gateway": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "http://0.0.0.0:8000/mcp/",
+        "--allow-http",
+        "--header",
+        "apikey:${ENKRYPT_APIKEY}"
+      ],
+      "env": {
+        "ENKRYPT_APIKEY": "your-enkrypt-cloud-apikey"
+      }
+    }
+  }
+}
+
+```
+
 **For Claude Code** — use the `claude mcp add` command:
 
 ```bash
-# Connect Claude Code to the remote gateway via HTTP transport
+# local_apikey provider (default)
 claude mcp add --transport http --header "apikey:YOUR_GATEWAY_KEY" --header "project_id:YOUR_PROJECT_ID" --header "user_id:YOUR_USER_ID" --scope user Enkrypt-Secure-MCP-Gateway https://mcp.your-domain.com/mcp/
+
+# enkrypt cloud provider (generated with --provider enkrypt)
+claude mcp add --transport http --header "apikey:YOUR_ENKRYPT_CLOUD_APIKEY" --scope user Enkrypt-Secure-MCP-Gateway https://mcp.your-domain.com/mcp/
 ```
 
 > **Note:** For local testing with HTTP (not HTTPS), add `--allow-http` if required, or use `http://0.0.0.0:8000/mcp/` as the URL.
 
 </details>
 
-## 5. (Optional) OpenTelemetry Setup
+## 5. (Optional) Observability Stack — Logs, Metrics, Traces & Slack Alerts
 
 <details>
-<summary><strong>📊 OpenTelemetry Setup and Usage </strong></summary>
+<summary><strong>📊 Observability Stack Setup and Usage </strong></summary>
 <br>
 
-This section explains how to set up and use OpenTelemetry (OTEL) with the Enkrypt Secure MCP Gateway for observability.
+This section explains how to set up and use the bundled observability stack with the Enkrypt Secure MCP Gateway. Everything is templated as code in [`observability/`](./observability/): clone, copy `.env.example`, run one `docker compose up`, get a working dashboard with Slack alerts.
+
+> For the deep dive — every alert rule, dashboard, and customisation point — see [`observability/README.md`](./observability/README.md). This section is the quick-start.
 
 ### 5.1 Architecture
 
-The observability stack includes:
+```text
+┌─────────────────────┐   logs (OTLP)         ┌────────────┐    LogQL    ┌─────────┐
+│ secure-mcp-gateway  │──────────────────────▶│            │────────────▶│         │
+│ (host process       │   metrics (OTLP)      │   OTel     │             │ Grafana │
+│  on :8000)          │──────────────────────▶│ Collector  │   PromQL    │ (:3001) │
+│                     │   traces  (OTLP)      │ (:4317)    │────────────▶│         │
+└─────────────────────┘                       └────────────┘             └─────────┘
+                                              │     │     │                  ▲
+                                              ▼     ▼     ▼                  │
+                                          ┌──────┐ ┌────┐ ┌────────┐         │
+                                          │ Loki │ │Prom│ │ Jaeger │─────────┘
+                                          └──────┘ └────┘ └────────┘   dashboards
+                                                          (:16686)      & alerts
+```
 
-- OpenTelemetry Collector: Collects telemetry data (traces, metrics, logs)
+**Components shipped in [`observability/docker-compose.yml`](./observability/docker-compose.yml):**
 
-- Jaeger: Distributed tracing visualization
+| Component | Endpoint | What it does |
+|---|---|---|
+| **OTel Collector** | `:4317` (gRPC), `:4318` (HTTP) | Single entry point for logs / metrics / traces from the gateway |
+| **Prometheus** | `http://localhost:9090` | Scrapes the OTel Collector at `:8889` every 15s |
+| **Loki** | `http://localhost:3100` | Log aggregation, receives logs from OTel Collector |
+| **Jaeger UI** | `http://localhost:16686` | Trace visualization |
+| **Grafana** | `http://localhost:3001` (configurable via `GRAFANA_HOST_PORT`) | Unified dashboards + 9 provisioned alert rules → Slack |
 
-- Loki: Log aggregation and querying
-
-- Prometheus: Metrics aggregation
-
-- Grafana: Unified visualization for metrics and logs
-  - Traces are not visible in Grafana for some reason. Please use Jaeger for traces.
+> **Grafana port note:** the compose file publishes Grafana on host port **3001** by default (container still listens on 3000) to avoid clashing with a native Grafana service or Docker WSL relay that often binds 3000 on Windows. Set `GRAFANA_HOST_PORT=3030` (or any free port) in `observability/.env` to override.
 
 ### 5.2 Prerequisites
 
-- Docker and Docker Compose installed
+- Docker Desktop (Windows/macOS) or Docker Engine + compose plugin (Linux)
 
 - Gateway installed and running (follow [section 4](#4-gateway-setup))
 
+- (Optional) A Slack incoming-webhook URL if you want the bundled alert rules to post to Slack
+
 ### 5.3 Setup Steps
 
-1. **Start the Observability Stack**
+1. **Copy the env template**
 
    ```bash
-   cd infra
-
-   docker-compose up -d
+   cd observability
+   cp .env.example .env
+   # edit observability/.env and replace SLACK_WEBHOOK_URL with your real
+   # https://hooks.slack.com/services/... URL (leave the placeholder if you
+   # don't want Slack — Grafana provisioning will still succeed, the Slack
+   # POST will just silently fail).
    ```
 
-2. **To stop the Observability Stack**
+2. **Start the Observability Stack**
 
    ```bash
-   # When we want to stop the Observability Stack, run the below command
-   docker-compose down
+   docker compose up -d
+   ```
+
+   This brings up the OTel Collector, Prometheus, Loki, Jaeger, Promtail, and Grafana — with all dashboards, alert rules, and the Slack contact point pre-provisioned. Anonymous admin auth is enabled by default (no login screen). See [`observability/README.md` → Customising](./observability/README.md#customising) to set a real admin password.
+
+3. **To stop the Observability Stack**
+
+   ```bash
+   docker compose down
    ```
 
 ### 5.4 Configuration
 
-- Edit the `enkrypt_mcp_config.json` file to enable telemetry
+- Edit the `enkrypt_mcp_config.json` file to enable telemetry. The current shape uses the `plugins.telemetry` plugin block (provider `opentelemetry`, the default emitted by `secure-mcp-gateway generate-config`):
 
   ```json
   {
-    "common_mcp_gateway_config": {
-      ...
-      "enkrypt_telemetry": {
-        "enabled": true,
-        "insecure": true,
-        "endpoint": "http://localhost:4317"
+    "plugins": {
+      "telemetry": {
+        "provider": "opentelemetry",
+        "config": {
+          "enabled": true,
+          "url": "http://localhost:4317",
+          "insecure": true
+        }
       }
-    },
-    ...
+    }
   }
   ```
 
@@ -1724,7 +2263,7 @@ The observability stack includes:
 
 2. **Access Service UIs**
 
-   - Grafana: <http://localhost:3000> (default credentials: admin/admin)
+   - Grafana: <http://localhost:3001> (anonymous admin enabled by default — no login screen; override host port via `GRAFANA_HOST_PORT` in `observability/.env`)
 
    - Jaeger: <http://localhost:16686>
 
@@ -1732,7 +2271,7 @@ The observability stack includes:
 
    - Loki: Access through Grafana
 
-      1. Open Grafana (<http://localhost:3000>)
+      1. Open Grafana (<http://localhost:3001>)
       2. Go to Explore (left sidebar)
       3. Select "Loki" from the data source dropdown
 
@@ -1787,6 +2326,26 @@ The observability stack includes:
    - Security events and guardrail checks
    - Performance data with timing information
 
+> The complete metric → Prometheus series → alert-rule mapping lives in [`docs/metric_reference.md`](./docs/metric_reference.md), and the metric/span/attribute name constants are in [`src/secure_mcp_gateway/plugins/telemetry/conventions.py`](./src/secure_mcp_gateway/plugins/telemetry/conventions.py).
+
+### 5.7 Pre-Provisioned Alert Rules (Slack)
+
+The stack ships **9 Grafana alert rules** wired to a Slack contact point — drop your webhook URL into `observability/.env` (`SLACK_WEBHOOK_URL=...`) and you start receiving guardrail/security/health alerts immediately.
+
+| Rule | Severity | Trigger (5–10 min window) |
+|---|---|---|
+| `mcpgw-policy-violation-burst` | critical | > 5 `policy_violation` blocks |
+| `mcpgw-injection-attack-burst` | critical | > 3 `injection_attack` input blocks |
+| `mcpgw-pii-found` | critical | any PII redaction event |
+| `mcpgw-toxicity-nsfw-surge` | warning | > 5 `toxicity` or `nsfw` blocks |
+| `mcpgw-output-quality-failure` | warning | > 3 relevancy + adherence + hallucination blocks |
+| `mcpgw-tool-deny-list-burst` | warning | > 5 deny-list-block tool calls |
+| `mcpgw-user-targeting-guardrails` | critical | single `user_id` triggers > 10 guardrail blocks |
+| `mcpgw-guardrail-api-latency` | warning | p95 guardrail HTTP > 2s |
+| `mcpgw-auth-failure-burst` | critical | > 10 auth failures |
+
+Burst rules use `sum by (server_name, tool_name)` (or `user_id`, `failure_reason`) so each distinct offender produces a separate Slack message rather than one aggregate alert. To tweak thresholds, edit [`observability/grafana/provisioning/alerting/rules.yaml`](./observability/grafana/provisioning/alerting/rules.yaml) and `docker compose restart grafana` — the rules reload from disk on every start. See [`observability/README.md` → Customising](./observability/README.md#customising) for adding new rules or swapping Slack for PagerDuty / Opsgenie / generic webhook / email.
+
 </details>
 
 ## 6. Verify Installation and check the files generated
@@ -1803,6 +2362,8 @@ The observability stack includes:
   - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ### 6.2 Example MCP config file generated
+
+> Examples below use the **`local_apikey` provider** (default) shape. If you generated with `--provider enkrypt`, the `env` block has a single `ENKRYPT_APIKEY` entry instead — see [§4.1.5](#415-example-of-the-claude-desktop-config-after-installation) for the enkrypt cloud variant.
 
 <details>
 <summary><strong>🍎 Example file in macOS</strong></summary>
@@ -1923,13 +2484,12 @@ The observability stack includes:
   ```json
   {
     "admin_apikey": "AUTO_GENERATED_256_CHAR_ADMIN_API_KEY_FOR_ADMINISTRATIVE_OPERATIONS",
+    "enkrypt_config": {
+      "api_key": "YOUR_ENKRYPT_API_KEY",
+      "base_url": "https://api.enkryptai.com"
+    },
     "common_mcp_gateway_config": {
       "enkrypt_log_level": "INFO",
-      "enkrypt_base_url": "https://api.enkryptai.com",
-      "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
-      "enkrypt_use_remote_mcp_config": false,
-      "enkrypt_remote_mcp_gateway_name": "enkrypt-secure-mcp-gateway-1",
-      "enkrypt_remote_mcp_gateway_version": "v1",
       "enkrypt_mcp_use_external_cache": false,
       "enkrypt_cache_host": "localhost",
       "enkrypt_cache_port": 6379,
@@ -1937,17 +2497,29 @@ The observability stack includes:
       "enkrypt_cache_password": null,
       "enkrypt_tool_cache_expiration": 4,
       "enkrypt_gateway_cache_expiration": 24,
+      "enkrypt_gateway_cache_expiration_minutes": 5,
+      "enkrypt_config_watcher_poll_seconds": 2.0,
       "enkrypt_async_input_guardrails_enabled": false,
-      "enkrypt_async_output_guardrails_enabled": false,
-      "enkrypt_telemetry": {
-        "enabled": true,
-        "insecure": true,
-        "endpoint": "http://localhost:4317"
+      "enkrypt_async_output_guardrails_enabled": false
+    },
+    "plugins": {
+      "auth": { "provider": "local_apikey", "config": {} },
+      "guardrails": { "provider": "enkrypt", "config": {} },
+      "telemetry": {
+        "provider": "opentelemetry",
+        "config": {
+          "enabled": true,
+          "url": "http://localhost:4317",
+          "insecure": true
+        }
       }
     },
     "mcp_configs": {
       "fcbd4508-1432-4f13-abb9-c495c946f638": {
         "mcp_config_name": "default_config",
+        "common_overrides": {
+          "server_tools_guardrails_config": { "enabled": false }
+        },
         "mcp_config": [
           {
             "server_name": "echo_server",
@@ -2042,12 +2614,83 @@ The observability stack includes:
 
 ## 7. Edit the Gateway config as needed
 
+### 7.0 Hot-Reload (Zero-Restart Config Updates)
+
+Edits to `enkrypt_mcp_config.json` take effect on the **next request** without restarting the gateway process or reconnecting the MCP client.
+
+**How it works (automatic):**
+
+- A background watcher polls the config file mtime every `enkrypt_config_watcher_poll_seconds` (default `2.0`).
+- When a change is detected, the gateway:
+  1. Clears the file-level config cache so the next read sees the new contents
+  2. Rebuilds the auth / guardrails / telemetry providers with the new credentials
+  3. Resets the timeout manager and session pool
+  4. Flushes the per-gateway config cache so the next request re-fetches via the (now reloaded) auth provider
+- Sessions older than `enkrypt_gateway_cache_expiration_minutes` (default `5`) are evicted on next access so previously-authenticated clients see the new config too.
+
+**How to force a flush immediately (manual):**
+
+The flush endpoint is mounted on **both** processes — the REST admin API (port 8001) **and** the MCP gateway (port 8000). They are separate Python processes with separate in-memory caches, so to refresh both you must call both:
+
+```bash
+# 1. Refresh the REST admin API process
+curl -X POST http://localhost:8001/api/v1/cache/flush-gateway-config \
+  -H "apikey: <admin_apikey>" \
+  -H "Content-Type: application/json" \
+  -d '{"include_tool_cache": false}'
+
+# 2. Refresh the MCP gateway process (same payload, same auth)
+curl -X POST http://localhost:8000/api/v1/cache/flush-gateway-config \
+  -H "apikey: <admin_apikey>" \
+  -H "Content-Type: application/json" \
+  -d '{"include_tool_cache": false}'
+
+# Returns on each: {"status":"ok","summary":{"auth_reloaded":true, ...}}
+```
+
+**What this clears (per process):**
+
+- The file-level `get_common_config()` cache
+- The auth provider — including `EnkryptAuthProvider._cache` (the cloud-config TTL cache), so the next request triggers a fresh fetch from the Enkrypt cloud API
+- The guardrail provider (re-reads guardrail credentials)
+- The telemetry provider, timeout manager, and session pool
+- The per-gateway config cache (`flush_all_gateway_config_cache`)
+
+The flush endpoint also accepts `"include_tool_cache": true` to additionally drop per-server tool caches (forces re-discovery on next call). Use this when you've added new tools to a server.
+
+**Inspecting the last flush:**
+
+```bash
+curl -H "apikey: <admin_apikey>" http://localhost:8000/api/v1/cache/last-reload
+curl -H "apikey: <admin_apikey>" http://localhost:8001/api/v1/cache/last-reload
+# Returns: {"last_reload_ts": <epoch>, "last_reload_summary": {...}}
+```
+
+**Auth note:** the `apikey` header accepts, in order: root `admin_apikey` → `enkrypt_config.admin_apikey` → `enkrypt_config.api_key` (only when `plugins.auth.provider == "enkrypt"`). See `auth_policy.resolve_admin_keys` for the exact policy.
+
+**Relevant config keys:**
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `enkrypt_gateway_cache_expiration_minutes` | `5` | TTL for cached per-gateway configs and authenticated sessions. Shorter = config edits take effect faster, longer = fewer auth round-trips. |
+| `enkrypt_gateway_cache_expiration` | `24` | Legacy hours-based TTL. Kept for backward compatibility; minutes field wins when both are set. |
+| `enkrypt_config_watcher_poll_seconds` | `2.0` | How often the watcher re-checks the file mtime. Set to `0` to disable automatic hot-reload (manual flush API still works). |
+
+**Settings that still require restart:**
+
+| Setting | Reason |
+|---------|--------|
+| Listen port `0.0.0.0:8000` | Socket bind happens once at FastMCP startup |
+| `enkrypt_mcp_use_external_cache` toggle | In-memory ↔ Redis swap would lose in-flight operations |
+| `enkrypt_cache_host` / `enkrypt_cache_port` | Redis connection pool rebuild risks dropping in-flight pipelines |
+| `plugins.telemetry.config.url` / `enabled` | OpenTelemetry's global TracerProvider / MeterProvider can only be set once per process (SDK constraint) |
+
 <details>
 <summary><strong>✂️ Edit Gateway Config </strong></summary>
 
 - **Important:**
 
-  - **We need to restart Claude Desktop after editing the config file**
+  - With hot-reload (see Section 7.0), restarting the MCP client is **no longer required** for most config edits. Restart is only needed for the three settings listed in the table above.
   - **To make all new tools accessible, please use prompt "`list all servers, get all tools available`" for the MCP Client to discover all new tools. After this the MCP Client should be able to use all tools of the servers configured in the Gateway config file**
 
 - You can add many MCP servers inside the `mcp_config` array of this gateway config
@@ -2080,8 +2723,7 @@ The observability stack includes:
                 // Example: "tools": { "echo": "Echo a message" }
                 // Or leave the tools empty {} to discover all tools dynamically
                 "tools": {},
-                "enable_server_info_validation": false,
-                "enable_tool_guardrails": false,
+                "server_tools_guardrails_config": {"enabled": false},
                 "input_guardrails_config": {...},
                 "output_guardrails_config": {...}
               },
@@ -2090,8 +2732,7 @@ The observability stack includes:
                 "description": "MCP_SERVER_DESCRIPTION_2",
                 "config": {...},
                 "tools": {},
-                "enable_server_info_validation": false,
-                "enable_tool_guardrails": false,
+                "server_tools_guardrails_config": {"enabled": false},
                 "input_guardrails_config": {...},
                 "output_guardrails_config": {...}
               }
@@ -2132,11 +2773,32 @@ The observability stack includes:
 <details>
 <summary><strong>⛩️ Gateway Config Schema</strong></summary>
 
-- **`admin_apikey`** (root level): A 256-character random string used for authenticating REST API administrative operations (user management, project management, configuration management, API key management). This is automatically generated when you run `secure-mcp-gateway generate-config`.
+- **`enkrypt_config`** (root-level): One centralized object that holds the Enkrypt cloud credentials shared across the auth and guardrails providers and (optionally) the admin REST API. Use this instead of duplicating `api_key` / `base_url` under every plugin block:
+
+  ```json
+  {
+    "enkrypt_config": {
+      "api_key": "YOUR_ENKRYPT_API_KEY",
+      "base_url": "https://api.enkryptai.com"
+    }
+  }
+  ```
+
+  Resolution chain (see `src/secure_mcp_gateway/plugins/plugin_loader.py:_resolve_enkrypt_credentials`):
+
+  1. `plugins.<auth|guardrails>.config.api_key` / `apikey` — per-plugin override, if set.
+  2. `enkrypt_config.api_key` — the centralized root value.
+  3. Default (empty for `api_key`, `https://api.enkryptai.com` for `base_url`).
+
+  So you can set one `enkrypt_config.api_key` at the root and both plugins pick it up automatically. Override per-plugin only when you genuinely need different keys for auth vs guardrails (uncommon).
+
+- **`admin_apikey`** (root-level): A 256-character random string used for authenticating REST API administrative operations (user management, project management, configuration management, API key management). Automatically generated by `secure-mcp-gateway generate-config` when the auth provider is `local_apikey`.
 
   - **Important**: Keep this key secure! It provides full administrative access to the gateway.
   - Used with `Authorization: Bearer <admin_apikey>` header for REST API calls.
   - Different from regular API keys used by MCP clients to connect to the gateway.
+  - **With `plugins.auth.provider = "enkrypt"`** the `admin_apikey` field is **optional**: the cloud `enkrypt_config.api_key` is also accepted as an admin credential, so a separate admin secret is not required. Set `admin_apikey` only if you want a dedicated admin credential rotated independently of the cloud apikey.
+  - **Legacy**: `enkrypt_config.admin_apikey` (the pre-2.2 nested location) is still honored as a deprecated fallback so existing configs keep working. New configs use the root-level placement.
   - See [Section 12: REST API for Administrative Operations](#12-other-tools-available) for details.
 
 - If you want a different set of MCP servers for a separate client/user, you can add a new `mcp_config` section to the config file. Also, you can run cli commands. See [CLI-Commands-Reference.md](./CLI-Commands-Reference.md) section `2. CONFIGURATION MANAGEMENT` for details
@@ -2171,13 +2833,11 @@ The observability stack includes:
 <details>
 <summary><strong>🔒 Optional Guardrails Schema</strong></summary>
 
-- Get your `enkrypt_api_key` from [Enkrypt Dashboard](https://app.enkryptai.com/settings) and add it to `common_mcp_gateway_config` section of the config file
+- Get your API key from [Enkrypt Dashboard](https://app.enkryptai.com/settings) and add it to the `enkrypt_config.api_key` field in the config file
 
-- `enkrypt_use_remote_mcp_config` is used to fetch MCP server config from Enkrypt server remotely *(Coming soon)*
+- **Cloud-managed gateway config**: set `plugins.auth.provider` to `"enkrypt"` (see `example_enkrypt_cloud_config.json` or run `secure-mcp-gateway generate-config --provider enkrypt`). The gateway then fetches its server list, guardrail policies, and `common_overrides` from Enkrypt cloud via `/mcp-gateway/get-gateway-config`. No local `mcp_configs`/`projects`/`users`/`apikeys` blocks needed.
 
-  - Please use `false` for now
-
-  - This enables you to configure and manage MCP gateway config in Enkrypt Dashboard in a centralized place *(Coming soon)*
+  - The pre-2.2 flag `enkrypt_use_remote_mcp_config` (plus `enkrypt_remote_mcp_gateway_name` / `enkrypt_remote_mcp_gateway_version`) is **deprecated**. It only drove the legacy "local_apikey provider falls back to Enkrypt cloud" path. New configs should switch to `plugins.auth.provider = "enkrypt"` instead. Existing configs that still set these flags keep working without changes.
 
 - If you have any external cache server like KeyDB running, you can set `enkrypt_mcp_use_external_cache` to `true` in your `common_mcp_gateway_config`
 
@@ -2185,7 +2845,7 @@ The observability stack includes:
 
 - `enkrypt_tool_cache_expiration` (in hours) decides how long the tools discovered from the MCP servers are cached locally or in the external cache server
 
-- `enkrypt_gateway_cache_expiration` (in hours) decides how long the gateway config is cached locally or in the external cache server. This is useful when we integrate this with Enkrypt Auth server *(Coming soon)*
+- `enkrypt_gateway_cache_expiration` (in hours) is the **legacy** TTL knob for cached gateway configs (kept for backward compatibility). Prefer `enkrypt_gateway_cache_expiration_minutes` (default `5`), which controls how long both the in-memory gateway-config cache and the per-`(gateway_name, version)` cloud-fetch cache (used when `plugins.auth.provider = "enkrypt"`) live before the next request triggers a refresh. See [§14.6 Zero-Restart Hot-Reload](#146-zero-restart-hot-reload).
 
 - `enkrypt_async_input_guardrails_enabled`
 
@@ -2277,6 +2937,11 @@ secure-mcp-gateway generate-config
 
 # To overwrite an existing config and start fresh
 secure-mcp-gateway generate-config --overwrite
+
+# Or, for the Enkrypt-cloud-backed variant (no local servers/projects/users;
+# the cloud owns those). After running this, edit the file and set
+# enkrypt_config.api_key and plugins.auth.config.gateway_name.
+secure-mcp-gateway generate-config --provider enkrypt
 ```
 
 **What this creates:**
@@ -2308,7 +2973,10 @@ secure-mcp-gateway install --client cursor
 secure-mcp-gateway install --client claude-code
 ```
 
-What this does behind the scenes: the install command reads the gateway key, project ID, and user ID from your generated config and writes them into your MCP client's config file.
+What this does behind the scenes: the install command reads the auth credentials from your generated config and writes them into your MCP client's config file. The exact `env` keys depend on your gateway's `plugins.auth.provider`:
+
+- **`local_apikey`** (default) — install reads `apikeys.<key>` plus the matching project/user IDs and writes `ENKRYPT_GATEWAY_KEY` + `ENKRYPT_PROJECT_ID` + `ENKRYPT_USER_ID`
+- **`enkrypt` cloud** (when generated with `--provider enkrypt`) — install reads `enkrypt_config.api_key` and writes a single `ENKRYPT_APIKEY`
 
 For **Cursor** and **Claude Desktop**, you'll see output like:
 
@@ -2317,7 +2985,9 @@ INFO:  Updated 'Enkrypt Secure MCP Gateway' in C:\Users\<user>\.cursor\mcp.json
 INFO: Successfully configured Cursor.
 ```
 
-And your client's config file (e.g. `~/.cursor/mcp.json` or `~/Library/Application Support/Claude/claude_desktop_config.json`) will now contain:
+And your client's config file (e.g. `~/.cursor/mcp.json` or `~/Library/Application Support/Claude/claude_desktop_config.json`) will now contain one of these two shapes.
+
+`local_apikey` provider (default):
 
 ```json
 {
@@ -2332,6 +3002,25 @@ And your client's config file (e.g. `~/.cursor/mcp.json` or `~/Library/Applicati
         "ENKRYPT_GATEWAY_KEY": "<your-auto-generated-gateway-key>",
         "ENKRYPT_PROJECT_ID": "<your-project-id>",
         "ENKRYPT_USER_ID": "<your-user-id>"
+      }
+    }
+  }
+}
+```
+
+`enkrypt` cloud provider (generated with `--provider enkrypt`):
+
+```json
+{
+  "mcpServers": {
+    "Enkrypt Secure MCP Gateway": {
+      "command": "mcp",
+      "args": [
+        "run",
+        "<path-to-your-install>/secure_mcp_gateway/gateway.py"
+      ],
+      "env": {
+        "ENKRYPT_APIKEY": "<your-enkrypt-cloud-apikey>"
       }
     }
   }
@@ -2607,21 +3296,22 @@ secure-mcp-gateway config configure-telemetry --enabled true --url "http://local
 secure-mcp-gateway config configure-telemetry --insecure true
 ```
 
-**Starting the telemetry stack:** The gateway sends telemetry data to an OpenTelemetry collector — it doesn't run one itself. The repo includes a ready-made stack (collector, Prometheus, Grafana, Jaeger, Loki) in the `infra/` directory:
+**Starting the telemetry stack:** The gateway sends telemetry data to an OpenTelemetry collector — it doesn't run one itself. The repo includes a ready-made stack (collector, Prometheus, Grafana, Jaeger, Loki) plus 9 pre-provisioned Slack alert rules in the [`observability/`](./observability/) directory:
 
 ```bash
-cd infra
+cd observability
+cp .env.example .env    # (edit SLACK_WEBHOOK_URL if you want Slack alerts)
 docker compose up -d
 ```
 
 | Service | URL |
 |---|---|
-| Grafana dashboards | http://localhost:3000 |
+| Grafana dashboards | http://localhost:3001 (anonymous admin; override via `GRAFANA_HOST_PORT`) |
 | Jaeger trace viewer | http://localhost:16686 |
 | Prometheus metrics | http://localhost:9090 |
 | OTLP gRPC endpoint | http://localhost:4317 |
 
-Once the stack is running, the gateway will automatically start sending traces, logs, and metrics to the collector.
+Once the stack is running, the gateway will automatically start sending traces, logs, and metrics to the collector. See [§5](#5-optional-observability-stack--logs-metrics-traces--slack-alerts) for full details and [`observability/README.md`](./observability/README.md) for the deep dive on alert customisation.
 
 ---
 
@@ -2782,8 +3472,7 @@ secure-mcp-gateway --docker system health-check
             }
           },
           "tools": {},
-          "enable_server_info_validation": false,
-          "enable_tool_guardrails": false,
+          "server_tools_guardrails_config": {"enabled": false},
           "input_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
@@ -2851,8 +3540,7 @@ If you're running the Enkrypt Gateway in Docker or prefer not to use Docker-in-D
     }
   },
   "tools": {},
-  "enable_server_info_validation": false,
-  "enable_tool_guardrails": false,
+  "server_tools_guardrails_config": {"enabled": false},
   "input_guardrails_config": {
     "enabled": false,
     "guardrail_name": "Sample Airline Guardrail",
@@ -2943,8 +3631,7 @@ For machine-to-machine authentication, use the Client Credentials flow:
     "OAUTH_AUDIENCE": "https://api.example.com"
   },
   "tools": {},
-  "enable_server_info_validation": false,
-  "enable_tool_guardrails": false,
+  "server_tools_guardrails_config": {"enabled": false},
   "input_guardrails_config": {
     "enabled": false
   },
@@ -3035,8 +3722,7 @@ For user authorization with enhanced security, use the Authorization Code flow w
     "OAUTH_CODE_CHALLENGE_METHOD": "S256"
   },
   "tools": {},
-  "enable_server_info_validation": false,
-  "enable_tool_guardrails": true
+  "server_tools_guardrails_config": {"enabled": true}
 }
 ```
 
@@ -3171,8 +3857,7 @@ Add this configuration to your `enkrypt_mcp_config.json` in the `mcp_config` arr
     "OAUTH_ENFORCE_HTTPS": false
   },
   "tools": {},
-  "enable_server_info_validation": false,
-  "enable_tool_guardrails": false,
+  "server_tools_guardrails_config": {"enabled": false},
   "input_guardrails_config": {
     "enabled": false
   },
@@ -3499,8 +4184,7 @@ Enforce strict context boundaries across repositories.
               }
             },
             "tools": {},
-            "enable_server_info_validation": false,
-            "enable_tool_guardrails": false,
+            "server_tools_guardrails_config": {"enabled": false},
             "input_guardrails_config": {
               "enabled": true,
               "guardrail_name": "GitHub Guardrail",
@@ -3612,11 +4296,24 @@ Enforce strict context boundaries across repositories.
 
 You can control guardrail behavior for each server individually using per-server flags in your configuration.
 
-**Note:** While both fields default to `false`, it's recommended to explicitly include them in your server configurations for clarity and maintainability.
+**Note:** This field defaults to `false`; when absent from `common_overrides`, both tool registration and server info validation are skipped.
 
-#### `enable_server_info_validation` (boolean, default: `false`)
+#### `server_tools_guardrails_config` (object, default: `{"enabled": false}`)
 
-Controls whether server descriptions are validated during discovery/registration for harmful content (injection attacks, policy violations, etc.).
+A unified configuration sourced **exclusively from `common_overrides`** (gateway-wide). It controls both server description validation and tool registration validation via a single `enabled` flag, `guardrail_name`, and `block` list.
+
+**Shape:**
+
+```json
+{
+  "enabled": true,
+  "guardrail_name": "My Guardrail Policy",
+  "block": ["policy_violation", "injection_attack"],
+  "additional_config": {}
+}
+```
+
+When `enabled: true`, both server description validation and tool registration guardrail checks run using this policy. When `enabled: false` or absent, both are skipped.
 
 **When to disable:**
 
@@ -3624,46 +4321,16 @@ Controls whether server descriptions are validated during discovery/registration
 - Internal servers where content is fully trusted
 - When server metadata contains technical terms that trigger false positives
 
-**Example:**
-
-```json
-{
-  "server_name": "test_server",
-  "description": "Development test server",
-  "config": {
-    "command": "python",
-    "args": ["test_server.py"]
-  },
-  "enable_server_info_validation": false,
-  "enable_tool_guardrails": false,
-  "input_guardrails_config": {
-    "enabled": false
-  },
-  "output_guardrails_config": {
-    "enabled": false
-  }
-}
-```
-
-#### `enable_tool_guardrails` (boolean, default: `false`)
-
-Controls whether individual tool descriptions and schemas are validated during discovery.
-
 **Guardrail Levels:**
 
-The gateway has three distinct levels of guardrails:
+The gateway has two distinct levels of guardrails:
 
-1. **Server Registration Validation** (`enable_server_info_validation`)
-   - **When**: During server discovery, before any tools are loaded
-   - **What**: Validates server names and descriptions for harmful content
-   - **Blocks**: Servers with malicious metadata
+1. **Server & Tool Registration Validation** (`server_tools_guardrails_config`)
+   - **When**: During server and tool discovery
+   - **What**: Validates server descriptions, tool descriptions, and schemas for harmful content
+   - **Blocks**: Servers or tools with malicious metadata
 
-2. **Tool Registration Validation** (`enable_tool_guardrails`)
-   - **When**: During tool discovery
-   - **What**: Validates tool descriptions and schemas
-   - **Blocks**: Individual tools with harmful content
-
-3. **Runtime Guardrails** (`input_guardrails_config` / `output_guardrails_config`)
+2. **Runtime Guardrails** (`input_guardrails_config` / `output_guardrails_config`)
    - **When**: During tool execution (input before, output after)
    - **What**: Validates tool arguments and responses
    - **Blocks**: Requests/responses violating policies
@@ -3692,11 +4359,20 @@ secure-mcp-gateway system start-api --host 0.0.0.0 --port 8001
 
 ### Admin API Key Authentication
 
-**Important**: Administrative operations require a special `admin_apikey` that is separate from regular user API keys. This provides enhanced security for admin operations.
+**Important**: Administrative operations require a special `admin_apikey` at the **root** of the config that is separate from regular user API keys. This provides enhanced security for admin operations.
+
+**Provider-aware behavior** (resolution policy lives in `src/secure_mcp_gateway/auth_policy.py`):
+
+| Auth provider | `admin_apikey` required? | Notes |
+|---|---|---|
+| `local_apikey` (default) | **Yes** | The cloud `enkrypt_config.api_key` is **not** accepted as an admin credential (would silently widen the trust boundary). |
+| `enkrypt` (cloud) | **Optional** | The cloud `enkrypt_config.api_key` is also accepted as an admin credential. Set `admin_apikey` only if you want a dedicated admin secret rotated independently of the cloud apikey. |
+
+The pre-2.2 nested location `enkrypt_config.admin_apikey` is still honored as a deprecated fallback so existing configs keep working without edits.
 
 #### Getting Your Admin API Key
 
-The `admin_apikey` is automatically generated when you run `secure-mcp-gateway generate-config`. Find it in your configuration file:
+The `admin_apikey` is automatically generated at the root of the config when you run `secure-mcp-gateway generate-config` (the default `local_apikey` provider variant). Find it in your configuration file:
 
 - **Windows**: `%USERPROFILE%\.enkrypt\enkrypt_mcp_config.json`
 - **macOS/Linux**: `~/.enkrypt/enkrypt_mcp_config.json`
@@ -3704,6 +4380,10 @@ The `admin_apikey` is automatically generated when you run `secure-mcp-gateway g
 ```json
 {
   "admin_apikey": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6...",
+  "enkrypt_config": {
+    "api_key": "YOUR_ENKRYPT_API_KEY",
+    "base_url": "https://api.enkryptai.com"
+  },
   "apikeys": {
     "regular_user_key_1": { ... },
     "regular_user_key_2": { ... }
@@ -3712,12 +4392,14 @@ The `admin_apikey` is automatically generated when you run `secure-mcp-gateway g
 }
 ```
 
+> **Note**: If you used `--provider enkrypt` to generate the config, you won't see an `admin_apikey` at all — the cloud `enkrypt_config.api_key` is used as the admin credential by default. Add `admin_apikey` at the root only if you want a separate admin secret.
+
 #### Key Differences
 
-- **`admin_apikey`** (root level): Used for all administrative operations (user management, project management, etc.)
+- **`admin_apikey`** (root-level): Used for all administrative operations (user management, project management, etc.)
   - 256-character random string for maximum security
-  - Generated during `secure-mcp-gateway generate-config`
-  - Required for REST API endpoints
+  - Generated during `secure-mcp-gateway generate-config` (only when `--provider local_apikey`, which is the default)
+  - Required for REST API endpoints when the auth provider is `local_apikey`. Optional with provider `enkrypt`.
 
 - **`apikeys`** (in the `apikeys` section): Used for gateway access by users
   - Used by MCP clients to connect to the gateway

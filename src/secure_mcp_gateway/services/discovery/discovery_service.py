@@ -540,14 +540,11 @@ class DiscoveryService:
                         }
 
                     # Validate server registration
-                    # Check per-server flag (defaults to True for backward compatibility)
-                    enable_server_info_validation = server_info.get(
-                        "enable_server_info_validation", True
-                    )
+                    stg_config = server_info.get("server_tools_guardrails_config", {})
                     if (
                         self.registration_validation_enabled
                         and self.guardrail_manager
-                        and enable_server_info_validation
+                        and stg_config.get("enabled", False)
                     ):
                         server_validation_response = (
                             await self.guardrail_manager.validate_server_registration(
@@ -686,13 +683,12 @@ class DiscoveryService:
                 blocked_reasons_list = []
 
                 # Validate config tools with guardrails
-                tool_guardrails_config = server_info.get("tool_guardrails_config", {})
-                enable_tool_guardrails = tool_guardrails_config.get("enabled", False)
+                stg_config = server_info.get("server_tools_guardrails_config", {})
 
                 if (
                     self.registration_validation_enabled
                     and self.guardrail_manager
-                    and enable_tool_guardrails
+                    and stg_config.get("enabled", False)
                 ):
                     # Convert config tools to list format for validation
                     tool_list = []
@@ -723,9 +719,7 @@ class DiscoveryService:
                             server_name=server_name,
                             tools=tool_list,
                             mode="filter",
-                            tool_guardrails_config=tool_guardrails_config
-                            if tool_guardrails_config
-                            else None,
+                            server_tools_guardrails_config=stg_config or None,
                         )
                     )
 
@@ -885,13 +879,12 @@ class DiscoveryService:
                 blocked_tools_count = 0
                 blocked_reasons_list = []
 
-                tool_guardrails_config = server_info.get("tool_guardrails_config", {})
-                enable_tool_guardrails = tool_guardrails_config.get("enabled", False)
+                stg_config = server_info.get("server_tools_guardrails_config", {})
 
                 if (
                     self.registration_validation_enabled
                     and self.guardrail_manager
-                    and enable_tool_guardrails
+                    and stg_config.get("enabled", False)
                 ):
                     # Extract tool list
                     if hasattr(tools, "tools"):
@@ -906,9 +899,7 @@ class DiscoveryService:
                             server_name=server_name,
                             tools=tool_list,
                             mode="filter",
-                            tool_guardrails_config=tool_guardrails_config
-                            if tool_guardrails_config
-                            else None,
+                            server_tools_guardrails_config=stg_config or None,
                         )
                     )
 
@@ -1036,15 +1027,12 @@ class DiscoveryService:
             id = self.auth_manager.get_session_gateway_config(session_key)["id"]
             info_span.set_attribute("gateway_id", id)
 
-            # NEW: Validate server registration before proceeding
-            # Check per-server flag (defaults to True for backward compatibility)
-            enable_server_info_validation = server_info.get(
-                "enable_server_info_validation", True
-            )
+            # Validate server registration before proceeding
+            stg_config = server_info.get("server_tools_guardrails_config", {})
             if (
                 self.registration_validation_enabled
                 and self.guardrail_manager
-                and enable_server_info_validation
+                and stg_config.get("enabled", False)
             ):
                 with tracer_obj.start_as_current_span(
                     "validate_server_registration"
@@ -1236,14 +1224,10 @@ class DiscoveryService:
 
             # PHASE 2: Server description validation for ALL servers (parallel)
             # This happens regardless of whether server has config tools or not
-            # Check per-server flag (defaults to True for backward compatibility)
-            enable_server_info_validation = server_info.get(
-                "enable_server_info_validation", True
-            )
             if (
                 self.registration_validation_enabled
                 and self.guardrail_manager
-                and enable_server_info_validation
+                and stg_config.get("enabled", False)
             ):
                 logger.info(
                     f"[discover_server_tools] 🔄 Starting server description validation for {server_name}"
@@ -1265,7 +1249,7 @@ class DiscoveryService:
                 )
             else:
                 logger.info(
-                    f"[discover_server_tools] ⏭️  Skipping server description validation for {server_name} (enable_server_info_validation={enable_server_info_validation})"
+                    f"[discover_server_tools] ⏭️  Skipping server description validation for {server_name} (server_tools_guardrails_config.enabled={stg_config.get('enabled', False)})"
                 )
 
                 # For servers with config tools, we'll get dynamic description during discovery
@@ -1332,17 +1316,17 @@ class DiscoveryService:
                 blocked_tools_count = 0
                 blocked_reasons_list = []
 
-                # NEW: Validate config tools with guardrails before returning
-                tool_guardrails_config = server_info.get("tool_guardrails_config", {})
-                enable_tool_guardrails = tool_guardrails_config.get("enabled", False)
+                # Validate config tools with guardrails before returning
+                stg_config_local = server_info.get("server_tools_guardrails_config", {})
+                enable_stg = stg_config_local.get("enabled", False)
                 logger.info(
-                    f"[discover_server_tools] enable_tool_guardrails={enable_tool_guardrails} for {server_name}"
+                    f"[discover_server_tools] server_tools_guardrails_config.enabled={enable_stg} for {server_name}"
                 )
 
                 if (
                     self.registration_validation_enabled
                     and self.guardrail_manager
-                    and enable_tool_guardrails
+                    and enable_stg
                 ):
                     logger.info(
                         f"[discover_server_tools] Validating config tools for {server_name}"
@@ -1390,10 +1374,8 @@ class DiscoveryService:
                             validation_response = await self.guardrail_manager.validate_tool_registration(
                                 server_name=server_name,
                                 tools=tool_list,
-                                mode="filter",  # Filter unsafe tools but allow safe ones
-                                tool_guardrails_config=tool_guardrails_config
-                                if tool_guardrails_config
-                                else None,
+                                mode="filter",
+                                server_tools_guardrails_config=stg_config_local or None,
                             )
 
                             if validation_response and validation_response.metadata:
@@ -1673,18 +1655,14 @@ class DiscoveryService:
                             return error_response
                 else:
                     logger.info(
-                        f"[discover_server_tools] Skipping config tool validation for {server_name} (enable_tool_guardrails={enable_tool_guardrails})"
+                        f"[discover_server_tools] Skipping config tool validation for {server_name} (server_tools_guardrails_config.enabled={enable_stg})"
                     )
 
-                # NEW: Parallel validation for config servers (static + dynamic descriptions)
-                # Check per-server flag (defaults to True for backward compatibility)
-                enable_server_info_validation = server_info.get(
-                    "enable_server_info_validation", True
-                )
+                # Parallel validation for config servers (static + dynamic descriptions)
                 if (
                     self.registration_validation_enabled
                     and self.guardrail_manager
-                    and enable_server_info_validation
+                    and stg_config_local.get("enabled", False)
                 ):
                     logger.info(
                         f"[discover_server_tools] 🔄 Starting parallel validation for config server {server_name}"
@@ -1726,9 +1704,7 @@ class DiscoveryService:
                                     server_name=server_name,
                                     tools=[tool],
                                     mode="block",
-                                    tool_guardrails_config=tool_guardrails_config
-                                    if tool_guardrails_config
-                                    else None,
+                                    server_tools_guardrails_config=stg_config_local or None,
                                     kind="server_description",
                                 )
                                 if resp and resp.metadata:
@@ -1788,9 +1764,7 @@ class DiscoveryService:
                                     server_name=server_name,
                                     tools=[tool],
                                     mode="block",
-                                    tool_guardrails_config=tool_guardrails_config
-                                    if tool_guardrails_config
-                                    else None,
+                                    server_tools_guardrails_config=stg_config_local or None,
                                     kind="server_description",
                                 )
                                 if resp and resp.metadata:
@@ -1943,7 +1917,7 @@ class DiscoveryService:
                             return er
                 else:
                     logger.info(
-                        f"[discover_server_tools] ⏭️  Skipping description validation for config server {server_name} (enable_server_info_validation={enable_server_info_validation})"
+                        f"[discover_server_tools] ⏭️  Skipping description validation for config server {server_name} (server_tools_guardrails_config.enabled={stg_config_local.get('enabled', False)})"
                     )
 
                 main_span = trace.get_current_span()
@@ -2080,16 +2054,11 @@ class DiscoveryService:
                 tool_span.set_attribute("tools_found", bool(tools))
 
                 # Parallel validation: dynamic and static descriptions
-                # Check per-server flag (defaults to True for backward compatibility)
-                enable_server_info_validation = server_info.get(
-                    "enable_server_info_validation", True
-                )
-                # Get tool_guardrails_config for description validation detectors
-                tool_guardrails_config = server_info.get("tool_guardrails_config", {})
+                stg_config_disc = server_info.get("server_tools_guardrails_config", {})
                 if (
                     self.registration_validation_enabled
                     and self.guardrail_manager
-                    and enable_server_info_validation
+                    and stg_config_disc.get("enabled", False)
                 ):
                     import asyncio
 
@@ -2130,9 +2099,7 @@ class DiscoveryService:
                                     server_name=server_name,
                                     tools=[tool],
                                     mode="block",
-                                    tool_guardrails_config=tool_guardrails_config
-                                    if tool_guardrails_config
-                                    else None,
+                                    server_tools_guardrails_config=stg_config_disc or None,
                                     kind="server_description",
                                 )
                                 if resp and resp.metadata:
@@ -2193,9 +2160,7 @@ class DiscoveryService:
                                     server_name=server_name,
                                     tools=[tool],
                                     mode="block",
-                                    tool_guardrails_config=tool_guardrails_config
-                                    if tool_guardrails_config
-                                    else None,
+                                    server_tools_guardrails_config=stg_config_disc or None,
                                     kind="server_description",
                                 )
                                 if resp and resp.metadata:
@@ -2346,7 +2311,7 @@ class DiscoveryService:
                             return er
                 else:
                     logger.info(
-                        f"[discover_server_tools] ⏭️  Skipping description validation for {server_name} (enable_server_info_validation={enable_server_info_validation})"
+                        f"[discover_server_tools] ⏭️  Skipping description validation for {server_name} (server_tools_guardrails_config.enabled={stg_config_disc.get('enabled', False)})"
                     )
 
                 # Track blocked tools information
@@ -2364,21 +2329,19 @@ class DiscoveryService:
                             extra=build_log_extra(ctx, custom_id, server_name),
                         )
 
-                    # NEW: Validate tools with guardrails before caching
-                    tool_guardrails_config = server_info.get(
-                        "tool_guardrails_config", {}
+                    # Validate tools with guardrails before caching
+                    stg_config_disc2 = server_info.get(
+                        "server_tools_guardrails_config", {}
                     )
-                    enable_tool_guardrails = tool_guardrails_config.get(
-                        "enabled", False
-                    )
+                    enable_stg_disc = stg_config_disc2.get("enabled", False)
                     logger.info(
-                        f"[discover_server_tools] enable_tool_guardrails={enable_tool_guardrails} for {server_name}"
+                        f"[discover_server_tools] server_tools_guardrails_config.enabled={enable_stg_disc} for {server_name}"
                     )
 
                     if (
                         self.registration_validation_enabled
                         and self.guardrail_manager
-                        and enable_tool_guardrails
+                        and enable_stg_disc
                     ):
                         logger.info(
                             f"[discover_server_tools] Validating discovered tools for {server_name}"
@@ -2410,10 +2373,8 @@ class DiscoveryService:
                                 validation_response = await self.guardrail_manager.validate_tool_registration(
                                     server_name=server_name,
                                     tools=tool_list,
-                                    mode="filter",  # Filter unsafe tools but allow safe ones
-                                    tool_guardrails_config=tool_guardrails_config
-                                    if tool_guardrails_config
-                                    else None,
+                                    mode="filter",
+                                    server_tools_guardrails_config=stg_config_disc2 or None,
                                 )
 
                                 if validation_response and validation_response.metadata:
@@ -2649,7 +2610,7 @@ class DiscoveryService:
                                 return error_response
                     else:
                         logger.info(
-                            f"[discover_server_tools] Skipping discovered tool validation for {server_name} (enable_tool_guardrails={enable_tool_guardrails})"
+                            f"[discover_server_tools] Skipping discovered tool validation for {server_name} (server_tools_guardrails_config.enabled={enable_stg_disc})"
                         )
 
                     # Cache write

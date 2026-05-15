@@ -117,10 +117,11 @@ update them if the cloud team changes the contract.
 
 ## Override resolution
 
-For each of the four guardrail-style fields — `input_guardrails_config`,
-`output_guardrails_config`, `tool_guardrails_config`,
-`enable_server_info_validation` — the mapper picks the effective value
-per server using this precedence (first match wins):
+For each of the three guardrail-style fields — `input_guardrails_config`,
+`output_guardrails_config`, `server_tools_guardrails_config` — the mapper
+picks the effective value per server using this precedence (first match
+wins). `server_tools_guardrails_config` is **common-only** (never read
+from per-server overrides or base config):
 
 1. **`response.common_overrides.<key>`** — gateway-wide override. **Always
    wins** when set. The cloud already strips the same key from each

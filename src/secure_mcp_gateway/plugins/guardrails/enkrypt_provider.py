@@ -879,15 +879,7 @@ class EnkryptServerRegistrationGuardrail:
                 )
                 logger.debug(f"[EnkryptServerRegistration] Text: {server_text}")
 
-            # ``tool_guardrails_config`` is gateway-wide only (sourced from
-            # ``common_overrides.tool_guardrails_config``). The new
-            # ``/guardrails/guardrail/batch/detect`` endpoint is policy-driven
-            # via X-Enkrypt-Guardrail header; the inline-detectors variant
-            # rejects ``detectors.<name>.enabled``. For now server-registration
-            # validation also uses this policy; once the cloud exposes a
-            # dedicated ``server_registration_guardrails_config`` we'll split
-            # the source.
-            policy = getattr(request, "tool_guardrails_config", None) or {}
+            policy = getattr(request, "server_tools_guardrails_config", None) or {}
             policy_guardrail_name = policy.get("guardrail_name") or policy.get(
                 "policy_name"
             )
@@ -895,7 +887,7 @@ class EnkryptServerRegistrationGuardrail:
             if not policy_guardrail_name:
                 logger.info(
                     f"[EnkryptServerRegistration] No guardrail policy configured in "
-                    f"common_overrides.tool_guardrails_config for server '{request.server_name}' "
+                    f"common_overrides.server_tools_guardrails_config for server '{request.server_name}' "
                     f"— skipping server registration check, allowing through"
                 )
                 return GuardrailResponse(
@@ -906,7 +898,7 @@ class EnkryptServerRegistrationGuardrail:
                         "provider": "enkrypt",
                         "mode": "monitor",
                         "server_name": request.server_name,
-                        "message": "No common_overrides.tool_guardrails_config.guardrail_name configured, server allowed",
+                        "message": "No server_tools_guardrails_config.guardrail_name configured, server allowed",
                         "processing_time": time.time() - start_time,
                     },
                 )
@@ -1111,21 +1103,10 @@ class EnkryptServerRegistrationGuardrail:
                     f"[EnkryptToolRegistration] Validating {len(texts)} tools for {request.server_name}"
                 )
 
-            # ``tool_guardrails_config`` is gateway-wide only — sourced from
-            # ``common_overrides.tool_guardrails_config`` in EnkryptAuthProvider.
-            # If the operator hasn't set common_overrides, this is None / empty
-            # and we no-op (per the "assume false" contract).
-            #
-            # Both ``kind="tool_list"`` and ``kind="server_description"``
-            # currently use policy mode against the new
-            # ``/guardrails/guardrail/batch/detect`` endpoint with
-            # ``tool_guardrails_config.guardrail_name`` as the shared policy.
-            # The inline-detectors variant of this endpoint rejects the
-            # ``detectors.<name>.enabled`` schema, so we can't fall back to it.
-            # ``kind`` is preserved on the request so we can route to separate
-            # policy names (e.g. ``tool_guardrails_config`` vs.
-            # ``server_description_guardrails_config``) once those exist.
-            policy = getattr(request, "tool_guardrails_config", None) or {}
+            # ``server_tools_guardrails_config`` is gateway-wide only — sourced
+            # from ``common_overrides`` in EnkryptAuthProvider. If absent or
+            # without a ``guardrail_name``, we no-op (disabled by default).
+            policy = getattr(request, "server_tools_guardrails_config", None) or {}
             policy_guardrail_name = policy.get("guardrail_name") or policy.get(
                 "policy_name"
             )
@@ -1133,7 +1114,7 @@ class EnkryptServerRegistrationGuardrail:
             if not policy_guardrail_name:
                 logger.info(
                     f"[EnkryptToolRegistration] No guardrail policy configured in "
-                    f"common_overrides.tool_guardrails_config for server '{request.server_name}' "
+                    f"common_overrides.server_tools_guardrails_config for server '{request.server_name}' "
                     f"— skipping {getattr(request, 'kind', 'tool_list')} check, "
                     f"allowing all {len(texts)} texts through"
                 )
@@ -1146,7 +1127,7 @@ class EnkryptServerRegistrationGuardrail:
                         "mode": "monitor",
                         "server_name": request.server_name,
                         "tools_count": len(texts),
-                        "message": "No common_overrides.tool_guardrails_config.guardrail_name configured, all texts allowed",
+                        "message": "No server_tools_guardrails_config.guardrail_name configured, all texts allowed",
                         "processing_time": time.time() - start_time,
                     },
                 )
@@ -1376,11 +1357,11 @@ class EnkryptServerRegistrationGuardrail:
         - **Policy mode** (``guardrail_name`` set, ``detectors`` ignored):
           POSTs ``{"texts": [...]}`` with ``X-Enkrypt-Guardrail`` +
           ``X-Enkrypt-Mode: prompt`` headers. The cloud applies the named
-          guardrail policy. Used for tool-registration validation, which is
-          gateway-wide and driven by ``common_overrides.tool_guardrails_config``.
+          guardrail policy. Used for tool-registration and server-description
+          validation, driven by ``common_overrides.server_tools_guardrails_config``.
         - **Inline-detectors mode** (``detectors`` set, ``guardrail_name``
           ignored): POSTs ``{"texts": [...], "detectors": {...}}`` with no
-          guardrail header. Used for server-description validation.
+          guardrail header.
         """
         try:
 
@@ -1601,15 +1582,22 @@ class EnkryptGuardrailProvider(GuardrailProvider):
             # Fallback to self values if config file not found
             return self.api_key, self.base_url
 
+        enkrypt_cfg = full_config.get("enkrypt_config", {})
         plugins_config = full_config.get("plugins", {})
         guardrails_config = plugins_config.get("guardrails", {}).get("config", {})
         auth_config = plugins_config.get("auth", {}).get("config", {})
 
-        api_key = guardrails_config.get(
-            "api_key", auth_config.get("api_key", self.api_key)
+        api_key = (
+            guardrails_config.get("api_key")
+            or enkrypt_cfg.get("api_key")
+            or auth_config.get("api_key")
+            or self.api_key
         )
-        base_url = guardrails_config.get(
-            "base_url", auth_config.get("base_url", self.base_url)
+        base_url = (
+            guardrails_config.get("base_url")
+            or enkrypt_cfg.get("base_url")
+            or auth_config.get("base_url")
+            or self.base_url
         )
 
         return api_key, base_url

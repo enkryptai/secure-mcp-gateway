@@ -28,13 +28,29 @@ BASE_DIR = files("secure_mcp_gateway")
 EXAMPLE_CONFIG_NAME = f"example_{CONFIG_NAME}"
 EXAMPLE_CONFIG_PATH = os.path.join(BASE_DIR, EXAMPLE_CONFIG_NAME)
 
+# ``enkrypt_config`` only holds credentials/endpoints for talking to
+# Enkrypt cloud. The local REST admin API key (``admin_apikey``) used to
+# live here but was moved to root-level because it has no relationship
+# with Enkrypt cloud; nesting it under ``enkrypt_config`` was misleading.
+# ``auth_policy.resolve_admin_keys`` still accepts the legacy nested
+# location for backward-compat.
+DEFAULT_ENKRYPT_CONFIG = {
+    "api_key": "YOUR_ENKRYPT_API_KEY",
+    "base_url": "https://api.enkryptai.com",
+}
+
 DEFAULT_COMMON_CONFIG = {
     "enkrypt_log_level": "INFO",
-    "enkrypt_base_url": "https://api.enkryptai.com",
-    "enkrypt_api_key": "YOUR_ENKRYPT_API_KEY",
-    "enkrypt_use_remote_mcp_config": False,
-    "enkrypt_remote_mcp_gateway_name": "enkrypt-secure-mcp-gateway-1",
-    "enkrypt_remote_mcp_gateway_version": "v1",
+    # NOTE: ``enkrypt_use_remote_mcp_config`` /
+    # ``enkrypt_remote_mcp_gateway_name`` /
+    # ``enkrypt_remote_mcp_gateway_version`` are *deprecated*. They only
+    # drive the legacy ``LocalApiKeyProvider``'s "fetch config from Enkrypt
+    # cloud" fallback (``utils.use_remote_mcp_config``). New deployments
+    # should use ``plugins.auth.provider = "enkrypt"`` instead, which has
+    # its own cleaner cloud-config flow (see EnkryptAuthProvider). The
+    # accessor functions in ``utils`` default to False / sensible strings
+    # when these keys are absent, so leaving them out of the defaults
+    # here is safe.
     "enkrypt_mcp_use_external_cache": False,
     "enkrypt_cache_host": "localhost",
     "enkrypt_cache_port": 6379,
@@ -42,6 +58,8 @@ DEFAULT_COMMON_CONFIG = {
     "enkrypt_cache_password": None,
     "enkrypt_tool_cache_expiration": 4,
     "enkrypt_gateway_cache_expiration": 24,
+    "enkrypt_gateway_cache_expiration_minutes": 5,
+    "enkrypt_config_watcher_poll_seconds": 2.0,
     "enkrypt_async_input_guardrails_enabled": False,
     "enkrypt_async_output_guardrails_enabled": False,
     # Session Pool Configuration
@@ -66,7 +84,7 @@ DEFAULT_COMMON_CONFIG = {
         "guardrail_timeout": 15,
         "auth_timeout": 10,
         "tool_execution_timeout": 60,
-        "discovery_timeout": 20,
+        "discovery_timeout": 180,
         "cache_timeout": 5,
         "connectivity_timeout": 2,
         "escalation_policies": {

@@ -419,9 +419,28 @@ class AuthConfigManager:
     def is_session_authenticated(self, session_key: str) -> bool:
         """
         Backward-compatible method for checking session authentication.
+
+        Sessions are bounded by the gateway-config cache TTL so config edits
+        propagate without restart. We compare against ``created_at`` (absolute
+        age) instead of ``last_accessed`` -- busy sessions keep refreshing
+        ``last_accessed`` and would otherwise never expire.
         """
         session = self.sessions.get(session_key)
-        return session is not None and session.authenticated
+        if session is None or not session.authenticated:
+            return False
+        from secure_mcp_gateway.utils import get_gateway_cache_ttl_seconds
+
+        ttl_seconds = get_gateway_cache_ttl_seconds()
+        if time.time() - session.created_at > ttl_seconds:
+            logger.info(
+                "[AuthConfigManager] session expired due to TTL; dropping",
+                session_key=session_key,
+                age_seconds=time.time() - session.created_at,
+                ttl_seconds=ttl_seconds,
+            )
+            del self.sessions[session_key]
+            return False
+        return True
 
     def create_session(self, session_key: str, gateway_config: dict[str, Any]) -> None:
         """
@@ -583,6 +602,27 @@ class AuthConfigManager:
             raise ValueError(f"Session {session_key} has no gateway configuration")
 
         return session.gateway_config
+
+    def reload(self, config: dict[str, Any]) -> None:
+        """Rebuild the auth provider from the current config without restart.
+
+        Unregisters the existing provider, drops all in-memory sessions, and
+        re-runs the plugin loader so the new provider instance is constructed
+        with the latest credentials/settings.
+        """
+        logger.info("[AuthConfigManager] reload triggered")
+        try:
+            self.registry.unregister()
+        except Exception as e:
+            logger.warning(f"[AuthConfigManager] unregister failed: {e}")
+        self.sessions.clear()
+        from secure_mcp_gateway.plugins.plugin_loader import PluginLoader
+
+        PluginLoader.load_plugin_providers(config, "auth", self)
+        logger.info(
+            "[AuthConfigManager] reload complete",
+            providers=self.list_providers(),
+        )
 
 
 # ============================================================================

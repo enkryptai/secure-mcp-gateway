@@ -19,10 +19,10 @@ Design decisions
    the caller. Operational decision recorded in CHANGELOG and observability
    docs.
 
-3. **Override resolution (common-wins).** For each of the four override
+3. **Override resolution (common-wins).** For each of the three override
    keys (``input_guardrails_config``, ``output_guardrails_config``,
-   ``tool_guardrails_config``, ``enable_server_info_validation``), the
-   effective value per server is picked in this order — first match wins:
+   ``server_tools_guardrails_config``), the effective value per server is
+   picked in this order — first match wins:
 
    a. ``response.common_overrides.<key>`` — gateway-wide override. **Always
       wins** when set. The cloud already strips the same key from every
@@ -33,6 +33,11 @@ Design decisions
    b. ``expanded_servers[].gateway_overrides.<key>`` — per-server override,
       effective only when ``common_overrides`` does not also set this key.
    c. ``expanded_servers[].mcp_config.<key>`` — registry server base value.
+
+   ``server_tools_guardrails_config`` is **common-only**: it is never read
+   from per-server ``gateway_overrides`` or ``mcp_config``. It controls
+   both tool registration batch checks and server info/description
+   validation via a single ``enabled`` flag and ``guardrail_name``.
 
    The merge is shallow (whole-policy replacement at the key level),
    matching what the cloud does internally.
@@ -579,13 +584,11 @@ class EnkryptAuthProvider(AuthProvider):
           ``mcp_config``. Cloud often returns partial policy objects; missing
           keys are filled from the empty-policy template so downstream
           consumers can safely index ``policy["block"]`` etc.
-        - ``tool_guardrails_config`` — **common-only.** The tool registration
-          batch check is gateway-wide by design (it's batched across all
-          servers and uses a single named policy via header), so the policy
-          ONLY comes from ``common_overrides``. Per-server ``mcp_config`` and
-          ``gateway_overrides`` echoes for this key are intentionally
-          ignored. If ``common_overrides.tool_guardrails_config`` is unset,
-          tool guardrails are treated as disabled (no batch call).
+        - ``server_tools_guardrails_config`` — **common-only.** Controls both
+          tool registration batch checks and server info/description
+          validation. Sourced exclusively from ``common_overrides``; per-server
+          ``mcp_config`` and ``gateway_overrides`` are ignored for this key.
+          If absent from ``common_overrides``, both checks are disabled.
         - Layer ``local_server_overrides[saved_name]`` on top for fields the
           cloud doesn't model yet (sandbox / oauth_config / denied_tools).
         """
@@ -610,31 +613,16 @@ class EnkryptAuthProvider(AuthProvider):
             return {**_empty_config(), **chosen}
 
         def _pick_common_only(name: str) -> dict[str, Any] | None:
-            """Strict variant for ``tool_guardrails_config``: ignore any
-            per-server values so the batched, policy-driven tool registration
-            check uses a single gateway-wide guardrail name."""
+            """Only read from ``common_overrides``; per-server values are
+            ignored so gateway-wide batch checks use a single policy."""
             common = common_overrides.get(name)
             if common:
                 return {**_empty_config(), **common}
             return None
 
-        tool_config = _pick_common_only("tool_guardrails_config")
+        stg_config = _pick_common_only("server_tools_guardrails_config")
         input_config = _pick_config("input_guardrails_config")
         output_config = _pick_config("output_guardrails_config")
-
-        # Boolean / scalar override: same precedence with ``is not None``
-        # semantics so an intentional False is honoured (truthiness would
-        # conflate "unset" with "explicitly False").
-        common_esiv = common_overrides.get("enable_server_info_validation")
-        gw_esiv = gateway_overrides.get("enable_server_info_validation")
-        if common_esiv is not None:
-            enable_server_info_validation = common_esiv
-        elif gw_esiv is not None:
-            enable_server_info_validation = gw_esiv
-        else:
-            enable_server_info_validation = cloud_mcp.get(
-                "enable_server_info_validation", False
-            )
 
         # OAuth lives inside mcp_config in the cloud spec; gateway_overrides
         # may override it too.
@@ -647,9 +635,7 @@ class EnkryptAuthProvider(AuthProvider):
             "description": server.get("description", ""),
             "config": cloud_mcp.get("config", {}),
             "tools": cloud_mcp.get("tools", {}),
-            "enable_server_info_validation": enable_server_info_validation,
-            "enable_tool_guardrails": (tool_config or {}).get("enabled", False),
-            "tool_guardrails_config": tool_config or _empty_config(),
+            "server_tools_guardrails_config": stg_config or _empty_config(),
             "input_guardrails_config": input_config or _empty_config(),
             "output_guardrails_config": output_config or _empty_config(),
         }

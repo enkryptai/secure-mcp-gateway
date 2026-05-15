@@ -459,6 +459,34 @@ class TelemetryConfigManager:
         """Backward-compatible metric accessor for health-check failed requests."""
         return self._get_metric_from_provider("health_failure_counter")
 
+    def reload(self, config: dict[str, Any]) -> None:
+        """Rebuild telemetry providers from the latest config without restart.
+
+        Caveat: OpenTelemetry's global TracerProvider / MeterProvider can
+        only be set once per process. The SDK explicitly rejects subsequent
+        ``set_tracer_provider`` calls (it logs "Overriding of current
+        TracerProvider is not allowed"). Trying to re-initialize on reload
+        therefore produces noise without taking effect.
+
+        If telemetry is not yet initialized, we run the plugin loader so
+        callers that flipped ``enabled: true`` after startup get a working
+        provider. Otherwise the endpoint / enabled fields effectively
+        require a restart (documented in README).
+        """
+        logger.info("[TelemetryConfigManager] reload triggered")
+        provider = self.get_active_provider()
+        if provider is None or not self._provider_initialized:
+            from secure_mcp_gateway.plugins.plugin_loader import PluginLoader
+
+            PluginLoader.load_plugin_providers(config, "telemetry", self)
+            return
+
+        logger.info(
+            "[TelemetryConfigManager] provider already initialized; "
+            "skipping re-init (OTel global providers cannot be replaced "
+            "at runtime - endpoint/enabled changes require restart)"
+        )
+
 
 # ============================================================================
 # Global Instance

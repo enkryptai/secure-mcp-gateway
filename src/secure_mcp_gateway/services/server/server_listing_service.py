@@ -395,30 +395,114 @@ class ServerListingService:
     async def _discover_and_return_servers(
         self, servers_with_tools, servers_needing_discovery, ctx, tracer, main_span
     ):
-        """Discover tools and return servers."""
+        """Discover tools per-server with individual timeouts.
+
+        Historic behaviour wrapped the *entire* parallel ``asyncio.gather`` in
+        a single ``execute_with_timeout`` budget. One slow cold-start
+        (``uvx``/``npx`` first run, OAuth handshake, etc.) blew the whole
+        batch's budget, after which the listing service returned an empty
+        ``discovery_*_servers`` array, ``status="success"``, and stub
+        ``tools: {}`` for every server -- silently misleading. See the
+        regression test ``tests/test_server_listing_per_server_timeout.py``.
+
+        New behaviour:
+
+        * Each server's discovery runs under its own ``asyncio.wait_for`` so
+          a slow server can fail in isolation while fast ones still return
+          populated ``tools``.
+        * Per-server failures (timeout, raised exception, downstream
+          ``status != "success"``) push the server into
+          ``discovery_failed_servers``, set the top-level ``status`` to
+          ``"error"``, and overlay a structured ``discovery_error`` block on
+          the server entry instead of dropping the placeholder.
+        * The top-level ``message`` summarises *what* happened (count of
+          failures, the per-server timeout that was applied) so callers can
+          tell ``"the gateway tried and failed"`` apart from ``"every server
+          genuinely has zero tools"``.
+        """
+        import asyncio
+
+        # Local imports to avoid circular dependencies at module import time.
+        from secure_mcp_gateway.gateway import enkrypt_discover_all_tools
+        from secure_mcp_gateway.services.timeout import get_timeout_manager
+
+        timeout_manager = get_timeout_manager()
+        per_server_timeout = timeout_manager.get_timeout("discovery")
+
         with tracer.start_span("discover_tools") as discover_span:
             discover_span.set_attribute(
                 "servers_to_discover", len(servers_needing_discovery)
             )
-
-            # Discover tools for all servers
-            status = "success"
-            message = "Tools discovery tried for all servers"
-            discovery_failed_servers = []
-            discovery_success_servers = []
-
-            # Parallelize discovery across servers
-            import asyncio
-
-            # Import here to avoid circular imports
-            from secure_mcp_gateway.gateway import (
-                enkrypt_discover_all_tools,
-            )
+            discover_span.set_attribute("per_server_timeout_s", per_server_timeout)
 
             async def _discover_single(server_name: str):
-                with tracer.start_span(f"discover_server_{server_name}") as server_span:
+                """Run discovery for one server under its own timeout.
+
+                Always returns a ``(server_name, result_dict)`` tuple --
+                never raises -- so the caller can attribute every failure
+                to a specific server name.
+                """
+                with tracer.start_span(
+                    f"discover_server_{server_name}"
+                ) as server_span:
                     server_span.set_attribute("server_name", server_name)
-                    result = await enkrypt_discover_all_tools(ctx, server_name)
+                    server_span.set_attribute(
+                        "per_server_timeout_s", per_server_timeout
+                    )
+                    try:
+                        result = await asyncio.wait_for(
+                            enkrypt_discover_all_tools(ctx, server_name),
+                            timeout=per_server_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        server_span.set_attribute("discovery_success", False)
+                        server_span.set_attribute("error", "true")
+                        server_span.set_attribute(
+                            "error_kind", "discovery_timeout"
+                        )
+                        logger.error(
+                            "list_all_servers.discovery_timeout",
+                            extra={
+                                "server_name": server_name,
+                                "per_server_timeout_s": per_server_timeout,
+                            },
+                        )
+                        return server_name, {
+                            "status": "error",
+                            "error_kind": "discovery_timeout",
+                            "message": (
+                                f"Discovery for '{server_name}' exceeded the "
+                                f"per-server discovery_timeout of "
+                                f"{per_server_timeout}s. Increase "
+                                "common_mcp_gateway_config.timeout_settings."
+                                "discovery_timeout if first-run package "
+                                "downloads (uvx/npx) need more headroom."
+                            ),
+                        }
+                    except Exception as exc:
+                        server_span.set_attribute("discovery_success", False)
+                        server_span.set_attribute("error", "true")
+                        server_span.set_attribute(
+                            "error_kind", type(exc).__name__
+                        )
+                        server_span.record_exception(exc)
+                        logger.error(
+                            "list_all_servers.discovery_exception",
+                            extra={
+                                "server_name": server_name,
+                                "error_kind": type(exc).__name__,
+                                "error": str(exc),
+                            },
+                        )
+                        return server_name, {
+                            "status": "error",
+                            "error_kind": type(exc).__name__,
+                            "message": (
+                                f"Discovery for '{server_name}' raised "
+                                f"{type(exc).__name__}: {exc}"
+                            ),
+                        }
+
                     success = result.get("status") == "success"
                     server_span.set_attribute("discovery_success", success)
                     return server_name, result
@@ -427,53 +511,72 @@ class ServerListingService:
                 _discover_single(server_name)
                 for server_name in servers_needing_discovery
             ]
+            # ``return_exceptions=True`` is belt-and-braces -- ``_discover_single``
+            # already converts every error path into a result tuple.
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Use timeout management for parallel discovery operations
-            from secure_mcp_gateway.services.timeout import get_timeout_manager
-
-            timeout_manager = get_timeout_manager()
-
-            # Create a proper async function for timeout manager
-            async def _parallel_server_discovery():
-                return await asyncio.gather(*tasks, return_exceptions=True)
-
-            results = await timeout_manager.execute_with_timeout(
-                _parallel_server_discovery,
-                "discovery",
-                f"server_discovery_{len(tasks)}_servers",
-            )
-
-            # Extract results from timeout result
-            if hasattr(results, "result"):
-                results = results.result
-
-            # Handle case where results is None (timeout occurred)
-            if results is None:
-                results = []
+            status = "success"
+            discovery_failed_servers: list[str] = []
+            discovery_success_servers: list[str] = []
 
             for item in results:
-                if isinstance(item, Exception):
-                    # If an exception bubbles up, we cannot attribute to a server name here
+                if isinstance(item, BaseException):
+                    # Should be unreachable given _discover_single's try/except,
+                    # but keep the safety net so an unexpected failure can't
+                    # silently shrink the response.
                     status = "error"
+                    logger.error(
+                        "list_all_servers.discovery_unexpected_exception",
+                        extra={"error": str(item)},
+                    )
                     continue
+
                 server_name, discover_server_result = item
                 if discover_server_result.get("status") != "success":
                     status = "error"
                     discovery_failed_servers.append(server_name)
-                    # Include error response in servers_with_tools for proper error reporting
-                    servers_with_tools[server_name] = discover_server_result
+                    # Preserve the placeholder (server config + guardrail
+                    # policy) and overlay a discovery_error block so the
+                    # caller still gets the metadata it needs to render the
+                    # server even when tool discovery failed.
+                    placeholder = servers_with_tools.get(server_name, {})
+                    placeholder = (
+                        {**placeholder} if isinstance(placeholder, dict) else {}
+                    )
+                    placeholder["discovery_error"] = {
+                        "status": "error",
+                        "error_kind": discover_server_result.get(
+                            "error_kind", "discovery_failed"
+                        ),
+                        "message": discover_server_result.get(
+                            "message", "Tool discovery failed for server"
+                        ),
+                    }
+                    servers_with_tools[server_name] = placeholder
                 else:
                     discovery_success_servers.append(server_name)
                     servers_with_tools[server_name] = discover_server_result
 
-            discover_span.set_attribute("failed_servers", len(discovery_failed_servers))
+            discover_span.set_attribute(
+                "failed_servers", len(discovery_failed_servers)
+            )
             discover_span.set_attribute(
                 "success_servers", len(discovery_success_servers)
             )
+            discover_span.set_attribute("status", status)
 
         main_span.set_attribute("total_servers_processed", len(servers_with_tools))
         main_span.set_attribute("servers_discovered", len(servers_needing_discovery))
-        main_span.set_attribute("success", True)
+        main_span.set_attribute("success", status == "success")
+
+        if status == "success":
+            message = "Tools discovery tried for all servers"
+        else:
+            message = (
+                f"{len(discovery_failed_servers)} of "
+                f"{len(servers_needing_discovery)} server(s) failed discovery "
+                f"(per-server timeout: {per_server_timeout}s)"
+            )
 
         # Mask sensitive data in all server configurations
         masked_servers = {}

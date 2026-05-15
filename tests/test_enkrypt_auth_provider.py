@@ -87,7 +87,7 @@ def sample_response(**overrides: Any) -> Dict[str, Any]:
                         "additional_config": {},
                         "block": [],
                     },
-                    "tool_guardrails_config": None,
+                    "server_tools_guardrails_config": None,
                 },
                 "gateway_overrides": {},
             }
@@ -301,15 +301,10 @@ def test_map_response_handles_real_cloud_shape() -> None:
                             "/tmp",
                         ],
                     },
-                    "enable_server_info_validation": True,
                     "input_guardrails_config": {
                         "enabled": True,
                         "guardrail_name": "Updated Guardrail",
                         "block": ["topic_detector", "nsfw", "keyword_detector"],
-                    },
-                    "tool_guardrails_config": {
-                        "enabled": False,
-                        "guardrail_name": "",
                     },
                 },
                 "gateway_overrides": {
@@ -342,12 +337,11 @@ def test_map_response_handles_real_cloud_shape() -> None:
 
     server = out["mcp_config"][0]
     assert server["server_name"] == "my-filesystem-server"
-    assert server["enable_server_info_validation"] is True
 
-    # Cloud returned a partial tool_guardrails_config — missing keys filled
-    # in from _empty_config.
-    tool_policy = server["tool_guardrails_config"]
-    assert tool_policy == {
+    # server_tools_guardrails_config is common-only; if not set in
+    # common_overrides it falls back to the empty-policy template.
+    stg = server["server_tools_guardrails_config"]
+    assert stg == {
         "enabled": False,
         "guardrail_name": "",
         "additional_config": {},
@@ -535,12 +529,12 @@ def test_map_server_common_overrides_apply_when_no_per_server_or_base() -> None:
     still produce a fully-populated policy on the merged server."""
     p = make_provider()
     resp = sample_response()
-    # Simulate the dedup the cloud does: tool_guardrails_config absent
-    # from this server's mcp_config because common_overrides handles it.
-    resp["expanded_servers"][0]["mcp_config"].pop("tool_guardrails_config", None)
+    # Simulate the dedup the cloud does: server_tools_guardrails_config
+    # absent from this server's mcp_config because common_overrides handles it.
+    resp["expanded_servers"][0]["mcp_config"].pop("server_tools_guardrails_config", None)
     resp["expanded_servers"][0]["gateway_overrides"] = {}
     resp["common_overrides"] = {
-        "tool_guardrails_config": {
+        "server_tools_guardrails_config": {
             "enabled": True,
             "guardrail_name": "Org Tool Guardrail",
             "block": ["policy_violation"],
@@ -549,13 +543,12 @@ def test_map_server_common_overrides_apply_when_no_per_server_or_base() -> None:
     out = p._map_response(resp)
     server = out["mcp_config"][0]
     # Missing keys filled from _empty_config template.
-    assert server["tool_guardrails_config"] == {
+    assert server["server_tools_guardrails_config"] == {
         "enabled": True,
         "guardrail_name": "Org Tool Guardrail",
         "additional_config": {},
         "block": ["policy_violation"],
     }
-    assert server["enable_tool_guardrails"] is True
 
 
 def test_map_server_per_server_override_used_when_common_misses_that_key() -> None:
@@ -588,18 +581,22 @@ def test_map_server_per_server_override_used_when_common_misses_that_key() -> No
     assert server["output_guardrails_config"]["guardrail_name"] == "Org Output"
 
 
-def test_map_server_common_overrides_enable_server_info_validation_honours_false() -> None:
-    """The ``enable_server_info_validation`` boolean must use ``is not None``
-    semantics so an explicit False from common_overrides is respected and
-    not coalesced with 'unset'."""
+def test_map_server_common_overrides_server_tools_guardrails_config_disabled() -> None:
+    """When ``common_overrides.server_tools_guardrails_config`` has
+    ``enabled: false``, the merged server must reflect that."""
     p = make_provider()
     resp = sample_response()
-    # Base value would say True; common explicitly turns it off for the gateway.
-    resp["expanded_servers"][0]["mcp_config"]["enable_server_info_validation"] = True
-    resp["common_overrides"] = {"enable_server_info_validation": False}
+    resp["common_overrides"] = {
+        "server_tools_guardrails_config": {
+            "enabled": False,
+            "guardrail_name": "Org Policy",
+        }
+    }
     out = p._map_response(resp)
     server = out["mcp_config"][0]
-    assert server["enable_server_info_validation"] is False
+    stg = server["server_tools_guardrails_config"]
+    assert stg["enabled"] is False
+    assert stg["guardrail_name"] == "Org Policy"
 
 
 def test_map_server_empty_common_overrides_dict_falls_through_to_per_server() -> None:

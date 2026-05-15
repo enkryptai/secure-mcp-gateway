@@ -196,8 +196,29 @@ class SessionPool:
         return self._ttl
 
     def start_reaper(self) -> None:
-        if self._reaper_task is None or self._reaper_task.done():
-            self._reaper_task = asyncio.ensure_future(self._reaper_loop())
+        """Best-effort: schedule the idle-session reaper on the running loop.
+
+        Safe to call from any thread / context:
+        - If a loop is running in this thread, the reaper is scheduled on it.
+        - Otherwise the call is a no-op (the reaper will be lazily started
+          the first time ``acquire()`` runs inside a request, which always
+          has a running loop).
+        """
+        if self._reaper_task is not None and not self._reaper_task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            try:
+                loop = asyncio.get_event_loop_policy().get_event_loop()
+                if not loop.is_running():
+                    loop = None
+            except RuntimeError:
+                loop = None
+        if loop is None:
+            self._reaper_task = None
+            return
+        self._reaper_task = loop.create_task(self._reaper_loop())
 
     async def acquire(
         self,
@@ -211,6 +232,12 @@ class SessionPool:
         If pooling is disabled or no cached session exists, a new session
         is created.  *reused* is ``True`` when an existing session was found.
         """
+        # Lazily ensure the reaper is running. If the pool was constructed
+        # from a thread without an event loop (e.g. config watcher), the
+        # reaper was deferred to here -- the request handler is awaited, so
+        # we are guaranteed a running loop now.
+        if self._reaper_task is None or self._reaper_task.done():
+            self.start_reaper()
         key = (pool_key, server_name)
 
         if self._enabled:
@@ -346,4 +373,42 @@ def get_session_pool() -> SessionPool:
     if _pool is None:
         _pool = SessionPool(ttl_seconds=300.0, enabled=True)
         _pool.start_reaper()
+    return _pool
+
+
+def reset_session_pool(common_config: Optional[Dict[str, Any]] = None) -> SessionPool:
+    """Replace the singleton session pool with a freshly built one.
+
+    Safe to call from any thread (including the config watcher daemon
+    thread, which has no event loop). The old pool's pooled sessions are
+    abandoned: if we have a running loop we schedule a best-effort
+    ``close_all`` on it, otherwise the old pool gets garbage-collected.
+    ``start_reaper`` on the new pool is also best-effort -- if there is no
+    loop yet, the reaper will be started lazily on the first ``acquire()``.
+    """
+    global _pool
+    old_pool = _pool
+
+    if common_config is None:
+        from secure_mcp_gateway.utils import get_common_config
+
+        common_config = get_common_config()
+
+    ttl = common_config.get("session_pool_ttl", 300)
+    enabled = common_config.get("session_pool_enabled", True)
+    _pool = SessionPool(ttl_seconds=float(ttl), enabled=enabled)
+    _pool.start_reaper()
+
+    if old_pool is not None:
+        try:
+            loop = asyncio.get_running_loop()
+            asyncio.ensure_future(old_pool.close_all())
+            logger.info("[SessionPool] reset scheduled close_all on running loop")
+        except RuntimeError:
+            logger.info(
+                "[SessionPool] reset: no running loop in this thread, "
+                "abandoning old pool to GC"
+            )
+        except Exception as e:
+            logger.warning(f"[SessionPool] reset close_all skipped: {e}")
     return _pool

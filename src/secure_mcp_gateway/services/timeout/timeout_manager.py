@@ -32,7 +32,13 @@ class TimeoutConfig:
     guardrail_timeout: int = 1
     auth_timeout: int = 10
     tool_execution_timeout: int = 60
-    discovery_timeout: int = 120  # Increased to 120s to accommodate OAuth flows
+    # NOTE: ``discovery_timeout`` is enforced *per server* by
+    # ``ServerListingService._discover_and_return_servers`` (one
+    # ``asyncio.wait_for`` per ``enkrypt_discover_all_tools`` call) rather
+    # than as a single budget for the whole parallel batch. 180s gives a
+    # cold ``uvx`` / ``npx`` first run (downloading wheels + transitive
+    # native deps on Windows) enough headroom without wedging warm calls.
+    discovery_timeout: int = 180
     cache_timeout: int = 5
     connectivity_timeout: int = 2
     escalation_policies: Dict[str, float] = None
@@ -99,7 +105,7 @@ class TimeoutManager:
         self.config.tool_execution_timeout = timeout_settings.get(
             "tool_execution_timeout", 60
         )
-        self.config.discovery_timeout = timeout_settings.get("discovery_timeout", 120)
+        self.config.discovery_timeout = timeout_settings.get("discovery_timeout", 180)
         self.config.cache_timeout = timeout_settings.get("cache_timeout", 5)
         self.config.connectivity_timeout = timeout_settings.get(
             "connectivity_timeout", 2
@@ -481,6 +487,19 @@ def get_timeout_manager() -> TimeoutManager:
 
 def initialize_timeout_manager(config: Dict[str, Any]) -> TimeoutManager:
     """Initialize the global timeout manager with configuration."""
+    global _timeout_manager
+    _timeout_manager = TimeoutManager(config)
+    return _timeout_manager
+
+
+def reset_timeout_manager(config: Dict[str, Any]) -> TimeoutManager:
+    """Replace the singleton with a freshly constructed manager.
+
+    Used by the hot-reload orchestrator so timeout/escalation settings take
+    effect without restarting the process. Callers that still hold an
+    old reference (e.g. mid-flight requests) will continue to operate on
+    the prior instance until their call completes -- this is intentional.
+    """
     global _timeout_manager
     _timeout_manager = TimeoutManager(config)
     return _timeout_manager

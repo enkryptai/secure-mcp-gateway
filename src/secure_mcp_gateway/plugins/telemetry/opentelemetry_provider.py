@@ -56,7 +56,14 @@ class OpenTelemetryProvider(TelemetryProvider):
         Initialize the OpenTelemetry provider.
 
         Args:
-            config: Provider configuration (optional, can initialize later)
+            config: Provider configuration. ``None`` or empty dict will still
+                trigger ``initialize({})`` so the provider comes up with the
+                built-in defaults (``enabled=True``, OTLP at
+                ``http://localhost:4317``, ``insecure=True``). This guards
+                against fallback paths that instantiate the class without a
+                concrete config — without ``initialize()`` the provider stays
+                in the un-initialized state and later ``create_tracer``/
+                ``create_meter`` calls raise ``RuntimeError``.
         """
         self._initialized = False
         self._logger = None
@@ -70,8 +77,9 @@ class OpenTelemetryProvider(TelemetryProvider):
         # Initialize all metrics as None
         self._initialize_metric_vars()
 
-        if config:
-            self.initialize(config)
+        # Always initialize, even with empty config — initialize() applies its
+        # own defaults for missing keys and is safe to call with ``{}``.
+        self.initialize(config or {})
 
     def _initialize_metric_vars(self):
         """Initialize all metric variables as None."""

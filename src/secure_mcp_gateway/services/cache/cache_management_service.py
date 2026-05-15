@@ -21,8 +21,14 @@ from secure_mcp_gateway.utils import (
     build_log_extra,
     generate_custom_id,
     get_common_config,
+    get_guardrail_api_key,
+    get_guardrail_base_url,
+    get_remote_gateway_name,
+    get_remote_gateway_version,
+    is_debug_log_level,
     logger,
     mask_key,
+    use_remote_mcp_config,
 )
 
 
@@ -41,32 +47,35 @@ class CacheManagementService:
         self.auth_manager = get_auth_config_manager()
         self.cache_service = cache_service
 
-        # Load configuration
-        common_config = get_common_config()
-        # Get API key and base URL from plugin configurations
-        plugins_config = common_config.get("plugins", {})
-        guardrails_config = plugins_config.get("guardrails", {}).get("config", {})
-        auth_config = plugins_config.get("auth", {}).get("config", {})
+    # All settings below resolve from the current common_config on every
+    # access so config edits take effect without restart.
+    @property
+    def GUARDRAIL_API_KEY(self) -> str:
+        return get_guardrail_api_key()
 
-        self.GUARDRAIL_API_KEY = guardrails_config.get(
-            "api_key", auth_config.get("api_key", "null")
-        )
-        self.GUARDRAIL_URL = guardrails_config.get(
-            "base_url", auth_config.get("base_url", "https://api.enkryptai.com")
-        )
-        self.ENKRYPT_USE_REMOTE_MCP_CONFIG = common_config.get(
-            "enkrypt_use_remote_mcp_config", False
-        )
-        self.ENKRYPT_REMOTE_MCP_GATEWAY_NAME = common_config.get(
-            "enkrypt_remote_mcp_gateway_name", "Test MCP Gateway"
-        )
-        self.ENKRYPT_REMOTE_MCP_GATEWAY_VERSION = common_config.get(
-            "enkrypt_remote_mcp_gateway_version", "v1"
-        )
-        self.AUTH_SERVER_VALIDATE_URL = f"{self.GUARDRAIL_URL}/mcp-gateway/get-gateway"
-        self.IS_DEBUG_LOG_LEVEL = (
-            common_config.get("enkrypt_log_level", "INFO").lower() == "debug"
-        )
+    @property
+    def GUARDRAIL_URL(self) -> str:
+        return get_guardrail_base_url()
+
+    @property
+    def ENKRYPT_USE_REMOTE_MCP_CONFIG(self) -> bool:
+        return use_remote_mcp_config()
+
+    @property
+    def ENKRYPT_REMOTE_MCP_GATEWAY_NAME(self) -> str:
+        return get_remote_gateway_name()
+
+    @property
+    def ENKRYPT_REMOTE_MCP_GATEWAY_VERSION(self) -> str:
+        return get_remote_gateway_version()
+
+    @property
+    def AUTH_SERVER_VALIDATE_URL(self) -> str:
+        return f"{self.GUARDRAIL_URL}/mcp-gateway/get-gateway"
+
+    @property
+    def IS_DEBUG_LOG_LEVEL(self) -> bool:
+        return is_debug_log_level()
 
     async def clear_cache(
         self,

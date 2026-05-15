@@ -20,7 +20,7 @@ Quick Start:
 
     # Initialize with Enkrypt
     manager = initialize_guardrail_system(
-        enkrypt_api_key="your-key"
+        config_or_api_key="your-key"
     )
 
     # Register custom provider

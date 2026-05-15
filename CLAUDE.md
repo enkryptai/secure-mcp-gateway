@@ -35,8 +35,11 @@ secure-mcp-gateway/
 │   ├── gateway.py                     # ⭐ Main MCP server (FastMCP)
 │   ├── client.py                      # ⭐ MCP client to actual servers
 │   ├── cli.py                         # ⭐ CLI interface (huge file)
-│   ├── api_server.py                  # FastAPI REST API server
+│   ├── api_server.py                  # FastAPI REST API server (port 8001)
 │   ├── api_routes.py                  # Additional API routes
+│   ├── api_cache_routes.py            # REST cache flush endpoints (port 8001)
+│   ├── api_health_routes.py           # REST health endpoints (port 8001)
+│   ├── gateway_cache_routes.py        # MCP gateway cache flush endpoints (port 8000)
 │   │
 │   ├── error_handling.py              # Standardized error handling
 │   ├── exceptions.py                  # Custom exception classes
@@ -299,7 +302,7 @@ get_id_from_key(cache_client, gateway_key)
       "guardrail_timeout": 15,
       "auth_timeout": 10,
       "tool_execution_timeout": 60,
-      "discovery_timeout": 20,
+      "discovery_timeout": 180,
       "cache_timeout": 5,
       "connectivity_timeout": 2,
       "escalation_policies": {
@@ -341,7 +344,6 @@ get_id_from_key(cache_client, gateway_key)
             "args": ["PATH_TO_ECHO_MCP"]
           },
           "tools": {},
-          "enable_tool_guardrails": true,
           "input_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
@@ -614,7 +616,7 @@ class TimeoutManager:
 
 - `tool_execution_timeout`: 60s
 
-- `discovery_timeout`: 20s
+- `discovery_timeout`: 180s (per server, applied via `asyncio.wait_for` so one slow server doesn't sink the rest)
 
 - `cache_timeout`: 5s
 
@@ -895,6 +897,86 @@ DEFAULT_COMMON_CONFIG = {
                                   └────────────────────┘
 
 ```
+
+---
+
+## 🔁 Zero-Restart Hot-Reload
+
+Edits to `enkrypt_mcp_config.json` take effect on the **next request** without restarting the gateway process. There are two trigger paths:
+
+1. **Automatic** — A daemon thread (`config_watcher.py`) polls the file mtime every `enkrypt_config_watcher_poll_seconds` (default 2s). On change it calls `reload.trigger_full_reload()`.
+2. **Manual (REST API process, port 8001)** — `POST http://localhost:8001/api/v1/cache/flush-gateway-config` (in `api_cache_routes.py`) calls `trigger_full_reload`. Requires `apikey: <admin_apikey>` header.
+3. **Manual (MCP gateway process, port 8000)** — `POST http://localhost:8000/api/v1/cache/flush-gateway-config` (in `gateway_cache_routes.py`, mounted via `FastMCP.custom_route`) calls the same orchestrator. Same auth, same payload. Mount it on the gateway as well because the REST API and the MCP gateway are **separate processes** with **separate in-memory caches** — flushing one does not flush the other.
+
+Both endpoints return the full `trigger_full_reload` summary including `auth_reloaded` (which means the `EnkryptAuthProvider` instance was rebuilt and its cloud-config TTL cache is now empty). A companion `GET /api/v1/cache/last-reload` is exposed on both ports for inspecting when the last in-process reload happened.
+
+### **Orchestration (`reload.py:trigger_full_reload`)**
+
+Under a single `threading.Lock`, in order:
+
+1. `utils.clear_config_cache()` — drops the file-level mtime cache
+2. `get_common_config()` — reads the fresh dict
+3. `AuthConfigManager.reload(config)` — unregisters provider, clears sessions, re-runs `PluginLoader`
+4. `GuardrailConfigManager.reload(config)` — rebuilds registry + factory
+5. `TelemetryConfigManager.reload(config)` — re-initializes the active provider (preserves in-flight tracer/logger objects to avoid dropping trace IDs)
+6. `reset_timeout_manager(config)` — singleton swap
+7. `reset_session_pool(config)` — singleton swap; old pool's `close_all()` is scheduled best-effort
+8. `flush_all_gateway_config_cache(include_tool_cache=False)` — drops per-gateway mapped configs from both local and Redis
+
+### **Layers fixed (the 6 things that were caching config)**
+
+| # | Layer | Where | Strategy |
+|---|-------|-------|----------|
+| L1 | File mtime cache | `utils._config_cache` | Already worked; now also cleared on flush |
+| L2 | Cloud-auth cache | `EnkryptAuthProvider._cache` | TTL-driven, dropped on `AuthConfigManager.reload` |
+| L3 | Gateway-config cache | `client.local_cache` / Redis | Lazy TTL read on every write + jitter; bulk flush via `flush_all_gateway_config_cache` |
+| L4 | Authenticated sessions | `AuthConfigManager.sessions` | New `created_at`-based TTL check evicts on next use; cleared on reload |
+| L5 | Module-level globals | `gateway.py`, `client.py`, `cache_service.py` | Replaced with ~14 lazy accessors in `utils.py` (`get_guardrail_api_key()`, `is_debug_log_level()`, `use_external_cache()`, ...) |
+| L6 | Provider / manager instances | Auth, Guardrails, Telemetry, Timeout, SessionPool | New `reload()` / `reset_*()` methods rebuild them in place |
+
+### **Relevant config**
+
+```json
+{
+  "common_mcp_gateway_config": {
+    "enkrypt_gateway_cache_expiration_minutes": 5,
+    "enkrypt_gateway_cache_expiration": 24,
+    "enkrypt_config_watcher_poll_seconds": 2.0
+  }
+}
+```
+
+- `enkrypt_gateway_cache_expiration_minutes` wins over `enkrypt_gateway_cache_expiration` (hours) when both are set. Both go through `utils.get_gateway_cache_ttl_seconds()` with `float()` casting so sub-hour values (e.g. `0.0833` = 5min) no longer silently truncate to 0.
+- `enkrypt_config_watcher_poll_seconds <= 0` disables the watcher (manual flush API still works).
+
+### **Settings still requiring restart**
+
+| Setting | Reason |
+|---------|--------|
+| `0.0.0.0:8000` listen port | Socket bound once at FastMCP startup |
+| `enkrypt_mcp_use_external_cache` toggle | In-memory ↔ Redis swap loses in-flight ops |
+| `enkrypt_cache_host` / `enkrypt_cache_port` | Connection pool rebuild risks dropping pipelines |
+| `plugins.telemetry.config.url` / `enabled` | OTel global TracerProvider / MeterProvider can only be set once per process |
+
+### **Important code locations**
+
+- Orchestrator: [reload.py](src/secure_mcp_gateway/reload.py)
+- File watcher: [config_watcher.py](src/secure_mcp_gateway/config_watcher.py)
+- REST API endpoint (port 8001): [api_cache_routes.py](src/secure_mcp_gateway/api_cache_routes.py)
+- MCP gateway endpoint (port 8000): [gateway_cache_routes.py](src/secure_mcp_gateway/gateway_cache_routes.py) — registered onto `FastMCP` in [gateway.py](src/secure_mcp_gateway/gateway.py)
+- Lazy accessors: [utils.py](src/secure_mcp_gateway/utils.py) (`get_log_level`, `is_debug_log_level`, `get_guardrail_api_key`, `get_guardrail_base_url`, `use_remote_mcp_config`, `get_remote_gateway_name/version`, `async_input/output_guardrails_enabled`, `is_telemetry_enabled`, `get_telemetry_endpoint`, `get_tool_cache_ttl_hours`, `get_gateway_cache_ttl_seconds`, `get_config_watcher_poll_seconds`, `use_external_cache`, `get_cache_host/port/db/password`)
+- Bulk flush: `client.flush_all_gateway_config_cache()` and `services.cache.cache_service.flush_all_gateway_config_cache()`
+- Manager `reload()` methods: [plugins/auth/config_manager.py](src/secure_mcp_gateway/plugins/auth/config_manager.py), [plugins/guardrails/config_manager.py](src/secure_mcp_gateway/plugins/guardrails/config_manager.py), [plugins/telemetry/config_manager.py](src/secure_mcp_gateway/plugins/telemetry/config_manager.py)
+- Singleton resets: `services/timeout/timeout_manager.py:reset_timeout_manager`, `services/session/session_pool.py:reset_session_pool`
+
+### **Tests**
+
+[tests/test_hot_reload.py](tests/test_hot_reload.py) covers:
+
+- mtime-based hot-reload of a single setting
+- Full reload rebuilds providers with new credentials (key rotation)
+- Session expires after gateway cache TTL
+- Concurrent `flush_all_gateway_config_cache()` does not corrupt the registry
 
 ---
 

@@ -180,22 +180,190 @@ def get_common_config(print_debug=False):
 
         common_config = config.get("common_mcp_gateway_config", {})
         plugins_config = config.get("plugins", {})
+        enkrypt_config = config.get("enkrypt_config", {})
         # Merge with defaults to ensure all required fields exist
         _config_cache = {
             **DEFAULT_COMMON_CONFIG,
             **common_config,
             "plugins": plugins_config,
+            "enkrypt_config": enkrypt_config,
         }
         return _config_cache
 
 
 def clear_config_cache():
     """Clear the config cache to force reload on next get_common_config() call."""
-    global _config_cache, _config_mtime, _config_path_cached
+    global _config_cache, _config_mtime, _config_path_cached, IS_TELEMETRY_ENABLED
     with _config_lock:
         _config_cache = {}
         _config_mtime = 0
         _config_path_cached = None
+    IS_TELEMETRY_ENABLED = None
+
+
+def get_active_config_path() -> str:
+    """Return the config file path currently in use (docker-aware)."""
+    return DOCKER_CONFIG_PATH if is_docker() else CONFIG_PATH
+
+
+# ---------------------------------------------------------------------------
+# Lazy config accessors
+#
+# These all read get_common_config() on every call so the underlying mtime-
+# based hot-reload picks up file changes without restart. Avoid storing the
+# returned values in module-level globals.
+# ---------------------------------------------------------------------------
+
+
+def _enkrypt_cfg() -> dict:
+    return get_common_config().get("enkrypt_config", {}) or {}
+
+
+def _plugin_cfg(plugin: str) -> dict:
+    return (
+        get_common_config().get("plugins", {}).get(plugin, {}).get("config", {})
+        or {}
+    )
+
+
+def get_log_level() -> str:
+    return get_common_config().get("enkrypt_log_level", "INFO").lower()
+
+
+def is_debug_log_level() -> bool:
+    return get_log_level() == "debug"
+
+
+def get_fastmcp_log_level() -> str:
+    return get_log_level().upper()
+
+
+def get_guardrail_base_url() -> str:
+    return (
+        _plugin_cfg("guardrails").get("base_url")
+        or _enkrypt_cfg().get("base_url")
+        or _plugin_cfg("auth").get("base_url")
+        or "https://api.enkryptai.com"
+    )
+
+
+def get_guardrail_api_key() -> str:
+    return (
+        _plugin_cfg("guardrails").get("api_key")
+        or _enkrypt_cfg().get("api_key")
+        or _plugin_cfg("auth").get("api_key")
+        or "null"
+    )
+
+
+def use_remote_mcp_config() -> bool:
+    """DEPRECATED. Reads ``common_mcp_gateway_config.enkrypt_use_remote_mcp_config``.
+
+    Only meaningful for the legacy ``LocalApiKeyProvider`` "fetch config
+    from Enkrypt cloud" fallback path. New deployments should switch to
+    ``plugins.auth.provider = "enkrypt"`` instead, which has its own
+    cloud-config flow that does not consult this flag.
+
+    Defaults to ``False`` when the key is absent (which is now the case
+    for newly-generated configs), so this accessor stays safe to call
+    from any code path.
+    """
+    return bool(get_common_config().get("enkrypt_use_remote_mcp_config", False))
+
+
+def get_remote_gateway_name() -> str:
+    """DEPRECATED. Reads ``common_mcp_gateway_config.enkrypt_remote_mcp_gateway_name``.
+
+    Only consulted by the legacy ``LocalApiKeyProvider``'s remote-fetch
+    path and the legacy ``cache_management_service._refresh_remote_config``
+    flow. The canonical "what gateway name should we identify ourselves
+    as" is ``plugins.auth.config.gateway_name`` for the
+    ``EnkryptAuthProvider``.
+    """
+    return get_common_config().get(
+        "enkrypt_remote_mcp_gateway_name", "Test MCP Gateway"
+    )
+
+
+def get_remote_gateway_version() -> str:
+    """DEPRECATED. Reads ``common_mcp_gateway_config.enkrypt_remote_mcp_gateway_version``.
+
+    See :func:`get_remote_gateway_name` — same caveats. The canonical
+    location is ``plugins.auth.config.gateway_version``.
+    """
+    return get_common_config().get("enkrypt_remote_mcp_gateway_version", "v1")
+
+
+def async_input_guardrails_enabled() -> bool:
+    return bool(
+        get_common_config().get("enkrypt_async_input_guardrails_enabled", False)
+    )
+
+
+def async_output_guardrails_enabled() -> bool:
+    return bool(
+        get_common_config().get("enkrypt_async_output_guardrails_enabled", False)
+    )
+
+
+def get_telemetry_endpoint() -> str:
+    return _plugin_cfg("telemetry").get("url", "http://localhost:4317")
+
+
+def get_tool_cache_ttl_hours() -> float:
+    return float(get_common_config().get("enkrypt_tool_cache_expiration", 4))
+
+
+def get_gateway_cache_ttl_seconds() -> float:
+    """Resolve gateway-config cache TTL with minutes-first preference.
+
+    Order: enkrypt_gateway_cache_expiration_minutes (minutes) ->
+    enkrypt_gateway_cache_expiration (hours) -> default 300s (5 min).
+    """
+    cfg = get_common_config()
+    minutes = cfg.get("enkrypt_gateway_cache_expiration_minutes")
+    if minutes is not None:
+        try:
+            return float(minutes) * 60.0
+        except (TypeError, ValueError):
+            pass
+    hours = cfg.get("enkrypt_gateway_cache_expiration")
+    if hours is not None:
+        try:
+            return float(hours) * 3600.0
+        except (TypeError, ValueError):
+            pass
+    return 300.0
+
+
+def get_config_watcher_poll_seconds() -> float:
+    """Polling interval for the config-file watcher. 0 disables the watcher."""
+    try:
+        return float(
+            get_common_config().get("enkrypt_config_watcher_poll_seconds", 2.0)
+        )
+    except (TypeError, ValueError):
+        return 2.0
+
+
+def use_external_cache() -> bool:
+    return bool(get_common_config().get("enkrypt_mcp_use_external_cache", False))
+
+
+def get_cache_host() -> str:
+    return get_common_config().get("enkrypt_cache_host", "localhost")
+
+
+def get_cache_port() -> int:
+    return int(get_common_config().get("enkrypt_cache_port", 6379))
+
+
+def get_cache_db() -> int:
+    return int(get_common_config().get("enkrypt_cache_db", 0))
+
+
+def get_cache_password():
+    return get_common_config().get("enkrypt_cache_password", None)
 
 
 def is_telemetry_enabled():

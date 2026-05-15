@@ -165,8 +165,6 @@ class ServerAddRequest(BaseModel):
     description: str = ""
     input_guardrails_config: dict[str, Any] | None = None
     output_guardrails_config: dict[str, Any] | None = None
-    tool_guardrails_config: dict[str, Any] | None = None
-    enable_server_info_validation: bool | None = None
     sandbox: dict[str, Any] | None = None
 
 
@@ -179,8 +177,6 @@ class ServerUpdateRequest(BaseModel):
     sandbox: dict[str, Any] | None = None
     input_guardrails_config: dict[str, Any] | None = None
     output_guardrails_config: dict[str, Any] | None = None
-    tool_guardrails_config: dict[str, Any] | None = None
-    enable_server_info_validation: bool | None = None
 
 
 class GuardrailsUpdateRequest(BaseModel):
@@ -295,7 +291,19 @@ class TelemetryConfigRequest(BaseModel):
 
 
 def get_api_key(apikey: str | None = Header(None)) -> str:
-    """Extract and validate API key from the 'apikey' header (cloud-compatible)."""
+    """Extract and validate API key from the 'apikey' header (cloud-compatible).
+
+    Delegates the actual key-resolution policy to
+    :func:`secure_mcp_gateway.auth_policy.resolve_admin_keys` so this and
+    ``api_models.get_api_key`` stay in lock-step. See that helper for the
+    provider-aware policy (Enkrypt auth provider also accepts the cloud
+    ``api_key``; other providers require ``admin_apikey``).
+    """
+    from secure_mcp_gateway.auth_policy import (
+        describe_missing_admin_key_hint,
+        resolve_admin_keys,
+    )
+
     context = ErrorContext(operation="api_key_validation")
 
     if not apikey:
@@ -310,16 +318,22 @@ def get_api_key(apikey: str | None = Header(None)) -> str:
             detail=create_error_response(error),
         )
 
-    # Validate admin API key exists in config
     try:
         with open(PICKED_CONFIG_PATH) as f:
             config = json.load(f)
 
-        # Check if admin_apikey exists and matches
-        if "admin_apikey" not in config:
+        acceptable = resolve_admin_keys(config)
+        if not acceptable:
+            provider = (
+                (config.get("plugins") or {}).get("auth", {}).get("provider")
+                or "local_apikey"
+            )
             error = create_auth_error(
                 code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-                message="Admin API key not configured. Please regenerate configuration.",
+                message=(
+                    "Admin API key not configured. "
+                    + describe_missing_admin_key_hint(provider)
+                ),
                 context=context,
             )
             error_logger.log_error(error)
@@ -328,7 +342,7 @@ def get_api_key(apikey: str | None = Header(None)) -> str:
                 detail=create_error_response(error),
             )
 
-        if apikey != config["admin_apikey"]:
+        if apikey not in acceptable:
             error = create_auth_error(
                 code=ErrorCode.AUTH_INVALID_CREDENTIALS,
                 message="Invalid API key.",
@@ -781,10 +795,6 @@ async def add_server_to_config_endpoint(
                 json.dumps(request.output_guardrails_config)
                 if request.output_guardrails_config
                 else None,
-                tool_guardrails=json.dumps(request.tool_guardrails_config)
-                if request.tool_guardrails_config
-                else None,
-                enable_server_info_validation=request.enable_server_info_validation,
             )
 
         if request.sandbox:
@@ -839,10 +849,6 @@ async def update_server_in_config_endpoint(
                 output_guardrails=json.dumps(request.output_guardrails_config)
                 if request.output_guardrails_config
                 else None,
-                tool_guardrails=json.dumps(request.tool_guardrails_config)
-                if request.tool_guardrails_config
-                else None,
-                enable_server_info_validation=request.enable_server_info_validation,
             )
 
         if request.sandbox:
@@ -1121,7 +1127,7 @@ async def set_enkrypt_api_key_endpoint(
     request: EnkryptApiKeyRequest,
     api_key: str = Depends(get_api_key),
 ):
-    """Set Enkrypt API key in guardrails configuration."""
+    """Set Enkrypt API key in the centralized enkrypt_config."""
     _result, error = run_cli_function_with_error_handling(
         set_enkrypt_api_key,
         PICKED_CONFIG_PATH,
@@ -1144,7 +1150,7 @@ async def set_enkrypt_api_key_endpoint(
 async def get_enkrypt_api_key_endpoint(
     api_key: str = Depends(get_api_key),
 ):
-    """Get Enkrypt API key from guardrails configuration."""
+    """Get Enkrypt API key from the centralized enkrypt_config."""
     result, error = run_cli_function_with_error_handling(
         get_enkrypt_api_key,
         PICKED_CONFIG_PATH,
@@ -1213,6 +1219,13 @@ try:
     app.include_router(health_router)
 except Exception as e:
     logger.error(f"[api_server] Skipping health routes due to import error: {e}")
+
+try:
+    from secure_mcp_gateway.api_cache_routes import cache_router
+
+    app.include_router(cache_router)
+except Exception as e:
+    logger.error(f"[api_server] Skipping cache routes due to import error: {e}")
 
 # =============================================================================
 # MAIN FUNCTION

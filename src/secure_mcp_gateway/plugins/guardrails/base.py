@@ -77,7 +77,7 @@ class ServerRegistrationRequest:
     server_command: str | None = None
     server_metadata: dict[str, Any] | None = None
     context: dict[str, Any] | None = None
-    tool_guardrails_config: dict[str, Any] | None = None
+    server_tools_guardrails_config: dict[str, Any] | None = None
 
 
 @dataclass
@@ -90,18 +90,18 @@ class ToolRegistrationRequest:
       tool list. Uses the *policy-driven* batch endpoint
       (``X-Enkrypt-Guardrail`` + ``X-Enkrypt-Mode: prompt`` headers, no inline
       detectors in the payload). The guardrail policy name is read from
-      ``tool_guardrails_config.guardrail_name``.
+      ``server_tools_guardrails_config.guardrail_name``.
     - ``"server_description"`` — validating a server's static/dynamic
-      description text (wrapped as a single fake tool by the caller). Uses
-      the inline-detectors variant of the batch endpoint, with detectors
-      built from ``tool_guardrails_config.block``.
+      description text (wrapped as a single fake tool by the caller). Also
+      uses the policy-driven batch endpoint with the same guardrail name
+      from ``server_tools_guardrails_config.guardrail_name``.
     """
 
     server_name: str
     tools: list[dict[str, Any]]  # List of tool schemas with name, description, etc.
     validation_mode: str = "filter"  # "filter" or "block_all"
     context: dict[str, Any] | None = None
-    tool_guardrails_config: dict[str, Any] | None = None
+    server_tools_guardrails_config: dict[str, Any] | None = None
     kind: str = "tool_list"  # "tool_list" | "server_description"
 
 

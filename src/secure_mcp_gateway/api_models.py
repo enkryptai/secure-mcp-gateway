@@ -208,25 +208,40 @@ class MCPToolRequest(MCPServerRequest):
 
 
 def get_api_key(apikey: Optional[str] = Header(None)) -> str:
-    """Extract and validate API key from the 'apikey' header (cloud-compatible)."""
+    """Extract and validate API key from the 'apikey' header (cloud-compatible).
+
+    Policy is delegated to :func:`secure_mcp_gateway.auth_policy.resolve_admin_keys`
+    so this dependency and ``api_server.get_api_key`` stay in lock-step.
+    """
+    from secure_mcp_gateway.auth_policy import (
+        describe_missing_admin_key_hint,
+        resolve_admin_keys,
+    )
+
     if not apikey:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="apikey header required",
         )
 
-    # Validate admin API key exists in config
     try:
         config = load_config(PICKED_CONFIG_PATH)
+        acceptable = resolve_admin_keys(config)
 
-        # Check if admin_apikey exists and matches
-        if "admin_apikey" not in config:
+        if not acceptable:
+            provider = (
+                (config.get("plugins") or {}).get("auth", {}).get("provider")
+                or "local_apikey"
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Admin API key not configured. Please regenerate configuration.",
+                detail=(
+                    "Admin API key not configured. "
+                    + describe_missing_admin_key_hint(provider)
+                ),
             )
 
-        if apikey != config["admin_apikey"]:
+        if apikey not in acceptable:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid API key.",

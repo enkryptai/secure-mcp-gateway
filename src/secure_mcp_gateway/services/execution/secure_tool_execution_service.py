@@ -32,10 +32,13 @@ from secure_mcp_gateway.services.session.session_pool import get_session_pool
 telemetry_manager = get_telemetry_config_manager()
 tracer = telemetry_manager.get_tracer()
 from secure_mcp_gateway.utils import (
+    async_input_guardrails_enabled,
+    async_output_guardrails_enabled,
     build_log_extra,
     generate_custom_id,
     get_common_config,
     get_server_info_by_name,
+    is_debug_log_level,
     logger,
     mask_key,
 )
@@ -55,19 +58,27 @@ class SecureToolExecutionService:
         self.guardrail_manager = get_guardrail_config_manager()
         self.tool_execution_service = ToolExecutionService()
 
-        # Load constants from common config
-        common_config = get_common_config()
-        self.ADHERENCE_THRESHOLD = common_config.get("adherence_threshold", 0.8)
-        self.ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED = common_config.get(
-            "enkrypt_async_input_guardrails_enabled", True
-        )
-        self.ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED = common_config.get(
-            "enkrypt_async_output_guardrails_enabled", True
-        )
-        self.IS_DEBUG_LOG_LEVEL = (
-            common_config.get("enkrypt_log_level", "INFO").lower() == "debug"
-        )
-        self.RELEVANCY_THRESHOLD = common_config.get("relevancy_threshold", 0.7)
+    # Settings below resolve from common_config on every access so config
+    # edits take effect without restart.
+    @property
+    def ADHERENCE_THRESHOLD(self) -> float:
+        return float(get_common_config().get("adherence_threshold", 0.8))
+
+    @property
+    def ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED(self) -> bool:
+        return async_input_guardrails_enabled()
+
+    @property
+    def ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED(self) -> bool:
+        return async_output_guardrails_enabled()
+
+    @property
+    def IS_DEBUG_LOG_LEVEL(self) -> bool:
+        return is_debug_log_level()
+
+    @property
+    def RELEVANCY_THRESHOLD(self) -> float:
+        return float(get_common_config().get("relevancy_threshold", 0.7))
 
     async def execute_secure_tools(
         self,
