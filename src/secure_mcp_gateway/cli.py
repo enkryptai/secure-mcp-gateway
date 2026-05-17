@@ -84,18 +84,46 @@ if not _delegating_to_docker:
     print("--------------------------------\n\nOUTPUT:\n\n", file=sys.stderr)
 
 DOCKER_COMMAND = "docker"
-DOCKER_ARGS = [
-    "run",
-    "--rm",
-    "-i",
-    "-e",
-    "MCP_TRANSPORT=stdio",
-    "-v",
-    f"{HOST_ENKRYPT_HOME}/docker:/app/.enkrypt/docker",
-    "-e",
-    "ENKRYPT_GATEWAY_KEY",
-    "secure-mcp-gateway",
-]
+
+
+def build_docker_args(env_var_names):
+    """Build the ``docker run`` args list for an MCP-stdio install.
+
+    ``env_var_names`` is the iterable of env-var KEYS (not values) that the
+    MCP client (Cursor / Claude Desktop) will set when it spawns the
+    ``docker`` process. Each one needs a matching ``-e <NAME>`` flag here so
+    Docker forwards it across the container boundary -- otherwise the
+    variable is set in the docker process's parent env but never reaches the
+    gateway inside the container.
+
+    Provider-aware: ``local_apikey`` installs pass three keys
+    (``ENKRYPT_GATEWAY_KEY`` + ``ENKRYPT_PROJECT_ID`` + ``ENKRYPT_USER_ID``)
+    while ``enkrypt`` cloud installs pass one (``ENKRYPT_APIKEY``). Driving
+    the flag list off the env dict keeps the two in lockstep so cloud-mode
+    Docker installs actually authenticate (previously the hard-coded
+    ``-e ENKRYPT_GATEWAY_KEY`` flag dropped ``ENKRYPT_APIKEY`` on the
+    floor and the container saw no credential at all).
+    """
+    args = [
+        "run",
+        "--rm",
+        "-i",
+        "-e",
+        "MCP_TRANSPORT=stdio",
+        "-v",
+        f"{HOST_ENKRYPT_HOME}/docker:/app/.enkrypt/docker",
+    ]
+    for name in env_var_names:
+        args.extend(["-e", name])
+    args.append("secure-mcp-gateway")
+    return args
+
+
+# Backwards-compat: legacy shape that always forwarded the local_apikey
+# gateway key. Kept so external callers importing ``DOCKER_ARGS`` keep
+# working; new code should use ``build_docker_args(env.keys())`` so the
+# args list mirrors the provider's env shape.
+DOCKER_ARGS = build_docker_args(["ENKRYPT_GATEWAY_KEY"])
 
 # =============================================================================
 # UTILITY FUNCTIONS
@@ -3015,7 +3043,24 @@ def run_via_docker(args, original_argv):
     # Ensure volume source directory exists so Docker doesn't create it as root
     os.makedirs(docker_volume_src, exist_ok=True)
 
-    image = args.docker_image or "enkryptai/secure-mcp-gateway"
+    # Default to the image tag matching this CLI's package version so the
+    # in-container CLI always understands the same flags as the host CLI
+    # (e.g. `generate-config --provider enkrypt` was added in 2.2.0).
+    # Users can override with --docker-image to pin a different tag, use
+    # a locally-built image, or follow :latest.
+    image = args.docker_image or f"enkryptai/secure-mcp-gateway:{__version__}"
+
+    # If the caller pinned a tag explicitly via --docker-image, warn (but do
+    # not block) when it doesn't include the host CLI version, because
+    # version-skew between host and container is the most common cause of
+    # "unrecognized arguments" errors inside the container.
+    if args.docker_image and __version__ not in args.docker_image:
+        print(
+            f"WARN: --docker-image={args.docker_image!r} does not contain the "
+            f"host CLI version v{__version__}. If the in-container CLI is "
+            f"older, newer flags (e.g. 'generate-config --provider enkrypt' "
+            f"added in v2.2.0) will fail with 'unrecognized arguments'."
+        )
 
     # Strip --docker and --docker-image from original args so the command
     # inside the container receives only the actual CLI arguments.
@@ -3105,7 +3150,13 @@ def main():
         "--docker-image",
         type=str,
         default=None,
-        help="Docker image to use with --docker (default: enkryptai/secure-mcp-gateway)",
+        help=(
+            "Docker image to use with --docker. "
+            f"Default: enkryptai/secure-mcp-gateway:{__version__} "
+            "(pinned to the host CLI's package version so flags stay in sync). "
+            "Override to use a locally-built image (e.g. 'secure-mcp-gateway') "
+            "or a different published tag (e.g. 'enkryptai/secure-mcp-gateway:latest')."
+        ),
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -4558,7 +4609,7 @@ def main():
 
                 claude_desktop_config["mcpServers"]["Enkrypt Secure MCP Gateway"] = {
                     "command": DOCKER_COMMAND,
-                    "args": DOCKER_ARGS,
+                    "args": build_docker_args(env.keys()),
                     "env": env,
                 }
                 with open(claude_desktop_config_path, "w") as f:
@@ -4649,7 +4700,7 @@ def main():
             cursor_config_path = os.path.join(base_path, ".cursor", "mcp.json")
 
             if is_docker_running:
-                args_list = DOCKER_ARGS
+                args_list = build_docker_args(env.keys())
                 command = DOCKER_COMMAND
             else:
                 command = "mcp"

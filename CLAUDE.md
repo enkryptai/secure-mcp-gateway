@@ -201,6 +201,15 @@ secure-mcp-gateway/
 
 - **System Operations**: backup, restore, reset, health-check, version
 
+- **Config Generation**: `generate-config [--overwrite] [--provider {local_apikey,enkrypt}]`
+  - `local_apikey` (default) → full local schema (`mcp_configs`/`projects`/`users`/`apikeys` + sample echo server, root `admin_apikey`)
+  - `enkrypt` → minimal cloud-backed schema from `example_enkrypt_cloud_config.json` (no `admin_apikey`, no servers/projects/users blocks — cloud owns those)
+
+**Docker passthrough wrapper** (`--docker` global flag, [cli.py `_run_in_docker`](cli.py)):
+- Auto-detects host OS, sets `HOST_OS` and `HOST_ENKRYPT_HOME`, mounts `~/.enkrypt/docker` and (for `install`) `~/.cursor` + Claude config dir into the container
+- **Image tag is pinned to `__version__` by default** (e.g. `enkryptai/secure-mcp-gateway:2.2.0`) to prevent host-vs-container flag-skew. Override with `--docker-image`; the wrapper emits a `WARN:` if the override doesn't contain the host version
+- **`build_docker_args(env_var_names)` helper** — provider-aware Docker run-args generator used by `install_cursor` / `install_claude_desktop` / `install_claude_code` to emit one `-e VAR_NAME` flag per provider env var (3 for `local_apikey`: `ENKRYPT_GATEWAY_KEY`/`ENKRYPT_PROJECT_ID`/`ENKRYPT_USER_ID`, 1 for `enkrypt`: `ENKRYPT_APIKEY`). Replaces the old hard-coded `DOCKER_ARGS` constant; backed by tests in `tests/test_cli_install.py`
+
 #### **REST API Server** ([api_server.py:1049](api_server.py), [api_routes.py:716](api_routes.py))
 
 - **Framework**: FastAPI

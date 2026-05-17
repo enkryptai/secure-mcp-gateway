@@ -287,6 +287,12 @@ If you want to protect your MCPs with Enkrypt Guardrails, you need to do the fol
   secure-mcp-gateway generate-config
   ```
 
+> **⚠️ Re-running on an existing config?** `generate-config` refuses to clobber an existing file by default — it exits with `INFO: Config file already exists at <path>. ... use --overwrite flag.` Add `--overwrite` to regenerate (a timestamped `.bkp.<YYYYMMDD_HHMMSS>` backup is written next to the original first). The flag also works with `--provider enkrypt` below.
+>
+> ```bash
+> secure-mcp-gateway generate-config --overwrite
+> ```
+
 ##### Choosing an auth provider at generation time
 
 The default command emits the full **local-apikey** schema — a sample echo server, a default project, a user, and an auto-generated gateway API key — everything you need to boot offline. If you instead want the gateway to source its servers/projects/users from **Enkrypt cloud**, generate the minimal cloud-backed config:
@@ -1431,9 +1437,20 @@ docker build -t secure-mcp-gateway .
 
 ```
 
+> **Tag your build so the `--docker` wrapper finds it.** Starting in v2.2.0 the `secure-mcp-gateway --docker ...` wrapper pulls `enkryptai/secure-mcp-gateway:<your-host-CLI-version>` by default (e.g. `enkryptai/secure-mcp-gateway:2.2.0`). Until that exact tag is published on Docker Hub, every `--docker` command fails with `Unable to find image ... not found`. Fix it once by tagging your local build to match (find your version with `secure-mcp-gateway --version`):
+>
+> ```bash
+> # Replace 2.2.0 with the output of `secure-mcp-gateway --version`
+> docker tag secure-mcp-gateway:latest enkryptai/secure-mcp-gateway:2.2.0
+> ```
+>
+> After this one command, every `secure-mcp-gateway --docker generate-config`, `--docker install --client X`, `--docker config list`, etc. in the rest of §4.3 works without needing `--docker-image` overrides.
+
 <details>
 <summary><strong>🖨️ Example output</strong></summary>
 <br>
+
+> Truncated for readability — actual output includes a long pip dependency dump under step `[18/18] RUN pip3 install --break-system-packages .`. First-time builds typically take **3–5 minutes** depending on network/CPU; subsequent rebuilds are mostly cached and complete in under 30s.
 
 ```bash
 [+] Building 72.9s (20/20) FINISHED                                                                                                                                          docker:default
@@ -1469,6 +1486,14 @@ docker build -t secure-mcp-gateway .
  => => naming to docker.io/library/secure-mcp-gateway:latest                                                                                                                           0.0s
  => => unpacking to docker.io/library/secure-mcp-gateway:latest
 
+
+Verify the image landed:
+
+```bash
+docker images secure-mcp-gateway
+
+# REPOSITORY            TAG       IMAGE ID       CREATED          SIZE
+# secure-mcp-gateway    latest    92d8c6b5714d   2 seconds ago    1.81GB
 ```
 
 </details>
@@ -1482,8 +1507,45 @@ docker build -t secure-mcp-gateway .
 > secure-mcp-gateway --docker generate-config
 > ```
 
+##### Choosing an auth provider at generation time
+
+Identical to the local install — see [§4.1.2 → "Choosing an auth provider at generation time"](#412-run-the-generate-command) for the full explanation. In short:
+
+- **Default (omit `--provider`)** → full **`local_apikey`** schema with a sample echo server, project, user, gateway API key, and root-level `admin_apikey`. Boots offline, no cloud dependency.
+- **`--provider enkrypt`** → minimal cloud-backed schema. After generating, edit the file and set `enkrypt_config.api_key` (your Enkrypt cloud apikey) and `plugins.auth.config.gateway_name` (the saved name of the gateway you created in the Enkrypt console). The cloud owns servers/projects/users/apikeys, so those blocks are absent.
+
+**Copy-paste commands** (all OSes, using the `--docker` shorthand — works in bash, zsh, CMD, and PowerShell since the wrapper handles per-OS quoting internally):
+
+```bash
+# 1. Default — local_apikey (offline, no cloud dependency)
+secure-mcp-gateway --docker generate-config
+
+# 2. Cloud-backed — enkrypt provider (requires container CLI >= v2.2.0; see warning below)
+secure-mcp-gateway --docker generate-config --provider enkrypt
+
+# 3. Re-generate over an existing file (adds timestamped .bkp.YYYYMMDD_HHMMSS next to the original)
+secure-mcp-gateway --docker generate-config --overwrite
+secure-mcp-gateway --docker generate-config --provider enkrypt --overwrite
+
+# 4. If the default image tag isn't on Docker Hub yet, point at a locally-built image:
+#    docker build -t secure-mcp-gateway .   # one-time, from this repo root
+secure-mcp-gateway --docker --docker-image secure-mcp-gateway generate-config --provider enkrypt --overwrite
+```
+
+After the command succeeds, the file lands at:
+- macOS/Linux: `~/.enkrypt/docker/enkrypt_mcp_config.json`
+- Windows: `%USERPROFILE%\.enkrypt\docker\enkrypt_mcp_config.json`
+
+If you don't have the CLI installed locally via pip, the equivalent raw `docker run ...` invocations for each OS shell are in the **"Verbose Docker run commands"** details block below.
+
+> **⚠️ Re-running on an existing config?** `generate-config` refuses to clobber an existing file by default — it exits with `INFO: Config file already exists at <path>. ... use --overwrite flag.` Add `--overwrite` at the end of the command to regenerate (a timestamped `.bkp.<YYYYMMDD_HHMMSS>` backup is written next to the original first). The flag works the same for `--provider enkrypt` and the `--docker` shorthand.
+
+> **⚠️ "unrecognized arguments: --provider enkrypt" when using `--docker`?** This means the in-container CLI is older than your host CLI (`--provider` was added in v2.2.0). The `--docker` wrapper now defaults to `enkryptai/secure-mcp-gateway:<host-version>`, but if that tag isn't on Docker Hub yet you'll see `Unable to find image ... not found`. Build the image from source: `docker build -t secure-mcp-gateway . && secure-mcp-gateway --docker --docker-image secure-mcp-gateway generate-config --provider enkrypt --overwrite`. See [Docker command pattern → Image tag is pinned to your host CLI version](#docker-command-pattern) for the full workaround table.
+
 <details>
 <summary><strong>Verbose Docker run commands (if CLI is not installed locally)</strong></summary>
+
+**Default — `local_apikey` provider:**
 
 ```bash
 
@@ -1495,14 +1557,38 @@ docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -
 
 # On 🪟 Windows (📟 PowerShell) run the below
 docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt" -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config
+```
 
+**Cloud-backed — `--provider enkrypt`:**
+
+```bash
+# On 🍎 Linux/macOS
+docker run --rm -e HOST_OS=macos -e HOST_ENKRYPT_HOME=$HOME/.enkrypt -v ~/.enkrypt/docker:/app/.enkrypt/docker --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config --provider enkrypt
+
+# On 🪟 Windows (CMD)
+docker run --rm -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkrypt -v %USERPROFILE%\.enkrypt\docker:/app/.enkrypt/docker --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config --provider enkrypt
+
+# On 🪟 Windows (📟 PowerShell)
+docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt" -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config --provider enkrypt
+```
+
+**Re-generate over an existing file** — append `--overwrite` to either command above. Example (PowerShell):
+
+```bash
+docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt" -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli generate-config --overwrite
 ```
 
 </details>
 
 <details>
-<summary><strong>🐳 Example Docker config file</strong></summary>
+<summary><strong>🐳 Example Docker config file (default <code>local_apikey</code> provider)</strong></summary>
 <br>
+
+> Identical schema to the local-install config in [§4.1.3](#413-example-of-the-generated-config-file). The only material differences from a local-install file are:
+> - **Path** of `mcp_configs.<id>.mcp_config[0].config.args[0]` points at the container's site-packages: `/usr/local/lib/python3.12/dist-packages/secure_mcp_gateway/bad_mcps/echo_oauth_mcp.py` (vs. the host's venv path locally).
+> - **`PICKED_CONFIG_PATH`** the gateway reads is `/app/.enkrypt/docker/enkrypt_mcp_config.json` (mounted from `~/.enkrypt/docker/` on the host), not `/app/.enkrypt/enkrypt_mcp_config.json`.
+>
+> Everything else (admin_apikey, common_mcp_gateway_config including `timeout_settings`, plugins, mcp_configs.common_overrides, oauth_config, denied_tools, full block lists for input/output guardrails) is byte-for-byte the same shape — the same `generate_default_config()` code path produces both.
 
 ```json
 {
@@ -1523,7 +1609,21 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
     "enkrypt_gateway_cache_expiration_minutes": 5,
     "enkrypt_config_watcher_poll_seconds": 2.0,
     "enkrypt_async_input_guardrails_enabled": false,
-    "enkrypt_async_output_guardrails_enabled": false
+    "enkrypt_async_output_guardrails_enabled": false,
+    "timeout_settings": {
+      "default_timeout": 30,
+      "guardrail_timeout": 15,
+      "auth_timeout": 10,
+      "tool_execution_timeout": 60,
+      "discovery_timeout": 180,
+      "cache_timeout": 5,
+      "connectivity_timeout": 2,
+      "escalation_policies": {
+        "warn_threshold": 0.8,
+        "timeout_threshold": 1.0,
+        "fail_threshold": 1.2
+      }
+    }
   },
   "plugins": {
     "auth": { "provider": "local_apikey", "config": {} },
@@ -1538,10 +1638,24 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
     }
   },
   "mcp_configs": {
-    "fcbd4508-1432-4f13-abb9-c495c946f638": {
+    "31491c1c-7258-4617-93aa-0bd81800d318": {
       "mcp_config_name": "default_config",
       "common_overrides": {
-        "server_tools_guardrails_config": { "enabled": false }
+        "server_tools_guardrails_config": {
+          "enabled": false,
+          "guardrail_name": "Sample Airline Guardrail",
+          "block": [
+            "policy_violation",
+            "injection_attack",
+            "topic_detector",
+            "nsfw",
+            "toxicity",
+            "pii",
+            "keyword_detector",
+            "bias",
+            "sponge_attack"
+          ]
+        }
       },
       "mcp_config": [
         {
@@ -1550,10 +1664,36 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
           "config": {
             "command": "python",
             "args": [
-              "/usr/local/lib/python3.11/site-packages/secure_mcp_gateway/bad_mcps/echo_mcp.py"
+              "/usr/local/lib/python3.12/dist-packages/secure_mcp_gateway/bad_mcps/echo_oauth_mcp.py"
             ]
           },
+          "oauth_config": {
+            "enabled": false,
+            "is_remote": false,
+            "OAUTH_VERSION": "2.1",
+            "OAUTH_GRANT_TYPE": "client_credentials",
+            "OAUTH_CLIENT_ID": "your-client-id",
+            "OAUTH_CLIENT_SECRET": "your-client-secret",
+            "OAUTH_TOKEN_URL": "https://auth.example.com/oauth/token",
+            "OAUTH_AUDIENCE": "https://api.example.com",
+            "OAUTH_ORGANIZATION": "your-org-id",
+            "OAUTH_SCOPE": "read write",
+            "OAUTH_RESOURCE": "https://resource.example.com",
+            "OAUTH_TOKEN_EXPIRY_BUFFER": 300,
+            "OAUTH_USE_BASIC_AUTH": true,
+            "OAUTH_ENFORCE_HTTPS": true,
+            "OAUTH_TOKEN_IN_HEADER_ONLY": true,
+            "OAUTH_VALIDATE_SCOPES": true,
+            "OAUTH_USE_MTLS": false,
+            "OAUTH_CLIENT_CERT_PATH": null,
+            "OAUTH_CLIENT_KEY_PATH": null,
+            "OAUTH_CA_BUNDLE_PATH": null,
+            "OAUTH_REVOCATION_URL": null,
+            "OAUTH_ADDITIONAL_PARAMS": {},
+            "OAUTH_CUSTOM_HEADERS": {}
+          },
           "tools": {},
+          "denied_tools": [],
           "input_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
@@ -1561,7 +1701,15 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
               "pii_redaction": false
             },
             "block": [
-              "policy_violation"
+              "policy_violation",
+              "injection_attack",
+              "topic_detector",
+              "nsfw",
+              "toxicity",
+              "pii",
+              "keyword_detector",
+              "bias",
+              "sponge_attack"
             ]
           },
           "output_guardrails_config": {
@@ -1573,7 +1721,15 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
               "adherence": false
             },
             "block": [
-              "policy_violation"
+              "policy_violation",
+              "injection_attack",
+              "topic_detector",
+              "nsfw",
+              "toxicity",
+              "pii",
+              "keyword_detector",
+              "bias",
+              "sponge_attack"
             ]
           }
         }
@@ -1581,31 +1737,88 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
     }
   },
   "projects": {
-    "3c09f06c-1f0d-4153-9ac5-366397937641": {
+    "48a1e676-5b4b-41a9-8c50-ef04be4c9173": {
       "project_name": "default_project",
-      "mcp_config_id": "fcbd4508-1432-4f13-abb9-c495c946f638",
+      "mcp_config_id": "31491c1c-7258-4617-93aa-0bd81800d318",
       "users": [
-        "6469a670-1d64-4da5-b2b3-790de21ac726"
+        "dbaf0d74-a312-4469-bb92-ba4f8af7eb18"
       ],
-      "created_at": "2025-07-16T17:02:00.406877"
+      "created_at": "2026-01-01T00:00:00.000000"
     }
   },
   "users": {
-    "6469a670-1d64-4da5-b2b3-790de21ac726": {
+    "dbaf0d74-a312-4469-bb92-ba4f8af7eb18": {
       "email": "default@example.com",
-      "created_at": "2025-07-16T17:02:00.406902"
+      "created_at": "2026-01-01T00:00:00.000000"
     }
   },
   "apikeys": {
-    "2W8UupCkazk4SsOcSu_1hAbiOgPdv0g-nN9NtfZyg-rvYGat": {
-      "project_id": "3c09f06c-1f0d-4153-9ac5-366397937641",
-      "user_id": "6469a670-1d64-4da5-b2b3-790de21ac726",
-      "created_at": "2025-07-16T17:02:00.406905"
+    "Xy2RXGMu_2ZmLP9d7heVb5cj4WYeosldWvDd6hi9opW7ekRL": {
+      "project_id": "48a1e676-5b4b-41a9-8c50-ef04be4c9173",
+      "user_id": "dbaf0d74-a312-4469-bb92-ba4f8af7eb18",
+      "created_at": "2026-01-01T00:00:00.000000"
     }
   }
 }
-
 ```
+
+</details>
+
+<details>
+<summary><strong>🐳 Example Docker config file (<code>--provider enkrypt</code> cloud-mode variant)</strong></summary>
+<br>
+
+> **Identical to the local-install cloud config** in [§4.1.3](#413-example-of-the-generated-config-file) (specifically the "☁️ Example file with `--provider enkrypt`" block) — same `generate_default_enkrypt_cloud_config()` code path runs in both modes, so the on-disk JSON is byte-for-byte the same. Only the file path differs (`/app/.enkrypt/docker/...` inside the container, mounted from `~/.enkrypt/docker/` on the host).
+
+Run the appropriate `--provider enkrypt` command from the **"Verbose Docker run commands"** block above (Linux/macOS, Windows CMD, or Windows PowerShell). The exact file written:
+
+```json
+{
+  "enkrypt_config": {
+    "api_key": "YOUR_ENKRYPT_API_KEY",
+    "base_url": "https://api.enkryptai.com"
+  },
+  "plugins": {
+    "auth": {
+      "provider": "enkrypt",
+      "config": {
+        "gateway_name": "your-gateway-saved-name",
+        "gateway_version": "v1",
+        "cache_ttl_seconds": 300
+      }
+    },
+    "guardrails": {
+      "provider": "enkrypt",
+      "config": {}
+    },
+    "telemetry": {
+      "provider": "opentelemetry",
+      "config": {
+        "enabled": true,
+        "url": "http://localhost:4317",
+        "insecure": true
+      }
+    }
+  },
+  "common_mcp_gateway_config": {
+    "enkrypt_log_level": "INFO",
+    "enkrypt_gateway_cache_expiration_minutes": 5
+  }
+}
+```
+
+**What's intentionally NOT here** (see [§4.1.3 cloud-variant block](#413-example-of-the-generated-config-file) for the full rationale):
+
+- No `mcp_configs` / `projects` / `users` / `apikeys` — the cloud owns those and the gateway resolves them per-request via `/mcp-gateway/get-gateway-config`.
+- No root-level `admin_apikey` — `enkrypt_config.api_key` doubles as the admin credential.
+- No verbose `common_mcp_gateway_config` block (cache hosts/ports, async guardrails, timeout_settings, etc.) — the cloud variant ships a deliberately minimal common block; the two values you see (`enkrypt_log_level`, `enkrypt_gateway_cache_expiration_minutes`) are the only ones operators commonly tweak. Add any other `common_mcp_gateway_config` keys by hand if you need them.
+
+**Two operator-must-edit values before first boot:**
+
+1. `enkrypt_config.api_key` → your real Enkrypt cloud apikey
+2. `plugins.auth.config.gateway_name` → the `saved_name` of the gateway you created in the Enkrypt console
+
+The shipped reference file at `src/secure_mcp_gateway/example_enkrypt_cloud_config.json` is byte-for-byte identical to this example.
 
 </details>
 
@@ -1615,10 +1828,22 @@ docker run --rm -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkry
   - macOS: `~/Library/Application Support/Claude`
   - Windows: `%APPDATA%\Claude`
 
-> **Note:** The generated config includes `MCP_TRANSPORT=stdio` for stdio mode communication with Claude Desktop.
+> **Note:** The generated config includes `MCP_TRANSPORT=stdio` for stdio mode communication with Claude Desktop. The command is **provider-aware** — it reads `plugins.auth.provider` from your gateway config and emits the correct `env`/`-e` shape (`ENKRYPT_GATEWAY_KEY`/`ENKRYPT_PROJECT_ID`/`ENKRYPT_USER_ID` for `local_apikey`, single `ENKRYPT_APIKEY` for `enkrypt`).
+
+**Copy-paste command** (all OSes — the `--docker` wrapper auto-mounts your Claude config directory):
 
 ```bash
+secure-mcp-gateway --docker install --client claude-desktop
+```
 
+> Hit `Unable to find image 'enkryptai/secure-mcp-gateway:<version>' ... not found`? You skipped the one-time `docker tag` step at the end of [§4.3.1](#431-build-the-docker-image). Run it once and re-try.
+
+After it runs, **restart Claude Desktop** to pick up the new config.
+
+<details>
+<summary><strong>Verbose Docker run commands (if CLI is not installed locally)</strong></summary>
+
+```bash
 # On 🍎 Linux/macOS run the below
 docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=$HOME/.enkrypt -v ~/.enkrypt/docker:/app/.enkrypt/docker -v ~/Library/Application\ Support/Claude:/app/.claude --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
 
@@ -1627,8 +1852,9 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkryp
 
 # On 🪟 Windows (📟 PowerShell) run the below
 docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt" -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" -v "$env:APPDATA\Claude:/app/.claude" --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client claude-desktop
-
 ```
+
+</details>
 
 #### 4.3.4 Example Claude Desktop config file
 
@@ -1637,6 +1863,8 @@ docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.en
 <details>
 <summary><strong>🪟 Example Windows claude_desktop_config.json — local_apikey provider</strong></summary>
 <br>
+
+> **Why one `-e` per env var?** MCP clients set the `env` block on the spawned `docker` process, but Docker only forwards env vars across the container boundary if you list them with `-e VAR_NAME` in the args. Each key in `env` needs a matching `-e` flag — the install command (`secure-mcp-gateway install --client claude-desktop`) generates this pairing for you. Hand-rolled JSON should mirror the pattern exactly or the gateway inside the container will see `os.environ[VAR]` as unset.
 
 ```json
 {
@@ -1651,6 +1879,12 @@ docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.en
         "MCP_TRANSPORT=stdio",
         "-v",
         "C:\\Users\\<user>\\.enkrypt\\docker:/app/.enkrypt/docker",
+        "-e",
+        "ENKRYPT_GATEWAY_KEY",
+        "-e",
+        "ENKRYPT_PROJECT_ID",
+        "-e",
+        "ENKRYPT_USER_ID",
         "secure-mcp-gateway"
       ],
       "env": {
@@ -1661,7 +1895,6 @@ docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.en
     }
   }
 }
-
 ```
 
 </details>
@@ -1682,6 +1915,8 @@ docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.en
         "MCP_TRANSPORT=stdio",
         "-v",
         "C:\\Users\\<user>\\.enkrypt\\docker:/app/.enkrypt/docker",
+        "-e",
+        "ENKRYPT_APIKEY",
         "secure-mcp-gateway"
       ],
       "env": {
@@ -1690,7 +1925,6 @@ docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.en
     }
   }
 }
-
 ```
 
 </details>
@@ -1701,10 +1935,22 @@ docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.en
   - macOS: `~/.cursor`
   - Windows: `%USERPROFILE%\.cursor`
 
-> **Note:** The generated config includes `MCP_TRANSPORT=stdio` for stdio mode communication with Cursor.
+> **Note:** The generated config includes `MCP_TRANSPORT=stdio` for stdio mode communication with Cursor. The command is **provider-aware** — it reads `plugins.auth.provider` from your gateway config and emits the correct `env`/`-e` shape (`ENKRYPT_GATEWAY_KEY`/`ENKRYPT_PROJECT_ID`/`ENKRYPT_USER_ID` for `local_apikey`, single `ENKRYPT_APIKEY` for `enkrypt`).
+
+**Copy-paste command** (all OSes — the `--docker` wrapper auto-mounts `~/.cursor` so the in-container `install` can write back to it):
 
 ```bash
+secure-mcp-gateway --docker install --client cursor
+```
 
+> Hit `Unable to find image 'enkryptai/secure-mcp-gateway:<version>' ... not found`? You skipped the one-time `docker tag` step at the end of [§4.3.1](#431-build-the-docker-image). Run it once and re-try.
+
+After it runs, **restart Cursor** to pick up the new server. The entry lands at `~/.cursor/mcp.json` on macOS/Linux or `%USERPROFILE%\.cursor\mcp.json` on Windows.
+
+<details>
+<summary><strong>Verbose Docker run commands (if CLI is not installed locally)</strong></summary>
+
+```bash
 # On 🍎 Linux/macOS run the below
 docker run --rm -i -e HOST_OS=macos -e HOST_ENKRYPT_HOME=$HOME/.enkrypt -v ~/.enkrypt/docker:/app/.enkrypt/docker -v ~/.cursor:/app/.cursor --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
 
@@ -1713,8 +1959,9 @@ docker run --rm -i -e HOST_OS=windows -e HOST_ENKRYPT_HOME=%USERPROFILE%\.enkryp
 
 # On 🪟 Windows (📟 PowerShell) run the below
 docker run --rm -i -e HOST_OS=windows -e "HOST_ENKRYPT_HOME=$env:USERPROFILE\.enkrypt" -v "$env:USERPROFILE\.enkrypt\docker:/app/.enkrypt/docker" -v "$env:USERPROFILE\.cursor:/app/.cursor" --entrypoint python secure-mcp-gateway -m secure_mcp_gateway.cli install --client cursor
-
 ```
+
+</details>
 
 #### 4.3.6 Install the Gateway in Claude Code
 
@@ -1752,7 +1999,23 @@ Replace the placeholders with the values from your `enkrypt_mcp_config.json` (`a
 <summary><strong>Alternative: stdio mode via Docker</strong></summary>
 <br>
 
-If you prefer stdio mode (no persistent container), you can add Claude Code's MCP config using JSON directly. Create or edit `~/.claude.json` and add the server under `mcpServers`. The `env` block depends on your auth provider:
+If you prefer stdio mode (no persistent container), the simplest path is to let the CLI generate Claude Code's stdio JSON for you. The command is **provider-aware** — it reads `plugins.auth.provider` from your gateway config and emits the correct `env`/`-e` shape (`ENKRYPT_GATEWAY_KEY`/`ENKRYPT_PROJECT_ID`/`ENKRYPT_USER_ID` for `local_apikey`, single `ENKRYPT_APIKEY` for `enkrypt`).
+
+**Copy-paste command** (all OSes):
+
+```bash
+secure-mcp-gateway --docker install --client claude-code
+```
+
+> Hit `Unable to find image 'enkryptai/secure-mcp-gateway:<version>' ... not found`? You skipped the one-time `docker tag` step at the end of [§4.3.1](#431-build-the-docker-image). Run it once and re-try.
+
+This writes the server entry under `mcpServers` in `~/.claude.json` with the correct `docker run` args and matching `env` block (handling the `-e VAR_NAME` Docker boundary-forwarding pairing for you). Skip the rest of this details block unless you want to hand-roll the JSON.
+
+---
+
+**Hand-roll alternative** — create or edit `~/.claude.json` and add the server under `mcpServers`. The `env` block depends on your auth provider.
+
+> **Important:** Each key in `env` needs a matching `-e VAR_NAME` flag in `args` so Docker forwards it across the container boundary. Without the flag, the gateway inside the container will see `os.environ[VAR]` as unset. The install command (`secure-mcp-gateway install --client claude-code`) generates this pairing automatically; if you hand-roll the JSON, mirror it exactly.
 
 ```json
 {
@@ -1767,6 +2030,12 @@ If you prefer stdio mode (no persistent container), you can add Claude Code's MC
         "MCP_TRANSPORT=stdio",
         "-v",
         "/Users/<user>/.enkrypt/docker:/app/.enkrypt/docker",
+        "-e",
+        "ENKRYPT_GATEWAY_KEY",
+        "-e",
+        "ENKRYPT_PROJECT_ID",
+        "-e",
+        "ENKRYPT_USER_ID",
         "secure-mcp-gateway"
       ],
       "env": {
@@ -1779,11 +2048,30 @@ If you prefer stdio mode (no persistent container), you can add Claude Code's MC
 }
 ```
 
-For the `enkrypt` cloud provider, the `env` block is simply:
+For the `enkrypt` cloud provider, the args list collapses to a single `-e ENKRYPT_APIKEY` and the env block matches:
 
 ```json
-"env": {
-  "ENKRYPT_APIKEY": "YOUR_ENKRYPT_CLOUD_APIKEY"
+{
+  "mcpServers": {
+    "Enkrypt Secure MCP Gateway": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-e",
+        "MCP_TRANSPORT=stdio",
+        "-v",
+        "/Users/<user>/.enkrypt/docker:/app/.enkrypt/docker",
+        "-e",
+        "ENKRYPT_APIKEY",
+        "secure-mcp-gateway"
+      ],
+      "env": {
+        "ENKRYPT_APIKEY": "YOUR_ENKRYPT_CLOUD_APIKEY"
+      }
+    }
+  }
 }
 ```
 
@@ -1794,7 +2082,7 @@ Or use the Claude Code CLI:
 claude mcp add-json Enkrypt-Secure-MCP-Gateway '{
   "type": "stdio",
   "command": "docker",
-  "args": ["run", "--rm", "-i", "-e", "MCP_TRANSPORT=stdio", "-v", "/Users/<user>/.enkrypt/docker:/app/.enkrypt/docker", "secure-mcp-gateway"],
+  "args": ["run", "--rm", "-i", "-e", "MCP_TRANSPORT=stdio", "-v", "/Users/<user>/.enkrypt/docker:/app/.enkrypt/docker", "-e", "ENKRYPT_GATEWAY_KEY", "-e", "ENKRYPT_PROJECT_ID", "-e", "ENKRYPT_USER_ID", "secure-mcp-gateway"],
   "env": {
     "ENKRYPT_GATEWAY_KEY": "YOUR_GATEWAY_KEY",
     "ENKRYPT_PROJECT_ID": "YOUR_PROJECT_ID",
@@ -1806,7 +2094,7 @@ claude mcp add-json Enkrypt-Secure-MCP-Gateway '{
 claude mcp add-json Enkrypt-Secure-MCP-Gateway '{
   "type": "stdio",
   "command": "docker",
-  "args": ["run", "--rm", "-i", "-e", "MCP_TRANSPORT=stdio", "-v", "/Users/<user>/.enkrypt/docker:/app/.enkrypt/docker", "secure-mcp-gateway"],
+  "args": ["run", "--rm", "-i", "-e", "MCP_TRANSPORT=stdio", "-v", "/Users/<user>/.enkrypt/docker:/app/.enkrypt/docker", "-e", "ENKRYPT_APIKEY", "secure-mcp-gateway"],
   "env": {
     "ENKRYPT_APIKEY": "YOUR_ENKRYPT_CLOUD_APIKEY"
   }
@@ -1958,9 +2246,9 @@ docker run -d `
 
 ##### Port Mapping
 
-- `8000`: Gateway MCP server (required)
-- `8080`: OAuth callback server (optional, only needed for Authorization Code flow)
-- `8001`: REST API server (optional, if you want to expose the management API)
+- `8000`: Gateway MCP server (required) — bound by the default `ENTRYPOINT ["python3", "src/secure_mcp_gateway/gateway.py"]`.
+- `8080`: OAuth callback server (optional, only needed for Authorization Code flow). Also bound by the gateway entrypoint when OAuth is configured.
+- `8001`: REST admin API server. **Not started by the default entrypoint.** Mapping `-p 8001:8001` alone does nothing — there's no listener on 8001 inside the container unless you also start `python -m secure_mcp_gateway.api_server` (e.g. via a sidecar `docker exec`, a custom `--entrypoint`, or your own image that runs both processes). Built-in cache-flush + last-reload routes are also exposed directly on the gateway (port 8000) at `POST /api/v1/cache/flush-gateway-config` and `GET /api/v1/cache/last-reload`, so most operators don't need to expose 8001 at all.
 
 ##### Volume Mounts
 
@@ -3347,6 +3635,33 @@ secure-mcp-gateway --docker <COMMAND_HERE>
 secure-mcp-gateway --docker --docker-image my-registry/secure-mcp-gateway:v2.1.2 <COMMAND_HERE>
 ```
 
+#### Image tag is pinned to your host CLI version
+
+Starting in **v2.2.0**, the wrapper defaults to `enkryptai/secure-mcp-gateway:<your-host-CLI-version>` (e.g. `enkryptai/secure-mcp-gateway:2.2.0`) instead of `:latest`. This prevents flag-skew bugs where a newer host CLI passes flags the older in-container CLI doesn't recognise — e.g.
+
+```text
+secure-mcp-gateway: error: unrecognized arguments: --provider enkrypt
+```
+
+(`generate-config --provider enkrypt` was added in v2.2.0; if your host CLI is v2.2.0 but the container is v2.1.6, that flag silently disappears in transit.)
+
+If `--docker-image` is overridden and the override doesn't contain the host CLI version string, the wrapper logs a `WARN:` line so the cause of any "unrecognized arguments" error is obvious.
+
+**If your default tag isn't on Docker Hub yet** (typical right after a host pip upgrade, before the matching image has been published), Docker exits with `not found`:
+
+```text
+Unable to find image 'enkryptai/secure-mcp-gateway:2.2.0' locally
+docker: Error response from daemon: failed to resolve reference "docker.io/enkryptai/secure-mcp-gateway:2.2.0": ... not found.
+```
+
+You have three workarounds:
+
+| Workaround | Command | Trade-off |
+|---|---|---|
+| **Build the image locally from this repo (recommended)** | `docker build -t secure-mcp-gateway . && secure-mcp-gateway --docker --docker-image secure-mcp-gateway <CMD>` | Always matches your host CLI; one-time `docker build` cost. |
+| **Pin to a known-good published tag** | `secure-mcp-gateway --docker --docker-image enkryptai/secure-mcp-gateway:<X.Y.Z> <CMD>` | Stable; you only see flags supported by `<X.Y.Z>`. |
+| **Use `:latest` and accept skew** | `secure-mcp-gateway --docker --docker-image enkryptai/secure-mcp-gateway:latest <CMD>` | Wrapper emits a `WARN:` line; new flags may fail with `unrecognized arguments`. |
+
 **Examples:**
 
 ```bash
@@ -3356,8 +3671,11 @@ secure-mcp-gateway --docker config list
 # Add a server
 secure-mcp-gateway --docker config add-server --config-name "default_config" --server-name "my_server" --server-command "npx" --args="-y,@example/mcp-server" --description "My Server"
 
-# Generate config
+# Generate config (local_apikey, default)
 secure-mcp-gateway --docker generate-config
+
+# Generate config (enkrypt cloud) — requires container CLI >= v2.2.0
+secure-mcp-gateway --docker generate-config --provider enkrypt --overwrite
 
 # Health check
 secure-mcp-gateway --docker system health-check
