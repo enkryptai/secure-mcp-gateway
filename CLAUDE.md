@@ -1,7 +1,7 @@
 # Secure MCP Gateway - Complete Project Analysis
 
 **Version**: 2.1.2
-**Last Updated**: 2025-10-15
+**Last Updated**: 2026-05-17
 **Project Type**: Python Security Middleware for Model Context Protocol (MCP)
 
 ---
@@ -115,16 +115,36 @@ secure-mcp-gateway/
 │   │
 │   └── example_enkrypt_mcp_config.json  # Example configuration
 │
-├── infra/                             # Infrastructure configs
-│   ├── docker-compose.yml             # Full observability stack
-│   ├── grafana/                       # Grafana dashboards
-│   ├── prometheus/                    # Prometheus config
-│   ├── loki/                          # Loki logging config
-│   └── otel_collector/                # OpenTelemetry collector
+├── observability/                     # Observability stack -- TWO backends, run one
+│   ├── docker-compose.opensearch.yml  # OpenSearch/Data Prepper stack (PRIMARY; OTLP host :4317/:4318)
+│   ├── docker-compose.grafana.yml     # Grafana/Prometheus/Loki/Jaeger stack (legacy; OTLP host :4327/:4328)
+│   ├── .env.opensearch.example        # env template -> copy to .env.opensearch
+│   ├── .env.grafana.example           # env template -> copy to .env.grafana
+│   ├── README.opensearch.md           # OpenSearch stack operator guide
+│   ├── README.md                      # Grafana stack operator guide
+│   ├── emit_dummy_telemetry.py        # synthetic OTLP emitter (dashboard/monitor verification)
+│   ├── opensearch/                    # bootstrap.sh + ISM policy / templates / monitors / channel
+│   │   ├── bootstrap.sh               # idempotent installer (policy, templates, data streams, monitors, local user)
+│   │   ├── policies/                  # gateway_telemetry_policy.json (7d hot->delete, prio 1000)
+│   │   ├── templates/                 # gateway-{metrics,traces,logs}-elastic-template.json (SS4O data streams)
+│   │   ├── monitors/                  # 01..09 bucket-level alerting monitors
+│   │   └── notification_channels/     # slack-mcpgw-alerts.json
+│   ├── opensearch_dashboards/         # saved-objects.ndjson + gateway-dashboards.ndjson (13 viz + 3 dashboards)
+│   ├── data_prepper/                  # pipelines.yaml + render_pipelines.py (+ unit tests) + config
+│   ├── otel_collector/                # otel-collector-config.yaml (Grafana) + .opensearch.yaml (OpenSearch)
+│   ├── grafana/                       # Grafana dashboards + alert provisioning
+│   ├── prometheus/                    # Prometheus scrape config
+│   ├── loki/                          # Loki log-aggregation config
+│   └── promtail/                      # Promtail config
+│
+│   NOTE: the apiaas repo is canonical for the OpenSearch resources;
+│   observability/opensearch{,_dashboards}/ is a vendored mirror kept in
+│   sync by scripts/install/opensearch/sync-check.sh (see apiaas repo).
 │
 ├── docs/                              # Documentation
-├── pyproject.toml                     # Python project config
-├── setup.py                           # Setup script
+├── pyproject.toml                     # Python project config (PEP 621)
+├── requirements.txt                   # Pinned runtime deps
+├── Dockerfile / Dockerfile-Base       # Container build
 ├── README.md                          # Main documentation
 ├── CHANGELOG.md                       # Version history
 ├── CLI-Commands-Reference.md          # CLI documentation
@@ -1126,29 +1146,35 @@ with tracer.start_as_current_span("operation_name") as span:
 
 **Endpoint**: Metrics served on Prometheus-compatible endpoint
 
-### **4. Infrastructure** ([infra/](infra/))
+### **4. Infrastructure** ([observability/](observability/))
 
-**Docker Compose Stack**:
-- **Gateway**: Main service
+The gateway emits OTLP to a single collector. Two self-contained backend
+stacks ship in [`observability/`](observability/); **you run one, not
+both**. Each is invoked with explicit `-f`/`--env-file` (no auto-loaded
+`docker-compose.yml`/`.env`):
 
-- **OpenTelemetry Collector**: Receives OTLP, exports to backends
+**OpenSearch stack (PRIMARY)** -- [`docker-compose.opensearch.yml`](observability/docker-compose.opensearch.yml), `--env-file .env.opensearch`:
 
-- **Prometheus**: Metrics storage
+- OTel Collector (host OTLP `:4317`/`:4318` -- the gateway default, so no config change)
 
-- **Grafana**: Dashboards
+- Data Prepper (OTLP -> SS4O data streams; writes as least-privilege `mcp_gateway_telemetry_plugin`)
 
-- **Jaeger**: Trace visualization
+- OpenSearch single-node + OpenSearch Dashboards (3 dashboards, 9 alerting monitors, Slack channel)
 
-- **Loki**: Log aggregation
+- See [README.opensearch.md](observability/README.opensearch.md)
 
-- **Redis/KeyDB**: External cache
+**Grafana stack (legacy)** -- [`docker-compose.grafana.yml`](observability/docker-compose.grafana.yml), `--env-file .env.grafana`:
 
-**Grafana Dashboards**:
-- Gateway metrics (request rate, errors, latency)
+- OTel Collector (host OTLP `:4327`/`:4328` -- point the gateway here to use this stack)
 
-- OpenTelemetry metrics
+- Prometheus (metrics) · Loki (logs) · Jaeger (traces) · Grafana (3 dashboards + 9 alert rules -> Slack)
 
-- Server-specific metrics
+- See [README.md](observability/README.md)
+
+Both stacks publish on non-overlapping host ports so they *can* co-run
+for comparison, but that is optional and not the normal path. Switching
+which collector the gateway targets requires a gateway process restart
+(the OTLP TracerProvider/MeterProvider is set once per process).
 
 ---
 

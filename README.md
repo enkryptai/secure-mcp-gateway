@@ -2242,7 +2242,7 @@ docker run -d `
   secure-mcp-gateway:latest
 ```
 
-**Note:** The `--network` flag connects the gateway to the observability stack (Grafana, Prometheus, Loki, Jaeger, plus the 9 Slack alert rules) if you're running the monitoring services from [section 5](#5-optional-observability-stack--logs-metrics-traces--slack-alerts). The network name (`secure-mcp-gateway-observability_default`) is derived from the compose project name set at the top of [`observability/docker-compose.yml`](./observability/docker-compose.yml).
+**Note:** The `--network` flag connects the gateway to the observability stack (Grafana, Prometheus, Loki, Jaeger, plus the 9 Slack alert rules) if you're running the monitoring services from [section 5](#5-optional-observability-stack--logs-metrics-traces--slack-alerts). The network name (`secure-mcp-gateway-observability_default`) is derived from the compose project name set at the top of [`observability/docker-compose.grafana.yml`](./observability/docker-compose.grafana.yml) (the `name:` field is unchanged by the file rename, so the network name is stable).
 
 ##### Port Mapping
 
@@ -2450,8 +2450,10 @@ claude mcp add --transport http --header "apikey:YOUR_ENKRYPT_CLOUD_APIKEY" --sc
 <summary><strong>📊 Observability Stack Setup and Usage </strong></summary>
 <br>
 
-This section explains how to set up and use the bundled observability stack with the Enkrypt Secure MCP Gateway. Everything is templated as code in [`observability/`](./observability/): clone, copy `.env.example`, run one `docker compose up`, get a working dashboard with Slack alerts.
+This section explains how to set up and use the bundled observability stack with the Enkrypt Secure MCP Gateway. Everything is templated as code in [`observability/`](./observability/): clone, copy `.env.grafana.example`, run one `docker compose -f docker-compose.grafana.yml`, get a working dashboard with Slack alerts.
 
+> **Two backends, pick one.** The repo ships two parallel observability stacks: the **OpenSearch** stack (primary; OTel default ports `4317/4318`) and this legacy **Grafana** stack (`4327/4328`). Each has its own compose + env files (`docker-compose.grafana.yml` + `.env.grafana` vs `docker-compose.opensearch.yml` + `.env.opensearch`) and must be invoked with explicit `-f`/`--env-file` flags. See [`observability/README.opensearch.md`](./observability/README.opensearch.md) for the OpenSearch path; the rest of this section covers the Grafana stack.
+>
 > For the deep dive — every alert rule, dashboard, and customisation point — see [`observability/README.md`](./observability/README.md). This section is the quick-start.
 
 ### 5.1 Architecture
@@ -2471,17 +2473,17 @@ This section explains how to set up and use the bundled observability stack with
                                                           (:16686)      & alerts
 ```
 
-**Components shipped in [`observability/docker-compose.yml`](./observability/docker-compose.yml):**
+**Components shipped in [`observability/docker-compose.grafana.yml`](./observability/docker-compose.grafana.yml):**
 
 | Component | Endpoint | What it does |
 |---|---|---|
-| **OTel Collector** | `:4317` (gRPC), `:4318` (HTTP) | Single entry point for logs / metrics / traces from the gateway |
+| **OTel Collector** | `:4327` (gRPC), `:4328` (HTTP) | Single entry point for logs / metrics / traces from the gateway. Point `plugins.telemetry.config.url` at `http://localhost:4327` (the default `4317` now routes to the OpenSearch stack) |
 | **Prometheus** | `http://localhost:9090` | Scrapes the OTel Collector at `:8889` every 15s |
 | **Loki** | `http://localhost:3100` | Log aggregation, receives logs from OTel Collector |
 | **Jaeger UI** | `http://localhost:16686` | Trace visualization |
 | **Grafana** | `http://localhost:3001` (configurable via `GRAFANA_HOST_PORT`) | Unified dashboards + 9 provisioned alert rules → Slack |
 
-> **Grafana port note:** the compose file publishes Grafana on host port **3001** by default (container still listens on 3000) to avoid clashing with a native Grafana service or Docker WSL relay that often binds 3000 on Windows. Set `GRAFANA_HOST_PORT=3030` (or any free port) in `observability/.env` to override.
+> **Grafana port note:** the compose file publishes Grafana on host port **3001** by default (container still listens on 3000) to avoid clashing with a native Grafana service or Docker WSL relay that often binds 3000 on Windows. Set `GRAFANA_HOST_PORT=3030` (or any free port) in `observability/.env.grafana` to override.
 
 ### 5.2 Prerequisites
 
@@ -2497,17 +2499,17 @@ This section explains how to set up and use the bundled observability stack with
 
    ```bash
    cd observability
-   cp .env.example .env
-   # edit observability/.env and replace SLACK_WEBHOOK_URL with your real
-   # https://hooks.slack.com/services/... URL (leave the placeholder if you
-   # don't want Slack — Grafana provisioning will still succeed, the Slack
-   # POST will just silently fail).
+   cp .env.grafana.example .env.grafana
+   # edit observability/.env.grafana and replace SLACK_WEBHOOK_URL with your
+   # real https://hooks.slack.com/services/... URL (leave the placeholder if
+   # you don't want Slack — Grafana provisioning will still succeed, the
+   # Slack POST will just silently fail).
    ```
 
 2. **Start the Observability Stack**
 
    ```bash
-   docker compose up -d
+   docker compose -f docker-compose.grafana.yml --env-file .env.grafana up -d
    ```
 
    This brings up the OTel Collector, Prometheus, Loki, Jaeger, Promtail, and Grafana — with all dashboards, alert rules, and the Slack contact point pre-provisioned. Anonymous admin auth is enabled by default (no login screen). See [`observability/README.md` → Customising](./observability/README.md#customising) to set a real admin password.
@@ -2551,7 +2553,7 @@ This section explains how to set up and use the bundled observability stack with
 
 2. **Access Service UIs**
 
-   - Grafana: <http://localhost:3001> (anonymous admin enabled by default — no login screen; override host port via `GRAFANA_HOST_PORT` in `observability/.env`)
+   - Grafana: <http://localhost:3001> (anonymous admin enabled by default — no login screen; override host port via `GRAFANA_HOST_PORT` in `observability/.env.grafana`)
 
    - Jaeger: <http://localhost:16686>
 
@@ -2618,7 +2620,7 @@ This section explains how to set up and use the bundled observability stack with
 
 ### 5.7 Pre-Provisioned Alert Rules (Slack)
 
-The stack ships **9 Grafana alert rules** wired to a Slack contact point — drop your webhook URL into `observability/.env` (`SLACK_WEBHOOK_URL=...`) and you start receiving guardrail/security/health alerts immediately.
+The stack ships **9 Grafana alert rules** wired to a Slack contact point — drop your webhook URL into `observability/.env.grafana` (`SLACK_WEBHOOK_URL=...`) and you start receiving guardrail/security/health alerts immediately.
 
 | Rule | Severity | Trigger (5–10 min window) |
 |---|---|---|
@@ -3584,12 +3586,13 @@ secure-mcp-gateway config configure-telemetry --enabled true --url "http://local
 secure-mcp-gateway config configure-telemetry --insecure true
 ```
 
-**Starting the telemetry stack:** The gateway sends telemetry data to an OpenTelemetry collector — it doesn't run one itself. The repo includes a ready-made stack (collector, Prometheus, Grafana, Jaeger, Loki) plus 9 pre-provisioned Slack alert rules in the [`observability/`](./observability/) directory:
+**Starting the telemetry stack:** The gateway sends telemetry data to an OpenTelemetry collector — it doesn't run one itself. The repo ships two ready-made backends in [`observability/`](./observability/): the **OpenSearch** stack (primary, OTel default ports `4317/4318` — see [`observability/README.opensearch.md`](./observability/README.opensearch.md)) and the legacy **Grafana** stack (collector, Prometheus, Grafana, Jaeger, Loki + 9 Slack alert rules, on `4327/4328`). Run one. For the Grafana stack:
 
 ```bash
 cd observability
-cp .env.example .env    # (edit SLACK_WEBHOOK_URL if you want Slack alerts)
-docker compose up -d
+cp .env.grafana.example .env.grafana    # (edit SLACK_WEBHOOK_URL if you want Slack alerts)
+docker compose -f docker-compose.grafana.yml --env-file .env.grafana up -d
+# then point plugins.telemetry.config.url at http://localhost:4327
 ```
 
 | Service | URL |
@@ -4961,9 +4964,16 @@ Each server can override global sandbox defaults:
 4. **Docker Issues**
 
    ```bash
-   # Restart the stack
-   docker-compose down
-   docker-compose up -d
+   # Restart the observability stack (use the compose file for whichever
+   # backend you run -- the bare `docker compose` form no longer works
+   # since both stacks use explicit -f/--env-file).
+   cd observability
+   # OpenSearch (primary):
+   docker compose -f docker-compose.opensearch.yml --env-file .env.opensearch down
+   docker compose -f docker-compose.opensearch.yml --env-file .env.opensearch up -d
+   # …or legacy Grafana:
+   docker compose -f docker-compose.grafana.yml --env-file .env.grafana down
+   docker compose -f docker-compose.grafana.yml --env-file .env.grafana up -d
 
    # Check individual service logs
    docker logs <service-name>
