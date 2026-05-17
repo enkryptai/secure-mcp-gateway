@@ -1,0 +1,64 @@
+{
+  "type": "monitor",
+  "name": "MCPGW: PII Redaction Detected",
+  "monitor_type": "bucket_level_monitor",
+  "enabled": true,
+  "schedule": {
+    "period": { "interval": 1, "unit": "MINUTES" }
+  },
+  "inputs": [
+    {
+      "search": {
+        "indices": ["ss4o_metrics-gateway*"],
+        "query": {
+          "size": 0,
+          "query": {
+            "bool": {
+              "filter": [
+                { "term": { "name": "enkrypt.pii.redactions" } },
+                { "term": { "aggregationTemporality": "AGGREGATION_TEMPORALITY_DELTA" } },
+                { "range": { "time": { "from": "now-5m", "to": "now" } } }
+              ]
+            }
+          },
+          "aggregations": {
+            "composite_agg": {
+              "composite": {
+                "size": 50,
+                "sources": [
+                  { "server": { "terms": { "field": "metric.attributes.enkrypt@server@name" } } }
+                ]
+              },
+              "aggregations": { "sum_value": { "sum": { "field": "value" } } }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "bucket_level_trigger": {
+        "name": "pii_seen",
+        "severity": "1",
+        "condition": {
+          "buckets_path": { "sum_value": "sum_value" },
+          "parent_bucket_path": "composite_agg",
+          "script": { "source": "params.sum_value > 0", "lang": "painless" }
+        },
+        "actions": [
+          {
+            "name": "slack",
+            "destination_id": "${SLACK_CHANNEL_ID}",
+            "throttle_enabled": false,
+            "subject_template": { "source": "MCP Gateway: PII Redaction Detected", "lang": "mustache" },
+            "message_template": {
+              "source": ":rotating_light: *MCP Gateway -- PII Redaction Detected*\nAt least one PII redaction event was observed in the last 5 minutes.\n{{#ctx.alerts}}\n  Server: {{bucket_keys}}\n{{/ctx.alerts}}",
+              "lang": "mustache"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{"type":"index-pattern","id":"gateway-metrics","attributes":{"title":"gateway-metrics","timeFieldName":"time"},"references":[],"migrationVersion":{"index-pattern":"7.6.0"}}
+{"type":"index-pattern","id":"gateway-traces","attributes":{"title":"gateway-traces","timeFieldName":"startTime"},"references":[],"migrationVersion":{"index-pattern":"7.6.0"}}
+{"type":"index-pattern","id":"gateway-logs","attributes":{"title":"gateway-logs","timeFieldName":"time"},"references":[],"migrationVersion":{"index-pattern":"7.6.0"}}
+{"type":"index-pattern","id":"ss4o_traces-gateway-pattern","attributes":{"title":"ss4o_traces-gateway*","timeFieldName":"startTime"},"references":[],"migrationVersion":{"index-pattern":"7.6.0"}}
+{"type":"index-pattern","id":"otel-v1-apm-service-map","attributes":{"title":"otel-v1-apm-service-map*"},"references":[],"migrationVersion":{"index-pattern":"7.6.0"}}
+{"type":"config","id":"2.19.1","attributes":{"buildNum":8312,"defaultIndex":"gateway-metrics"},"migrationVersion":{"config":"7.9.0"}}

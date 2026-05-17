@@ -1,0 +1,65 @@
+{
+  "type": "monitor",
+  "name": "MCPGW: Tool Deny-List Burst",
+  "monitor_type": "bucket_level_monitor",
+  "enabled": true,
+  "schedule": {
+    "period": { "interval": 1, "unit": "MINUTES" }
+  },
+  "inputs": [
+    {
+      "search": {
+        "indices": ["ss4o_metrics-gateway*"],
+        "query": {
+          "size": 0,
+          "query": {
+            "bool": {
+              "filter": [
+                { "term": { "name": "enkrypt.tool.blocked" } },
+                { "term": { "aggregationTemporality": "AGGREGATION_TEMPORALITY_DELTA" } },
+                { "range": { "time": { "from": "now-5m", "to": "now" } } }
+              ]
+            }
+          },
+          "aggregations": {
+            "composite_agg": {
+              "composite": {
+                "size": 50,
+                "sources": [
+                  { "server": { "terms": { "field": "metric.attributes.enkrypt@server@name" } } },
+                  { "tool":   { "terms": { "field": "metric.attributes.enkrypt@tool@name" } } }
+                ]
+              },
+              "aggregations": { "sum_value": { "sum": { "field": "value" } } }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "bucket_level_trigger": {
+        "name": "deny_list_burst",
+        "severity": "3",
+        "condition": {
+          "buckets_path": { "sum_value": "sum_value" },
+          "parent_bucket_path": "composite_agg",
+          "script": { "source": "params.sum_value > 5", "lang": "painless" }
+        },
+        "actions": [
+          {
+            "name": "slack",
+            "destination_id": "${SLACK_CHANNEL_ID}",
+            "throttle_enabled": false,
+            "subject_template": { "source": "MCP Gateway: Tool Deny-List Burst", "lang": "mustache" },
+            "message_template": {
+              "source": ":warning: *MCP Gateway -- Tool Deny-List Burst*\nMore than 5 tool calls blocked by deny-list against a single (server, tool) in the last 5 minutes.\n{{#ctx.alerts}}\n  Bucket: {{bucket_keys}}\n{{/ctx.alerts}}",
+              "lang": "mustache"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

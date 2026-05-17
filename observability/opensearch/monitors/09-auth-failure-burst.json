@@ -1,0 +1,64 @@
+{
+  "type": "monitor",
+  "name": "MCPGW: Auth Failure Burst",
+  "monitor_type": "bucket_level_monitor",
+  "enabled": true,
+  "schedule": {
+    "period": { "interval": 1, "unit": "MINUTES" }
+  },
+  "inputs": [
+    {
+      "search": {
+        "indices": ["ss4o_metrics-gateway*"],
+        "query": {
+          "size": 0,
+          "query": {
+            "bool": {
+              "filter": [
+                { "term": { "name": "enkrypt.auth.failure" } },
+                { "term": { "aggregationTemporality": "AGGREGATION_TEMPORALITY_DELTA" } },
+                { "range": { "time": { "from": "now-5m", "to": "now" } } }
+              ]
+            }
+          },
+          "aggregations": {
+            "composite_agg": {
+              "composite": {
+                "size": 50,
+                "sources": [
+                  { "failure_reason": { "terms": { "field": "metric.attributes.failure_reason", "missing_bucket": true } } }
+                ]
+              },
+              "aggregations": { "sum_value": { "sum": { "field": "value" } } }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "bucket_level_trigger": {
+        "name": "auth_failure_burst",
+        "severity": "1",
+        "condition": {
+          "buckets_path": { "sum_value": "sum_value" },
+          "parent_bucket_path": "composite_agg",
+          "script": { "source": "params.sum_value > 10", "lang": "painless" }
+        },
+        "actions": [
+          {
+            "name": "slack",
+            "destination_id": "${SLACK_CHANNEL_ID}",
+            "throttle_enabled": false,
+            "subject_template": { "source": "MCP Gateway: Auth Failure Burst", "lang": "mustache" },
+            "message_template": {
+              "source": ":rotating_light: *MCP Gateway -- Auth Failure Burst*\nMore than 10 authentication failures observed in the last 5 minutes.\n{{#ctx.alerts}}\n  Failure reason: {{bucket_keys}}\n{{/ctx.alerts}}",
+              "lang": "mustache"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

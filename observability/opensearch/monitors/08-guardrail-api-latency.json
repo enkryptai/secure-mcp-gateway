@@ -1,0 +1,68 @@
+{
+  "type": "monitor",
+  "name": "MCPGW: Guardrail API Latency",
+  "monitor_type": "bucket_level_monitor",
+  "enabled": true,
+  "schedule": {
+    "period": { "interval": 1, "unit": "MINUTES" }
+  },
+  "_meta": {
+    "note": "True p95 over histogram buckets requires a custom percentile_bucket pipeline. As a tractable proxy we aggregate max(max) of the histogram, which catches any single export window where a guardrail call exceeded 2s. Will over-fire vs. the Grafana p95 rule but is correct-in-spirit; revisit when porting dashboards if the noise level is too high."
+  },
+  "inputs": [
+    {
+      "search": {
+        "indices": ["ss4o_metrics-gateway*"],
+        "query": {
+          "size": 0,
+          "query": {
+            "bool": {
+              "filter": [
+                { "term": { "name": "enkrypt.guardrail.duration" } },
+                { "term": { "aggregationTemporality": "AGGREGATION_TEMPORALITY_DELTA" } },
+                { "term": { "kind": "HISTOGRAM" } },
+                { "range": { "time": { "from": "now-5m", "to": "now" } } }
+              ]
+            }
+          },
+          "aggregations": {
+            "composite_agg": {
+              "composite": {
+                "size": 50,
+                "sources": [
+                  { "server": { "terms": { "field": "metric.attributes.enkrypt@server@name" } } }
+                ]
+              },
+              "aggregations": { "p95_proxy_max": { "max": { "field": "max" } } }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "bucket_level_trigger": {
+        "name": "latency_high",
+        "severity": "3",
+        "condition": {
+          "buckets_path": { "p95_proxy_max": "p95_proxy_max" },
+          "parent_bucket_path": "composite_agg",
+          "script": { "source": "params.p95_proxy_max > 2.0", "lang": "painless" }
+        },
+        "actions": [
+          {
+            "name": "slack",
+            "destination_id": "${SLACK_CHANNEL_ID}",
+            "throttle_enabled": false,
+            "subject_template": { "source": "MCP Gateway: Guardrail API Latency High", "lang": "mustache" },
+            "message_template": {
+              "source": ":warning: *MCP Gateway -- Guardrail API Latency High*\nGuardrail HTTP duration (max in window) exceeded 2 seconds in the last 5 minutes. Proxy for p95.\n{{#ctx.alerts}}\n  Server: {{bucket_keys}}\n{{/ctx.alerts}}",
+              "lang": "mustache"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

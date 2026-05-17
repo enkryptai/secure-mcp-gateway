@@ -1,0 +1,64 @@
+{
+  "type": "monitor",
+  "name": "MCPGW: User Targeting -- Guardrails",
+  "monitor_type": "bucket_level_monitor",
+  "enabled": true,
+  "schedule": {
+    "period": { "interval": 1, "unit": "MINUTES" }
+  },
+  "inputs": [
+    {
+      "search": {
+        "indices": ["ss4o_metrics-gateway*"],
+        "query": {
+          "size": 0,
+          "query": {
+            "bool": {
+              "filter": [
+                { "term": { "name": "enkrypt.guardrail.blocks" } },
+                { "term": { "aggregationTemporality": "AGGREGATION_TEMPORALITY_DELTA" } },
+                { "range": { "time": { "from": "now-5m", "to": "now" } } }
+              ]
+            }
+          },
+          "aggregations": {
+            "composite_agg": {
+              "composite": {
+                "size": 50,
+                "sources": [
+                  { "user_id": { "terms": { "field": "metric.attributes.enkrypt@user@id" } } }
+                ]
+              },
+              "aggregations": { "sum_value": { "sum": { "field": "value" } } }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "bucket_level_trigger": {
+        "name": "user_targeting",
+        "severity": "1",
+        "condition": {
+          "buckets_path": { "sum_value": "sum_value" },
+          "parent_bucket_path": "composite_agg",
+          "script": { "source": "params.sum_value > 10", "lang": "painless" }
+        },
+        "actions": [
+          {
+            "name": "slack",
+            "destination_id": "${SLACK_CHANNEL_ID}",
+            "throttle_enabled": false,
+            "subject_template": { "source": "MCP Gateway: User Targeting -- Guardrails", "lang": "mustache" },
+            "message_template": {
+              "source": ":rotating_light: *MCP Gateway -- User Targeting (Guardrails)*\nA single user triggered more than 10 guardrail blocks in the last 5 minutes.\n{{#ctx.alerts}}\n  User: {{bucket_keys}}\n{{/ctx.alerts}}",
+              "lang": "mustache"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

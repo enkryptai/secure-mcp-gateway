@@ -1,0 +1,117 @@
+{
+  "index_patterns": ["ss4o_metrics-gateway*"],
+  "data_stream": {
+    "timestamp_field": { "name": "time" }
+  },
+  "priority": 1000,
+  "_meta": {
+    "description": "SS4O metrics for Secure MCP Gateway. Populated by Data Prepper's otel_metrics processor. Note Data Prepper's actual field naming: attributes live under `metric.attributes.*` (literal dots in key name) and nested dotted OTel attrs become `@`-separated (e.g. otel attr `enkrypt.server.name` -> `metric.attributes.enkrypt@server@name`). `serviceName` is lifted to top level. The dynamic_templates below force keyword mapping on the attribute namespaces so aggregations stay cheap."
+  },
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "opendistro.index_state_management.policy_id": "gateway_telemetry_policy",
+      "plugins.index_state_management.rollover_alias": "ss4o_metrics-gateway",
+      "mapping.total_fields.limit": "5000",
+      "refresh_interval": "5s"
+    },
+    "aliases": {
+      "gateway-metrics": {}
+    },
+    "mappings": {
+      "dynamic": "true",
+      "_source": { "enabled": true },
+      "dynamic_templates": [
+        {
+          "metric_attributes_strings_as_keyword": {
+            "path_match": "metric.attributes.*",
+            "match_mapping_type": "string",
+            "mapping": { "type": "keyword", "ignore_above": 1024 }
+          }
+        },
+        {
+          "resource_attributes_strings_as_keyword": {
+            "path_match": "resource.attributes.*",
+            "match_mapping_type": "string",
+            "mapping": { "type": "keyword", "ignore_above": 1024 }
+          }
+        },
+        {
+          "instrumentation_scope_strings_as_keyword": {
+            "path_match": "instrumentationScope.*",
+            "match_mapping_type": "string",
+            "mapping": { "type": "keyword", "ignore_above": 256 }
+          }
+        }
+      ],
+      "properties": {
+        "@timestamp":             { "type": "date" },
+        "time":                   { "type": "date_nanos" },
+        "startTime":              { "type": "date_nanos" },
+        "observedTimestamp":      { "type": "date" },
+
+        "name":                   { "type": "keyword", "ignore_above": 256 },
+        "description":            { "type": "text" },
+        "unit":                   { "type": "keyword", "ignore_above": 64 },
+        "kind":                   { "type": "keyword", "ignore_above": 32 },
+        "aggregationTemporality": { "type": "keyword", "ignore_above": 64 },
+        "isMonotonic":            { "type": "boolean" },
+        "flags":                  { "type": "integer" },
+        "schemaUrl":              { "type": "keyword", "ignore_above": 256 },
+        "serviceName":            { "type": "keyword", "ignore_above": 256 },
+
+        "value":     { "type": "double" },
+        "count":     { "type": "long" },
+        "sum":       { "type": "double" },
+        "min":       { "type": "double" },
+        "max":       { "type": "double" },
+        "scale":     { "type": "integer" },
+        "zeroCount": { "type": "long" },
+
+        "buckets": {
+          "type": "nested",
+          "properties": {
+            "count":      { "type": "long" },
+            "sum":        { "type": "double" },
+            "max":        { "type": "double" },
+            "min":        { "type": "double" },
+            "upperBound": { "type": "double" }
+          }
+        },
+        "positiveBuckets": {
+          "type": "nested",
+          "properties": {
+            "count": { "type": "long" },
+            "max":   { "type": "double" },
+            "min":   { "type": "double" }
+          }
+        },
+        "negativeBuckets": {
+          "type": "nested",
+          "properties": {
+            "count": { "type": "long" },
+            "max":   { "type": "double" },
+            "min":   { "type": "double" }
+          }
+        },
+        "quantileValues": {
+          "type": "nested",
+          "properties": {
+            "value":    { "type": "double" },
+            "quantile": { "type": "double" }
+          }
+        },
+        "exemplars": {
+          "type": "nested",
+          "properties": {
+            "time":    { "type": "date_nanos" },
+            "traceId": { "type": "keyword", "ignore_above": 256 },
+            "spanId":  { "type": "keyword", "ignore_above": 256 },
+            "value":   { "type": "double" }
+          }
+        }
+      }
+    }
+  }
+}

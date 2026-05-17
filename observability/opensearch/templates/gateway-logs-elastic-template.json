@@ -1,0 +1,72 @@
+{
+  "index_patterns": ["ss4o_logs-gateway*"],
+  "data_stream": {
+    "timestamp_field": { "name": "time" }
+  },
+  "priority": 1000,
+  "_meta": {
+    "description": "SS4O logs for Secure MCP Gateway. Populated by Data Prepper's otel_logs_source (no processor required). Attributes land under `log.attributes.*` (with `@` separator for nested keys). body is text+keyword for both full-text search and aggregation."
+  },
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "opendistro.index_state_management.policy_id": "gateway_telemetry_policy",
+      "plugins.index_state_management.rollover_alias": "ss4o_logs-gateway",
+      "mapping.total_fields.limit": "5000",
+      "refresh_interval": "5s"
+    },
+    "aliases": {
+      "gateway-logs": {}
+    },
+    "mappings": {
+      "dynamic": "true",
+      "_source": { "enabled": true },
+      "dynamic_templates": [
+        {
+          "log_attributes_strings_as_keyword": {
+            "path_match": "log.attributes.*",
+            "match_mapping_type": "string",
+            "mapping": { "type": "keyword", "ignore_above": 1024 }
+          }
+        },
+        {
+          "resource_attributes_strings_as_keyword": {
+            "path_match": "resource.attributes.*",
+            "match_mapping_type": "string",
+            "mapping": { "type": "keyword", "ignore_above": 1024 }
+          }
+        },
+        {
+          "instrumentation_scope_strings_as_keyword": {
+            "path_match": "instrumentationScope.*",
+            "match_mapping_type": "string",
+            "mapping": { "type": "keyword", "ignore_above": 256 }
+          }
+        }
+      ],
+      "properties": {
+        "@timestamp":         { "type": "date" },
+        "time":               { "type": "date_nanos" },
+        "observedTimestamp":  { "type": "date" },
+
+        "traceId":            { "type": "keyword", "ignore_above": 256 },
+        "spanId":             { "type": "keyword", "ignore_above": 256 },
+        "traceFlags":         { "type": "integer" },
+        "flags":              { "type": "integer" },
+        "severityNumber":     { "type": "integer" },
+        "severityText":       { "type": "keyword", "ignore_above": 32 },
+        "schemaUrl":          { "type": "keyword", "ignore_above": 256 },
+        "serviceName":        { "type": "keyword", "ignore_above": 256 },
+        "droppedAttributesCount": { "type": "integer" },
+
+        "body": {
+          "type": "text",
+          "fields": {
+            "keyword": { "type": "keyword", "ignore_above": 8192 }
+          }
+        }
+      }
+    }
+  }
+}

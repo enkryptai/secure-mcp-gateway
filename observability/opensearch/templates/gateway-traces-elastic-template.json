@@ -1,0 +1,97 @@
+{
+  "index_patterns": ["ss4o_traces-gateway*"],
+  "data_stream": {
+    "timestamp_field": { "name": "startTime" }
+  },
+  "priority": 1000,
+  "_meta": {
+    "description": "SS4O traces for Secure MCP Gateway. Populated by Data Prepper's otel_traces processor. Note: attributes land under `span.attributes.*` (with `@` separator for nested keys). Service-map data goes to a separate index (otel-v1-apm-service-map-*) managed by Data Prepper's service_map processor's built-in template."
+  },
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "opendistro.index_state_management.policy_id": "gateway_telemetry_policy",
+      "plugins.index_state_management.rollover_alias": "ss4o_traces-gateway",
+      "mapping.total_fields.limit": "5000",
+      "refresh_interval": "5s"
+    },
+    "aliases": {
+      "gateway-traces": {}
+    },
+    "mappings": {
+      "dynamic": "true",
+      "_source": { "enabled": true },
+      "dynamic_templates": [
+        {
+          "span_attributes_strings_as_keyword": {
+            "path_match": "span.attributes.*",
+            "match_mapping_type": "string",
+            "mapping": { "type": "keyword", "ignore_above": 1024 }
+          }
+        },
+        {
+          "resource_attributes_strings_as_keyword": {
+            "path_match": "resource.attributes.*",
+            "match_mapping_type": "string",
+            "mapping": { "type": "keyword", "ignore_above": 1024 }
+          }
+        },
+        {
+          "instrumentation_scope_strings_as_keyword": {
+            "path_match": "instrumentationScope.*",
+            "match_mapping_type": "string",
+            "mapping": { "type": "keyword", "ignore_above": 256 }
+          }
+        }
+      ],
+      "properties": {
+        "@timestamp":         { "type": "date" },
+        "startTime":          { "type": "date_nanos" },
+        "endTime":            { "type": "date_nanos" },
+        "observedTimestamp":  { "type": "date" },
+        "durationInNanos":    { "type": "long" },
+
+        "traceId":            { "type": "keyword", "ignore_above": 256 },
+        "spanId":             { "type": "keyword", "ignore_above": 256 },
+        "parentSpanId":       { "type": "keyword", "ignore_above": 256 },
+        "traceState":         { "type": "keyword", "ignore_above": 256 },
+        "name":               { "type": "keyword", "ignore_above": 1024 },
+        "kind":               { "type": "keyword", "ignore_above": 32 },
+        "serviceName":        { "type": "keyword", "ignore_above": 256 },
+        "traceGroup":         { "type": "keyword", "ignore_above": 1024 },
+        "traceGroupFields": {
+          "properties": {
+            "endTime":         { "type": "date_nanos" },
+            "durationInNanos": { "type": "long" },
+            "statusCode":      { "type": "integer" }
+          }
+        },
+        "status.code":            { "type": "integer" },
+        "status.message":         { "type": "text" },
+        "schemaUrl":              { "type": "keyword", "ignore_above": 256 },
+        "droppedAttributesCount": { "type": "integer" },
+        "droppedEventsCount":     { "type": "integer" },
+        "droppedLinksCount":      { "type": "integer" },
+
+        "events": {
+          "type": "nested",
+          "properties": {
+            "name":       { "type": "keyword", "ignore_above": 1024 },
+            "time":       { "type": "date_nanos" },
+            "droppedAttributesCount": { "type": "integer" }
+          }
+        },
+        "links": {
+          "type": "nested",
+          "properties": {
+            "traceId":     { "type": "keyword", "ignore_above": 256 },
+            "spanId":      { "type": "keyword", "ignore_above": 256 },
+            "traceState":  { "type": "keyword", "ignore_above": 256 },
+            "droppedAttributesCount": { "type": "integer" }
+          }
+        }
+      }
+    }
+  }
+}

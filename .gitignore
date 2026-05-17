@@ -33,10 +33,13 @@ Thumbs.db
 .env.*
 # …but DO commit the templates that ship with the repo.
 # Without these un-ignore rules the `.env.*` glob above swallows
-# observability/.env.example (and any future *.env.example), which
-# silently breaks new-operator setup. Confirmed 2026-05-05 with
-# `git check-ignore -v observability/.env.example`.
-!**/.env.example
+# the committed templates, which silently breaks new-operator setup.
+# The `.env*.example` glob covers per-stack templates too:
+# observability/.env.grafana.example, .env.opensearch.example, etc.
+# (the old `!**/.env.example` rule only matched the literal basename
+# `.env.example` and silently dropped `.env.opensearch.example`).
+# Confirmed with `git check-ignore -v observability/.env.grafana.example`.
+!**/.env*.example
 !**/.env.template
 !**/.env.sample
 enkrypt_mcp_config*.json*
