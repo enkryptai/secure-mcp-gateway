@@ -603,12 +603,21 @@ class SecureToolExecutionService:
         project_id = gateway_config.get("project_id")
         mcp_config_id = gateway_config.get("mcp_config_id")
         user_id = gateway_config.get("user_id")
+        # ``org_id`` is only set when the cloud-auth provider promotes it from
+        # ``request_context``; local-apikey configs leave it ``None`` and
+        # ``_safe_attrs`` will then strip it from metric attributes.
+        org_id = gateway_config.get("org_id")
 
         # Auth context threaded into per-tool helpers so metric helpers can
-        # tag each `tool_call_*` / `guardrail_*` counter with `user_id` and
-        # `project_id`.  Pivots like "single user repeatedly tripping
-        # guardrails" become a one-line PromQL alert instead of a Loki query.
-        auth_context = {"user_id": user_id, "project_id": project_id}
+        # tag each `tool_call_*` / `guardrail_*` counter with `user_id`,
+        # `project_id`, and `org_id`.  Pivots like "single user repeatedly
+        # tripping guardrails" or "all violations for org X" become a one-line
+        # PromQL alert instead of a Loki query.
+        auth_context = {
+            "user_id": user_id,
+            "project_id": project_id,
+            "org_id": org_id,
+        }
 
         oauth_data, oauth_error = await prepare_oauth_for_server(
             server_name=server_name,

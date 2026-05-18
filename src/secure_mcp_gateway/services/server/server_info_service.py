@@ -95,6 +95,19 @@ class ServerInfoService:
         enkrypt_project_name = gateway_config.get("project_name", "not_provided")
         enkrypt_email = gateway_config.get("email", "not_provided")
         enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
+        # Cloud auth may return ``None`` for org fields (free-tier or
+        # personal-account gateways). Coerce to the placeholder so OTel
+        # doesn't reject the attribute and so dashboards filtering by
+        # ``enkrypt.org.id`` see a stable token.
+        enkrypt_org_id = gateway_config.get("org_id") or "not_provided"
+        enkrypt_org_name = gateway_config.get("org_name") or "not_provided"
+        # Mirrors the ``X-Enkrypt-MCP-Gateway`` /
+        # ``X-Enkrypt-MCP-Gateway-Version`` headers we send to the cloud
+        # when fetching this config — same coercion rationale as org.
+        enkrypt_gateway_name = gateway_config.get("gateway_name") or "not_provided"
+        enkrypt_gateway_version = (
+            gateway_config.get("gateway_version") or "not_provided"
+        )
         session_key = f"{enkrypt_gateway_key}_{enkrypt_project_id}_{enkrypt_user_id}_{enkrypt_mcp_config_id}"
 
         with tracer.start_as_current_span(SpanNames.SERVER_INFO) as main_span:
@@ -104,6 +117,12 @@ class ServerInfoService:
             main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             main_span.set_attribute(
                 "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
+            )
+            main_span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
+            main_span.set_attribute(SpanAttributes.ORG_NAME, enkrypt_org_name)
+            main_span.set_attribute(SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name)
+            main_span.set_attribute(
+                SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version
             )
             main_span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
             main_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)

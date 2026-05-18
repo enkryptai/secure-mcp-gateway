@@ -93,6 +93,10 @@ from secure_mcp_gateway.plugins.auth.base import (
     AuthResult,
     AuthStatus,
 )
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    SpanAttributes,
+    SpanNames,
+)
 from secure_mcp_gateway.plugins.telemetry.metrics_helpers import record_auth_outcome
 from secure_mcp_gateway.utils import (
     CONFIG_PATH,
@@ -303,6 +307,17 @@ class EnkryptAuthProvider(AuthProvider):
                 "config_id": mapped.get("mcp_config_id"),
                 "gateway_name": effective_gateway,
                 "gateway_version": self.gateway_version,
+                # ``org_id`` / ``org_name`` are now promoted to top-level keys
+                # on ``mapped`` (so telemetry can read them directly off the
+                # gateway_config), but we also surface them here so existing
+                # callers that read ``AuthResult.metadata["org_id"]`` keep
+                # working. Filter out ``None`` so the keys are absent rather
+                # than holding a sentinel — matching the rc_extra filter.
+                **{
+                    k: mapped[k]
+                    for k in ("org_id", "org_name")
+                    if mapped.get(k) is not None
+                },
                 **mapped.get("_request_context_extra", {}),
             },
         )
@@ -415,32 +430,79 @@ class EnkryptAuthProvider(AuthProvider):
             mask_key(gateway_key),
         )
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=timeout_seconds),
-                ) as resp:
-                    body_text = await resp.text()
-                    if resp.status == 200:
-                        try:
-                            return json.loads(body_text)
-                        except json.JSONDecodeError as e:
-                            raise _CloudFetchError(
-                                f"Cloud returned 200 with non-JSON body: {e}"
-                            ) from e
+        # Wrap the HTTP call in a child span so OpenSearch / Jaeger traces
+        # record the exact headers the gateway sends to the cloud (apikey
+        # masked) plus the response status. Uses the global OTel tracer so
+        # the span is a no-op when telemetry isn't initialised (unit tests,
+        # CLI commands) — no extra plumbing required.
+        from opentelemetry import trace  # local import: optional dependency
 
-                    # Hard-fail on every non-200 with the cloud's error body.
-                    raise _CloudFetchError(
-                        f"HTTP {resp.status} from {url}: {_truncate(body_text)}"
-                    )
-        except aiohttp.ClientError as e:
-            raise _CloudFetchError(f"Transport error contacting {url}: {e}") from e
-        except asyncio.TimeoutError as e:
-            raise _CloudFetchError(
-                f"Timeout after {timeout_seconds}s contacting {url}"
-            ) from e
+        tracer = trace.get_tracer("secure_mcp_gateway.auth.enkrypt")
+        with tracer.start_as_current_span(SpanNames.AUTH_FETCH_CONFIG) as span:
+            span.set_attribute(SpanAttributes.AUTH_BASE_URL, self.base_url)
+            span.set_attribute(SpanAttributes.AUTH_FETCH_URL, url)
+            span.set_attribute(SpanAttributes.GATEWAY_NAME, effective_gateway)
+            span.set_attribute(
+                SpanAttributes.GATEWAY_VERSION, self.gateway_version
+            )
+            # Mirror the masked ``apikey`` request header so trace consumers
+            # can pivot per-tenant without ever seeing the raw secret.
+            span.set_attribute(
+                SpanAttributes.GATEWAY_KEY, mask_key(gateway_key)
+            )
+            if self.project_name:
+                span.set_attribute(
+                    SpanAttributes.PROJECT_NAME, self.project_name
+                )
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        url,
+                        headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=timeout_seconds),
+                    ) as resp:
+                        span.set_attribute(
+                            SpanAttributes.AUTH_FETCH_STATUS_CODE, resp.status
+                        )
+                        body_text = await resp.text()
+                        if resp.status == 200:
+                            try:
+                                span.set_attribute(SpanAttributes.SUCCESS, True)
+                                return json.loads(body_text)
+                            except json.JSONDecodeError as e:
+                                span.set_attribute(SpanAttributes.SUCCESS, False)
+                                span.set_attribute(
+                                    SpanAttributes.ERROR_MESSAGE, str(e)
+                                )
+                                raise _CloudFetchError(
+                                    f"Cloud returned 200 with non-JSON body: {e}"
+                                ) from e
+
+                        span.set_attribute(SpanAttributes.SUCCESS, False)
+                        span.set_attribute(
+                            SpanAttributes.ERROR_MESSAGE,
+                            f"HTTP {resp.status} from cloud",
+                        )
+                        # Hard-fail on every non-200 with the cloud's error body.
+                        raise _CloudFetchError(
+                            f"HTTP {resp.status} from {url}: {_truncate(body_text)}"
+                        )
+            except aiohttp.ClientError as e:
+                span.set_attribute(SpanAttributes.SUCCESS, False)
+                span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
+                raise _CloudFetchError(
+                    f"Transport error contacting {url}: {e}"
+                ) from e
+            except asyncio.TimeoutError as e:
+                span.set_attribute(SpanAttributes.SUCCESS, False)
+                span.set_attribute(
+                    SpanAttributes.ERROR_MESSAGE,
+                    f"timeout after {timeout_seconds}s",
+                )
+                raise _CloudFetchError(
+                    f"Timeout after {timeout_seconds}s contacting {url}"
+                ) from e
 
     def _get_timeout_seconds(self) -> float:
         """Pull the auth timeout from TimeoutManager if available."""
@@ -505,6 +567,15 @@ class EnkryptAuthProvider(AuthProvider):
         # Until the cloud surfaces a stable project_id UUID, mirror the name.
         project_id = request_context.get("project_id") or project_name
 
+        # Org identity. The cloud may return ``null`` for either field when the
+        # apikey isn't bound to an org (free-tier / personal-account gateways),
+        # so we keep both as ``None``-tolerant and let the downstream filter in
+        # ``build_log_extra`` / OTel attribute setters coerce to "not_provided".
+        org_id = request_context.get("org_id")
+        org_name = request_context.get("org_name") or request_context.get(
+            "organization_name"
+        )
+
         composite_id = f"{user_id}_{project_id}_{gateway_id}"
 
         # Gateway-wide common overrides (always win — see module docstring).
@@ -551,6 +622,9 @@ class EnkryptAuthProvider(AuthProvider):
             "forwarded_user_email",
             "project_name",
             "project_id",
+            "org_id",
+            "org_name",
+            "organization_name",
         }
         rc_extra = {
             k: v
@@ -558,12 +632,25 @@ class EnkryptAuthProvider(AuthProvider):
             if k not in promoted_keys and v is not None
         }
 
+        # Mirror the cloud-echoed gateway identity (``gateway_saved_name`` and
+        # ``gateway_version``) onto top-level keys so service-layer spans can
+        # tag every operation with the exact values the gateway sent in the
+        # ``X-Enkrypt-MCP-Gateway`` / ``X-Enkrypt-MCP-Gateway-Version``
+        # headers. We deliberately leave the originals in ``rc_extra`` too so
+        # existing log audits and downstream metadata consumers keep working.
+        gateway_saved_name = request_context.get("gateway_saved_name")
+        gateway_version = request_context.get("gateway_version")
+
         return {
             "id": composite_id,
             "project_name": project_name,
             "project_id": project_id,
             "user_id": user_id,
             "email": email,
+            "org_id": org_id,
+            "org_name": org_name,
+            "gateway_name": gateway_saved_name,
+            "gateway_version": gateway_version,
             "mcp_config": servers_out,
             "mcp_config_id": gateway_id,
             "_request_context_extra": rc_extra,
