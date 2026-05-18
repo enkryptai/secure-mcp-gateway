@@ -1,0 +1,49 @@
+# =========================================================================
+#  .gitattributes -- line-ending normalization
+#
+#  Without this, Windows checkouts (core.autocrlf=true) write CRLF into
+#  observability/opensearch/bootstrap.sh, etc. When docker-compose
+#  bind-mounts those files into a Linux container, bash chokes on the
+#  trailing \r ("set: pipefail: invalid option name"). This file forces
+#  LF for every file path that is consumed by a Linux container or by the
+#  cross-repo sync-check (which byte-compares against the apiaas mirror,
+#  always LF on Linux CI).
+#
+#  After editing this file, run:
+#    git add --renormalize .
+#    git status   # review which working-tree files got fixed
+#    git commit -m "Normalize line endings via .gitattributes"
+# =========================================================================
+
+# Default: git decides per-file (preserves binary detection).
+* text=auto
+
+# --- Shell scripts run on Linux only; LF mandatory ---
+*.sh text eol=lf
+
+# --- Files bind-mounted into Linux containers from observability/ ---
+# OpenSearch bootstrap tree (bind-mounted into opensearchproject/opensearch).
+observability/opensearch/**/*.json text eol=lf
+observability/opensearch/**/*.sh   text eol=lf
+
+# Data Prepper templates + render script (bind-mounted into Linux containers).
+observability/data_prepper/*.yaml text eol=lf
+observability/data_prepper/*.py   text eol=lf
+
+# OTel Collector configs (bind-mounted into otel-collector container).
+observability/otel_collector/*.yaml text eol=lf
+
+# OpenSearch Dashboards saved-objects (sync-checked + uploaded via OSD _import).
+observability/opensearch_dashboards/*.ndjson text eol=lf
+
+# Compose files + their env templates (for consistency with sibling files).
+observability/*.yml text eol=lf
+observability/.env.*.example text eol=lf
+
+# --- Always binary (no normalization) ---
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
