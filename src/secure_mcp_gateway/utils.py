@@ -453,6 +453,8 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
     project_name = "not_provided"
     email = "not_provided"
     mcp_config_id = "not_provided"
+    org_id = "not_provided"
+    org_name = "not_provided"
 
     try:
         # Only attempt auth lookups when ctx looks like an MCP Context
@@ -499,6 +501,12 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
                             mcp_config_id = gateway_config.get(
                                 "mcp_config_id", mcp_config_id
                             )
+                            # Cloud may return ``None`` for either org field
+                            # (free-tier / personal-account gateways). Keep
+                            # the "not_provided" placeholder in that case so
+                            # log output stays uniform.
+                            org_id = gateway_config.get("org_id") or org_id
+                            org_name = gateway_config.get("org_name") or org_name
                         except Exception:
                             # If anything fails, just use defaults
                             pass
@@ -515,6 +523,8 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
     return {
         "custom_id": custom_id or "",
         "server_name": server_name or "",
+        "org_id": org_id or "",
+        "org_name": org_name or "",
         "project_id": project_id or "",
         "project_name": project_name or "",
         "user_id": user_id or "",

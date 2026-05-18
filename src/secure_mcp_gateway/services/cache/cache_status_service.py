@@ -154,11 +154,19 @@ class CacheStatusService:
             enkrypt_project_name = gateway_config.get("project_name", "not_provided")
             enkrypt_email = gateway_config.get("email", "not_provided")
             enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
+            # Cloud auth may return ``None`` for org fields (free-tier or
+            # personal-account gateways). Coerce to the placeholder so OTel
+            # doesn't reject the attribute and so dashboards filtering by
+            # ``enkrypt.org.id`` see a stable token.
+            enkrypt_org_id = gateway_config.get("org_id") or "not_provided"
+            enkrypt_org_name = gateway_config.get("org_name") or "not_provided"
 
             # Set span attributes
             auth_span.set_attribute(
                 SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
+            auth_span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
+            auth_span.set_attribute(SpanAttributes.ORG_NAME, enkrypt_org_name)
             auth_span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
             auth_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
             auth_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)

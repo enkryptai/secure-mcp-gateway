@@ -303,6 +303,17 @@ class EnkryptAuthProvider(AuthProvider):
                 "config_id": mapped.get("mcp_config_id"),
                 "gateway_name": effective_gateway,
                 "gateway_version": self.gateway_version,
+                # ``org_id`` / ``org_name`` are now promoted to top-level keys
+                # on ``mapped`` (so telemetry can read them directly off the
+                # gateway_config), but we also surface them here so existing
+                # callers that read ``AuthResult.metadata["org_id"]`` keep
+                # working. Filter out ``None`` so the keys are absent rather
+                # than holding a sentinel — matching the rc_extra filter.
+                **{
+                    k: mapped[k]
+                    for k in ("org_id", "org_name")
+                    if mapped.get(k) is not None
+                },
                 **mapped.get("_request_context_extra", {}),
             },
         )
@@ -505,6 +516,15 @@ class EnkryptAuthProvider(AuthProvider):
         # Until the cloud surfaces a stable project_id UUID, mirror the name.
         project_id = request_context.get("project_id") or project_name
 
+        # Org identity. The cloud may return ``null`` for either field when the
+        # apikey isn't bound to an org (free-tier / personal-account gateways),
+        # so we keep both as ``None``-tolerant and let the downstream filter in
+        # ``build_log_extra`` / OTel attribute setters coerce to "not_provided".
+        org_id = request_context.get("org_id")
+        org_name = request_context.get("org_name") or request_context.get(
+            "organization_name"
+        )
+
         composite_id = f"{user_id}_{project_id}_{gateway_id}"
 
         # Gateway-wide common overrides (always win — see module docstring).
@@ -551,6 +571,9 @@ class EnkryptAuthProvider(AuthProvider):
             "forwarded_user_email",
             "project_name",
             "project_id",
+            "org_id",
+            "org_name",
+            "organization_name",
         }
         rc_extra = {
             k: v
@@ -564,6 +587,8 @@ class EnkryptAuthProvider(AuthProvider):
             "project_id": project_id,
             "user_id": user_id,
             "email": email,
+            "org_id": org_id,
+            "org_name": org_name,
             "mcp_config": servers_out,
             "mcp_config_id": gateway_id,
             "_request_context_extra": rc_extra,

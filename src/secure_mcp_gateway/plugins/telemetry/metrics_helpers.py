@@ -113,6 +113,7 @@ def record_tool_call_outcome(
     block_reason: Optional[str] = None,
     user_id: Optional[str] = None,
     project_id: Optional[str] = None,
+    org_id: Optional[str] = None,
 ) -> None:
     """Increment the right tool-call lifecycle counter.
 
@@ -144,6 +145,7 @@ def record_tool_call_outcome(
         "outcome": outcome,
         "user_id": user_id,
         "project_id": project_id,
+        "org_id": org_id,
     }
     if outcome == "blocked" and block_reason:
         attrs["block_reason"] = block_reason
@@ -181,6 +183,7 @@ def record_guardrail_violations(
     guardrail_name: Optional[str] = None,
     user_id: Optional[str] = None,
     project_id: Optional[str] = None,
+    org_id: Optional[str] = None,
 ) -> None:
     """Record one or more guardrail violations.
 
@@ -215,6 +218,7 @@ def record_guardrail_violations(
             "guardrail_name": guardrail_name,
             "user_id": user_id,
             "project_id": project_id,
+            "org_id": org_id,
         }
         _add(getattr(mgr, "guardrail_violation_counter", None), 1, attrs)
         if directional_name:
@@ -236,6 +240,7 @@ def record_pii_redaction(
     tool_name: str = "",
     user_id: Optional[str] = None,
     project_id: Optional[str] = None,
+    org_id: Optional[str] = None,
 ) -> None:
     """Increment ``pii_redactions_counter`` when input is redacted or output
     is de-anonymised.  ``direction`` is ``"input"`` or ``"output"``.
@@ -254,6 +259,7 @@ def record_pii_redaction(
         "tool_name": tool_name,
         "user_id": user_id,
         "project_id": project_id,
+        "org_id": org_id,
     }
     _add(getattr(mgr, "pii_redactions_counter", None), count, attrs)
 
