@@ -45,7 +45,10 @@ Helpers
 from __future__ import annotations
 
 import logging
-from typing import Any, Iterable, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +73,7 @@ def _safe_attrs(attrs: Mapping[str, Any]) -> dict[str, Any]:
 def _add(
     counter: Any,
     value: int = 1,
-    attributes: Optional[Mapping[str, Any]] = None,
+    attributes: Mapping[str, Any] | None = None,
 ) -> None:
     if counter is None:
         return
@@ -83,7 +86,7 @@ def _add(
 def _record(
     histogram: Any,
     value: float,
-    attributes: Optional[Mapping[str, Any]] = None,
+    attributes: Mapping[str, Any] | None = None,
 ) -> None:
     if histogram is None:
         return
@@ -109,11 +112,15 @@ def record_tool_call_outcome(
     server_name: str,
     tool_name: str,
     outcome: str,
-    duration_ms: Optional[float] = None,
-    block_reason: Optional[str] = None,
-    user_id: Optional[str] = None,
-    project_id: Optional[str] = None,
-    org_id: Optional[str] = None,
+    duration_ms: float | None = None,
+    block_reason: str | None = None,
+    user_id: str | None = None,
+    project_id: str | None = None,
+    project_name: str | None = None,
+    project_registry: str | None = None,
+    org_id: str | None = None,
+    gateway_name: str | None = None,
+    gateway_version: str | None = None,
 ) -> None:
     """Increment the right tool-call lifecycle counter.
 
@@ -128,12 +135,15 @@ def record_tool_call_outcome(
     block_reason : str | None
         Only used when ``outcome == "blocked"`` (e.g. ``input_violation``,
         ``output_violation``, ``deny_list``).
-    user_id, project_id : str | None
-        Authenticated request principal.  Optional — when present, attached as
-        metric attributes so per-user / per-project Grafana alerts (e.g. the
-        ``User Repeatedly Triggering Guardrails`` rule) can target a single
-        offender.  ``_safe_attrs`` strips these when ``None``/empty so we don't
-        explode label cardinality with empty strings.
+    user_id, project_id, project_name, project_registry, org_id,
+    gateway_name, gateway_version : str | None
+        Identity attributes echoed from ``request_context`` (cloud auth)
+        or the local apikey lookup. Optional -- when present, attached as
+        metric attributes so per-tenant / per-gateway-revision PromQL
+        alerts (e.g. ``sum by (gateway_version)``, ``sum by (org_id)``)
+        work without a Loki pivot. ``_safe_attrs`` strips these when
+        ``None``/empty so we don't explode label cardinality with empty
+        strings.
     """
     mgr = _get_manager()
     if mgr is None:
@@ -145,7 +155,11 @@ def record_tool_call_outcome(
         "outcome": outcome,
         "user_id": user_id,
         "project_id": project_id,
+        "project_name": project_name,
+        "project_registry": project_registry,
         "org_id": org_id,
+        "gateway_name": gateway_name,
+        "gateway_version": gateway_version,
     }
     if outcome == "blocked" and block_reason:
         attrs["block_reason"] = block_reason
@@ -180,10 +194,14 @@ def record_guardrail_violations(
     violation_types: Iterable[Any],
     server_name: str = "",
     tool_name: str = "",
-    guardrail_name: Optional[str] = None,
-    user_id: Optional[str] = None,
-    project_id: Optional[str] = None,
-    org_id: Optional[str] = None,
+    guardrail_name: str | None = None,
+    user_id: str | None = None,
+    project_id: str | None = None,
+    project_name: str | None = None,
+    project_registry: str | None = None,
+    org_id: str | None = None,
+    gateway_name: str | None = None,
+    gateway_version: str | None = None,
 ) -> None:
     """Record one or more guardrail violations.
 
@@ -218,7 +236,11 @@ def record_guardrail_violations(
             "guardrail_name": guardrail_name,
             "user_id": user_id,
             "project_id": project_id,
+            "project_name": project_name,
+            "project_registry": project_registry,
             "org_id": org_id,
+            "gateway_name": gateway_name,
+            "gateway_version": gateway_version,
         }
         _add(getattr(mgr, "guardrail_violation_counter", None), 1, attrs)
         if directional_name:
@@ -238,15 +260,21 @@ def record_pii_redaction(
     count: int = 1,
     server_name: str = "",
     tool_name: str = "",
-    user_id: Optional[str] = None,
-    project_id: Optional[str] = None,
-    org_id: Optional[str] = None,
+    user_id: str | None = None,
+    project_id: str | None = None,
+    project_name: str | None = None,
+    project_registry: str | None = None,
+    org_id: str | None = None,
+    gateway_name: str | None = None,
+    gateway_version: str | None = None,
 ) -> None:
     """Increment ``pii_redactions_counter`` when input is redacted or output
     is de-anonymised.  ``direction`` is ``"input"`` or ``"output"``.
 
-    ``user_id`` / ``project_id`` are attached as metric attributes when
-    present so the ``PII Detected`` alert can pivot per-principal.
+    Identity attributes (``user_id`` / ``project_id`` / ``project_name`` /
+    ``project_registry`` / ``org_id`` / ``gateway_name`` / ``gateway_version``)
+    are attached when present so the ``PII Detected`` alert can pivot
+    per-principal or per-gateway revision.
     """
     if count <= 0:
         return
@@ -259,7 +287,11 @@ def record_pii_redaction(
         "tool_name": tool_name,
         "user_id": user_id,
         "project_id": project_id,
+        "project_name": project_name,
+        "project_registry": project_registry,
         "org_id": org_id,
+        "gateway_name": gateway_name,
+        "gateway_version": gateway_version,
     }
     _add(getattr(mgr, "pii_redactions_counter", None), count, attrs)
 
@@ -277,7 +309,7 @@ _AUTH_OUTCOME_COUNTERS = {
 def record_auth_outcome(
     provider: str,
     outcome: str,
-    failure_reason: Optional[str] = None,
+    failure_reason: str | None = None,
 ) -> None:
     """outcome in {"success", "failure"}.  ``provider`` identifies which auth
     plugin produced the result (e.g. ``local_apikey``, ``enkrypt``).
@@ -339,9 +371,9 @@ def record_guardrail_api(
 
 
 __all__ = [
-    "record_tool_call_outcome",
-    "record_guardrail_violations",
-    "record_pii_redaction",
     "record_auth_outcome",
     "record_guardrail_api",
+    "record_guardrail_violations",
+    "record_pii_redaction",
+    "record_tool_call_outcome",
 ]

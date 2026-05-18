@@ -27,9 +27,11 @@ class SpanAttributes:
     # --- Identity ---
     SERVER_NAME = "enkrypt.server.name"
     ORG_ID = "enkrypt.org.id"
-    ORG_NAME = "enkrypt.org.name"
     PROJECT_ID = "enkrypt.project.id"
     PROJECT_NAME = "enkrypt.project.name"
+    # Cloud `request_context.registry_name`. Nested under `project.` to mirror
+    # the cloud data model where every registry belongs to a project.
+    PROJECT_REGISTRY = "enkrypt.project.registry"
     USER_ID = "enkrypt.user.id"
     USER_EMAIL = "enkrypt.user.email"
     CONFIG_ID = "enkrypt.config.id"

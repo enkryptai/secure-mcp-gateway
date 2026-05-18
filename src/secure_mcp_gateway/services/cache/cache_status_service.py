@@ -154,18 +154,20 @@ class CacheStatusService:
             enkrypt_project_name = gateway_config.get("project_name", "not_provided")
             enkrypt_email = gateway_config.get("email", "not_provided")
             enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
-            # Cloud auth may return ``None`` for org fields (free-tier or
-            # personal-account gateways). Coerce to the placeholder so OTel
+            # Cloud auth may return ``None`` for any identity field (free-tier
+            # or personal-account gateways, apikeys not bound to a registry,
+            # local-apikey provider). Coerce to the placeholder so OTel
             # doesn't reject the attribute and so dashboards filtering by
-            # ``enkrypt.org.id`` see a stable token.
+            # ``enkrypt.org.id`` etc. see a stable token. (Note: cloud does
+            # NOT return org_name -- only org_id.)
             enkrypt_org_id = gateway_config.get("org_id") or "not_provided"
-            enkrypt_org_name = gateway_config.get("org_name") or "not_provided"
+            enkrypt_project_registry = (
+                gateway_config.get("registry_name") or "not_provided"
+            )
             # Mirrors the ``X-Enkrypt-MCP-Gateway`` /
             # ``X-Enkrypt-MCP-Gateway-Version`` headers we send to the cloud
-            # when fetching this config — same coercion rationale as org.
-            enkrypt_gateway_name = (
-                gateway_config.get("gateway_name") or "not_provided"
-            )
+            # when fetching this config -- same coercion rationale.
+            enkrypt_gateway_name = gateway_config.get("gateway_name") or "not_provided"
             enkrypt_gateway_version = (
                 gateway_config.get("gateway_version") or "not_provided"
             )
@@ -175,7 +177,6 @@ class CacheStatusService:
                 SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
             auth_span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
-            auth_span.set_attribute(SpanAttributes.ORG_NAME, enkrypt_org_name)
             auth_span.set_attribute(SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name)
             auth_span.set_attribute(
                 SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version
@@ -184,6 +185,9 @@ class CacheStatusService:
             auth_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
             auth_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
             auth_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            auth_span.set_attribute(
+                SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
+            )
             auth_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
 
             # Funnel through ``create_session_key`` so a ``None`` credential

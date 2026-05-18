@@ -5,6 +5,7 @@ from typing import Any
 import requests
 
 from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
+from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 
 # Get tracer from telemetry manager
@@ -213,14 +214,34 @@ class CacheManagementService:
             enkrypt_project_name = gateway_config.get("project_name", "not_provided")
             enkrypt_email = gateway_config.get("email", "not_provided")
             enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
+            # Full request_context identity tuple from the cloud auth provider
+            # (or "not_provided" for local-apikey / free-tier gateways).
+            enkrypt_org_id = gateway_config.get("org_id") or "not_provided"
+            enkrypt_project_registry = (
+                gateway_config.get("registry_name") or "not_provided"
+            )
+            enkrypt_gateway_name = gateway_config.get("gateway_name") or "not_provided"
+            enkrypt_gateway_version = (
+                gateway_config.get("gateway_version") or "not_provided"
+            )
 
             # Set span attributes
-            auth_span.set_attribute("gateway_key", mask_key(enkrypt_gateway_key))
-            auth_span.set_attribute("enkrypt_user_id", enkrypt_user_id)
-            auth_span.set_attribute("enkrypt_mcp_config_id", enkrypt_mcp_config_id)
-            auth_span.set_attribute("enkrypt_project_id", enkrypt_project_id)
-            auth_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
-            auth_span.set_attribute("enkrypt_email", enkrypt_email)
+            auth_span.set_attribute(
+                SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
+            )
+            auth_span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
+            auth_span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
+            auth_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            auth_span.set_attribute(
+                SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
+            )
+            auth_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
+            auth_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
+            auth_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
+            auth_span.set_attribute(SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name)
+            auth_span.set_attribute(
+                SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version
+            )
 
             # Build session key via the canonical helper so ``None``
             # credential components (cloud-auth requests don't send

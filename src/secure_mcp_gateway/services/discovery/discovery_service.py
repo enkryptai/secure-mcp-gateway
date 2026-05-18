@@ -141,18 +141,20 @@ class DiscoveryService:
             enkrypt_project_name = gateway_config.get("project_name", "not_provided")
             enkrypt_email = gateway_config.get("email", "not_provided")
             enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
-            # Cloud auth may return ``None`` for org fields (free-tier or
-            # personal-account gateways). Coerce to the placeholder so OTel
+            # Cloud auth may return ``None`` for any identity field (free-tier
+            # or personal-account gateways, apikeys not bound to a registry,
+            # local-apikey provider). Coerce to the placeholder so OTel
             # doesn't reject the attribute and so dashboards filtering by
-            # ``enkrypt.org.id`` see a stable token.
+            # ``enkrypt.org.id`` etc. see a stable token. (Note: cloud does
+            # NOT return org_name -- only org_id.)
             enkrypt_org_id = gateway_config.get("org_id") or "not_provided"
-            enkrypt_org_name = gateway_config.get("org_name") or "not_provided"
+            enkrypt_project_registry = (
+                gateway_config.get("registry_name") or "not_provided"
+            )
             # Mirrors the ``X-Enkrypt-MCP-Gateway`` /
             # ``X-Enkrypt-MCP-Gateway-Version`` headers we send to the cloud
-            # when fetching this config — same coercion rationale as org.
-            enkrypt_gateway_name = (
-                gateway_config.get("gateway_name") or "not_provided"
-            )
+            # when fetching this config -- same coercion rationale.
+            enkrypt_gateway_name = gateway_config.get("gateway_name") or "not_provided"
             enkrypt_gateway_version = (
                 gateway_config.get("gateway_version") or "not_provided"
             )
@@ -162,7 +164,6 @@ class DiscoveryService:
                 "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
             )
             main_span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
-            main_span.set_attribute(SpanAttributes.ORG_NAME, enkrypt_org_name)
             main_span.set_attribute(SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name)
             main_span.set_attribute(
                 SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version
@@ -171,6 +172,9 @@ class DiscoveryService:
             main_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
             main_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
             main_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            main_span.set_attribute(
+                SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
+            )
             main_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
 
             # Funnel through ``create_session_key`` so a ``None`` credential
@@ -212,7 +216,7 @@ class DiscoveryService:
                         enkrypt_project_name,
                         enkrypt_email,
                         enkrypt_org_id,
-                        enkrypt_org_name,
+                        enkrypt_project_registry,
                     )
 
                 # Single server discovery
@@ -336,14 +340,16 @@ class DiscoveryService:
         enkrypt_project_name,
         enkrypt_email,
         enkrypt_org_id: str = "not_provided",
-        enkrypt_org_name: str = "not_provided",
+        enkrypt_project_registry: str = "not_provided",
     ):
         """Discover tools for all servers using three-phase parallel approach."""
         with tracer_obj.start_as_current_span("discover_all_servers") as all_span:
             all_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             all_span.set_attribute("discovery_started", True)
             all_span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
-            all_span.set_attribute(SpanAttributes.ORG_NAME, enkrypt_org_name)
+            all_span.set_attribute(
+                SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
+            )
             all_span.set_attribute("project_id", enkrypt_project_id)
             all_span.set_attribute("user_id", enkrypt_user_id)
             all_span.set_attribute("mcp_config_id", enkrypt_mcp_config_id)
@@ -1398,11 +1404,14 @@ class DiscoveryService:
                         )
 
                         try:
-                            validation_response = await self.guardrail_manager.validate_tool_registration(
-                                server_name=server_name,
-                                tools=tool_list,
-                                mode="filter",
-                                server_tools_guardrails_config=stg_config_local or None,
+                            validation_response = (
+                                await self.guardrail_manager.validate_tool_registration(
+                                    server_name=server_name,
+                                    tools=tool_list,
+                                    mode="filter",
+                                    server_tools_guardrails_config=stg_config_local
+                                    or None,
+                                )
                             )
 
                             if validation_response and validation_response.metadata:
@@ -1731,7 +1740,8 @@ class DiscoveryService:
                                     server_name=server_name,
                                     tools=[tool],
                                     mode="block",
-                                    server_tools_guardrails_config=stg_config_local or None,
+                                    server_tools_guardrails_config=stg_config_local
+                                    or None,
                                     kind="server_description",
                                 )
                                 if resp and resp.metadata:
@@ -1791,7 +1801,8 @@ class DiscoveryService:
                                     server_name=server_name,
                                     tools=[tool],
                                     mode="block",
-                                    server_tools_guardrails_config=stg_config_local or None,
+                                    server_tools_guardrails_config=stg_config_local
+                                    or None,
                                     kind="server_description",
                                 )
                                 if resp and resp.metadata:
@@ -2126,7 +2137,8 @@ class DiscoveryService:
                                     server_name=server_name,
                                     tools=[tool],
                                     mode="block",
-                                    server_tools_guardrails_config=stg_config_disc or None,
+                                    server_tools_guardrails_config=stg_config_disc
+                                    or None,
                                     kind="server_description",
                                 )
                                 if resp and resp.metadata:
@@ -2187,7 +2199,8 @@ class DiscoveryService:
                                     server_name=server_name,
                                     tools=[tool],
                                     mode="block",
-                                    server_tools_guardrails_config=stg_config_disc or None,
+                                    server_tools_guardrails_config=stg_config_disc
+                                    or None,
                                     kind="server_description",
                                 )
                                 if resp and resp.metadata:
@@ -2401,7 +2414,8 @@ class DiscoveryService:
                                     server_name=server_name,
                                     tools=tool_list,
                                     mode="filter",
-                                    server_tools_guardrails_config=stg_config_disc2 or None,
+                                    server_tools_guardrails_config=stg_config_disc2
+                                    or None,
                                 )
 
                                 if validation_response and validation_response.metadata:

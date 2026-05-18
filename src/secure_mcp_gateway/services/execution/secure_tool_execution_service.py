@@ -603,20 +603,29 @@ class SecureToolExecutionService:
         project_id = gateway_config.get("project_id")
         mcp_config_id = gateway_config.get("mcp_config_id")
         user_id = gateway_config.get("user_id")
-        # ``org_id`` is only set when the cloud-auth provider promotes it from
-        # ``request_context``; local-apikey configs leave it ``None`` and
-        # ``_safe_attrs`` will then strip it from metric attributes.
+        # Identity attrs are only set when the cloud-auth provider promotes
+        # them from ``request_context``; local-apikey configs leave them
+        # ``None`` and ``_safe_attrs`` will strip them from metric attributes.
         org_id = gateway_config.get("org_id")
+        project_name = gateway_config.get("project_name")
+        project_registry = gateway_config.get("registry_name")
+        gateway_name = gateway_config.get("gateway_name")
+        gateway_version = gateway_config.get("gateway_version")
 
         # Auth context threaded into per-tool helpers so metric helpers can
-        # tag each `tool_call_*` / `guardrail_*` counter with `user_id`,
-        # `project_id`, and `org_id`.  Pivots like "single user repeatedly
-        # tripping guardrails" or "all violations for org X" become a one-line
-        # PromQL alert instead of a Loki query.
+        # tag each `tool_call_*` / `guardrail_*` / `pii_redactions_*` counter
+        # with the full request_context identity tuple. Pivots like "single
+        # user repeatedly tripping guardrails", "all violations for org X",
+        # or "regression after gateway version v2 rollout" become one-line
+        # PromQL alerts instead of Loki queries.
         auth_context = {
             "user_id": user_id,
             "project_id": project_id,
+            "project_name": project_name,
+            "project_registry": project_registry,
             "org_id": org_id,
+            "gateway_name": gateway_name,
+            "gateway_version": gateway_version,
         }
 
         oauth_data, oauth_error = await prepare_oauth_for_server(

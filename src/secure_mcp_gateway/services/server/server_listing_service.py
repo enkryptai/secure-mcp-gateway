@@ -109,17 +109,19 @@ class ServerListingService:
             enkrypt_project_name = gateway_config.get("project_name", "not_provided")
             enkrypt_email = gateway_config.get("email", "not_provided")
             enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
-            # Cloud auth may return ``None`` for org fields (free-tier or
-            # personal-account gateways). Coerce to placeholder so dashboards
-            # filtering by ``enkrypt_org_id`` see a stable token.
+            # Cloud auth may return ``None`` for any identity field (free-tier
+            # or personal-account gateways, apikeys not bound to a registry,
+            # local-apikey provider). Coerce to placeholder so dashboards
+            # filtering by ``enkrypt_org_id`` etc. see a stable token. (Note:
+            # cloud does NOT return org_name -- only org_id.)
             enkrypt_org_id = gateway_config.get("org_id") or "not_provided"
-            enkrypt_org_name = gateway_config.get("org_name") or "not_provided"
+            enkrypt_project_registry = (
+                gateway_config.get("registry_name") or "not_provided"
+            )
             # Mirrors the ``X-Enkrypt-MCP-Gateway`` /
             # ``X-Enkrypt-MCP-Gateway-Version`` headers we send to the cloud
-            # when fetching this config — same coercion rationale as org.
-            enkrypt_gateway_name = (
-                gateway_config.get("gateway_name") or "not_provided"
-            )
+            # when fetching this config -- same coercion rationale.
+            enkrypt_gateway_name = gateway_config.get("gateway_name") or "not_provided"
             enkrypt_gateway_version = (
                 gateway_config.get("gateway_version") or "not_provided"
             )
@@ -136,7 +138,7 @@ class ServerListingService:
                 enkrypt_project_name,
                 enkrypt_email,
                 enkrypt_org_id,
-                enkrypt_org_name,
+                enkrypt_project_registry,
                 enkrypt_gateway_name,
                 enkrypt_gateway_version,
             )
@@ -236,7 +238,7 @@ class ServerListingService:
         enkrypt_project_name,
         enkrypt_email,
         enkrypt_org_id: str = "not_provided",
-        enkrypt_org_name: str = "not_provided",
+        enkrypt_project_registry: str = "not_provided",
         enkrypt_gateway_name: str = "not_provided",
         enkrypt_gateway_version: str = "not_provided",
     ):
@@ -247,7 +249,7 @@ class ServerListingService:
         span.set_attribute("enkrypt_gateway_key", mask_key(enkrypt_gateway_key))
         span.set_attribute("discover_tools", discover_tools)
         span.set_attribute("enkrypt_org_id", enkrypt_org_id)
-        span.set_attribute("enkrypt_org_name", enkrypt_org_name)
+        span.set_attribute("enkrypt_project_registry", enkrypt_project_registry)
         span.set_attribute("enkrypt_gateway_name", enkrypt_gateway_name)
         span.set_attribute("enkrypt_gateway_version", enkrypt_gateway_version)
         span.set_attribute("enkrypt_project_id", enkrypt_project_id)
@@ -468,9 +470,7 @@ class ServerListingService:
                 never raises -- so the caller can attribute every failure
                 to a specific server name.
                 """
-                with tracer.start_span(
-                    f"discover_server_{server_name}"
-                ) as server_span:
+                with tracer.start_span(f"discover_server_{server_name}") as server_span:
                     server_span.set_attribute("server_name", server_name)
                     server_span.set_attribute(
                         "per_server_timeout_s", per_server_timeout
@@ -483,9 +483,7 @@ class ServerListingService:
                     except asyncio.TimeoutError:
                         server_span.set_attribute("discovery_success", False)
                         server_span.set_attribute("error", "true")
-                        server_span.set_attribute(
-                            "error_kind", "discovery_timeout"
-                        )
+                        server_span.set_attribute("error_kind", "discovery_timeout")
                         logger.error(
                             "list_all_servers.discovery_timeout",
                             extra={
@@ -508,9 +506,7 @@ class ServerListingService:
                     except Exception as exc:
                         server_span.set_attribute("discovery_success", False)
                         server_span.set_attribute("error", "true")
-                        server_span.set_attribute(
-                            "error_kind", type(exc).__name__
-                        )
+                        server_span.set_attribute("error_kind", type(exc).__name__)
                         server_span.record_exception(exc)
                         logger.error(
                             "list_all_servers.discovery_exception",
@@ -583,9 +579,7 @@ class ServerListingService:
                     discovery_success_servers.append(server_name)
                     servers_with_tools[server_name] = discover_server_result
 
-            discover_span.set_attribute(
-                "failed_servers", len(discovery_failed_servers)
-            )
+            discover_span.set_attribute("failed_servers", len(discovery_failed_servers))
             discover_span.set_attribute(
                 "success_servers", len(discovery_success_servers)
             )

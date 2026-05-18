@@ -307,15 +307,16 @@ class EnkryptAuthProvider(AuthProvider):
                 "config_id": mapped.get("mcp_config_id"),
                 "gateway_name": effective_gateway,
                 "gateway_version": self.gateway_version,
-                # ``org_id`` / ``org_name`` are now promoted to top-level keys
-                # on ``mapped`` (so telemetry can read them directly off the
-                # gateway_config), but we also surface them here so existing
-                # callers that read ``AuthResult.metadata["org_id"]`` keep
-                # working. Filter out ``None`` so the keys are absent rather
-                # than holding a sentinel — matching the rc_extra filter.
+                # Cloud `request_context` identity fields are promoted to
+                # top-level keys on `mapped` (so telemetry can read them
+                # straight off the gateway_config), but we also surface them
+                # here so existing callers that read e.g.
+                # ``AuthResult.metadata["org_id"]`` keep working. Filter out
+                # ``None`` so missing keys are absent rather than holding a
+                # sentinel -- matches the rc_extra filter.
                 **{
                     k: mapped[k]
-                    for k in ("org_id", "org_name")
+                    for k in ("org_id", "registry_name")
                     if mapped.get(k) is not None
                 },
                 **mapped.get("_request_context_extra", {}),
@@ -442,18 +443,12 @@ class EnkryptAuthProvider(AuthProvider):
             span.set_attribute(SpanAttributes.AUTH_BASE_URL, self.base_url)
             span.set_attribute(SpanAttributes.AUTH_FETCH_URL, url)
             span.set_attribute(SpanAttributes.GATEWAY_NAME, effective_gateway)
-            span.set_attribute(
-                SpanAttributes.GATEWAY_VERSION, self.gateway_version
-            )
+            span.set_attribute(SpanAttributes.GATEWAY_VERSION, self.gateway_version)
             # Mirror the masked ``apikey`` request header so trace consumers
             # can pivot per-tenant without ever seeing the raw secret.
-            span.set_attribute(
-                SpanAttributes.GATEWAY_KEY, mask_key(gateway_key)
-            )
+            span.set_attribute(SpanAttributes.GATEWAY_KEY, mask_key(gateway_key))
             if self.project_name:
-                span.set_attribute(
-                    SpanAttributes.PROJECT_NAME, self.project_name
-                )
+                span.set_attribute(SpanAttributes.PROJECT_NAME, self.project_name)
 
             try:
                 async with aiohttp.ClientSession() as session:
@@ -472,9 +467,7 @@ class EnkryptAuthProvider(AuthProvider):
                                 return json.loads(body_text)
                             except json.JSONDecodeError as e:
                                 span.set_attribute(SpanAttributes.SUCCESS, False)
-                                span.set_attribute(
-                                    SpanAttributes.ERROR_MESSAGE, str(e)
-                                )
+                                span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
                                 raise _CloudFetchError(
                                     f"Cloud returned 200 with non-JSON body: {e}"
                                 ) from e
@@ -491,9 +484,7 @@ class EnkryptAuthProvider(AuthProvider):
             except aiohttp.ClientError as e:
                 span.set_attribute(SpanAttributes.SUCCESS, False)
                 span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
-                raise _CloudFetchError(
-                    f"Transport error contacting {url}: {e}"
-                ) from e
+                raise _CloudFetchError(f"Transport error contacting {url}: {e}") from e
             except asyncio.TimeoutError as e:
                 span.set_attribute(SpanAttributes.SUCCESS, False)
                 span.set_attribute(
@@ -567,14 +558,19 @@ class EnkryptAuthProvider(AuthProvider):
         # Until the cloud surfaces a stable project_id UUID, mirror the name.
         project_id = request_context.get("project_id") or project_name
 
-        # Org identity. The cloud may return ``null`` for either field when the
-        # apikey isn't bound to an org (free-tier / personal-account gateways),
-        # so we keep both as ``None``-tolerant and let the downstream filter in
+        # Org identity. The cloud returns ``null`` when the apikey isn't bound
+        # to an org (free-tier / personal-account gateways), so we keep this
+        # ``None``-tolerant and let the downstream filter in
         # ``build_log_extra`` / OTel attribute setters coerce to "not_provided".
+        # (Note: the cloud does NOT return ``org_name`` -- only ``org_id``.
+        # Don't add an org_name read here.)
         org_id = request_context.get("org_id")
-        org_name = request_context.get("org_name") or request_context.get(
-            "organization_name"
-        )
+
+        # Project registry (cloud `request_context.registry_name`). Surfaces
+        # which Enkrypt project-scoped server registry this apikey resolved
+        # against -- e.g. ``default`` vs a customer-specific registry. Same
+        # ``None``-tolerant treatment as org_id.
+        registry_name = request_context.get("registry_name")
 
         composite_id = f"{user_id}_{project_id}_{gateway_id}"
 
@@ -623,8 +619,9 @@ class EnkryptAuthProvider(AuthProvider):
             "project_name",
             "project_id",
             "org_id",
-            "org_name",
-            "organization_name",
+            "registry_name",
+            "gateway_saved_name",
+            "gateway_version",
         }
         rc_extra = {
             k: v
@@ -648,7 +645,10 @@ class EnkryptAuthProvider(AuthProvider):
             "user_id": user_id,
             "email": email,
             "org_id": org_id,
-            "org_name": org_name,
+            "registry_name": registry_name,
+            # `gateway_saved_name` from the cloud is exposed internally as
+            # `gateway_name` (and as OTel attribute `enkrypt.gateway.name`)
+            # so existing dashboards/log queries keep working unchanged.
             "gateway_name": gateway_saved_name,
             "gateway_version": gateway_version,
             "mcp_config": servers_out,
