@@ -455,6 +455,8 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
     mcp_config_id = "not_provided"
     org_id = "not_provided"
     org_name = "not_provided"
+    gateway_name = "not_provided"
+    gateway_version = "not_provided"
 
     try:
         # Only attempt auth lookups when ctx looks like an MCP Context
@@ -507,6 +509,18 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
                             # log output stays uniform.
                             org_id = gateway_config.get("org_id") or org_id
                             org_name = gateway_config.get("org_name") or org_name
+                            # Mirrors the values sent on the
+                            # ``X-Enkrypt-MCP-Gateway`` /
+                            # ``X-Enkrypt-MCP-Gateway-Version`` headers of the
+                            # cloud's ``get-gateway-config`` call. Lets log
+                            # queries pivot per deployed gateway revision.
+                            gateway_name = (
+                                gateway_config.get("gateway_name") or gateway_name
+                            )
+                            gateway_version = (
+                                gateway_config.get("gateway_version")
+                                or gateway_version
+                            )
                         except Exception:
                             # If anything fails, just use defaults
                             pass
@@ -530,6 +544,8 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
         "user_id": user_id or "",
         "email": email or "",
         "mcp_config_id": mcp_config_id or "",
+        "gateway_name": gateway_name or "",
+        "gateway_version": gateway_version or "",
         "error": error or "",
         **filtered_kwargs,
     }

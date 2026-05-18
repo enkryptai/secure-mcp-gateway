@@ -114,6 +114,15 @@ class ServerListingService:
             # filtering by ``enkrypt_org_id`` see a stable token.
             enkrypt_org_id = gateway_config.get("org_id") or "not_provided"
             enkrypt_org_name = gateway_config.get("org_name") or "not_provided"
+            # Mirrors the ``X-Enkrypt-MCP-Gateway`` /
+            # ``X-Enkrypt-MCP-Gateway-Version`` headers we send to the cloud
+            # when fetching this config — same coercion rationale as org.
+            enkrypt_gateway_name = (
+                gateway_config.get("gateway_name") or "not_provided"
+            )
+            enkrypt_gateway_version = (
+                gateway_config.get("gateway_version") or "not_provided"
+            )
 
             # Set span attributes
             self._set_span_attributes(
@@ -128,6 +137,8 @@ class ServerListingService:
                 enkrypt_email,
                 enkrypt_org_id,
                 enkrypt_org_name,
+                enkrypt_gateway_name,
+                enkrypt_gateway_version,
             )
 
             try:
@@ -226,6 +237,8 @@ class ServerListingService:
         enkrypt_email,
         enkrypt_org_id: str = "not_provided",
         enkrypt_org_name: str = "not_provided",
+        enkrypt_gateway_name: str = "not_provided",
+        enkrypt_gateway_version: str = "not_provided",
     ):
         """Set attributes on the main span."""
         span.set_attribute("job", "enkrypt")
@@ -235,6 +248,8 @@ class ServerListingService:
         span.set_attribute("discover_tools", discover_tools)
         span.set_attribute("enkrypt_org_id", enkrypt_org_id)
         span.set_attribute("enkrypt_org_name", enkrypt_org_name)
+        span.set_attribute("enkrypt_gateway_name", enkrypt_gateway_name)
+        span.set_attribute("enkrypt_gateway_version", enkrypt_gateway_version)
         span.set_attribute("enkrypt_project_id", enkrypt_project_id)
         span.set_attribute("enkrypt_user_id", enkrypt_user_id)
         span.set_attribute("enkrypt_mcp_config_id", enkrypt_mcp_config_id)

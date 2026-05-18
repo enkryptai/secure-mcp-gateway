@@ -34,6 +34,11 @@ class SpanAttributes:
     USER_EMAIL = "enkrypt.user.email"
     CONFIG_ID = "enkrypt.config.id"
     GATEWAY_KEY = "enkrypt.gateway.key"
+    # Echoes the ``X-Enkrypt-MCP-Gateway`` / ``X-Enkrypt-MCP-Gateway-Version``
+    # headers the gateway sends to the cloud's ``get-gateway-config`` API, so
+    # OpenSearch / Grafana can pivot per deployed gateway revision.
+    GATEWAY_NAME = "enkrypt.gateway.name"
+    GATEWAY_VERSION = "enkrypt.gateway.version"
     REQUEST_ID = "enkrypt.request.id"
     CUSTOM_ID = "enkrypt.custom.id"
     CORRELATION_ID = "enkrypt.correlation.id"
@@ -70,6 +75,12 @@ class SpanAttributes:
     REQUIRED_NEW_AUTH = "enkrypt.auth.required_new_auth"
     AUTH_RESULT = "enkrypt.auth.result"
     REQUIRES_AUTH = "enkrypt.auth.requires"
+    # Cloud get-gateway-config endpoint details (host of ``base_url`` + URL +
+    # HTTP status). Useful for splitting dev/staging/prod traffic and for
+    # alerting on cloud-side failures.
+    AUTH_BASE_URL = "enkrypt.auth.base_url"
+    AUTH_FETCH_URL = "enkrypt.auth.fetch_url"
+    AUTH_FETCH_STATUS_CODE = "enkrypt.auth.fetch_status_code"
 
     # --- Cache / Discovery ---
     CACHE_HIT = "enkrypt.cache.hit"
@@ -111,6 +122,11 @@ class SpanNames:
 
     # Auth
     AUTH = "enkrypt.auth"
+    # Child span around the cloud's ``GET /mcp-gateway/get-gateway-config``
+    # HTTP call. Captures the headers sent (masked apikey, gateway name /
+    # version, project name) and the response status so we can debug cloud
+    # auth failures from Jaeger / OpenSearch traces.
+    AUTH_FETCH_CONFIG = "enkrypt.auth.fetch_gateway_config"
 
     # Discovery
     DISCOVERY = "enkrypt.discovery"
