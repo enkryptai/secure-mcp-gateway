@@ -63,6 +63,20 @@ cloud's `get-gateway-config` response (the `request_context` block):
 }
 ```
 
+`/mcp-playground/*` traffic has two additional identity sources, both
+also from the Enkrypt cloud:
+
+- **Registry-header mode** — `GET /mcp-registry/get-server` populates
+  `saved_name` / `server_version` / `registry_id` / `registry_name` /
+  `project_name` (also exposed on the response's `registry` block).
+- **Inline-body mode on enkrypt-provider gateways** — `GET /consumer-info`
+  populates `user_id` / `org_id` / `project_name` / `email` /
+  `is_internal_req` (also exposed on the response's `consumer` block).
+
+Both paths set the same identity SpanAttributes (`enkrypt.user.id`,
+`enkrypt.org.id`, `enkrypt.project.name`, etc.), so existing
+identity-filtered dashboards pick up playground traffic automatically.
+
 Here is where to find each one per signal:
 
 | Identity | Traces | Metrics | Logs |
@@ -84,6 +98,18 @@ Also useful, available on the same signals where applicable:
 | `gateway_key` (masked) | `span.attributes.enkrypt@gateway@key` | — | — |
 | `server_name` | `span.attributes.enkrypt@server@name` | `metric.attributes.server_name` (where relevant) | `log.attributes.server_name` |
 | `tool_name` | — | `metric.attributes.tool_name` | — |
+| `is_internal_req` ¹ | `span.attributes.enkrypt@user@is_internal_req` | `metric.attributes.is_internal_req` | `log.attributes.is_internal_req` |
+| `auth_provider` ¹ | — | — | `log.attributes.auth_provider` |
+| `playground_mode` ¹ | — | — | `log.attributes.playground_mode` |
+| `transport` ¹ | — | — | `log.attributes.transport` |
+
+¹ Only populated for `/mcp-playground/*` requests. `is_internal_req`
+specifically only flows when the gateway runs `plugins.auth.provider =
+"enkrypt"` and the playground is called in inline-body mode (the
+`/consumer-info` path); it's `true` for dashboard / next-js / staff
+keys, useful for splitting internal traffic from customer traffic in
+dashboards. On metrics it's stringified `"true"`/`"false"` to keep
+label cardinality bounded.
 
 ---
 
@@ -319,6 +345,14 @@ A few that the gateway emits today (full list in
 | `enkrypt.discovery.servers_found` | counter | total servers discovered per request |
 | `enkrypt.auth.failure` | counter | failed authentications |
 | `enkrypt.pii.redactions` | counter | PII redaction operations |
+| `enkrypt.playground.registry_lookup.duration` | histogram | `GET /mcp-registry/get-server` latency (**ms**) emitted per call from the playground in registry-header mode. Labelled `outcome` (`success`/`auth_error`/`not_found`/`upstream_error`/`timeout`), `cache` (`hit`/`miss`), `status_code`, plus `saved_name` / `server_version` / `registry_name` / `project_name`. |
+| `enkrypt.playground.consumer_info_lookup.duration` | histogram | `GET /consumer-info` latency (**ms**) emitted per call from the playground in inline-body + provider=enkrypt mode. Labelled `outcome` (`success`/`auth_error`/`upstream_error`/`timeout`), `cache` (`hit`/`miss`), `status_code`, plus `user_id` / `org_id` / `project_name` / `is_internal_req`. 5-minute in-process cache, so `cache=hit` rows have `value ≈ 0`. |
+
+> **Unit gotcha**: most gateway histograms (`enkrypt.tool.duration`,
+> `enkrypt.guardrail.duration`) emit **seconds**. The two
+> `enkrypt.playground.*_lookup.duration` histograms emit **milliseconds**
+> — Grafana panels and OpenSearch monitors should divide by 1000 if
+> normalising onto the same axis as the other gateway latencies.
 
 ---
 
