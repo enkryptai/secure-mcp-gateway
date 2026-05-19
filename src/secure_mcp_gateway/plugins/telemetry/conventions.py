@@ -103,6 +103,23 @@ class SpanAttributes:
     HEALTH_RESPONSE_TIME_MS = "enkrypt.health.response_time_ms"
     HEALTH_TOOL_COUNT = "enkrypt.health.tool_count"
 
+    # --- Playground (/mcp-playground/*) ---
+    # Set on the parent route span and on the registry-lookup child span so
+    # dashboards can split inline-body traffic from registry-header traffic.
+    PLAYGROUND_MODE = "enkrypt.playground.mode"  # "inline" | "registry"
+    PLAYGROUND_REGISTRY_SAVED_NAME = "enkrypt.playground.registry.saved_name"
+    PLAYGROUND_REGISTRY_SERVER_VERSION = "enkrypt.playground.registry.server_version"
+    PLAYGROUND_REGISTRY_NAME = "enkrypt.playground.registry.registry_name"
+    PLAYGROUND_REGISTRY_ID = "enkrypt.playground.registry.registry_id"
+    PLAYGROUND_PROJECT_NAME = "enkrypt.playground.registry.project_name"
+    PLAYGROUND_REGISTRY_SERVER_NAME = "enkrypt.playground.registry.server_name"
+    PLAYGROUND_REGISTRY_IS_ACTIVE = "enkrypt.playground.registry.is_active"
+    PLAYGROUND_REGISTRY_IS_SAMPLE = "enkrypt.playground.registry.is_sample"
+    PLAYGROUND_LOOKUP_URL = "enkrypt.playground.lookup.url"
+    PLAYGROUND_LOOKUP_STATUS_CODE = "enkrypt.playground.lookup.status_code"
+    PLAYGROUND_LOOKUP_DURATION_MS = "enkrypt.playground.lookup.duration_ms"
+    PLAYGROUND_LOOKUP_CACHE = "enkrypt.playground.lookup.cache"  # "hit" | "miss"
+
 
 # ===================================================================
 # Span names
@@ -158,6 +175,10 @@ class SpanNames:
     HEALTH_SERVER_INFO = "enkrypt.health.server_info"
     HEALTH_TOOL_CALL = "enkrypt.health.tool_call"
 
+    # Child span around the cloud's ``GET /mcp-registry/get-server`` HTTP
+    # call made by the playground routes when in registry-header mode.
+    PLAYGROUND_REGISTRY_LOOKUP = "enkrypt.playground.registry_lookup"
+
 
 # ===================================================================
 # Metric names (what OTel exports to Prometheus / Grafana)
@@ -210,6 +231,9 @@ class MetricNames:
     HEALTH_SUCCESS = "enkrypt.health.success"
     HEALTH_FAILURES = "enkrypt.health.failures"
 
+    # Playground registry lookup
+    PLAYGROUND_REGISTRY_LOOKUP_DURATION = "enkrypt.playground.registry_lookup.duration"
+
     # Timeout metrics
     TIMEOUT_OPERATIONS = "enkrypt.timeout.operations"
     TIMEOUT_SUCCESS = "enkrypt.timeout.success"
@@ -254,6 +278,7 @@ METRIC_DESCRIPTIONS: dict[str, str] = {
     MetricNames.HEALTH_DURATION: "Health-check API duration in seconds",
     MetricNames.HEALTH_SUCCESS: "Health-check API requests that completed successfully",
     MetricNames.HEALTH_FAILURES: "Health-check API requests that failed",
+    MetricNames.PLAYGROUND_REGISTRY_LOOKUP_DURATION: "Duration of GET /mcp-registry/get-server calls made by the /mcp-playground/* routes in registry-header mode (milliseconds)",
     MetricNames.TIMEOUT_OPERATIONS: "Total timeout operations",
     MetricNames.TIMEOUT_SUCCESS: "Successful timeout operations",
     MetricNames.TIMEOUT_TIMED_OUT: "Operations that timed out",

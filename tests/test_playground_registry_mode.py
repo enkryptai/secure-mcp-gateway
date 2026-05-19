@@ -1,0 +1,897 @@
+"""Tests for the /mcp-playground/* registry-header mode.
+
+Coverage:
+
+* **Inline mode** (back-compat): body with ``server_name`` + ``config`` and a
+  valid local admin apikey reaches ``MCPHealthService`` unchanged; invalid
+  apikey is 401'd; missing fields are 400'd.
+* **Registry mode** (new): empty body + ``X-Enkrypt-MCP-Registry-Server``
+  header with ``plugins.auth.provider == "enkrypt"`` triggers a cloud
+  ``GET /mcp-registry/get-server``. Cloud 200 succeeds, 401/403/404/400/5xx
+  and timeouts map to the right HTTP statuses, malformed bodies map to 502.
+* **Mode invariants**: body+header conflict → 400 ambiguous; neither → 400
+  missing config; provider=local_apikey + headers → 400 unsupported;
+  registry mode rejects ``body.server_name`` / ``body.sandbox``.
+* **Response decoration**: ``playground_mode`` field plus ``registry`` block
+  with the cloud's authoritative identifiers in registry mode.
+* **env passthrough**: ``mcp_config.config.env`` from the cloud reaches the
+  ``MCPHealthService`` config dict.
+* **Cache** (``services/health/registry_client``): identical (apikey,
+  saved_name, version, registry, project) returns the cached lookup
+  without a second cloud call within the 10s TTL; differing apikeys are
+  cached separately; expired entries refetch.
+
+No real network calls — ``aiohttp.ClientSession`` is patched module-level
+in the cache tests; the route tests stub ``fetch_registry_server`` and
+``MCPHealthService`` methods directly.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from typing import Any, Dict, List, Optional
+from unittest.mock import AsyncMock
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from secure_mcp_gateway import api_health_routes as h
+from secure_mcp_gateway.services.health import registry_client as rc
+from secure_mcp_gateway.services.health.registry_client import (
+    RegistryServerLookup,
+    fetch_registry_server,
+)
+
+
+# ---------------------------------------------------------------------------
+# Test constants
+# ---------------------------------------------------------------------------
+
+ADMIN_APIKEY = "test-admin-apikey"
+CLOUD_APIKEY = "cloud-user-apikey"
+LOCAL_PROVIDER_CONFIG: Dict[str, Any] = {
+    "admin_apikey": ADMIN_APIKEY,
+    "plugins": {"auth": {"provider": "local_apikey"}},
+}
+ENKRYPT_PROVIDER_CONFIG: Dict[str, Any] = {
+    "enkrypt_config": {
+        "api_key": ADMIN_APIKEY,
+        "base_url": "https://api.cloud.test",
+    },
+    "plugins": {"auth": {"provider": "enkrypt"}},
+}
+
+
+def _registry_lookup(**overrides: Any) -> RegistryServerLookup:
+    base: Dict[str, Any] = {
+        "saved_name": "my-fs",
+        "server_version": "v1",
+        "config_dict": {
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+            "env": None,
+        },
+        "server_name": "@modelcontextprotocol/server-filesystem",
+        "description": "Filesystem MCP",
+        "registry_id": "reg-id-abc",
+        "registry_name": "default",
+        "project_name": "default",
+        "is_active": True,
+        "is_sample": False,
+        "source_url": "https://example.com/src",
+        "source_version": "v0.6.2",
+        "created_at": "2025-01-01T00:00:00Z",
+        "updated_at": "2025-01-01T00:00:00Z",
+        "raw": {},
+    }
+    base.update(overrides)
+    return RegistryServerLookup(**base)
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def app() -> FastAPI:
+    a = FastAPI()
+    a.include_router(h.health_router)
+    return a
+
+
+@pytest.fixture
+def client(app: FastAPI) -> TestClient:
+    return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _clear_registry_cache() -> None:
+    """Drop the registry_client TTL cache between tests so they don't bleed."""
+    asyncio.run(rc._cache_clear())
+
+
+@pytest.fixture
+def patch_load_config_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        h, "load_config", lambda _path: dict(LOCAL_PROVIDER_CONFIG)
+    )
+
+
+@pytest.fixture
+def patch_load_config_enkrypt(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        h, "load_config", lambda _path: dict(ENKRYPT_PROVIDER_CONFIG)
+    )
+
+
+@pytest.fixture
+def patch_health_service(monkeypatch: pytest.MonkeyPatch) -> Dict[str, AsyncMock]:
+    """Replace the three MCPHealthService methods with AsyncMocks and return them."""
+    mocks = {
+        "check_server_health": AsyncMock(
+            return_value={
+                "server_name": "ignored",
+                "connectivity": {"status": "connected", "response_time_ms": 12.3},
+                "sandbox": {"applied": "disabled"},
+            }
+        ),
+        "get_server_info": AsyncMock(
+            return_value={
+                "server_name": "ignored",
+                "tools": [{"name": "read_file"}],
+                "sandbox": {"applied": "disabled"},
+            }
+        ),
+        "execute_tool_health_check": AsyncMock(
+            return_value={
+                "server_name": "ignored",
+                "result": {"content": [{"type": "text", "text": "ok"}]},
+                "sandbox": {"applied": "disabled"},
+            }
+        ),
+    }
+    for name, m in mocks.items():
+        monkeypatch.setattr(h._service, name, m)
+    return mocks
+
+
+@pytest.fixture
+def patch_fetch_registry(monkeypatch: pytest.MonkeyPatch):
+    """Replace api_health_routes.fetch_registry_server with a controllable AsyncMock."""
+    mock = AsyncMock()
+    monkeypatch.setattr(h, "fetch_registry_server", mock)
+    return mock
+
+
+# ---------------------------------------------------------------------------
+# Inline mode (back-compat)
+# ---------------------------------------------------------------------------
+
+
+def test_inline_mode_success(
+    client: TestClient,
+    patch_load_config_local: None,
+    patch_health_service: Dict[str, AsyncMock],
+) -> None:
+    """Inline body with a valid admin apikey reaches MCPHealthService unchanged."""
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": ADMIN_APIKEY},
+        json={
+            "server_name": "echo",
+            "config": {"command": "python", "args": ["echo.py"]},
+            "description": "test",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["playground_mode"] == "inline"
+    assert "registry" not in body["data"]
+
+    patch_health_service["check_server_health"].assert_awaited_once()
+    kwargs = patch_health_service["check_server_health"].call_args.kwargs
+    assert kwargs["server_name"] == "echo"
+    assert kwargs["config"] == {
+        "command": "python",
+        "args": ["echo.py"],
+        "env": None,
+    }
+    assert kwargs["description"] == "test"
+    assert kwargs["sandbox"] is None
+
+
+def test_inline_mode_invalid_apikey(
+    client: TestClient,
+    patch_load_config_local: None,
+    patch_health_service: Dict[str, AsyncMock],
+) -> None:
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": "wrong"},
+        json={
+            "server_name": "echo",
+            "config": {"command": "python", "args": ["echo.py"]},
+        },
+    )
+    assert resp.status_code == 401
+    assert "Invalid API key" in resp.json()["detail"]
+    patch_health_service["check_server_health"].assert_not_called()
+
+
+def test_inline_mode_missing_apikey(
+    client: TestClient,
+    patch_load_config_local: None,
+    patch_health_service: Dict[str, AsyncMock],
+) -> None:
+    resp = client.post(
+        "/mcp-playground/test-server",
+        json={
+            "server_name": "echo",
+            "config": {"command": "python", "args": ["echo.py"]},
+        },
+    )
+    assert resp.status_code == 401
+    assert "apikey header required" in resp.json()["detail"]
+
+
+def test_inline_mode_missing_server_name(
+    client: TestClient,
+    patch_load_config_local: None,
+    patch_health_service: Dict[str, AsyncMock],
+) -> None:
+    """server_name is required when config is supplied (inline mode)."""
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": ADMIN_APIKEY},
+        json={"config": {"command": "python", "args": ["echo.py"]}},
+    )
+    assert resp.status_code == 400
+    assert "server_name" in resp.json()["detail"]
+
+
+def test_inline_mode_sandbox_passes_through(
+    client: TestClient,
+    patch_load_config_local: None,
+    patch_health_service: Dict[str, AsyncMock],
+) -> None:
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": ADMIN_APIKEY},
+        json={
+            "server_name": "echo",
+            "config": {"command": "python", "args": ["echo.py"]},
+            "sandbox": {"enabled": False},
+        },
+    )
+    assert resp.status_code == 200
+    kwargs = patch_health_service["check_server_health"].call_args.kwargs
+    assert kwargs["sandbox"] == {"enabled": False}
+
+
+# ---------------------------------------------------------------------------
+# Registry mode — success path
+# ---------------------------------------------------------------------------
+
+
+def test_registry_mode_success_test_server(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    patch_fetch_registry.return_value = _registry_lookup()
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={
+            "apikey": CLOUD_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "my-fs",
+            "X-Enkrypt-MCP-Registry-Server-Version": "v1",
+            "X-Enkrypt-MCP-Registry": "prod",
+            "X-Enkrypt-Project": "team-a",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["playground_mode"] == "registry"
+    assert body["data"]["registry"]["saved_name"] == "my-fs"
+    assert body["data"]["registry"]["registry_id"] == "reg-id-abc"
+    assert body["data"]["registry"]["server_name"] == "@modelcontextprotocol/server-filesystem"
+
+    patch_fetch_registry.assert_awaited_once_with(
+        base_url="https://api.cloud.test",
+        apikey=CLOUD_APIKEY,
+        saved_name="my-fs",
+        server_version="v1",
+        registry_name="prod",
+        project_name="team-a",
+    )
+
+    kwargs = patch_health_service["check_server_health"].call_args.kwargs
+    assert kwargs["server_name"] == "my-fs"
+    assert kwargs["config"]["command"] == "npx"
+    assert kwargs["config"]["args"] == [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/tmp",
+    ]
+    # No per-call sandbox override in registry mode.
+    assert kwargs["sandbox"] is None
+
+
+def test_registry_mode_success_get_tools_no_body(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    """GET /mcp-playground/get-tools works with no body at all."""
+    patch_fetch_registry.return_value = _registry_lookup()
+    resp = client.get(
+        "/mcp-playground/get-tools",
+        headers={
+            "apikey": CLOUD_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "my-fs",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["playground_mode"] == "registry"
+    patch_health_service["get_server_info"].assert_awaited_once()
+    # Defaults applied for the optional headers
+    patch_fetch_registry.assert_awaited_once_with(
+        base_url="https://api.cloud.test",
+        apikey=CLOUD_APIKEY,
+        saved_name="my-fs",
+        server_version="v1",
+        registry_name="default",
+        project_name="default",
+    )
+
+
+def test_registry_mode_call_tool_with_tool_in_body(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    """call-tool in registry mode: server from cloud, tool_name/args from body."""
+    patch_fetch_registry.return_value = _registry_lookup()
+    resp = client.post(
+        "/mcp-playground/call-tool",
+        headers={
+            "apikey": CLOUD_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "my-fs",
+        },
+        json={"tool_name": "read_file", "tool_args": {"path": "/tmp/x"}},
+    )
+    assert resp.status_code == 200, resp.text
+    kwargs = patch_health_service["execute_tool_health_check"].call_args.kwargs
+    assert kwargs["server_name"] == "my-fs"
+    assert kwargs["tool_name"] == "read_file"
+    assert kwargs["tool_args"] == {"path": "/tmp/x"}
+    assert kwargs["config"]["command"] == "npx"
+
+
+def test_registry_mode_env_passthrough(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    """``mcp_config.config.env`` from the cloud reaches the service config dict."""
+    patch_fetch_registry.return_value = _registry_lookup(
+        config_dict={
+            "command": "node",
+            "args": ["server.js"],
+            "env": {"OPENAI_API_KEY": "sk-test", "FOO": "bar"},
+        }
+    )
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={
+            "apikey": CLOUD_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "my-fs",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    kwargs = patch_health_service["check_server_health"].call_args.kwargs
+    assert kwargs["config"]["env"] == {"OPENAI_API_KEY": "sk-test", "FOO": "bar"}
+
+
+# ---------------------------------------------------------------------------
+# Registry mode — cloud error mapping
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("exc_factory", "want_status", "want_detail_contains"),
+    [
+        (
+            lambda: rc.RegistryAuthError("nope"),
+            401,
+            "Invalid Enkrypt apikey",
+        ),
+        (
+            lambda: rc.RegistryForbiddenError("nope"),
+            403,
+            "not authorised",
+        ),
+        (
+            lambda: rc.RegistryNotFoundError("missing"),
+            404,
+            "missing",
+        ),
+        (
+            lambda: rc.RegistryBadRequestError("bad header"),
+            400,
+            "bad header",
+        ),
+        (
+            lambda: rc.RegistryTimeoutError("Timeout after 10s"),
+            504,
+            "Timeout",
+        ),
+        (
+            lambda: rc.RegistryParseError("missing mcp_config"),
+            502,
+            "missing mcp_config",
+        ),
+        (
+            lambda: rc.RegistryUpstreamError("HTTP 503", status_code=502),
+            502,
+            "HTTP 503",
+        ),
+    ],
+)
+def test_registry_mode_maps_cloud_errors(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+    exc_factory,
+    want_status: int,
+    want_detail_contains: str,
+) -> None:
+    patch_fetch_registry.side_effect = exc_factory()
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={
+            "apikey": CLOUD_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "my-fs",
+        },
+    )
+    assert resp.status_code == want_status, resp.text
+    assert want_detail_contains in resp.json()["detail"]
+    patch_health_service["check_server_health"].assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Mode-invariant errors
+# ---------------------------------------------------------------------------
+
+
+def test_body_and_header_conflict_is_400(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={
+            "apikey": CLOUD_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "my-fs",
+        },
+        json={
+            "server_name": "echo",
+            "config": {"command": "python", "args": ["echo.py"]},
+        },
+    )
+    assert resp.status_code == 400
+    assert "Ambiguous" in resp.json()["detail"]
+    patch_fetch_registry.assert_not_called()
+
+
+def test_neither_body_nor_header_is_400(
+    client: TestClient,
+    patch_load_config_local: None,
+    patch_health_service: Dict[str, AsyncMock],
+) -> None:
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": ADMIN_APIKEY},
+        json={},
+    )
+    assert resp.status_code == 400
+    assert "Missing config" in resp.json()["detail"]
+
+
+def test_local_provider_rejects_registry_headers(
+    client: TestClient,
+    patch_load_config_local: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={
+            "apikey": ADMIN_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "my-fs",
+        },
+    )
+    assert resp.status_code == 400
+    assert "plugins.auth.provider='enkrypt'" in resp.json()["detail"]
+    patch_fetch_registry.assert_not_called()
+
+
+def test_registry_mode_rejects_body_sandbox(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={
+            "apikey": CLOUD_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "my-fs",
+        },
+        json={"sandbox": {"enabled": False}},
+    )
+    assert resp.status_code == 400
+    assert "sandbox" in resp.json()["detail"].lower()
+    patch_fetch_registry.assert_not_called()
+
+
+def test_registry_mode_rejects_body_server_name(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={
+            "apikey": CLOUD_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "my-fs",
+        },
+        json={"server_name": "should-not-be-here"},
+    )
+    assert resp.status_code == 400
+    assert "server_name" in resp.json()["detail"]
+    patch_fetch_registry.assert_not_called()
+
+
+def test_missing_apikey_in_registry_mode_is_401(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"X-Enkrypt-MCP-Registry-Server": "my-fs"},
+    )
+    assert resp.status_code == 401
+    assert "apikey header required" in resp.json()["detail"]
+    patch_fetch_registry.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Registry response decoration
+# ---------------------------------------------------------------------------
+
+
+def test_registry_response_includes_all_identifiers(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    patch_fetch_registry.return_value = _registry_lookup(
+        registry_id="reg-xyz",
+        registry_name="prod",
+        project_name="acme",
+        server_name="custom/pkg",
+        is_active=False,
+        is_sample=True,
+        source_url="https://example.com/repo",
+        source_version="1.2.3",
+    )
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={
+            "apikey": CLOUD_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "my-fs",
+        },
+    )
+    assert resp.status_code == 200
+    reg = resp.json()["data"]["registry"]
+    assert reg["registry_id"] == "reg-xyz"
+    assert reg["registry_name"] == "prod"
+    assert reg["project_name"] == "acme"
+    assert reg["server_name"] == "custom/pkg"
+    assert reg["is_active"] is False
+    assert reg["is_sample"] is True
+    assert reg["source_url"] == "https://example.com/repo"
+    assert reg["source_version"] == "1.2.3"
+
+
+# ===========================================================================
+# Registry client — direct cache tests (no FastAPI)
+# ===========================================================================
+
+
+class _MockResponse:
+    def __init__(self, status: int, body: str) -> None:
+        self.status = status
+        self._body = body
+
+    async def text(self) -> str:
+        return self._body
+
+    async def __aenter__(self) -> "_MockResponse":
+        return self
+
+    async def __aexit__(self, *a: Any) -> bool:
+        return False
+
+
+class _MockSession:
+    """Records every .get() call and returns canned responses in order."""
+
+    def __init__(self, responses: List[tuple]) -> None:
+        self._responses = list(responses)
+        self.calls: List[Dict[str, Any]] = []
+
+    def get(self, url: str, headers: Optional[Dict[str, str]] = None, timeout: Any = None):
+        self.calls.append({"url": url, "headers": dict(headers or {})})
+        if not self._responses:
+            raise AssertionError(f"Unexpected extra call to {url}")
+        status, body = self._responses.pop(0)
+        return _MockResponse(status, body)
+
+    async def __aenter__(self) -> "_MockSession":
+        return self
+
+    async def __aexit__(self, *a: Any) -> bool:
+        return False
+
+
+def _good_body(saved_name: str = "my-fs") -> str:
+    import json
+
+    return json.dumps(
+        {
+            "saved_name": saved_name,
+            "server_version": "v1",
+            "server_name": "@modelcontextprotocol/server-filesystem",
+            "description": "fs",
+            "registry_id": "reg-1",
+            "registry_name": "default",
+            "project_name": "default",
+            "is_active": True,
+            "is_sample": False,
+            "mcp_config": {
+                "config": {
+                    "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+                },
+                "tools": {},
+            },
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_cache_hit_short_circuits_second_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await rc._cache_clear()
+    session = _MockSession([(200, _good_body())])
+    monkeypatch.setattr(rc.aiohttp, "ClientSession", lambda: session)
+
+    a = await fetch_registry_server(
+        base_url="https://cloud.test",
+        apikey="k",
+        saved_name="my-fs",
+    )
+    b = await fetch_registry_server(
+        base_url="https://cloud.test",
+        apikey="k",
+        saved_name="my-fs",
+    )
+    assert a.saved_name == b.saved_name == "my-fs"
+    assert len(session.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_cache_separated_per_apikey(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await rc._cache_clear()
+    session = _MockSession([(200, _good_body()), (200, _good_body())])
+    monkeypatch.setattr(rc.aiohttp, "ClientSession", lambda: session)
+
+    await fetch_registry_server(
+        base_url="https://cloud.test", apikey="k1", saved_name="my-fs"
+    )
+    await fetch_registry_server(
+        base_url="https://cloud.test", apikey="k2", saved_name="my-fs"
+    )
+    assert len(session.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_cache_separated_per_saved_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await rc._cache_clear()
+    session = _MockSession([(200, _good_body("a")), (200, _good_body("b"))])
+    monkeypatch.setattr(rc.aiohttp, "ClientSession", lambda: session)
+
+    await fetch_registry_server(
+        base_url="https://cloud.test", apikey="k", saved_name="a"
+    )
+    await fetch_registry_server(
+        base_url="https://cloud.test", apikey="k", saved_name="b"
+    )
+    assert len(session.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_cache_expires_after_ttl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await rc._cache_clear()
+    session = _MockSession([(200, _good_body()), (200, _good_body())])
+    monkeypatch.setattr(rc.aiohttp, "ClientSession", lambda: session)
+
+    await fetch_registry_server(
+        base_url="https://cloud.test", apikey="k", saved_name="my-fs"
+    )
+    # Backdate every cache entry so it's expired.
+    async with rc._CACHE_LOCK:
+        for k, (_exp, val) in list(rc._CACHE.items()):
+            rc._CACHE[k] = (0.0, val)
+    await fetch_registry_server(
+        base_url="https://cloud.test", apikey="k", saved_name="my-fs"
+    )
+    assert len(session.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_error_responses_are_not_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A transient 503 should not poison the cache and lock the user out."""
+    await rc._cache_clear()
+    session = _MockSession([(503, "boom"), (200, _good_body())])
+    monkeypatch.setattr(rc.aiohttp, "ClientSession", lambda: session)
+
+    with pytest.raises(rc.RegistryUpstreamError):
+        await fetch_registry_server(
+            base_url="https://cloud.test", apikey="k", saved_name="my-fs"
+        )
+    # Second call should still hit the network and succeed.
+    out = await fetch_registry_server(
+        base_url="https://cloud.test", apikey="k", saved_name="my-fs"
+    )
+    assert out.saved_name == "my-fs"
+    assert len(session.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_404_response_raises_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await rc._cache_clear()
+    session = _MockSession([(404, '{"error":"not found"}')])
+    monkeypatch.setattr(rc.aiohttp, "ClientSession", lambda: session)
+    with pytest.raises(rc.RegistryNotFoundError):
+        await fetch_registry_server(
+            base_url="https://cloud.test", apikey="k", saved_name="missing"
+        )
+
+
+@pytest.mark.asyncio
+async def test_401_response_raises_auth_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await rc._cache_clear()
+    session = _MockSession([(401, "nope")])
+    monkeypatch.setattr(rc.aiohttp, "ClientSession", lambda: session)
+    with pytest.raises(rc.RegistryAuthError):
+        await fetch_registry_server(
+            base_url="https://cloud.test", apikey="bad", saved_name="x"
+        )
+
+
+@pytest.mark.asyncio
+async def test_missing_mcp_config_raises_parse_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await rc._cache_clear()
+    import json as _json
+
+    body = _json.dumps(
+        {"saved_name": "x", "server_version": "v1", "mcp_config": None}
+    )
+    session = _MockSession([(200, body)])
+    monkeypatch.setattr(rc.aiohttp, "ClientSession", lambda: session)
+    with pytest.raises(rc.RegistryParseError):
+        await fetch_registry_server(
+            base_url="https://cloud.test", apikey="k", saved_name="x"
+        )
+
+
+@pytest.mark.asyncio
+async def test_request_headers_match_cloud_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The GET must carry the four registry headers + apikey + Accept."""
+    await rc._cache_clear()
+    session = _MockSession([(200, _good_body())])
+    monkeypatch.setattr(rc.aiohttp, "ClientSession", lambda: session)
+    await fetch_registry_server(
+        base_url="https://cloud.test",
+        apikey="my-key",
+        saved_name="my-fs",
+        server_version="v2",
+        registry_name="prod",
+        project_name="acme",
+    )
+    call = session.calls[0]
+    assert call["url"] == "https://cloud.test/mcp-registry/get-server"
+    assert call["headers"]["apikey"] == "my-key"
+    assert call["headers"]["X-Enkrypt-MCP-Registry-Server"] == "my-fs"
+    assert call["headers"]["X-Enkrypt-MCP-Registry-Server-Version"] == "v2"
+    assert call["headers"]["X-Enkrypt-MCP-Registry"] == "prod"
+    assert call["headers"]["X-Enkrypt-Project"] == "acme"
+    assert call["headers"]["Accept"] == "application/json"
+
+
+@pytest.mark.asyncio
+async def test_timeout_raises_timeout_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await rc._cache_clear()
+
+    class _TimeoutSession:
+        def get(self, *a: Any, **k: Any):
+            raise asyncio.TimeoutError("boom")
+
+        async def __aenter__(self) -> "_TimeoutSession":
+            return self
+
+        async def __aexit__(self, *a: Any) -> bool:
+            return False
+
+    monkeypatch.setattr(rc.aiohttp, "ClientSession", _TimeoutSession)
+    with pytest.raises(rc.RegistryTimeoutError):
+        await fetch_registry_server(
+            base_url="https://cloud.test", apikey="k", saved_name="x"
+        )
+
+
+# ---------------------------------------------------------------------------
+# get_enkrypt_base_url
+# ---------------------------------------------------------------------------
+
+
+def test_get_enkrypt_base_url_reads_root_enkrypt_config() -> None:
+    out = rc.get_enkrypt_base_url(
+        {"enkrypt_config": {"base_url": "https://staging.cloud.test/"}}
+    )
+    assert out == "https://staging.cloud.test"  # trailing slash stripped
+
+
+def test_get_enkrypt_base_url_falls_back_to_default() -> None:
+    assert rc.get_enkrypt_base_url({}) == rc.DEFAULT_BASE_URL
+    assert rc.get_enkrypt_base_url({"enkrypt_config": {}}) == rc.DEFAULT_BASE_URL
+    assert (
+        rc.get_enkrypt_base_url({"enkrypt_config": {"base_url": ""}})
+        == rc.DEFAULT_BASE_URL
+    )

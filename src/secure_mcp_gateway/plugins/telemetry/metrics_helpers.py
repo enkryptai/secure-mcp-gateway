@@ -370,10 +370,64 @@ def record_guardrail_api(
     _record(getattr(mgr, "guardrail_api_request_duration", None), duration_ms, attrs)
 
 
+# ---------------------------------------------------------------------------
+# Playground registry lookup (/mcp-playground/* in registry-header mode)
+# ---------------------------------------------------------------------------
+
+
+def record_registry_lookup(
+    outcome: str,
+    duration_ms: float,
+    status_code: int | None = None,
+    cache: str = "miss",
+    saved_name: str | None = None,
+    server_version: str | None = None,
+    registry_name: str | None = None,
+    project_name: str | None = None,
+) -> None:
+    """Record latency of a ``GET /mcp-registry/get-server`` call.
+
+    Parameters
+    ----------
+    outcome : str
+        ``"success" | "auth_error" | "not_found" | "upstream_error" | "timeout"``.
+    duration_ms : float
+        Elapsed time in milliseconds (including cache hits, which are ~0).
+    status_code : int | None
+        HTTP status returned by the cloud (``0`` / ``None`` for network /
+        timeout failures, omitted on cache hits).
+    cache : str
+        ``"hit"`` if the response was served from the in-process 10s cache,
+        ``"miss"`` if the cloud was actually contacted.
+    saved_name, server_version, registry_name, project_name : str | None
+        Labels echoed from the request headers — attached so per-server /
+        per-registry dashboards work without a Loki pivot. ``_safe_attrs``
+        strips ``None`` / empty so we don't explode label cardinality.
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    attrs = {
+        "outcome": outcome,
+        "cache": cache,
+        "status_code": str(status_code) if status_code is not None else None,
+        "saved_name": saved_name,
+        "server_version": server_version,
+        "registry_name": registry_name,
+        "project_name": project_name,
+    }
+    _record(
+        getattr(mgr, "playground_registry_lookup_duration", None),
+        duration_ms,
+        attrs,
+    )
+
+
 __all__ = [
     "record_auth_outcome",
     "record_guardrail_api",
     "record_guardrail_violations",
     "record_pii_redaction",
+    "record_registry_lookup",
     "record_tool_call_outcome",
 ]

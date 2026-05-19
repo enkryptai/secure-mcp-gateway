@@ -553,6 +553,13 @@ class OpenTelemetryProvider(TelemetryProvider):
             description=D[M.HEALTH_FAILURES],
             unit="1",
         )
+        # Playground (/mcp-playground/*) registry-lookup latency.  Emitted
+        # from ``services/health/registry_client.py`` per upstream call.
+        self.playground_registry_lookup_duration = self._meter.create_histogram(
+            M.PLAYGROUND_REGISTRY_LOOKUP_DURATION,
+            description=D[M.PLAYGROUND_REGISTRY_LOOKUP_DURATION],
+            unit="ms",
+        )
 
     def _setup_disabled_telemetry(self):
         """Setup no-op telemetry when disabled.
@@ -651,6 +658,9 @@ class OpenTelemetryProvider(TelemetryProvider):
         self.health_request_duration = NoOpHistogram()
         self.health_success_counter = NoOpCounter()
         self.health_failure_counter = NoOpCounter()
+
+        # Playground registry-lookup latency (no-op when telemetry disabled)
+        self.playground_registry_lookup_duration = NoOpHistogram()
 
     def create_logger(self, name: str) -> Any:
         """Create a logger instance (structlog-backed)."""
