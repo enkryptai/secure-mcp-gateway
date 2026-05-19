@@ -560,6 +560,14 @@ class OpenTelemetryProvider(TelemetryProvider):
             description=D[M.PLAYGROUND_REGISTRY_LOOKUP_DURATION],
             unit="ms",
         )
+        # Playground /consumer-info lookup latency (inline-body mode with
+        # provider=enkrypt). Emitted from
+        # ``services/health/consumer_info_client.py``.
+        self.playground_consumer_info_lookup_duration = self._meter.create_histogram(
+            M.PLAYGROUND_CONSUMER_INFO_LOOKUP_DURATION,
+            description=D[M.PLAYGROUND_CONSUMER_INFO_LOOKUP_DURATION],
+            unit="ms",
+        )
 
     def _setup_disabled_telemetry(self):
         """Setup no-op telemetry when disabled.
@@ -661,6 +669,8 @@ class OpenTelemetryProvider(TelemetryProvider):
 
         # Playground registry-lookup latency (no-op when telemetry disabled)
         self.playground_registry_lookup_duration = NoOpHistogram()
+        # Playground /consumer-info lookup latency (no-op when disabled)
+        self.playground_consumer_info_lookup_duration = NoOpHistogram()
 
     def create_logger(self, name: str) -> Any:
         """Create a logger instance (structlog-backed)."""

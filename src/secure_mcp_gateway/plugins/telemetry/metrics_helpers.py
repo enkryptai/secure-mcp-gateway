@@ -423,8 +423,64 @@ def record_registry_lookup(
     )
 
 
+# ---------------------------------------------------------------------------
+# Playground consumer-info lookup (/mcp-playground/* inline mode + provider=enkrypt)
+# ---------------------------------------------------------------------------
+
+
+def record_consumer_info_lookup(
+    outcome: str,
+    duration_ms: float,
+    status_code: int | None = None,
+    cache: str = "miss",
+    user_id: str | None = None,
+    org_id: str | None = None,
+    project_name: str | None = None,
+    is_internal_req: bool | None = None,
+) -> None:
+    """Record latency of a ``GET /consumer-info`` call.
+
+    Parameters
+    ----------
+    outcome : str
+        ``"success" | "auth_error" | "upstream_error" | "timeout"``.
+    duration_ms : float
+        Elapsed time in milliseconds (cache hits are ~0).
+    status_code : int | None
+        HTTP status returned by the cloud (``None`` on network/timeout
+        failures and on cache hits).
+    cache : str
+        ``"hit"`` if served from the in-process 5min cache, ``"miss"`` if
+        the cloud was actually contacted.
+    user_id, org_id, project_name, is_internal_req : optional identity
+        labels echoed from the response. Same names as ``record_tool_call_outcome``
+        so per-tenant dashboards stay consistent. ``_safe_attrs`` strips
+        ``None`` / empty so we don't explode label cardinality.
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    attrs = {
+        "outcome": outcome,
+        "cache": cache,
+        "status_code": str(status_code) if status_code is not None else None,
+        "user_id": user_id,
+        "org_id": org_id,
+        "project_name": project_name,
+        "is_internal_req": str(is_internal_req).lower()
+        if is_internal_req is not None
+        else None,
+    }
+    _record(
+        getattr(mgr, "playground_consumer_info_lookup_duration", None),
+        duration_ms,
+        attrs,
+    )
+
+
 __all__ = [
     "record_auth_outcome",
+    "record_consumer_info_lookup",
     "record_guardrail_api",
     "record_guardrail_violations",
     "record_pii_redaction",

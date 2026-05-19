@@ -41,6 +41,14 @@ from secure_mcp_gateway.api_models import (
     get_api_key_raw,
 )
 from secure_mcp_gateway.cli import load_config
+from secure_mcp_gateway.services.health.consumer_info_client import (
+    ConsumerAuthError,
+    ConsumerInfo,
+    ConsumerParseError,
+    ConsumerTimeoutError,
+    ConsumerUpstreamError,
+    fetch_consumer_info,
+)
 from secure_mcp_gateway.services.health.mcp_health_service import MCPHealthService
 from secure_mcp_gateway.services.health.registry_client import (
     RegistryAuthError,
@@ -134,6 +142,89 @@ def _validate_inline_apikey(apikey: str) -> None:
         )
 
 
+async def _validate_inline_apikey_via_consumer_info(apikey: str) -> ConsumerInfo:
+    """Validate the apikey by calling the cloud ``GET /consumer-info``.
+
+    Used for inline-mode playground requests when
+    ``plugins.auth.provider == "enkrypt"``. A cloud 200 means the apikey
+    is a valid Enkrypt cloud credential; 401/403/404 mean it isn't. The
+    returned :class:`ConsumerInfo` carries the identity metadata
+    (user_id / org_id / project_name / email / is_internal_req) which
+    the route handler then sets on the current span and surfaces in the
+    response payload.
+
+    Raises ``HTTPException`` directly so the route handler stays thin —
+    the consumer-info error classes are mapped to 401 / 502 / 504 here.
+    """
+    try:
+        config = load_config(PICKED_CONFIG_PATH)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Configuration file not found",
+        )
+
+    base_url = get_enkrypt_base_url(config)
+
+    try:
+        info = await fetch_consumer_info(base_url=base_url, apikey=apikey)
+    except ConsumerAuthError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=(
+                "Invalid Enkrypt apikey (cloud /consumer-info rejected the request)"
+            ),
+        )
+    except ConsumerTimeoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)
+        )
+    except ConsumerParseError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    except ConsumerUpstreamError as exc:
+        raise HTTPException(
+            status_code=getattr(exc, "status_code", status.HTTP_502_BAD_GATEWAY),
+            detail=str(exc),
+        )
+
+    return info
+
+
+def _set_consumer_identity_on_current_span(info: ConsumerInfo) -> None:
+    """Mirror the consumer-info identity onto whatever span is currently
+    in scope (typically the route's parent span). Best-effort — a no-op
+    when telemetry isn't initialised or there's no active span.
+
+    Uses the existing identity ``SpanAttributes`` so dashboards filtering
+    on ``enkrypt.user.id`` / ``enkrypt.org.id`` / ``enkrypt.project.name``
+    pick up playground traffic the same way they pick up gateway traffic.
+    """
+    try:
+        from opentelemetry import trace
+
+        from secure_mcp_gateway.plugins.telemetry.conventions import (
+            SpanAttributes,
+        )
+
+        span = trace.get_current_span()
+        if span is None:
+            return
+        if info.user_id:
+            span.set_attribute(SpanAttributes.USER_ID, info.user_id)
+        if info.org_id:
+            span.set_attribute(SpanAttributes.ORG_ID, info.org_id)
+        if info.project_name:
+            span.set_attribute(SpanAttributes.PROJECT_NAME, info.project_name)
+        if info.email:
+            span.set_attribute(SpanAttributes.USER_EMAIL, info.email)
+        if info.is_internal_req is not None:
+            span.set_attribute(
+                SpanAttributes.USER_IS_INTERNAL_REQ, info.is_internal_req
+            )
+    except Exception:  # pragma: no cover - never break a request on telemetry
+        pass
+
+
 def _registry_error_to_http(exc: Exception) -> HTTPException:
     """Map a ``RegistryLookupError`` subclass to an HTTPException."""
     if isinstance(exc, RegistryAuthError):
@@ -194,11 +285,17 @@ async def _resolve_target(
     str,
     dict[str, Any] | None,
     RegistryServerLookup | None,
+    ConsumerInfo | None,
 ]:
-    """Resolve the request into ``(mode, server_name, config, description, sandbox, registry_lookup)``.
+    """Resolve the request into ``(mode, server_name, config, description, sandbox, registry_lookup, consumer_info)``.
 
     Enforces mode invariants and runs the per-mode auth check. Raises
     ``HTTPException`` on every error path so the route handlers stay thin.
+
+    ``consumer_info`` is populated only for inline mode + provider=enkrypt
+    (the path that authenticates via ``GET /consumer-info``); it carries
+    the cloud's identity metadata (user_id / org_id / project_name /
+    email / is_internal_req).
     """
     # Only count the body as inline config when it actually carries an
     # executable shape (``command`` for stdio, ``url``/``type`` for URL
@@ -249,7 +346,20 @@ async def _resolve_target(
                     "request body."
                 ),
             )
-        _validate_inline_apikey(apikey)
+
+        # Auth dispatch is provider-aware:
+        #  - local_apikey  -> local resolve_admin_keys check (admin-only)
+        #  - enkrypt       -> cloud GET /consumer-info (any valid cloud key)
+        # Other providers fall through to the local check too, since a
+        # bespoke provider wouldn't know about /consumer-info either.
+        inline_provider = _load_auth_provider_name()
+        consumer: ConsumerInfo | None = None
+        if inline_provider == "enkrypt":
+            consumer = await _validate_inline_apikey_via_consumer_info(apikey)
+            _set_consumer_identity_on_current_span(consumer)
+        else:
+            _validate_inline_apikey(apikey)
+
         sandbox = _extract_sandbox(request)
         # ``exclude_none=True`` so we don't smuggle the unused-branch fields
         # (e.g. ``command=None`` on a URL config) into the runtime — the
@@ -257,15 +367,36 @@ async def _resolve_target(
         # truthiness, and leaking ``None`` keys would muddy logs / spans
         # without changing behaviour.
         config_dict = request.config.model_dump(exclude_none=True)
+        transport_label = (
+            "url"
+            if (config_dict.get("url") or config_dict.get("type") in {"http", "sse"})
+            else "stdio"
+        )
         logger.info(
-            "[api] /mcp-playground/%s mode=inline server_name=%s transport=%s",
+            "[api] /mcp-playground/%s mode=inline server_name=%s transport=%s "
+            "auth_provider=%s user_id=%s org_id=%s project_name=%s "
+            "is_internal_req=%s",
             endpoint,
             request.server_name,
-            "url" if (config_dict.get("url") or config_dict.get("type") in {"http", "sse"}) else "stdio",
+            transport_label,
+            inline_provider,
+            consumer.user_id if consumer else None,
+            consumer.org_id if consumer else None,
+            consumer.project_name if consumer else None,
+            consumer.is_internal_req if consumer else None,
             extra={
                 "endpoint": endpoint,
                 "playground_mode": "inline",
                 "server_name": request.server_name,
+                "transport": transport_label,
+                "auth_provider": inline_provider,
+                # Identity fields only present in the enkrypt-provider path.
+                # ``logger`` is structlog so None values are fine.
+                "user_id": consumer.user_id if consumer else None,
+                "org_id": consumer.org_id if consumer else None,
+                "project_name": (consumer.project_name if consumer else None),
+                "email": consumer.email if consumer else None,
+                "is_internal_req": (consumer.is_internal_req if consumer else None),
             },
         )
         return (
@@ -275,6 +406,7 @@ async def _resolve_target(
             request.description or "",
             sandbox,
             None,
+            consumer,
         )
 
     # --- Registry mode ----------------------------------------------------
@@ -373,6 +505,7 @@ async def _resolve_target(
         lookup.description or "",
         None,  # no per-call sandbox override in registry mode
         lookup,
+        None,  # consumer-info is only populated in inline+enkrypt path
     )
 
 
@@ -407,6 +540,7 @@ async def server_health_check(
         description,
         sandbox,
         lookup,
+        consumer,
     ) = await _resolve_target(
         endpoint="test-server",
         request=request,
@@ -425,7 +559,7 @@ async def server_health_check(
     )
     return SuccessResponse(
         message="Server health check completed",
-        data=_attach_registry_metadata(result, mode, lookup),
+        data=_attach_playground_metadata(result, mode, lookup, consumer),
     )
 
 
@@ -455,6 +589,7 @@ async def server_info(
         description,
         sandbox,
         lookup,
+        consumer,
     ) = await _resolve_target(
         endpoint="get-tools",
         request=request,
@@ -473,7 +608,7 @@ async def server_info(
     )
     return SuccessResponse(
         message="Server info retrieved",
-        data=_attach_registry_metadata(result, mode, lookup),
+        data=_attach_playground_metadata(result, mode, lookup, consumer),
     )
 
 
@@ -503,6 +638,7 @@ async def tool_health_check(
         description,
         sandbox,
         lookup,
+        consumer,
     ) = await _resolve_target(
         endpoint="call-tool",
         request=request,
@@ -523,7 +659,7 @@ async def tool_health_check(
     )
     return SuccessResponse(
         message="Tool health check completed",
-        data=_attach_registry_metadata(result, mode, lookup),
+        data=_attach_playground_metadata(result, mode, lookup, consumer),
     )
 
 
@@ -532,15 +668,20 @@ async def tool_health_check(
 # ---------------------------------------------------------------------------
 
 
-def _attach_registry_metadata(
+def _attach_playground_metadata(
     result: dict[str, Any],
     mode: str,
     lookup: RegistryServerLookup | None,
+    consumer: ConsumerInfo | None,
 ) -> dict[str, Any]:
-    """Annotate the response with ``mode`` and (in registry mode) the cloud's
-    authoritative identifiers so callers can correlate without re-fetching.
+    """Annotate the response with ``playground_mode`` plus (when present)
+    the cloud's authoritative identifiers from /mcp-registry/get-server
+    (``registry`` block, registry-header mode) and /consumer-info
+    (``consumer`` block, inline + provider=enkrypt mode) so callers can
+    correlate without re-fetching.
 
     Returns a new dict — never mutates the service's payload in place.
+    Email is deliberately excluded from the response payload.
     """
     out: dict[str, Any] = (
         dict(result) if isinstance(result, dict) else {"result": result}
@@ -559,5 +700,12 @@ def _attach_registry_metadata(
             "is_sample": lookup.is_sample,
             "source_url": lookup.source_url,
             "source_version": lookup.source_version,
+        }
+    if consumer is not None:
+        out["consumer"] = {
+            "user_id": consumer.user_id,
+            "org_id": consumer.org_id,
+            "project_name": consumer.project_name,
+            "is_internal_req": consumer.is_internal_req,
         }
     return out

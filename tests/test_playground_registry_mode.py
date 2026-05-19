@@ -37,7 +37,14 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from secure_mcp_gateway import api_health_routes as h
-from secure_mcp_gateway.services.health import registry_client as rc
+from secure_mcp_gateway.services.health import (
+    consumer_info_client as cic,
+    registry_client as rc,
+)
+from secure_mcp_gateway.services.health.consumer_info_client import (
+    ConsumerInfo,
+    fetch_consumer_info,
+)
 from secure_mcp_gateway.services.health.registry_client import (
     RegistryServerLookup,
     fetch_registry_server,
@@ -107,9 +114,11 @@ def client(app: FastAPI) -> TestClient:
 
 
 @pytest.fixture(autouse=True)
-def _clear_registry_cache() -> None:
-    """Drop the registry_client TTL cache between tests so they don't bleed."""
+def _clear_caches() -> None:
+    """Drop the registry_client and consumer_info_client TTL caches between
+    tests so they don't bleed across cases."""
     asyncio.run(rc._cache_clear())
+    asyncio.run(cic._cache_clear())
 
 
 @pytest.fixture
@@ -163,6 +172,27 @@ def patch_fetch_registry(monkeypatch: pytest.MonkeyPatch):
     mock = AsyncMock()
     monkeypatch.setattr(h, "fetch_registry_server", mock)
     return mock
+
+
+@pytest.fixture
+def patch_fetch_consumer_info(monkeypatch: pytest.MonkeyPatch):
+    """Replace api_health_routes.fetch_consumer_info with a controllable AsyncMock."""
+    mock = AsyncMock()
+    monkeypatch.setattr(h, "fetch_consumer_info", mock)
+    return mock
+
+
+def _consumer_info(**overrides: Any) -> ConsumerInfo:
+    base: Dict[str, Any] = {
+        "user_id": "28cbcf05-653c-46fb-971c-2db57f4106ab",
+        "org_id": "28cbcf05-653c-46fb-971c-2db57f4106ab",
+        "project_name": "mcp-demo",
+        "email": "akhil@enkryptai.com",
+        "is_internal_req": False,
+        "raw": {},
+    }
+    base.update(overrides)
+    return ConsumerInfo(**base)
 
 
 # ---------------------------------------------------------------------------
@@ -1278,3 +1308,413 @@ def test_get_enkrypt_base_url_falls_back_to_default() -> None:
         rc.get_enkrypt_base_url({"enkrypt_config": {"base_url": ""}})
         == rc.DEFAULT_BASE_URL
     )
+
+
+# ===========================================================================
+# Inline mode + provider=enkrypt -> cloud /consumer-info auth
+# ===========================================================================
+
+
+def test_inline_enkrypt_provider_calls_consumer_info(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_consumer_info: AsyncMock,
+) -> None:
+    """Inline mode on an enkrypt-provider gateway: any cloud-200 apikey works,
+    even one that doesn't match the local admin allow-list."""
+    patch_fetch_consumer_info.return_value = _consumer_info()
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": "random-cloud-user-apikey"},
+        json={
+            "server_name": "echo",
+            "config": {"command": "python", "args": ["echo.py"]},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["playground_mode"] == "inline"
+    # Consumer block present with the 4 indexed fields (email excluded).
+    consumer = body["data"]["consumer"]
+    assert consumer == {
+        "user_id": "28cbcf05-653c-46fb-971c-2db57f4106ab",
+        "org_id": "28cbcf05-653c-46fb-971c-2db57f4106ab",
+        "project_name": "mcp-demo",
+        "is_internal_req": False,
+    }
+    assert "email" not in consumer
+
+    # Cloud was contacted with the apikey verbatim, base_url from
+    # enkrypt_config.base_url.
+    patch_fetch_consumer_info.assert_awaited_once_with(
+        base_url="https://api.cloud.test", apikey="random-cloud-user-apikey"
+    )
+    patch_health_service["check_server_health"].assert_awaited_once()
+
+
+def test_inline_enkrypt_provider_skips_local_admin_check(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_consumer_info: AsyncMock,
+) -> None:
+    """The local resolve_admin_keys check is NOT applied when
+    provider=enkrypt in inline mode -- the cloud is the sole gate."""
+    patch_fetch_consumer_info.return_value = _consumer_info()
+    # ENKRYPT_PROVIDER_CONFIG's admin key is ADMIN_APIKEY; we send a
+    # totally different apikey to prove cloud is the gate.
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": "not-in-local-admin-list"},
+        json={
+            "server_name": "echo",
+            "config": {"command": "python", "args": ["echo.py"]},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def test_inline_enkrypt_provider_cloud_401_propagates(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_consumer_info: AsyncMock,
+) -> None:
+    patch_fetch_consumer_info.side_effect = cic.ConsumerAuthError("bad key")
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": "wrong"},
+        json={
+            "server_name": "echo",
+            "config": {"command": "python", "args": ["echo.py"]},
+        },
+    )
+    assert resp.status_code == 401
+    assert "Invalid Enkrypt apikey" in resp.json()["detail"]
+    patch_health_service["check_server_health"].assert_not_called()
+
+
+def test_inline_enkrypt_provider_cloud_timeout(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_consumer_info: AsyncMock,
+) -> None:
+    patch_fetch_consumer_info.side_effect = cic.ConsumerTimeoutError(
+        "Timeout after 10s"
+    )
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": "k"},
+        json={
+            "server_name": "echo",
+            "config": {"command": "python", "args": ["echo.py"]},
+        },
+    )
+    assert resp.status_code == 504
+    assert "Timeout" in resp.json()["detail"]
+
+
+def test_inline_enkrypt_provider_cloud_5xx(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_consumer_info: AsyncMock,
+) -> None:
+    patch_fetch_consumer_info.side_effect = cic.ConsumerUpstreamError(
+        "HTTP 503", status_code=502
+    )
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": "k"},
+        json={
+            "server_name": "echo",
+            "config": {"command": "python", "args": ["echo.py"]},
+        },
+    )
+    assert resp.status_code == 502
+    assert "HTTP 503" in resp.json()["detail"]
+
+
+def test_inline_enkrypt_provider_parse_error(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_consumer_info: AsyncMock,
+) -> None:
+    patch_fetch_consumer_info.side_effect = cic.ConsumerParseError(
+        "non-JSON body"
+    )
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": "k"},
+        json={
+            "server_name": "echo",
+            "config": {"command": "python", "args": ["echo.py"]},
+        },
+    )
+    assert resp.status_code == 502
+
+
+def test_inline_local_provider_unchanged_no_consumer_block(
+    client: TestClient,
+    patch_load_config_local: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_consumer_info: AsyncMock,
+) -> None:
+    """Inline mode + provider=local_apikey still uses resolve_admin_keys
+    and never touches /consumer-info. No consumer block in the response."""
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": ADMIN_APIKEY},
+        json={
+            "server_name": "echo",
+            "config": {"command": "python", "args": ["echo.py"]},
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["data"]["playground_mode"] == "inline"
+    assert "consumer" not in body["data"]
+    patch_fetch_consumer_info.assert_not_called()
+
+
+def test_inline_enkrypt_provider_call_tool(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_consumer_info: AsyncMock,
+) -> None:
+    """call-tool inline + enkrypt: tool_name reaches service, consumer block in response."""
+    patch_fetch_consumer_info.return_value = _consumer_info(
+        is_internal_req=True
+    )
+    resp = client.post(
+        "/mcp-playground/call-tool",
+        headers={"apikey": "cloud-key"},
+        json={
+            "server_name": "echo",
+            "config": {"command": "python", "args": ["echo.py"]},
+            "tool_name": "echo",
+            "tool_args": {"message": "hi"},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["data"]["consumer"]["is_internal_req"] is True
+    kwargs = patch_health_service["execute_tool_health_check"].call_args.kwargs
+    assert kwargs["tool_name"] == "echo"
+    assert kwargs["tool_args"] == {"message": "hi"}
+
+
+def test_inline_enkrypt_provider_response_partial_fields(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_consumer_info: AsyncMock,
+) -> None:
+    """Lenient on missing optional fields -- cloud response with only user_id
+    still passes auth and surfaces what it has."""
+    patch_fetch_consumer_info.return_value = ConsumerInfo(
+        user_id="abc", raw={}
+    )
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": "k"},
+        json={
+            "server_name": "echo",
+            "config": {"command": "python", "args": ["echo.py"]},
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    consumer = body["data"]["consumer"]
+    assert consumer["user_id"] == "abc"
+    assert consumer["org_id"] is None
+    assert consumer["project_name"] is None
+    assert consumer["is_internal_req"] is None
+
+
+# ===========================================================================
+# Consumer-info client direct tests (mock aiohttp)
+# ===========================================================================
+
+
+def _consumer_info_body(**overrides: Any) -> str:
+    """Build a /consumer-info response body matching the real cloud shape."""
+    import json as _json
+
+    base: Dict[str, Any] = {
+        "org_id": "28cbcf05-653c-46fb-971c-2db57f4106ab",
+        "custom_id": "akhil@enkryptai.com|28cbcf05|20-20|100-200|mcp-demo",
+        "username": "_project:mcp-demo|28cbcf05",
+        "project_name": "mcp-demo",
+        "user_id": "28cbcf05-653c-46fb-971c-2db57f4106ab",
+        "id": "1388b711-f2c5-45b2-930b-3c91eb26e26d",
+        "email": "akhil@enkryptai.com",
+        "is_project_user": True,
+        "is_internal_req": False,
+    }
+    base.update(overrides)
+    return _json.dumps(base)
+
+
+@pytest.mark.asyncio
+async def test_consumer_info_cache_hit_short_circuits_second_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await cic._cache_clear()
+    session = _MockSession([(200, _consumer_info_body())])
+    monkeypatch.setattr(cic.aiohttp, "ClientSession", lambda: session)
+
+    a = await fetch_consumer_info(base_url="https://cloud.test", apikey="k")
+    b = await fetch_consumer_info(base_url="https://cloud.test", apikey="k")
+    assert a.user_id == b.user_id
+    assert a.email == b.email == "akhil@enkryptai.com"
+    assert len(session.calls) == 1  # cache hit absorbed the second call
+
+
+@pytest.mark.asyncio
+async def test_consumer_info_cache_separated_per_apikey(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await cic._cache_clear()
+    session = _MockSession(
+        [(200, _consumer_info_body()), (200, _consumer_info_body())]
+    )
+    monkeypatch.setattr(cic.aiohttp, "ClientSession", lambda: session)
+
+    await fetch_consumer_info(base_url="https://cloud.test", apikey="k1")
+    await fetch_consumer_info(base_url="https://cloud.test", apikey="k2")
+    assert len(session.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_consumer_info_cache_ttl_is_5_minutes() -> None:
+    """Document-by-test: the consumer-info TTL is intentionally 5 min."""
+    assert cic.CONSUMER_INFO_CACHE_TTL_SECONDS == 300
+
+
+@pytest.mark.asyncio
+async def test_consumer_info_401_raises_auth_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await cic._cache_clear()
+    session = _MockSession([(401, "nope")])
+    monkeypatch.setattr(cic.aiohttp, "ClientSession", lambda: session)
+    with pytest.raises(cic.ConsumerAuthError):
+        await fetch_consumer_info(
+            base_url="https://cloud.test", apikey="bad"
+        )
+
+
+@pytest.mark.asyncio
+async def test_consumer_info_403_collapses_to_auth_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await cic._cache_clear()
+    session = _MockSession([(403, "forbidden")])
+    monkeypatch.setattr(cic.aiohttp, "ClientSession", lambda: session)
+    with pytest.raises(cic.ConsumerAuthError):
+        await fetch_consumer_info(base_url="https://cloud.test", apikey="x")
+
+
+@pytest.mark.asyncio
+async def test_consumer_info_404_collapses_to_auth_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """/consumer-info has no distinct 'not found' semantics -- 404 collapsed."""
+    await cic._cache_clear()
+    session = _MockSession([(404, "no consumer")])
+    monkeypatch.setattr(cic.aiohttp, "ClientSession", lambda: session)
+    with pytest.raises(cic.ConsumerAuthError):
+        await fetch_consumer_info(base_url="https://cloud.test", apikey="x")
+
+
+@pytest.mark.asyncio
+async def test_consumer_info_5xx_raises_upstream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await cic._cache_clear()
+    session = _MockSession([(503, "boom")])
+    monkeypatch.setattr(cic.aiohttp, "ClientSession", lambda: session)
+    with pytest.raises(cic.ConsumerUpstreamError):
+        await fetch_consumer_info(base_url="https://cloud.test", apikey="x")
+
+
+@pytest.mark.asyncio
+async def test_consumer_info_errors_not_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A transient 503 must not poison the cache."""
+    await cic._cache_clear()
+    session = _MockSession([(503, "boom"), (200, _consumer_info_body())])
+    monkeypatch.setattr(cic.aiohttp, "ClientSession", lambda: session)
+
+    with pytest.raises(cic.ConsumerUpstreamError):
+        await fetch_consumer_info(
+            base_url="https://cloud.test", apikey="k"
+        )
+    info = await fetch_consumer_info(
+        base_url="https://cloud.test", apikey="k"
+    )
+    assert info.user_id is not None
+    assert len(session.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_consumer_info_request_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GET /consumer-info with apikey + Accept headers, no others."""
+    await cic._cache_clear()
+    session = _MockSession([(200, _consumer_info_body())])
+    monkeypatch.setattr(cic.aiohttp, "ClientSession", lambda: session)
+
+    await fetch_consumer_info(
+        base_url="https://cloud.test", apikey="my-key"
+    )
+    call = session.calls[0]
+    assert call["url"] == "https://cloud.test/consumer-info"
+    assert call["headers"]["apikey"] == "my-key"
+    assert call["headers"]["Accept"] == "application/json"
+    # Don't leak registry-server headers onto this endpoint.
+    assert "X-Enkrypt-MCP-Registry-Server" not in call["headers"]
+
+
+@pytest.mark.asyncio
+async def test_consumer_info_is_internal_req_coerces_stringy_bool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cloud may return is_internal_req as 'true'/'false' strings."""
+    await cic._cache_clear()
+    session = _MockSession(
+        [(200, _consumer_info_body(is_internal_req="true"))]
+    )
+    monkeypatch.setattr(cic.aiohttp, "ClientSession", lambda: session)
+    info = await fetch_consumer_info(
+        base_url="https://cloud.test", apikey="k"
+    )
+    assert info.is_internal_req is True
+
+
+@pytest.mark.asyncio
+async def test_consumer_info_timeout_raises_timeout_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await cic._cache_clear()
+
+    class _TimeoutSession:
+        def get(self, *a: Any, **k: Any):
+            raise asyncio.TimeoutError("boom")
+
+        async def __aenter__(self) -> "_TimeoutSession":
+            return self
+
+        async def __aexit__(self, *a: Any) -> bool:
+            return False
+
+    monkeypatch.setattr(cic.aiohttp, "ClientSession", _TimeoutSession)
+    with pytest.raises(cic.ConsumerTimeoutError):
+        await fetch_consumer_info(base_url="https://cloud.test", apikey="k")

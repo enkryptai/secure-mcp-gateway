@@ -34,6 +34,12 @@ class SpanAttributes:
     PROJECT_REGISTRY = "enkrypt.project.registry"
     USER_ID = "enkrypt.user.id"
     USER_EMAIL = "enkrypt.user.email"
+    # True when the apikey belongs to an internal Enkrypt account
+    # (dashboard / next-js / staff). Populated from the cloud
+    # ``/consumer-info`` response when the playground runs in
+    # inline-mode + provider=enkrypt, so dashboards can split internal
+    # traffic from real customer traffic.
+    USER_IS_INTERNAL_REQ = "enkrypt.user.is_internal_req"
     CONFIG_ID = "enkrypt.config.id"
     GATEWAY_KEY = "enkrypt.gateway.key"
     # Echoes the ``X-Enkrypt-MCP-Gateway`` / ``X-Enkrypt-MCP-Gateway-Version``
@@ -179,6 +185,16 @@ class SpanNames:
     # call made by the playground routes when in registry-header mode.
     PLAYGROUND_REGISTRY_LOOKUP = "enkrypt.playground.registry_lookup"
 
+    # Child span around the cloud's ``GET /consumer-info`` HTTP call made
+    # by the playground routes when in inline-body mode with
+    # ``plugins.auth.provider == "enkrypt"``. Cloud 200 is the apikey gate
+    # for that path; identity attributes (user.id / org.id / project.name /
+    # user.email / user.is_internal_req) are populated from the response
+    # body onto the parent route span using the existing identity
+    # SpanAttributes so dashboards index playground traffic the same way
+    # as gateway traffic.
+    PLAYGROUND_CONSUMER_INFO_LOOKUP = "enkrypt.playground.consumer_info_lookup"
+
 
 # ===================================================================
 # Metric names (what OTel exports to Prometheus / Grafana)
@@ -234,6 +250,11 @@ class MetricNames:
     # Playground registry lookup
     PLAYGROUND_REGISTRY_LOOKUP_DURATION = "enkrypt.playground.registry_lookup.duration"
 
+    # Playground consumer-info lookup (inline-mode + provider=enkrypt)
+    PLAYGROUND_CONSUMER_INFO_LOOKUP_DURATION = (
+        "enkrypt.playground.consumer_info_lookup.duration"
+    )
+
     # Timeout metrics
     TIMEOUT_OPERATIONS = "enkrypt.timeout.operations"
     TIMEOUT_SUCCESS = "enkrypt.timeout.success"
@@ -279,6 +300,7 @@ METRIC_DESCRIPTIONS: dict[str, str] = {
     MetricNames.HEALTH_SUCCESS: "Health-check API requests that completed successfully",
     MetricNames.HEALTH_FAILURES: "Health-check API requests that failed",
     MetricNames.PLAYGROUND_REGISTRY_LOOKUP_DURATION: "Duration of GET /mcp-registry/get-server calls made by the /mcp-playground/* routes in registry-header mode (milliseconds)",
+    MetricNames.PLAYGROUND_CONSUMER_INFO_LOOKUP_DURATION: "Duration of GET /consumer-info calls made by the /mcp-playground/* routes in inline-body mode when plugins.auth.provider=enkrypt (milliseconds)",
     MetricNames.TIMEOUT_OPERATIONS: "Total timeout operations",
     MetricNames.TIMEOUT_SUCCESS: "Successful timeout operations",
     MetricNames.TIMEOUT_TIMED_OUT: "Operations that timed out",
