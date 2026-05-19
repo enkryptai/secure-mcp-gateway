@@ -183,9 +183,54 @@ class SystemResetRequest(BaseModel):
 
 # MCP Health Check Models
 class MCPServerConfigBody(BaseModel):
-    command: str
-    args: list[str]
+    """Inline server config for the /mcp-playground/* routes.
+
+    Two server-transport shapes are accepted (mirrors what
+    :func:`secure_mcp_gateway.plugins.sandbox.server_params.is_url_config`
+    recognises so the validator and the runtime never disagree):
+
+    - **stdio** (local process): set ``command`` (+ optional ``args``, ``env``).
+    - **URL transport** (hosted ``type:"http"`` / ``"sse"`` server): set
+      ``url`` (+ optional ``type``, ``transport``, ``headers``).
+
+    All fields are optional at the Pydantic layer; the route handler
+    (``api_health_routes._resolve_target``) decides whether the populated
+    fields are a usable inline config or whether the caller meant registry
+    mode. This intentionally keeps the body validator permissive so
+    callers get a clear 400 from the mode dispatcher instead of a cryptic
+    422 like ``{"loc":["body","config","command"],"msg":"Field required"}``
+    when they send a partial / URL-shaped config.
+    """
+
+    # stdio shape
+    command: str | None = None
+    args: list[str] | None = None
     env: dict[str, str] | None = None
+    # URL-transport shape — accepted both inline (this route) and from the
+    # cloud registry (see ``services/health/registry_client._parse_url_config``).
+    url: str | None = Field(
+        None,
+        description="Remote MCP server URL (for type='http'/'sse' transports).",
+    )
+    type: str | None = Field(
+        None,
+        description="Standard MCP transport type. One of 'http' or 'sse'.",
+    )
+    transport: str | None = Field(
+        None,
+        description=(
+            "Gateway-native transport name. Either 'streamable_http' or 'sse'. "
+            "Wins over ``type`` when both are set."
+        ),
+    )
+    headers: dict[str, str] | None = Field(
+        None,
+        description=(
+            "Optional HTTP headers forwarded to remote MCP servers (URL "
+            "transport only). Useful for inline auth like ``Authorization: "
+            "Bearer ...``."
+        ),
+    )
 
 
 class MCPServerRequest(BaseModel):

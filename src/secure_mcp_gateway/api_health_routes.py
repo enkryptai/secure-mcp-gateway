@@ -200,7 +200,19 @@ async def _resolve_target(
     Enforces mode invariants and runs the per-mode auth check. Raises
     ``HTTPException`` on every error path so the route handlers stay thin.
     """
-    has_body_config = request is not None and request.config is not None
+    # Only count the body as inline config when it actually carries an
+    # executable shape (``command`` for stdio, ``url``/``type`` for URL
+    # transport). A bare ``{"config": {}}`` from a frontend default is
+    # treated as "no inline config" so the caller falls through to either
+    # registry mode (if the header is set) or the "missing config" 400
+    # below — both with much clearer messages than the previous
+    # ``{"loc":["body","config","command"],"msg":"Field required"}`` 422.
+    has_body_config = False
+    if request is not None and request.config is not None:
+        cfg = request.config
+        has_body_config = bool(
+            cfg.command or cfg.url or (cfg.type and cfg.type.lower() in {"http", "sse"})
+        )
     has_registry_header = bool(registry_server)
 
     # --- Both modes signalled: ambiguous (400) ---------------------------
@@ -239,10 +251,17 @@ async def _resolve_target(
             )
         _validate_inline_apikey(apikey)
         sandbox = _extract_sandbox(request)
+        # ``exclude_none=True`` so we don't smuggle the unused-branch fields
+        # (e.g. ``command=None`` on a URL config) into the runtime — the
+        # gateway's ``is_url_config`` predicate inspects field presence /
+        # truthiness, and leaking ``None`` keys would muddy logs / spans
+        # without changing behaviour.
+        config_dict = request.config.model_dump(exclude_none=True)
         logger.info(
-            "[api] /mcp-playground/%s mode=inline server_name=%s",
+            "[api] /mcp-playground/%s mode=inline server_name=%s transport=%s",
             endpoint,
             request.server_name,
+            "url" if (config_dict.get("url") or config_dict.get("type") in {"http", "sse"}) else "stdio",
             extra={
                 "endpoint": endpoint,
                 "playground_mode": "inline",
@@ -252,7 +271,7 @@ async def _resolve_target(
         return (
             "inline",
             request.server_name,
-            request.config.model_dump(),
+            config_dict,
             request.description or "",
             sandbox,
             None,

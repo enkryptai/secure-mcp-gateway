@@ -193,10 +193,13 @@ def test_inline_mode_success(
     patch_health_service["check_server_health"].assert_awaited_once()
     kwargs = patch_health_service["check_server_health"].call_args.kwargs
     assert kwargs["server_name"] == "echo"
+    # ``exclude_none=True`` is now used when dumping the body config so the
+    # gateway runtime never sees ``None`` for the unused-branch fields
+    # (e.g. ``url``/``type`` on a stdio config). ``env`` was never set, so
+    # it's stripped here too.
     assert kwargs["config"] == {
         "command": "python",
         "args": ["echo.py"],
-        "env": None,
     }
     assert kwargs["description"] == "test"
     assert kwargs["sandbox"] is None
@@ -268,6 +271,139 @@ def test_inline_mode_sandbox_passes_through(
     assert resp.status_code == 200
     kwargs = patch_health_service["check_server_health"].call_args.kwargs
     assert kwargs["sandbox"] == {"enabled": False}
+
+
+# ---------------------------------------------------------------------------
+# Inline mode — URL transport + empty-config dispatcher (regression suite for
+# Vibhav's 422 "Field required: command" — a frontend sending either a
+# URL-shaped config or an empty config in the body used to hit pydantic's
+# stdio-only validator before the route handler could surface a clean 400).
+# ---------------------------------------------------------------------------
+
+
+def test_inline_mode_accepts_url_transport_config(
+    client: TestClient,
+    patch_load_config_local: None,
+    patch_health_service: Dict[str, AsyncMock],
+) -> None:
+    """Inline mode now accepts a ``{url, type}`` URL-transport config.
+
+    Before the fix this returned 422
+    ``{"loc":["body","config","command"],"msg":"Field required"}`` because
+    ``MCPServerConfigBody`` only modelled the stdio shape.
+    """
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": ADMIN_APIKEY},
+        json={
+            "server_name": "deepwiki-hosted",
+            "config": {
+                "url": "https://mcp.deepwiki.com/mcp",
+                "type": "http",
+            },
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    kwargs = patch_health_service["check_server_health"].call_args.kwargs
+    # ``exclude_none=True`` strips the unused-branch fields so the runtime
+    # sees a clean URL config.
+    assert kwargs["config"] == {
+        "url": "https://mcp.deepwiki.com/mcp",
+        "type": "http",
+    }
+
+
+def test_inline_mode_url_transport_passes_through_headers(
+    client: TestClient,
+    patch_load_config_local: None,
+    patch_health_service: Dict[str, AsyncMock],
+) -> None:
+    """Inline URL configs carry optional ``headers`` (e.g. ``Authorization``)."""
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": ADMIN_APIKEY},
+        json={
+            "server_name": "hosted",
+            "config": {
+                "url": "https://hosted.example.com/mcp",
+                "type": "http",
+                "headers": {"Authorization": "Bearer user-supplied"},
+            },
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    kwargs = patch_health_service["check_server_health"].call_args.kwargs
+    assert kwargs["config"]["headers"] == {"Authorization": "Bearer user-supplied"}
+
+
+def test_empty_body_config_falls_back_to_registry_mode(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    """A bare ``{"config": {}}`` from a frontend default must NOT be treated as
+    inline mode. With a registry header present we route to registry mode.
+
+    Before the fix this combo returned 422 (pydantic rejected the empty
+    config) before the dispatcher could see the registry header.
+    """
+    patch_fetch_registry.return_value = _registry_lookup()
+    # ``TestClient.get`` doesn't accept ``json=`` — use the generic
+    # ``request`` so we can attach a body to a GET (which is what some
+    # frontend HTTP clients do for read-style endpoints).
+    resp = client.request(
+        "GET",
+        "/mcp-playground/get-tools",
+        headers={
+            "apikey": CLOUD_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "my-fs",
+        },
+        json={"config": {}},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["playground_mode"] == "registry"
+
+
+def test_empty_body_config_without_registry_header_is_400(
+    client: TestClient,
+    patch_load_config_local: None,
+    patch_health_service: Dict[str, AsyncMock],
+) -> None:
+    """``{"config": {}}`` alone (no command/url, no registry header) is now a
+    clean 400 ``Missing config`` from the dispatcher instead of 422 from pydantic.
+    """
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={"apikey": ADMIN_APIKEY},
+        json={"config": {}},
+    )
+    assert resp.status_code == 400, resp.text
+    assert "Missing config" in resp.json()["detail"]
+
+
+def test_url_config_in_body_with_registry_header_is_400_ambiguous(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    """Sending both a real inline URL config AND the registry header now
+    surfaces the dispatcher's 400 ambiguity message instead of a 422.
+    """
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={
+            "apikey": CLOUD_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "my-fs",
+        },
+        json={
+            "server_name": "x",
+            "config": {"url": "https://example.com/mcp", "type": "http"},
+        },
+    )
+    assert resp.status_code == 400, resp.text
+    assert "Ambiguous request" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
