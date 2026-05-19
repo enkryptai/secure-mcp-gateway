@@ -401,6 +401,100 @@ def test_registry_mode_env_passthrough(
 
 
 # ---------------------------------------------------------------------------
+# Registry mode — URL transport (hosted ``type: http`` / ``sse`` servers)
+# ---------------------------------------------------------------------------
+#
+# Hosted servers in the cloud registry (e.g. ``test-deepwiki-hosted-public``)
+# return ``mcp_config.config = {"url": "...", "type": "http"}`` instead of the
+# stdio ``{command, args, env}`` shape. The playground must pass these
+# through to MCPHealthService unchanged — the gateway's transport layer
+# already understands them via ``is_url_config``.
+
+
+def test_registry_mode_url_transport_http(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    """Hosted ``type=http`` server config is passed through to the health service."""
+    patch_fetch_registry.return_value = _registry_lookup(
+        saved_name="test-deepwiki-hosted-public",
+        server_name="deepwiki-mcp-server",
+        description="DeepWiki MCP Server (Hosted)",
+        config_dict={
+            "url": "https://mcp.deepwiki.com/mcp",
+            "type": "http",
+        },
+    )
+    resp = client.get(
+        "/mcp-playground/get-tools",
+        headers={
+            "apikey": CLOUD_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "test-deepwiki-hosted-public",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    kwargs = patch_health_service["get_server_info"].call_args.kwargs
+    assert kwargs["config"] == {
+        "url": "https://mcp.deepwiki.com/mcp",
+        "type": "http",
+    }
+
+
+def test_registry_mode_url_transport_sse(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    """Hosted ``type=sse`` server config is also accepted."""
+    patch_fetch_registry.return_value = _registry_lookup(
+        config_dict={
+            "url": "https://sse.example.com/mcp",
+            "type": "sse",
+        },
+    )
+    resp = client.post(
+        "/mcp-playground/test-server",
+        headers={
+            "apikey": CLOUD_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "my-sse-server",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    kwargs = patch_health_service["check_server_health"].call_args.kwargs
+    assert kwargs["config"]["url"] == "https://sse.example.com/mcp"
+    assert kwargs["config"]["type"] == "sse"
+
+
+def test_registry_mode_url_transport_passes_through_headers(
+    client: TestClient,
+    patch_load_config_enkrypt: None,
+    patch_health_service: Dict[str, AsyncMock],
+    patch_fetch_registry: AsyncMock,
+) -> None:
+    """Optional ``headers`` on a URL config are forwarded to the gateway runtime."""
+    patch_fetch_registry.return_value = _registry_lookup(
+        config_dict={
+            "url": "https://hosted.example.com/mcp",
+            "type": "http",
+            "headers": {"Authorization": "Bearer cloud-injected"},
+        },
+    )
+    resp = client.get(
+        "/mcp-playground/get-tools",
+        headers={
+            "apikey": CLOUD_APIKEY,
+            "X-Enkrypt-MCP-Registry-Server": "my-hosted-server",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    kwargs = patch_health_service["get_server_info"].call_args.kwargs
+    assert kwargs["config"]["headers"] == {"Authorization": "Bearer cloud-injected"}
+
+
+# ---------------------------------------------------------------------------
 # Registry mode — cloud error mapping
 # ---------------------------------------------------------------------------
 
@@ -658,6 +752,159 @@ class _MockSession:
 
     async def __aexit__(self, *a: Any) -> bool:
         return False
+
+
+# ---------------------------------------------------------------------------
+# registry_client._parse_response — unit tests for transport dispatch
+# ---------------------------------------------------------------------------
+#
+# These bypass FastAPI and the cloud HTTP layer entirely so we can lock in
+# the parse-time dispatch between stdio and URL-transport configs. Anchored
+# to the same canonical predicate (``is_url_config``) that the gateway's
+# sandbox layer uses, so the playground can never disagree about what is
+# / isn't a URL server.
+
+
+def test_parse_response_accepts_stdio_config() -> None:
+    out = rc._parse_response(
+        {
+            "saved_name": "my-fs",
+            "server_version": "v1",
+            "mcp_config": {
+                "config": {
+                    "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+                    "env": {"FOO": "bar"},
+                }
+            },
+        }
+    )
+    assert out.saved_name == "my-fs"
+    assert out.config_dict == {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+        "env": {"FOO": "bar"},
+    }
+
+
+def test_parse_response_accepts_url_transport_type_http() -> None:
+    """The exact shape ``test-deepwiki-hosted-public`` returns on the dev cloud.
+
+    Regression: before commit ``<this change>`` the parser required a
+    ``command`` field and this payload triggered HTTP 502 with the message
+    ``"Registry server mcp_config.config.command is missing or empty"``.
+    """
+    out = rc._parse_response(
+        {
+            "saved_name": "test-deepwiki-hosted-public",
+            "server_version": "v1",
+            "server_name": "deepwiki-mcp-server",
+            "description": "DeepWiki MCP Server (Hosted)",
+            "mcp_config": {
+                "config": {
+                    "url": "https://mcp.deepwiki.com/mcp",
+                    "type": "http",
+                }
+            },
+        }
+    )
+    assert out.saved_name == "test-deepwiki-hosted-public"
+    assert out.config_dict == {
+        "url": "https://mcp.deepwiki.com/mcp",
+        "type": "http",
+    }
+
+
+def test_parse_response_accepts_url_transport_type_sse() -> None:
+    out = rc._parse_response(
+        {
+            "saved_name": "sse-server",
+            "server_version": "v1",
+            "mcp_config": {
+                "config": {"url": "https://sse.example.com/mcp", "type": "sse"}
+            },
+        }
+    )
+    assert out.config_dict["url"] == "https://sse.example.com/mcp"
+    assert out.config_dict["type"] == "sse"
+
+
+def test_parse_response_accepts_url_transport_explicit_transport_key() -> None:
+    """Gateway-native shape with ``transport`` but no ``type`` is also accepted."""
+    out = rc._parse_response(
+        {
+            "saved_name": "x",
+            "server_version": "v1",
+            "mcp_config": {
+                "config": {
+                    "url": "https://example.com/mcp",
+                    "transport": "streamable_http",
+                }
+            },
+        }
+    )
+    assert out.config_dict["url"] == "https://example.com/mcp"
+    assert out.config_dict["transport"] == "streamable_http"
+
+
+def test_parse_response_url_transport_passes_through_headers() -> None:
+    out = rc._parse_response(
+        {
+            "saved_name": "x",
+            "server_version": "v1",
+            "mcp_config": {
+                "config": {
+                    "url": "https://example.com/mcp",
+                    "type": "http",
+                    "headers": {"Authorization": "Bearer foo"},
+                }
+            },
+        }
+    )
+    assert out.config_dict["headers"] == {"Authorization": "Bearer foo"}
+
+
+def test_parse_response_rejects_type_http_without_url() -> None:
+    """``{"type": "http"}`` alone is a URL config per ``is_url_config`` but
+    has nothing for the MCP SDK to connect to — fail loudly at parse time."""
+    with pytest.raises(rc.RegistryParseError, match="type=http/sse but no url"):
+        rc._parse_response(
+            {
+                "saved_name": "x",
+                "server_version": "v1",
+                "mcp_config": {"config": {"type": "http"}},
+            }
+        )
+
+
+def test_parse_response_url_transport_rejects_non_object_headers() -> None:
+    with pytest.raises(rc.RegistryParseError, match="headers is not an object"):
+        rc._parse_response(
+            {
+                "saved_name": "x",
+                "server_version": "v1",
+                "mcp_config": {
+                    "config": {
+                        "url": "https://example.com/mcp",
+                        "type": "http",
+                        "headers": "Authorization: Bearer foo",  # wrong type
+                    }
+                },
+            }
+        )
+
+
+def test_parse_response_stdio_still_rejects_missing_command() -> None:
+    """When neither ``url`` nor ``type: http/sse`` is set we fall back to
+    stdio validation, which must keep enforcing ``command``."""
+    with pytest.raises(rc.RegistryParseError, match="command is missing or empty"):
+        rc._parse_response(
+            {
+                "saved_name": "x",
+                "server_version": "v1",
+                "mcp_config": {"config": {"args": ["foo"]}},
+            }
+        )
 
 
 def _good_body(saved_name: str = "my-fs") -> str:

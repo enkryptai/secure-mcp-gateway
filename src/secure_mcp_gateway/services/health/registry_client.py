@@ -29,6 +29,7 @@ from typing import Any
 
 import aiohttp
 
+from secure_mcp_gateway.plugins.sandbox.server_params import is_url_config
 from secure_mcp_gateway.plugins.telemetry.conventions import (
     SpanAttributes,
     SpanNames,
@@ -107,8 +108,15 @@ class RegistryParseError(RegistryLookupError):
 class RegistryServerLookup:
     """Subset of the cloud /mcp-registry/get-server response the playground uses.
 
-    ``config_dict`` is the executable shape that ``MCPHealthService`` expects:
-    ``{"command": str, "args": list[str], "env": dict[str, str] | None}``.
+    ``config_dict`` is the executable shape that ``MCPHealthService`` expects.
+    Two shapes are valid (mirroring what the gateway's own client + sandbox
+    layer accepts via :func:`is_url_config`):
+
+    - **stdio** (local process):
+      ``{"command": str, "args": list[str], "env": dict[str, str] | None}``
+    - **URL transport** (hosted ``type: "http"`` / ``"sse"`` server):
+      ``{"url": str, "type": str | None, "transport": str | None,
+         "headers": dict[str, str] | None}``
 
     The remaining fields are authoritative server-side identifiers we log
     and attach as span attributes — the client headers gave us a *requested*
@@ -210,11 +218,97 @@ def get_enkrypt_base_url(config: dict[str, Any]) -> str:
     return base_url.rstrip("/")
 
 
+def _parse_stdio_config(inner: dict[str, Any]) -> dict[str, Any]:
+    """Validate + normalise a stdio ``mcp_config.config`` block.
+
+    Returns ``{"command", "args", "env"}`` ready for ``StdioServerParameters``.
+    Raises ``RegistryParseError`` on any missing / wrong-typed field so the
+    route handler can map cleanly to HTTP 502.
+    """
+    command = inner.get("command")
+    if not isinstance(command, str) or not command.strip():
+        raise RegistryParseError(
+            "Registry server mcp_config.config.command is missing or empty"
+        )
+    args = inner.get("args") or []
+    if not isinstance(args, list):
+        raise RegistryParseError(
+            "Registry server mcp_config.config.args is not a list"
+        )
+    env_raw = inner.get("env")
+    env: dict[str, str] | None = None
+    if env_raw is not None:
+        if not isinstance(env_raw, dict):
+            raise RegistryParseError(
+                "Registry server mcp_config.config.env is not an object"
+            )
+        # Cloud should already enforce str-str, but coerce defensively so the
+        # MCP SDK's stdio launcher doesn't blow up on a non-str value.
+        env = {str(k): str(v) for k, v in env_raw.items()}
+    return {
+        "command": command,
+        "args": [str(a) for a in args],
+        "env": env,
+    }
+
+
+def _parse_url_config(inner: dict[str, Any]) -> dict[str, Any]:
+    """Validate + normalise a URL-transport ``mcp_config.config`` block.
+
+    Accepts both shapes the gateway already understands (see
+    ``plugins/sandbox/server_params.py::is_url_config``):
+
+    - ``{"url": "https://...", "type": "http" | "sse"}`` — standard MCP shape
+      (VS Code / Claude / Cursor), this is what the cloud registry returns
+      for hosted servers (e.g. ``test-deepwiki-hosted-public``).
+    - ``{"url": "https://...", "transport": "streamable_http" | "sse"}`` —
+      gateway-native shape.
+
+    Optional ``headers`` are passed through so the cloud can authenticate
+    hosted servers via an injected ``Authorization`` header.
+    """
+    url = inner.get("url")
+    if not isinstance(url, str) or not url.strip():
+        # ``is_url_config`` returns True when *either* ``url`` *or*
+        # ``type`` ∈ {"http","sse"} is set, so we may land here with a
+        # ``{"type": "http"}`` and no url at all. Surface a clear message
+        # rather than crashing later inside the MCP SDK.
+        raise RegistryParseError(
+            "Registry server mcp_config.config has type=http/sse but no url"
+        )
+
+    out: dict[str, Any] = {"url": url}
+    cfg_type = inner.get("type")
+    if isinstance(cfg_type, str) and cfg_type.strip():
+        out["type"] = cfg_type
+    transport = inner.get("transport")
+    if isinstance(transport, str) and transport.strip():
+        out["transport"] = transport
+
+    headers_raw = inner.get("headers")
+    if headers_raw is not None:
+        if not isinstance(headers_raw, dict):
+            raise RegistryParseError(
+                "Registry server mcp_config.config.headers is not an object"
+            )
+        # Same defensive coercion as ``env`` — the SDK builds HTTP headers
+        # from this dict, non-str values would raise a confusing TypeError.
+        out["headers"] = {str(k): str(v) for k, v in headers_raw.items()}
+
+    return out
+
+
 def _parse_response(body: dict[str, Any]) -> RegistryServerLookup:
     """Validate the cloud response shape and project it onto the dataclass.
 
-    Raises ``RegistryParseError`` if ``mcp_config.config.command`` is missing —
-    without that the playground has nothing to spawn.
+    Two server-transport shapes are recognised — stdio (command+args+env)
+    and URL transport (url + type/transport). The latter is what the cloud
+    returns for hosted servers like ``test-deepwiki-hosted-public`` whose
+    ``mcp_config.config`` looks like
+    ``{"url": "https://mcp.deepwiki.com/mcp", "type": "http"}``.
+
+    Raises ``RegistryParseError`` if neither shape is satisfied so the
+    route handler can surface a clear 502 with the cloud-side reason.
     """
     mcp_config = body.get("mcp_config")
     if not isinstance(mcp_config, dict):
@@ -226,33 +320,18 @@ def _parse_response(body: dict[str, Any]) -> RegistryServerLookup:
         raise RegistryParseError(
             "Registry server mcp_config.config block is missing or wrong type"
         )
-    command = inner.get("command")
-    if not isinstance(command, str) or not command.strip():
-        raise RegistryParseError(
-            "Registry server mcp_config.config.command is missing or empty"
-        )
-    args = inner.get("args") or []
-    if not isinstance(args, list):
-        raise RegistryParseError("Registry server mcp_config.config.args is not a list")
-    env_raw = inner.get("env")
-    env: dict[str, str] | None = None
-    if env_raw is not None:
-        if not isinstance(env_raw, dict):
-            raise RegistryParseError(
-                "Registry server mcp_config.config.env is not an object"
-            )
-        # Cloud should already enforce str-str, but coerce defensively so the
-        # MCP SDK's stdio launcher doesn't blow up on a non-str value.
-        env = {str(k): str(v) for k, v in env_raw.items()}
+
+    # Dispatch on the same predicate the gateway's runtime uses so we never
+    # disagree about what is / isn't a URL server.
+    if is_url_config(inner):
+        config_dict = _parse_url_config(inner)
+    else:
+        config_dict = _parse_stdio_config(inner)
 
     return RegistryServerLookup(
         saved_name=str(body.get("saved_name") or ""),
         server_version=str(body.get("server_version") or ""),
-        config_dict={
-            "command": command,
-            "args": [str(a) for a in args],
-            "env": env,
-        },
+        config_dict=config_dict,
         server_name=body.get("server_name"),
         description=body.get("description"),
         registry_id=body.get("registry_id"),
