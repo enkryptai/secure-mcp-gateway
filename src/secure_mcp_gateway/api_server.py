@@ -68,12 +68,55 @@ from secure_mcp_gateway.exceptions import (
 from secure_mcp_gateway.utils import (
     CONFIG_PATH,
     DOCKER_CONFIG_PATH,
+    get_common_config,
     is_docker,
     logger,
 )
 from secure_mcp_gateway.version import __version__
 
-# logger.info(f"Initializing Enkrypt Secure MCP Gateway REST API Server v{__version__}")
+# ---------------------------------------------------------------------------
+# Telemetry + sandbox bootstrap
+# ---------------------------------------------------------------------------
+# ``gateway.py`` initialises the telemetry + sandbox plugins on import, but
+# ``api_server.py`` historically did not — so every span / metric /
+# structured-log call inside ``/mcp-playground/*`` routes (which run through
+# ``MCPHealthService``) was silently no-op'd via the
+# ``except Exception: return None`` fallback in
+# ``services/health/mcp_health_service.py::_get_tracer``. The visible symptom
+# was: REST API works fine end-to-end, but **nothing shows up in OpenSearch /
+# OTel collector** for playground calls. Frontend (Vaibhav) confirmed this
+# locally — playground APIs return 200s but no traces / metrics land.
+#
+# We mirror the gateway bootstrap order here (telemetry first so subsequent
+# inits get a live tracer, sandbox second so per-call sandbox overrides
+# resolve against a real provider). Both managers are singletons, so this is
+# a no-op when ``api_server`` is imported a second time within the same
+# process. Failures are caught + logged so an OTLP collector being offline
+# never blocks the REST API from booting.
+try:
+    _common_config = get_common_config()
+    from secure_mcp_gateway.plugins.telemetry import initialize_telemetry_system
+
+    _telemetry_manager = initialize_telemetry_system(_common_config)
+    logger.info(
+        "[api_server] telemetry providers loaded",
+        extra={"providers": _telemetry_manager.list_providers()},
+    )
+except Exception as _telemetry_exc:  # pragma: no cover - exporter offline
+    logger.warning(
+        "[api_server] telemetry bootstrap failed - playground spans/metrics will be no-op",
+        extra={"error": f"{type(_telemetry_exc).__name__}: {_telemetry_exc}"},
+    )
+
+try:
+    from secure_mcp_gateway.plugins.sandbox import initialize_sandbox_system
+
+    initialize_sandbox_system(_common_config)
+except Exception as _sandbox_exc:  # pragma: no cover - runtime not installed
+    logger.warning(
+        "[api_server] sandbox bootstrap failed - inline mode will run unsandboxed",
+        extra={"error": f"{type(_sandbox_exc).__name__}: {_sandbox_exc}"},
+    )
 
 # Configuration
 is_docker_running = is_docker()
