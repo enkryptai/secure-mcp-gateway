@@ -1273,11 +1273,10 @@ class SecureToolExecutionService:
                     guardrail_task, tool_call_task
                 )
 
-                # Extract results from timeout results
-                if hasattr(guardrail_response, "result"):
-                    guardrail_response = guardrail_response.result
-                if hasattr(result, "result"):
-                    result = result.result
+                guardrail_response = self._unwrap_timeout_result(
+                    guardrail_response, "input guardrail"
+                )
+                result = self._unwrap_timeout_result(result, "tool call")
             else:
                 input_span.set_attribute(SpanAttributes.ASYNC_GUARDRAILS, False)
                 guardrail_response = await timeout_manager.execute_with_timeout(
@@ -1292,11 +1291,10 @@ class SecureToolExecutionService:
                     args,
                 )
 
-                # Extract results from timeout results
-                if hasattr(guardrail_response, "result"):
-                    guardrail_response = guardrail_response.result
-                if hasattr(result, "result"):
-                    result = result.result
+                guardrail_response = self._unwrap_timeout_result(
+                    guardrail_response, "input guardrail"
+                )
+                result = self._unwrap_timeout_result(result, "tool call")
 
             # Check if blocked
             if guardrail_response is None:
@@ -1448,6 +1446,22 @@ class SecureToolExecutionService:
             if result_type == "text":
                 text_result = result.content[0].text
         return text_result
+
+    @staticmethod
+    def _unwrap_timeout_result(timeout_result, operation_name):
+        # Why: timeout_manager.execute_with_timeout catches every exception and
+        # returns TimeoutResult(success=False, error=..., result=None). Callers
+        # that only do `.result` flatten failures to None, then downstream code
+        # treats empty content as success. Re-raise instead so the outer
+        # _execute_single_tool handler converts it to a real "error" response.
+        if not hasattr(timeout_result, "success"):
+            return timeout_result
+        if timeout_result.success:
+            return timeout_result.result
+        err = timeout_result.error
+        if err is None:
+            raise RuntimeError(f"{operation_name} failed without error details")
+        raise err
 
     async def _process_output_guardrails(
         self,
@@ -1941,9 +1955,19 @@ class SecureToolExecutionService:
             ),
         )
 
+        # Top-level status reflects what actually happened — "success" only when
+        # every call succeeded. Previously hardcoded to "success" even when
+        # every call errored, which masked failures from MCP clients.
+        if results and successful_calls == len(results):
+            batch_status = "success"
+        elif failed_calls == len(results) and results:
+            batch_status = "error"
+        else:
+            batch_status = "partial"
+
         return {
             "server_name": server_name,
-            "status": "success",
+            "status": batch_status,
             "summary": {
                 "total_calls": num_tool_calls,
                 "successful_calls": successful_calls,
