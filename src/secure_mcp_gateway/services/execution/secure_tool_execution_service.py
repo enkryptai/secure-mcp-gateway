@@ -215,6 +215,52 @@ class SecureToolExecutionService:
                     "error": f"Secure batch tool call failed: {e}",
                 }
 
+    @staticmethod
+    def _set_identity_span_attributes(span, gateway_config):
+        """Mirror cloud ``request_context`` identity onto a span.
+
+        ``email`` originates from ``request_context.forwarded_user_email`` on
+        the cloud's ``GET /mcp-gateway/get-gateway-config`` response (see
+        ``EnkryptAuthProvider._build_local_config``). Setting it here so
+        per-tool-call traces can pivot by end-user, matching the way
+        discovery / server_info / cache_status spans already tag identity.
+        """
+        if not gateway_config:
+            return
+        span.set_attribute(
+            SpanAttributes.USER_ID, gateway_config.get("user_id") or "not_provided"
+        )
+        span.set_attribute(
+            SpanAttributes.USER_EMAIL, gateway_config.get("email") or "not_provided"
+        )
+        span.set_attribute(
+            SpanAttributes.PROJECT_ID,
+            gateway_config.get("project_id") or "not_provided",
+        )
+        span.set_attribute(
+            SpanAttributes.PROJECT_NAME,
+            gateway_config.get("project_name") or "not_provided",
+        )
+        span.set_attribute(
+            SpanAttributes.PROJECT_REGISTRY,
+            gateway_config.get("registry_name") or "not_provided",
+        )
+        span.set_attribute(
+            SpanAttributes.ORG_ID, gateway_config.get("org_id") or "not_provided"
+        )
+        span.set_attribute(
+            SpanAttributes.GATEWAY_NAME,
+            gateway_config.get("gateway_name") or "not_provided",
+        )
+        span.set_attribute(
+            SpanAttributes.GATEWAY_VERSION,
+            gateway_config.get("gateway_version") or "not_provided",
+        )
+        span.set_attribute(
+            SpanAttributes.CONFIG_ID,
+            gateway_config.get("mcp_config_id") or "not_provided",
+        )
+
     async def _authenticate_and_setup(
         self, ctx, custom_id, server_name, main_span, logger
     ):
@@ -256,6 +302,9 @@ class SecureToolExecutionService:
                     creds.get("project_id"),
                     creds.get("user_id"),
                     mcp_config_id,
+                )
+                self._set_identity_span_attributes(
+                    main_span, auth_result.gateway_config
                 )
                 server_info = get_server_info_by_name(
                     auth_result.gateway_config, server_name
@@ -301,6 +350,7 @@ class SecureToolExecutionService:
                     creds.get("user_id"),
                     mcp_config_id,
                 )
+                self._set_identity_span_attributes(main_span, local_config)
 
                 if not self.auth_manager.is_session_authenticated(session_key):
                     auth_span.set_attribute(SpanAttributes.REQUIRED_NEW_AUTH, True)
@@ -603,6 +653,10 @@ class SecureToolExecutionService:
         project_id = gateway_config.get("project_id")
         mcp_config_id = gateway_config.get("mcp_config_id")
         user_id = gateway_config.get("user_id")
+        # ``email`` is sourced from cloud ``request_context.forwarded_user_email``
+        # (mapped by ``EnkryptAuthProvider._build_local_config``). Local-apikey
+        # configs leave it ``None`` and ``_safe_attrs`` strips it.
+        user_email = gateway_config.get("email")
         # Identity attrs are only set when the cloud-auth provider promotes
         # them from ``request_context``; local-apikey configs leave them
         # ``None`` and ``_safe_attrs`` will strip them from metric attributes.
@@ -620,6 +674,7 @@ class SecureToolExecutionService:
         # PromQL alerts instead of Loki queries.
         auth_context = {
             "user_id": user_id,
+            "user_email": user_email,
             "project_id": project_id,
             "project_name": project_name,
             "project_registry": project_registry,

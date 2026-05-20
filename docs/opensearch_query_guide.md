@@ -93,7 +93,7 @@ Also useful, available on the same signals where applicable:
 | Field | Traces | Metrics | Logs |
 | ----- | ------ | ------- | ---- |
 | `project_id` | `span.attributes.enkrypt@project@id` | `metric.attributes.project_id` | `log.attributes.project_id` |
-| `email` | `span.attributes.enkrypt@user@email` | — | `log.attributes.email` |
+| `email` | `span.attributes.enkrypt@user@email` | `metric.attributes.user_email` ² | `log.attributes.email` |
 | `mcp_config_id` | `span.attributes.enkrypt@config@id` | — | `log.attributes.mcp_config_id` |
 | `gateway_key` (masked) | `span.attributes.enkrypt@gateway@key` | — | — |
 | `server_name` | `span.attributes.enkrypt@server@name` | `metric.attributes.server_name` (where relevant) | `log.attributes.server_name` |
@@ -110,6 +110,15 @@ specifically only flows when the gateway runs `plugins.auth.provider =
 keys, useful for splitting internal traffic from customer traffic in
 dashboards. On metrics it's stringified `"true"`/`"false"` to keep
 label cardinality bounded.
+
+² `metric.attributes.user_email` is emitted on the tool-call lifecycle
+(`enkrypt.tool.*`), guardrail violation (`enkrypt.guardrail.*`), and PII
+redaction (`enkrypt.pii.redactions`) counters when the cloud auth
+provider promotes `request_context.forwarded_user_email` from the
+`GET /mcp-gateway/get-gateway-config` response. Local-apikey gateways
+and cloud gateways called without a forwarded end-user identity leave
+the field absent (stripped by `_safe_attrs`) — filter with
+`exists` rather than expecting a sentinel.
 
 ---
 
@@ -299,6 +308,11 @@ POST gateway-metrics/_search
   }
 }
 ```
+
+Swap the terms field to `metric.attributes.user_email` to bucket by end
+user instead of internal UUID — useful when reading the result without
+a side trip through the cloud's user-lookup. Only populated for traffic
+where the calling app forwarded an end-user identity (see footnote ²).
 
 ### Histogram average (e.g. tool duration)
 

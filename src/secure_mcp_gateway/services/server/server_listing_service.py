@@ -4,6 +4,7 @@ from typing import Any
 
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
+from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 
 # Get metrics from telemetry manager
@@ -257,6 +258,18 @@ class ServerListingService:
         span.set_attribute("enkrypt_mcp_config_id", enkrypt_mcp_config_id)
         span.set_attribute("enkrypt_project_name", enkrypt_project_name)
         span.set_attribute("enkrypt_email", enkrypt_email)
+        # Also publish under the canonical OTel attribute keys so dashboards
+        # built against ``enkrypt.user.email`` (discovery / server_info /
+        # cache_status spans) match list-servers traffic too.
+        span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
+        span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
+        span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
+        span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+        span.set_attribute(SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry)
+        span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
+        span.set_attribute(SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name)
+        span.set_attribute(SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version)
+        span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
 
     async def _check_authentication(
         self, ctx, session_key, enkrypt_gateway_key, tracer, custom_id, logger

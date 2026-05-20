@@ -329,3 +329,33 @@ def test_principal_attrs_omitted_when_empty_string(fake_manager):
     _, attrs = fake_manager.guardrail_violation_counter.calls[0]
     assert "user_id" not in attrs
     assert "project_id" not in attrs
+
+
+def test_user_email_propagates_to_all_metric_helpers(fake_manager):
+    """``user_email`` sourced from cloud ``request_context.forwarded_user_email``
+    must land as a label on tool-call, guardrail, and PII counters so the
+    per-end-user Grafana view works the same as the per-user_id view."""
+    mh.record_tool_call_outcome(
+        "srv", "tool", "success", user_email="alice@example.com"
+    )
+    _, attrs = fake_manager.tool_call_success_counter.calls[0]
+    assert attrs["user_email"] == "alice@example.com"
+
+    mh.record_guardrail_violations(
+        "input", ["injection_attack"], "srv", "tool",
+        user_email="alice@example.com",
+    )
+    _, attrs = fake_manager.guardrail_violation_counter.calls[0]
+    assert attrs["user_email"] == "alice@example.com"
+
+    mh.record_pii_redaction("input", count=1, user_email="alice@example.com")
+    _, attrs = fake_manager.pii_redactions_counter.calls[0]
+    assert attrs["user_email"] == "alice@example.com"
+
+
+def test_user_email_omitted_when_none(fake_manager):
+    """Local-apikey configs leave ``user_email`` ``None``; the label must be
+    stripped so an empty/None series doesn't pollute Prometheus cardinality."""
+    mh.record_tool_call_outcome("srv", "tool", "success", user_email=None)
+    _, attrs = fake_manager.tool_call_success_counter.calls[0]
+    assert "user_email" not in attrs
