@@ -122,20 +122,30 @@ fail() { printf '%s  ERROR: %s\n' "$(date -u +%FT%TZ)" "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # Step 1: wait for cluster
+#
+# Must wait for status >= yellow, not just "reachable". On a warm restart the
+# health endpoint answers RED for ~30s while shards recover, and during that
+# window updates to the alerting plugin's system index (.opendistro-alerting-config)
+# fail with "all shards failed". `wait_for_status=yellow` lets the server
+# block server-side, so we poll cheaply with a short timeout per request.
 # ---------------------------------------------------------------------------
-log "Waiting up to ${OS_WAIT_SECONDS}s for ${OPENSEARCH_ENDPOINT} ..."
+log "Waiting up to ${OS_WAIT_SECONDS}s for ${OPENSEARCH_ENDPOINT} (status >= yellow) ..."
 deadline=$(( $(date +%s) + OS_WAIT_SECONDS ))
+status=""
 while (( $(date +%s) < deadline )); do
-  body="$(curl_cmd "${OPENSEARCH_ENDPOINT}/_cluster/health" 2>/dev/null || true)"
+  body="$(curl_cmd "${OPENSEARCH_ENDPOINT}/_cluster/health?wait_for_status=yellow&timeout=10s" 2>/dev/null || true)"
   if echo "$body" | grep -q '"status"'; then
     status="$(echo "$body" | sed -n 's/.*"status":"\([^"]*\)".*/\1/p')"
-    log "Cluster reachable, status=${status}"
-    break
+    if [[ "$status" == "yellow" || "$status" == "green" ]]; then
+      log "Cluster ready, status=${status}"
+      break
+    fi
+    log "Cluster reachable but status=${status}; waiting for yellow..."
   fi
   sleep 2
 done
-if ! echo "$body" | grep -q '"status"'; then
-  fail "OpenSearch not reachable at ${OPENSEARCH_ENDPOINT} after ${OS_WAIT_SECONDS}s"
+if [[ "$status" != "yellow" && "$status" != "green" ]]; then
+  fail "OpenSearch at ${OPENSEARCH_ENDPOINT} did not reach yellow within ${OS_WAIT_SECONDS}s (last status=${status:-unreachable})"
 fi
 
 # ---------------------------------------------------------------------------
