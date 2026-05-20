@@ -114,11 +114,11 @@ label cardinality bounded.
 ² `metric.attributes.user_email` is emitted on the tool-call lifecycle
 (`enkrypt.tool.*`), guardrail violation (`enkrypt.guardrail.*`), and PII
 redaction (`enkrypt.pii.redactions`) counters when the cloud auth
-provider promotes `request_context.forwarded_user_email` from the
+provider promotes `request_context.user_email` from the
 `GET /mcp-gateway/get-gateway-config` response. Local-apikey gateways
-and cloud gateways called without a forwarded end-user identity leave
-the field absent (stripped by `_safe_attrs`) — filter with
-`exists` rather than expecting a sentinel.
+and cloud gateways called without an end-user identity leave the field
+absent (stripped by `_safe_attrs`) — filter with `exists` rather than
+expecting a sentinel.
 
 ---
 

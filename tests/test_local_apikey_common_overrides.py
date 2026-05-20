@@ -416,3 +416,28 @@ class TestGeneratedConfigSurvivesPromotion:
                 srv["server_tools_guardrails_config"]
                 == entry["common_overrides"]["server_tools_guardrails_config"]
             )
+
+
+# ---------------------------------------------------------------------------
+# Signature parity with EnkryptAuthProvider
+# ---------------------------------------------------------------------------
+
+
+def test_get_local_config_accepts_gateway_name_kwarg() -> None:
+    """``AuthConfigManager.get_local_mcp_config`` forwards ``gateway_name=``
+    unconditionally to whichever provider is active. The local provider has
+    no use for the value, but it must accept the kwarg — without that
+    parity, every call site (``build_log_extra``, discovery, listing,
+    secure-call-tools) hits ``TypeError: unexpected keyword argument
+    'gateway_name'`` and ``build_log_extra`` silently swallows it, leaving
+    ``email`` / ``project_name`` / identity attrs stuck at ``not_provided``
+    on every log line, span, and metric for local-apikey deployments.
+    """
+    import inspect
+
+    sig = inspect.signature(LocalApiKeyProvider._get_local_config)
+    assert "gateway_name" in sig.parameters, (
+        "LocalApiKeyProvider._get_local_config must accept ``gateway_name`` for "
+        "signature parity with EnkryptAuthProvider — see "
+        "AuthConfigManager.get_local_mcp_config which forwards it."
+    )

@@ -56,13 +56,13 @@ Design decisions
    ``auth.config.cache_ttl_seconds``.
 
 6. **Identity propagation.** The cloud's ``request_context`` block (added
-   in the dev cloud image, May 2026) supplies ``user_id``, ``project_name``,
-   ``forwarded_user_id``, ``forwarded_user_email`` and friends. The mapper
-   prefers ``forwarded_user_id`` over ``user_id`` for the metric ``user_id``
-   label so that alerts attribute to the actual end-user of the calling
-   app, not the gateway-owner principal. Until the cloud surfaces a stable
-   ``project_id`` UUID we mirror ``project_name`` into the ``project_id``
-   slot for the existing label set.
+   in the dev cloud image, May 2026) supplies ``user_id``, ``user_email``,
+   ``project_name``, ``org_id``, ``registry_name``, and the echoed
+   ``gateway_saved_name`` / ``gateway_version``. ``user_id`` falls back to
+   the apikey-owner's top-level value when the cloud doesn't surface it,
+   so dashboards always have a stable token. Until the cloud surfaces a
+   stable ``project_id`` UUID we mirror ``project_name`` into the
+   ``project_id`` slot for the existing label set.
 
 7. **Per-server ``is_active`` filter.** Cloud responses carry an
    ``is_active`` flag on every entry of ``expanded_servers`` that the
@@ -541,14 +541,8 @@ class EnkryptAuthProvider(AuthProvider):
             or effective_gateway_name
             or self.gateway_name
         )
-        # Prefer end-user (forwarded_*) if the calling app forwarded it,
-        # else fall back to the apikey owner's user_id.
-        user_id = (
-            request_context.get("forwarded_user_id")
-            or request_context.get("user_id")
-            or "enkrypt_principal"
-        )
-        email = request_context.get("forwarded_user_email") or "not_provided"
+        user_id = request_context.get("user_id") or "enkrypt_principal"
+        email = request_context.get("user_email") or "not_provided"
         project_name = (
             request_context.get("project_name")
             or response.get("project_name")
@@ -614,8 +608,7 @@ class EnkryptAuthProvider(AuthProvider):
         # bearing, not defensive padding.
         promoted_keys = {
             "user_id",
-            "forwarded_user_id",
-            "forwarded_user_email",
+            "user_email",
             "project_name",
             "project_id",
             "org_id",

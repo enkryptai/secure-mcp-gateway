@@ -3,7 +3,7 @@
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import requests
 
@@ -73,17 +73,15 @@ class LocalApiKeyProvider(AuthProvider):
         """Get provider version."""
         return "1.0.0"
 
-    def get_supported_methods(self) -> List[AuthMethod]:
+    def get_supported_methods(self) -> list[AuthMethod]:
         """Get supported authentication methods."""
         return [AuthMethod.API_KEY]
 
-    def validate_config(self, config: Dict[str, Any]) -> bool:
+    def validate_config(self, config: dict[str, Any]) -> bool:
         """Validate provider configuration."""
-        if self.use_remote_config and not self.api_key:
-            return False
-        return True
+        return not (self.use_remote_config and not self.api_key)
 
-    def get_required_config_keys(self) -> List[str]:
+    def get_required_config_keys(self) -> list[str]:
         """Get required configuration keys."""
         if self.use_remote_config:
             return ["api_key", "base_url"]
@@ -277,15 +275,31 @@ class LocalApiKeyProvider(AuthProvider):
             )
 
     async def _get_local_config(
-        self, gateway_key: str, project_id: str = None, user_id: str = None
-    ) -> Optional[Dict[str, Any]]:
+        self,
+        gateway_key: str,
+        project_id: str = None,
+        user_id: str = None,
+        gateway_name: str = None,
+    ) -> dict[str, Any] | None:
         """
         Get configuration from local config file.
+
+        ``gateway_name`` is accepted for signature parity with
+        :class:`EnkryptAuthProvider._get_local_config` — ``AuthConfigManager.
+        get_local_mcp_config`` forwards it unconditionally as a kwarg.
+        Without this parameter, every call from cloud-style call sites
+        (``build_log_extra``, discovery/listing services) raised
+        ``TypeError: unexpected keyword argument 'gateway_name'``, which
+        ``build_log_extra`` silently swallowed and left ``email`` /
+        ``project_name`` / etc. stuck at ``"not_provided"`` on logs, spans
+        and metrics. The local provider has no use for the value — gateway
+        identity lives in the local file's ``apikeys`` mapping.
 
         Args:
             gateway_key: Gateway API key
             project_id: Project ID
             user_id: User ID
+            gateway_name: Ignored. Kept for cloud-provider signature parity.
 
         Returns:
             Optional[Dict[str, Any]]: Configuration if found, None otherwise
@@ -370,7 +384,9 @@ class LocalApiKeyProvider(AuthProvider):
             return None
 
     @staticmethod
-    def _apply_common_overrides(mcp_config_entry: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _apply_common_overrides(
+        mcp_config_entry: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         """Promote ``mcp_configs.<id>.common_overrides`` onto every server entry.
 
         This makes the local config shape match the cloud-auth provider's
@@ -405,14 +421,15 @@ class LocalApiKeyProvider(AuthProvider):
 
         common_keys: tuple[str, ...] = ("server_tools_guardrails_config",)
 
-        applied: Dict[str, Any] = {
+        applied: dict[str, Any] = {
             k: common_overrides[k] for k in common_keys if k in common_overrides
         }
 
         # Fast path: nothing to promote and no per-server values to warn about.
         if not applied:
             stale = [
-                s for s in original_servers
+                s
+                for s in original_servers
                 if isinstance(s, dict) and any(k in s for k in common_keys)
             ]
             if stale:
@@ -428,7 +445,7 @@ class LocalApiKeyProvider(AuthProvider):
                 )
             return original_servers
 
-        promoted: List[Dict[str, Any]] = []
+        promoted: list[dict[str, Any]] = []
         for srv in original_servers:
             if not isinstance(srv, dict):
                 promoted.append(srv)

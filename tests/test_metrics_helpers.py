@@ -332,8 +332,8 @@ def test_principal_attrs_omitted_when_empty_string(fake_manager):
 
 
 def test_user_email_propagates_to_all_metric_helpers(fake_manager):
-    """``user_email`` sourced from cloud ``request_context.forwarded_user_email``
-    must land as a label on tool-call, guardrail, and PII counters so the
+    """``user_email`` sourced from cloud ``request_context.user_email`` must
+    land as a label on tool-call, guardrail, and PII counters so the
     per-end-user Grafana view works the same as the per-user_id view."""
     mh.record_tool_call_outcome(
         "srv", "tool", "success", user_email="alice@example.com"

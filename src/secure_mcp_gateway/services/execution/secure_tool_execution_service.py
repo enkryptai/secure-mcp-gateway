@@ -219,8 +219,8 @@ class SecureToolExecutionService:
     def _set_identity_span_attributes(span, gateway_config):
         """Mirror cloud ``request_context`` identity onto a span.
 
-        ``email`` originates from ``request_context.forwarded_user_email`` on
-        the cloud's ``GET /mcp-gateway/get-gateway-config`` response (see
+        ``email`` originates from ``request_context.user_email`` on the
+        cloud's ``GET /mcp-gateway/get-gateway-config`` response (see
         ``EnkryptAuthProvider._build_local_config``). Setting it here so
         per-tool-call traces can pivot by end-user, matching the way
         discovery / server_info / cache_status spans already tag identity.
@@ -653,7 +653,7 @@ class SecureToolExecutionService:
         project_id = gateway_config.get("project_id")
         mcp_config_id = gateway_config.get("mcp_config_id")
         user_id = gateway_config.get("user_id")
-        # ``email`` is sourced from cloud ``request_context.forwarded_user_email``
+        # ``email`` is sourced from cloud ``request_context.user_email``
         # (mapped by ``EnkryptAuthProvider._build_local_config``). Local-apikey
         # configs leave it ``None`` and ``_safe_attrs`` strips it.
         user_email = gateway_config.get("email")
