@@ -18,7 +18,11 @@ from secure_mcp_gateway.consts import (
     EXAMPLE_CONFIG_NAME,
     EXAMPLE_CONFIG_PATH,
 )
-from secure_mcp_gateway.log import get_logger
+from secure_mcp_gateway.log import (
+    CANONICAL_ATTR_KEYS,
+    canonicalize_attr_keys,
+    get_logger,
+)
 from secure_mcp_gateway.version import __version__
 
 logger = get_logger("secure_mcp_gateway")
@@ -490,11 +494,26 @@ def mask_key(key):
     return "****" + key[-4:]
 
 
+# ``CANONICAL_ATTR_KEYS`` and ``canonicalize_attr_keys`` are imported from
+# ``secure_mcp_gateway.log`` (the foundation logging module) and re-exported
+# here so older call sites importing from ``utils`` keep working. Single
+# source of truth lives in ``log.py`` to avoid an import cycle with the
+# structlog processor that uses the same map.
+_CANONICAL_LOG_ATTR_KEYS = CANONICAL_ATTR_KEYS  # backwards-compat alias
+
+
 def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs):
     """Build structured log extras. Tolerates missing/invalid ctx.
 
     Falls back to 'not_provided' values if ctx is not an MCP Context or
     if credentials/config cannot be resolved.
+
+    Keys in the returned dict use the dotted ``enkrypt.<namespace>.<field>``
+    convention defined in ``plugins.telemetry.conventions.SpanAttributes`` so
+    the same dict is safe to pass to ``logger.*(extra=...)`` *and*
+    ``counter.add(attributes=...)`` -- both signals end up queryable as
+    ``*.attributes.enkrypt@*`` in OpenSearch (Data Prepper rewrites dots to
+    ``@`` in the field path).
     """
     project_id = "not_provided"
     user_id = "not_provided"
@@ -583,23 +602,27 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
         # Swallow errors and use defaults to avoid breaking logging
         pass
 
-    # Filter out None values from kwargs
-    filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
+    # Canonicalize known kwargs to the dotted enkrypt.* namespace; pass
+    # unknown kwargs through unchanged so ad-hoc diagnostic fields still
+    # work (e.g. ``stats=...``, ``blocked_count=...``, ``violations=...``).
+    canonical_kwargs = canonicalize_attr_keys(
+        {k: v for k, v in kwargs.items() if v is not None}
+    )
 
     return {
-        "custom_id": custom_id or "",
-        "server_name": server_name or "",
-        "org_id": org_id or "",
-        "project_id": project_id or "",
-        "project_name": project_name or "",
-        "registry_name": registry_name or "",
-        "user_id": user_id or "",
-        "email": email or "",
-        "mcp_config_id": mcp_config_id or "",
-        "gateway_name": gateway_name or "",
-        "gateway_version": gateway_version or "",
-        "error": error or "",
-        **filtered_kwargs,
+        CANONICAL_ATTR_KEYS["custom_id"]:       custom_id or "",
+        CANONICAL_ATTR_KEYS["server_name"]:     server_name or "",
+        CANONICAL_ATTR_KEYS["org_id"]:          org_id or "",
+        CANONICAL_ATTR_KEYS["project_id"]:      project_id or "",
+        CANONICAL_ATTR_KEYS["project_name"]:    project_name or "",
+        CANONICAL_ATTR_KEYS["registry_name"]:   registry_name or "",
+        CANONICAL_ATTR_KEYS["user_id"]:         user_id or "",
+        CANONICAL_ATTR_KEYS["email"]:           email or "",
+        CANONICAL_ATTR_KEYS["mcp_config_id"]:   mcp_config_id or "",
+        CANONICAL_ATTR_KEYS["gateway_name"]:    gateway_name or "",
+        CANONICAL_ATTR_KEYS["gateway_version"]: gateway_version or "",
+        CANONICAL_ATTR_KEYS["error"]:           error or "",
+        **canonical_kwargs,
     }
 
 

@@ -58,11 +58,14 @@ Design decisions
 6. **Identity propagation.** The cloud's ``request_context`` block (added
    in the dev cloud image, May 2026) supplies ``user_id``, ``user_email``,
    ``project_name``, ``org_id``, ``registry_name``, and the echoed
-   ``gateway_saved_name`` / ``gateway_version``. ``user_id`` falls back to
-   the apikey-owner's top-level value when the cloud doesn't surface it,
-   so dashboards always have a stable token. Until the cloud surfaces a
-   stable ``project_id`` UUID we mirror ``project_name`` into the
-   ``project_id`` slot for the existing label set.
+   ``gateway_saved_name`` / ``gateway_version``. When the cloud doesn't
+   surface ``user_id`` (older cloud build, missing ``request_context``),
+   the field is left empty -- ``_safe_attrs`` / ``build_log_extra`` then
+   strip it so dashboards don't see a synthetic value that doesn't exist
+   in the customer's user table. Same ``None``-tolerant treatment as
+   ``org_id`` and ``registry_name``. Until the cloud surfaces a stable
+   ``project_id`` UUID we mirror ``project_name`` into the ``project_id``
+   slot for the existing label set.
 
 7. **Per-server ``is_active`` filter.** Cloud responses carry an
    ``is_active`` flag on every entry of ``expanded_servers`` that the
@@ -541,7 +544,16 @@ class EnkryptAuthProvider(AuthProvider):
             or effective_gateway_name
             or self.gateway_name
         )
-        user_id = request_context.get("user_id") or "enkrypt_principal"
+        # ``user_id`` must come from the cloud's ``request_context`` -- if it
+        # isn't surfaced (older cloud builds, free-tier apikeys not bound to
+        # an Enkrypt user record), keep it ``None`` so downstream
+        # ``_safe_attrs`` / ``build_log_extra`` drop the field entirely.
+        # Pre-2026-05 builds silently substituted the literal sentinel
+        # ``"enkrypt_principal"`` here, which polluted dashboards with a
+        # value that didn't exist in the customer's user table -- never do
+        # that again. Mirrors the ``org_id`` / ``registry_name`` pattern
+        # below.
+        user_id = request_context.get("user_id")
         email = request_context.get("user_email") or "not_provided"
         project_name = (
             request_context.get("project_name")
@@ -566,7 +578,12 @@ class EnkryptAuthProvider(AuthProvider):
         # ``None``-tolerant treatment as org_id.
         registry_name = request_context.get("registry_name")
 
-        composite_id = f"{user_id}_{project_id}_{gateway_id}"
+        # ``composite_id`` is the cache / session key, so it must be stable
+        # even when ``user_id`` is ``None`` (cloud doesn't surface it).
+        # Fall back to ``gateway_id`` -- also stable per-apikey -- so the
+        # key stays consistent across calls without leaking a fake
+        # ``"enkrypt_principal"`` into the user-facing ``user_id`` slot.
+        composite_id = f"{user_id or gateway_id}_{project_id}_{gateway_id}"
 
         # Gateway-wide common overrides (always win — see module docstring).
         # Cloud strips any key set here from each server's ``mcp_config`` and

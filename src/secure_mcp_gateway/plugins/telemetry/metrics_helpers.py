@@ -66,8 +66,23 @@ def _get_manager():
 
 
 def _safe_attrs(attrs: Mapping[str, Any]) -> dict[str, Any]:
-    """Drop None values - OTel SDK rejects them."""
-    return {k: v for k, v in attrs.items() if v is not None and v != ""}
+    """Drop None / empty values (OTel SDK rejects them) and rewrite known
+    snake_case identity keys (``server_name``, ``user_id``, ``project_id``,
+    ``gateway_name``, ...) to the dotted ``enkrypt.*`` convention so metric
+    attributes match log/trace attributes one-to-one in OpenSearch (Data
+    Prepper rewrites dots to ``@`` in the field path -- e.g.
+    ``metric.attributes.enkrypt@server@name``). Categorical / domain-specific
+    keys (``outcome``, ``direction``, ``status_code``, ``provider``,
+    ``check_kind``, ``violation_type``, ``cache``, ``failure_reason``, ...)
+    don't have canonical dotted names in ``conventions.py`` and pass through
+    unchanged.
+    """
+    # Local import to avoid a hard import-cycle on module load
+    # (utils -> conventions -> utils via the lazy plugin loader chain).
+    from secure_mcp_gateway.utils import canonicalize_attr_keys
+
+    pruned = {k: v for k, v in attrs.items() if v is not None and v != ""}
+    return canonicalize_attr_keys(pruned)
 
 
 def _add(

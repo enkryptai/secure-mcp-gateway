@@ -243,24 +243,20 @@ class ServerListingService:
         enkrypt_gateway_name: str = "not_provided",
         enkrypt_gateway_version: str = "not_provided",
     ):
-        """Set attributes on the main span."""
+        """Set attributes on the main span.
+
+        Identity attributes use the canonical ``SpanAttributes.*``
+        constants (``enkrypt.*`` dotted form). The pre-2026-05 codepath
+        also emitted underscore-prefixed duplicates
+        (``enkrypt_user_id`` / ``enkrypt_email`` / ...) for backward
+        compatibility while dashboards migrated; they're now removed
+        because every consumer queries the dotted form.
+        """
         span.set_attribute("job", "enkrypt")
         span.set_attribute("env", "dev")
         span.set_attribute("custom_id", custom_id)
-        span.set_attribute("enkrypt_gateway_key", mask_key(enkrypt_gateway_key))
         span.set_attribute("discover_tools", discover_tools)
-        span.set_attribute("enkrypt_org_id", enkrypt_org_id)
-        span.set_attribute("enkrypt_project_registry", enkrypt_project_registry)
-        span.set_attribute("enkrypt_gateway_name", enkrypt_gateway_name)
-        span.set_attribute("enkrypt_gateway_version", enkrypt_gateway_version)
-        span.set_attribute("enkrypt_project_id", enkrypt_project_id)
-        span.set_attribute("enkrypt_user_id", enkrypt_user_id)
-        span.set_attribute("enkrypt_mcp_config_id", enkrypt_mcp_config_id)
-        span.set_attribute("enkrypt_project_name", enkrypt_project_name)
-        span.set_attribute("enkrypt_email", enkrypt_email)
-        # Also publish under the canonical OTel attribute keys so dashboards
-        # built against ``enkrypt.user.email`` (discovery / server_info /
-        # cache_status spans) match list-servers traffic too.
+        span.set_attribute(SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key))
         span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
         span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
         span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
@@ -274,30 +270,39 @@ class ServerListingService:
     async def _check_authentication(
         self, ctx, session_key, enkrypt_gateway_key, tracer, custom_id, logger
     ):
-        """Check authentication and return error if needed."""
+        """Check authentication and return error if needed.
+
+        Span attributes use the canonical ``SpanAttributes.*`` constants
+        (``enkrypt.*`` dotted form). Pre-2026-05 the auth_span also wrote
+        ``enkrypt_gateway_key`` / ``gateway_key`` / ``project_id`` / etc.
+        in flat / underscore-prefixed forms -- those duplicates have
+        been removed because every consumer queries the dotted form.
+        """
         with tracer.start_span("check_server_auth") as auth_span:
-            auth_span.set_attribute("custom_id", custom_id)
+            auth_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             auth_span.set_attribute(
-                "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
+                SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
-            auth_span.set_attribute("gateway_key", mask_key(enkrypt_gateway_key))
-            # Get credentials for span attributes
             credentials = self.auth_manager.get_gateway_credentials(ctx)
             auth_span.set_attribute(
-                "project_id", credentials.get("project_id") or "not_provided"
+                SpanAttributes.PROJECT_ID,
+                credentials.get("project_id") or "not_provided",
             )
             auth_span.set_attribute(
-                "user_id", credentials.get("user_id") or "not_provided"
+                SpanAttributes.USER_ID,
+                credentials.get("user_id") or "not_provided",
             )
             auth_span.set_attribute(
-                "mcp_config_id", credentials.get("mcp_config_id") or "not_provided"
+                SpanAttributes.CONFIG_ID,
+                credentials.get("mcp_config_id") or "not_provided",
             )
             auth_span.set_attribute(
-                "enkrypt_project_name",
+                SpanAttributes.PROJECT_NAME,
                 credentials.get("project_name") or "not_provided",
             )
             auth_span.set_attribute(
-                "enkrypt_email", credentials.get("email") or "not_provided"
+                SpanAttributes.USER_EMAIL,
+                credentials.get("email") or "not_provided",
             )
 
             if not enkrypt_gateway_key:

@@ -118,7 +118,7 @@ class ServerInfoService:
             main_span.set_attribute(SpanAttributes.ENV, "dev")
             main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             main_span.set_attribute(
-                "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
+                SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
             main_span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
             main_span.set_attribute(SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name)
@@ -275,7 +275,7 @@ class ServerInfoService:
         with tracer.start_as_current_span(SpanNames.SERVER_INFO_AUTH) as auth_span:
             auth_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             auth_span.set_attribute(
-                "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
+                SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
 
             # Add authentication status tracking
@@ -367,7 +367,7 @@ class ServerInfoService:
         with tracer.start_as_current_span(SpanNames.SERVER_INFO_LATEST) as info_span:
             info_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
             info_span.set_attribute(
-                "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
+                SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
             info_span.set_attribute(
                 "gateway_id",

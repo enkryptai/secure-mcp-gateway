@@ -189,7 +189,12 @@ def test_map_response_handles_missing_request_context() -> None:
     resp.pop("request_context")
     out = p._map_response(resp)
     # falls back through to provider defaults / placeholders
-    assert out["user_id"] == "enkrypt_principal"
+    # ``user_id`` deliberately stays ``None`` rather than substituting the
+    # old ``"enkrypt_principal"`` sentinel, which polluted dashboards with
+    # a value that didn't exist in the customer's user table. Downstream
+    # ``_safe_attrs`` / ``build_log_extra`` strip None / empty so the
+    # field is simply absent on the resulting log / metric document.
+    assert out["user_id"] is None
     assert out["project_name"] == "default"  # from provider's project_name
     assert out["email"] == "not_provided"
     assert out["_request_context_extra"] == {}

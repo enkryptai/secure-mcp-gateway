@@ -99,8 +99,11 @@ def test_tool_call_outcome_routes_to_right_counter(
     assert len(counter.calls) == 1, f"{expected_counter} should be incremented once"
     value, attrs = counter.calls[0]
     assert value == 1
-    assert attrs["server_name"] == "echo_server"
-    assert attrs["tool_name"] == "echo"
+    # Identity attrs are canonicalized to the dotted enkrypt.* convention so
+    # logs / metrics / traces share a single field shape in OpenSearch.
+    assert attrs["enkrypt.server.name"] == "echo_server"
+    assert attrs["enkrypt.tool.name"] == "echo"
+    # Categorical attrs (no canonical dotted name) pass through unchanged.
     assert attrs["outcome"] == outcome
 
 
@@ -120,8 +123,8 @@ def test_tool_call_records_duration_when_provided(fake_manager):
         "s", "t", "success", duration_ms=42.5
     )
     assert fake_manager.tool_call_duration.calls == [(42.5, {
-        "server_name": "s",
-        "tool_name": "t",
+        "enkrypt.server.name": "s",
+        "enkrypt.tool.name": "t",
         "outcome": "success",
     })]
 
@@ -174,7 +177,7 @@ def test_pii_redaction_increments_with_count(fake_manager):
     mh.record_pii_redaction("input", count=3, server_name="s")
     assert fake_manager.pii_redactions_counter.calls == [(3, {
         "direction": "input",
-        "server_name": "s",
+        "enkrypt.server.name": "s",
     })]
 
 
@@ -272,8 +275,8 @@ def test_tool_call_outcome_carries_principal_attrs(fake_manager):
         project_id="proj-xyz",
     )
     _, attrs = fake_manager.tool_call_blocked_counter.calls[0]
-    assert attrs["user_id"] == "user-abc"
-    assert attrs["project_id"] == "proj-xyz"
+    assert attrs["enkrypt.user.id"] == "user-abc"
+    assert attrs["enkrypt.project.id"] == "proj-xyz"
 
 
 def test_guardrail_violation_carries_principal_attrs(fake_manager):
@@ -288,10 +291,10 @@ def test_guardrail_violation_carries_principal_attrs(fake_manager):
     # overall + directional must both carry the labels
     _, overall_attrs = fake_manager.guardrail_violation_counter.calls[0]
     _, input_attrs = fake_manager.input_guardrail_violation_counter.calls[0]
-    assert overall_attrs["user_id"] == "user-abc"
-    assert overall_attrs["project_id"] == "proj-xyz"
-    assert input_attrs["user_id"] == "user-abc"
-    assert input_attrs["project_id"] == "proj-xyz"
+    assert overall_attrs["enkrypt.user.id"] == "user-abc"
+    assert overall_attrs["enkrypt.project.id"] == "proj-xyz"
+    assert input_attrs["enkrypt.user.id"] == "user-abc"
+    assert input_attrs["enkrypt.project.id"] == "proj-xyz"
 
 
 def test_pii_redaction_carries_principal_attrs(fake_manager):
@@ -304,19 +307,27 @@ def test_pii_redaction_carries_principal_attrs(fake_manager):
         project_id="proj-xyz",
     )
     _, attrs = fake_manager.pii_redactions_counter.calls[0]
-    assert attrs["user_id"] == "user-abc"
-    assert attrs["project_id"] == "proj-xyz"
+    assert attrs["enkrypt.user.id"] == "user-abc"
+    assert attrs["enkrypt.project.id"] == "proj-xyz"
 
 
 def test_principal_attrs_omitted_when_none(fake_manager):
     """Passing no auth context (or explicit Nones) must NOT explode label
-    cardinality with empty strings — the labels should simply be absent."""
+    cardinality with empty strings — the labels should simply be absent.
+
+    Asserts on both the snake_case form (which never reaches the SDK) and
+    the canonical dotted form (which does, when populated) — so a regression
+    that accidentally re-introduces ``user_id="" `` or
+    ``enkrypt.user.id="" `` would fail this test.
+    """
     mh.record_tool_call_outcome(
         "srv", "tool", "success", user_id=None, project_id=None
     )
     _, attrs = fake_manager.tool_call_success_counter.calls[0]
     assert "user_id" not in attrs
     assert "project_id" not in attrs
+    assert "enkrypt.user.id" not in attrs
+    assert "enkrypt.project.id" not in attrs
 
 
 def test_principal_attrs_omitted_when_empty_string(fake_manager):
@@ -329,6 +340,8 @@ def test_principal_attrs_omitted_when_empty_string(fake_manager):
     _, attrs = fake_manager.guardrail_violation_counter.calls[0]
     assert "user_id" not in attrs
     assert "project_id" not in attrs
+    assert "enkrypt.user.id" not in attrs
+    assert "enkrypt.project.id" not in attrs
 
 
 def test_user_email_propagates_to_all_metric_helpers(fake_manager):
@@ -339,18 +352,18 @@ def test_user_email_propagates_to_all_metric_helpers(fake_manager):
         "srv", "tool", "success", user_email="alice@example.com"
     )
     _, attrs = fake_manager.tool_call_success_counter.calls[0]
-    assert attrs["user_email"] == "alice@example.com"
+    assert attrs["enkrypt.user.email"] == "alice@example.com"
 
     mh.record_guardrail_violations(
         "input", ["injection_attack"], "srv", "tool",
         user_email="alice@example.com",
     )
     _, attrs = fake_manager.guardrail_violation_counter.calls[0]
-    assert attrs["user_email"] == "alice@example.com"
+    assert attrs["enkrypt.user.email"] == "alice@example.com"
 
     mh.record_pii_redaction("input", count=1, user_email="alice@example.com")
     _, attrs = fake_manager.pii_redactions_counter.calls[0]
-    assert attrs["user_email"] == "alice@example.com"
+    assert attrs["enkrypt.user.email"] == "alice@example.com"
 
 
 def test_user_email_omitted_when_none(fake_manager):
@@ -359,3 +372,4 @@ def test_user_email_omitted_when_none(fake_manager):
     mh.record_tool_call_outcome("srv", "tool", "success", user_email=None)
     _, attrs = fake_manager.tool_call_success_counter.calls[0]
     assert "user_email" not in attrs
+    assert "enkrypt.user.email" not in attrs

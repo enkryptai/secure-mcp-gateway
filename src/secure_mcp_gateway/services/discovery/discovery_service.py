@@ -161,7 +161,7 @@ class DiscoveryService:
 
             # Set span attributes
             main_span.set_attribute(
-                "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
+                SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
             main_span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
             main_span.set_attribute(SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name)
@@ -291,7 +291,7 @@ class DiscoveryService:
             with tracer_obj.start_as_current_span(SpanNames.AUTH) as auth_span:
                 auth_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
                 auth_span.set_attribute(
-                    "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
+                    SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
                 )
                 auth_span.set_attribute(SpanAttributes.IS_AUTHENTICATED, False)
 
