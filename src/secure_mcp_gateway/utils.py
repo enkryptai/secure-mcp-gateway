@@ -72,25 +72,52 @@ def does_file_exist(file_name_or_path, is_absolute_path=None):
 
 
 def is_docker():
+    """Return True if the process is running inside any container.
+
+    Historically named ``is_docker`` for backwards compatibility — it really
+    answers "am I in a container?", covering Docker, containerd, podman, and
+    Kubernetes pods regardless of which CRI runtime they use.
+
+    Detection order (cheap → expensive, most reliable → fallback):
+
+    1. ``KUBERNETES_SERVICE_HOST`` env var — kubelet injects this into every
+       pod and it is never set on a real host. Highest-confidence signal for
+       the K8s + containerd + cgroups v2 stack that ships in modern EKS / GKE
+       / AKS / kind / k3s clusters.
+    2. ``/.dockerenv`` — file dropped by the Docker daemon at container start.
+       ``/run/.containerenv`` — equivalent marker used by podman / CRI-O.
+    3. ``/proc/1/cgroup`` keyword sniff — works for cgroups v1 hierarchies
+       (``docker``, ``kubepods``, ``containerd``, ``lxc`` appear in paths).
+    4. ``/proc/1/cgroup`` cgroups-v2 heuristic — on the unified hierarchy a
+       container's PID 1 sees a single ``0::/`` line with an empty path,
+       whereas a host's PID 1 typically reports ``0::/init.scope`` or
+       ``0::/system.slice/...``. This catches plain containerd / nerdctl /
+       k3d that don't set any of the markers above.
     """
-    Check if the code is running inside a Docker container.
-    """
-    # Check for Docker environment markers
-    docker_env_indicators = ["/.dockerenv", "/run/.containerenv"]
-    for indicator in docker_env_indicators:
+    # 1. Kubernetes — definitive, zero false positives outside K8s.
+    if os.environ.get("KUBERNETES_SERVICE_HOST"):
+        return True
+
+    # 2. Runtime-dropped marker files.
+    for indicator in ("/.dockerenv", "/run/.containerenv"):
         if os.path.exists(indicator):
             return True
 
-    # Check cgroup for any containerization system entries
-    container_identifiers = ["docker", "kubepods", "containerd", "lxc"]
+    # 3 + 4. cgroup inspection (covers v1 + v2; absent on macOS / Windows).
     try:
         with open("/proc/1/cgroup", encoding="utf-8") as f:
-            for line in f:
-                if any(keyword in line for keyword in container_identifiers):
-                    return True
+            cgroup_text = f.read()
     except FileNotFoundError:
-        # /proc/1/cgroup doesn't exist, which is common outside of Linux
-        pass
+        return False
+
+    container_identifiers = ("docker", "kubepods", "containerd", "lxc")
+    if any(keyword in cgroup_text for keyword in container_identifiers):
+        return True
+
+    # cgroups v2 unified hierarchy: container PID 1 shows "0::/" with empty
+    # path; host PID 1 shows a non-empty scope/slice path.
+    if cgroup_text.strip() == "0::/":
+        return True
 
     return False
 
@@ -102,6 +129,12 @@ _config_mtime = 0
 _config_path_cached = None
 _config_lock = threading.RLock()
 
+# Tracks the last "config missing" warning so a repeatedly-failing hot-reload
+# poll doesn't flood logs with the same INFO line every few seconds. Keyed by
+# (picked_config_path, example_path_exists) so a recovery-then-loss cycle still
+# logs the second loss. Reset to ``None`` whenever a real config is loaded.
+_missing_config_warned_for: tuple[str, bool] | None = None
+
 
 def get_common_config(print_debug=False):
     """
@@ -111,7 +144,7 @@ def get_common_config(print_debug=False):
     This enables hot-reload when config files are updated (e.g., in Docker volumes).
     Thread-safe for concurrent access.
     """
-    global _config_cache, _config_mtime, _config_path_cached
+    global _config_cache, _config_mtime, _config_path_cached, _missing_config_warned_for
 
     if print_debug:
         logger.debug(f"[utils] config_path: {CONFIG_PATH}")
@@ -150,6 +183,9 @@ def get_common_config(print_debug=False):
                     config = json.load(f)
                 _config_mtime = current_mtime
                 _config_path_cached = picked_config_path
+                # Real config loaded — clear the missing-config latch so a
+                # later loss (e.g. volume unmount) re-emits the warning once.
+                _missing_config_warned_for = None
             except (OSError, json.JSONDecodeError) as e:
                 logger.error(
                     f"[utils] Error loading config from {picked_config_path}: {e}"
@@ -159,8 +195,22 @@ def get_common_config(print_debug=False):
                     return _config_cache
                 return {**DEFAULT_COMMON_CONFIG, "plugins": {}}
         else:
-            logger.info("[utils] No config file found. Loading example config.")
-            if does_file_exist(EXAMPLE_CONFIG_PATH):
+            example_exists = does_file_exist(EXAMPLE_CONFIG_PATH)
+            # Hot-reload polls this function frequently; only log the
+            # missing-config warning once per (path, fallback-state) pair so
+            # we don't flood OpenSearch/stdout when the operator's deployment
+            # still hasn't materialised the config file.
+            warn_key = (picked_config_path, example_exists)
+            if _missing_config_warned_for != warn_key:
+                logger.warning(
+                    "[utils] No config file found at %s. Falling back to %s.",
+                    picked_config_path,
+                    "bundled example config"
+                    if example_exists
+                    else "hardcoded default common config",
+                )
+                _missing_config_warned_for = warn_key
+            if example_exists:
                 if print_debug:
                     logger.debug(f"[utils] Loading {EXAMPLE_CONFIG_NAME} file...")
                 try:
@@ -170,9 +220,6 @@ def get_common_config(print_debug=False):
                     logger.error(f"[utils] Error loading example config: {e}")
                     config = {}
             else:
-                logger.info(
-                    "[utils] Example config file not found. Using default common config."
-                )
                 config = {}
 
         if print_debug and config:
@@ -194,8 +241,10 @@ def get_common_config(print_debug=False):
 def clear_config_cache():
     """Clear the config cache to force reload on next get_common_config() call."""
     global _config_cache, _config_mtime, _config_path_cached, IS_TELEMETRY_ENABLED
+    global _missing_config_warned_for
     with _config_lock:
         _config_cache = {}
+        _missing_config_warned_for = None
         _config_mtime = 0
         _config_path_cached = None
     IS_TELEMETRY_ENABLED = None
