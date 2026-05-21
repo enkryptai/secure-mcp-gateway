@@ -3,6 +3,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
+# ``request_apikey_var`` lives in ``secure_mcp_gateway.request_context`` so
+# the guardrail provider can import it without dragging the execution service
+# (and its telemetry-at-import-time side effects) into its dependency graph.
+# Re-exported here for convenience.
+from secure_mcp_gateway.request_context import request_apikey_var  # noqa: F401
+
 
 def extract_input_text_from_args(args: Any) -> tuple[str, str]:
     """

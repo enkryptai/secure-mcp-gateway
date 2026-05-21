@@ -146,6 +146,23 @@ class SecureToolExecutionService:
                 session_key = auth_result["session_key"]
                 server_info = auth_result["server_info"]
 
+                # Forward the caller's Enkrypt apikey to all downstream
+                # guardrail/PII API calls for this request.
+                #
+                # Set on a ContextVar (defined in execution_utils) so it
+                # propagates through the entire async task tree — including
+                # input/output/PII/relevancy/adherence/hallucination calls —
+                # without needing to thread a kwarg through every helper. The
+                # guardrail provider reads it in ``validate()`` and uses it
+                # as the ``apikey`` HTTP header, falling back to its static
+                # ``self.api_key`` when the contextvar is empty (matches
+                # legacy single-tenant behavior).
+                from secure_mcp_gateway.request_context import request_apikey_var
+
+                request_apikey = auth_result.get("request_apikey", "") or ""
+                if request_apikey:
+                    request_apikey_var.set(request_apikey)
+
                 # Get guardrails policies
                 guardrails_config = self._extract_guardrails_config(
                     server_info, main_span
@@ -433,6 +450,14 @@ class SecureToolExecutionService:
                 "status": "success",
                 "session_key": session_key,
                 "server_info": server_info,
+                # ``request_apikey`` is the caller's Enkrypt apikey extracted
+                # from the ``apikey`` request header (see
+                # AuthConfigManager.get_gateway_credentials). The guardrail
+                # execution path forwards this into each GuardrailRequest's
+                # context so per-request multi-tenant billing+auth works for
+                # downstream Enkrypt cloud guardrail API calls. Falls back to
+                # the provider's static api_key when empty.
+                "request_apikey": creds.get("api_key") or "",
             }
 
     def _extract_guardrails_config(self, server_info, main_span):

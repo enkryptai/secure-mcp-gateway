@@ -359,11 +359,19 @@ class AuthConfigManager:
         """
         Backward-compatible method matching auth_service.get_gateway_credentials()
 
-        Returns dict with keys: gateway_key, project_id, user_id, gateway_name
+        Returns dict with keys: gateway_key, api_key, project_id, user_id, gateway_name.
+
+        ``api_key`` is the raw ``apikey`` header value (distinct from the
+        overloaded ``gateway_key`` which can also come from
+        ``ENKRYPT_GATEWAY_KEY``). Callers that need the **caller's** Enkrypt
+        apikey for downstream cloud calls (e.g. forwarding to the
+        guardrail/PII APIs for multi-tenant billing+auth) should use
+        ``api_key`` directly, not ``gateway_key``.
         """
         creds = self.extract_credentials(ctx)
         return {
             "gateway_key": creds.gateway_key or creds.api_key,
+            "api_key": creds.api_key,
             "project_id": creds.project_id,
             "user_id": creds.user_id,
             "gateway_name": creds.gateway_name,

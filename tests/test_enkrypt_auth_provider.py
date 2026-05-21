@@ -802,8 +802,17 @@ async def test_authenticate_rejects_missing_gateway_name() -> None:
 
 
 @pytest.mark.asyncio
-async def test_authenticate_uses_header_gateway_name(monkeypatch) -> None:
-    """Header gateway_name overrides config and is used for cloud fetch."""
+async def test_authenticate_config_gateway_name_wins_over_header(monkeypatch) -> None:
+    """When both ``auth.config.gateway_name`` and the request header
+    ``X-Enkrypt-MCP-Gateway`` supply a gateway name, the **config value
+    wins** and the header is ignored (with a log line). This precedence
+    rule was set deliberately in commit ``cbdf6bd`` so a gateway
+    operator's chosen identity can't be silently re-pointed by a client
+    header — a security/operations decision, not a bug.
+
+    (Renamed from the legacy ``test_authenticate_uses_header_gateway_name``
+    which asserted the opposite outcome from a pre-cbdf6bd code shape.)
+    """
     p = make_provider()  # config has gateway_name="test-gateway"
 
     seen_gateway = {}
@@ -827,8 +836,9 @@ async def test_authenticate_uses_header_gateway_name(monkeypatch) -> None:
     )
     result = await p.authenticate(creds)
     assert result.authenticated is True
-    assert result.metadata["gateway_name"] == "header-override-gw"
-    assert seen_gateway["name"] == "header-override-gw"
+    # Config wins: header value is dropped end-to-end.
+    assert result.metadata["gateway_name"] == "test-gateway"
+    assert seen_gateway["name"] == "test-gateway"
 
 
 @pytest.mark.asyncio

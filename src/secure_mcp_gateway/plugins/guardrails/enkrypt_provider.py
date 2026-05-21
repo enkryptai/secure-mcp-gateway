@@ -34,6 +34,32 @@ from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
 from secure_mcp_gateway.utils import logger
 
 
+def _effective_apikey(static_key: str | None) -> str:
+    """Return the per-request apikey if set on the contextvar, else the static key.
+
+    The contextvar (``request_apikey_var``) is populated per request by
+    ``SecureToolExecutionService`` so multi-tenant deployments forward each
+    caller's apikey to Enkrypt cloud — correct billing + per-user auth
+    without requiring a static server-wide apikey baked into the gateway's
+    config file (which is impossible when every end-user has a distinct
+    Enkrypt apikey).
+
+    Falls back to the provider's static ``self.api_key`` for legacy
+    single-tenant local installs and for code paths that run outside a
+    request task (server registration at startup, batch tool validation
+    during discovery). Returns ``""`` when neither is set — caller will
+    then receive an honest 401 from Enkrypt cloud instead of a fatal
+    serialization crash from putting a dict into the header.
+    """
+    try:
+        from secure_mcp_gateway.request_context import request_apikey_var
+
+        request_value = request_apikey_var.get()
+    except Exception:
+        request_value = ""
+    return request_value or static_key or ""
+
+
 async def _post_with_metrics(
     url: str,
     payload: dict,
@@ -115,7 +141,7 @@ class EnkryptInputGuardrail:
                 headers = {
                     "X-Enkrypt-Guardrail": self.guardrail_name,
                     "X-Enkrypt-Mode": "prompt",
-                    "apikey": self.api_key,
+                    "apikey": _effective_apikey(self.api_key),
                     "Content-Type": "application/json",
                     "X-Enkrypt-Source-Name": "mcp-gateway",
                     "X-Enkrypt-Source-Event": "pre-tool",
@@ -467,7 +493,7 @@ class EnkryptOutputGuardrail:
             headers = {
                 "X-Enkrypt-Guardrail": self.guardrail_name,
                 "X-Enkrypt-Mode": "response",
-                "apikey": self.api_key,
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "post-tool",
@@ -500,7 +526,7 @@ class EnkryptOutputGuardrail:
         try:
             payload = {"question": question, "llm_answer": answer}
             headers = {
-                "apikey": self.api_key,
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "post-tool",
@@ -531,7 +557,7 @@ class EnkryptOutputGuardrail:
         try:
             payload = {"context": context, "llm_answer": answer}
             headers = {
-                "apikey": self.api_key,
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "post-tool",
@@ -568,7 +594,7 @@ class EnkryptOutputGuardrail:
                 "context": context,
             }
             headers = {
-                "apikey": self.api_key,
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "post-tool",
@@ -638,7 +664,7 @@ class EnkryptPIIHandler:
             # Use the redact endpoint to detect PII
             payload = {"text": content, "mode": "request", "key": "null"}
             headers = {
-                "apikey": self.api_key,
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "pii-detect",
@@ -680,7 +706,7 @@ class EnkryptPIIHandler:
         try:
             payload = {"text": content, "mode": "request", "key": "null"}
             headers = {
-                "apikey": self.api_key,
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "pii-redact",
@@ -716,7 +742,7 @@ class EnkryptPIIHandler:
 
             payload = {"text": content, "mode": "response", "key": pii_key}
             headers = {
-                "apikey": self.api_key,
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "pii-restore",
@@ -1530,12 +1556,20 @@ class EnkryptGuardrailProvider(GuardrailProvider):
 
     def __init__(
         self,
-        api_key: str,
+        api_key: str = "",
         base_url: str = "https://api.enkryptai.com",
         config: dict[str, Any] = None,
     ):
-        # Use provided credentials; if missing, fetch from full config as fallback
-        self.api_key = api_key
+        # All init args are now kwargs with defaults so the plugin loader can
+        # construct this provider via ``provider_class(**config)`` even when
+        # the config has no api_key (multi-tenant cloud-auth case where the
+        # apikey is forwarded per-request from the caller's headers, not
+        # baked into static config). Falling back to a single-positional
+        # init shape would silently mistake the config dict for ``api_key``.
+        # If api_key is empty, _get_api_credentials() reads from the on-disk
+        # config, and the runtime per-request override (via
+        # ``GuardrailRequest.context["user_apikey"]``) takes precedence.
+        self.api_key = api_key or ""
         self.base_url = base_url
         self.config = config or {}
 

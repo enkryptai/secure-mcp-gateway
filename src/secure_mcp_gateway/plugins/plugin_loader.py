@@ -108,13 +108,24 @@ class PluginLoader:
                 PluginLoader._load_default_provider(plugin_type, manager, config)
                 return
 
-            # Inject centralized Enkrypt credentials for auth/guardrails providers
+            # Inject centralized Enkrypt credentials for auth/guardrails providers.
+            #
+            # We inject api_key/apikey even when empty so the provider's
+            # __init__ always sees the parameter as a kwarg. Without this,
+            # an empty api_key was skipped, the provider's required positional
+            # ``api_key`` arg was unfilled, kwargs init failed, and the legacy
+            # fallback silently bound the whole config dict to ``api_key`` —
+            # producing the ``api_key={'base_url': ...}`` corruption that
+            # crashed every guardrail call in cloud-auth setups where no
+            # static api_key is configured. The provider's own runtime
+            # fallback (e.g. per-request apikey forwarding) handles the
+            # empty case correctly.
             if plugin_type in ("auth", "guardrails"):
                 api_key, base_url = _resolve_enkrypt_credentials(config, provider_config)
-                if api_key and "api_key" not in provider_config and "apikey" not in provider_config:
+                if "api_key" not in provider_config and "apikey" not in provider_config:
                     key_name = "apikey" if plugin_type == "auth" else "api_key"
                     provider_config[key_name] = api_key
-                if base_url and "base_url" not in provider_config:
+                if "base_url" not in provider_config:
                     provider_config["base_url"] = base_url
 
             # Create and register the provider
