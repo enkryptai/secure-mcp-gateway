@@ -99,6 +99,7 @@ from secure_mcp_gateway.plugins.auth.base import (
 from secure_mcp_gateway.plugins.telemetry.conventions import (
     SpanAttributes,
     SpanNames,
+    set_span_attr_with_legacy,
 )
 from secure_mcp_gateway.plugins.telemetry.metrics_helpers import record_auth_outcome
 from secure_mcp_gateway.utils import (
@@ -445,13 +446,17 @@ class EnkryptAuthProvider(AuthProvider):
         with tracer.start_as_current_span(SpanNames.AUTH_FETCH_CONFIG) as span:
             span.set_attribute(SpanAttributes.AUTH_BASE_URL, self.base_url)
             span.set_attribute(SpanAttributes.AUTH_FETCH_URL, url)
-            span.set_attribute(SpanAttributes.GATEWAY_NAME, effective_gateway)
+            set_span_attr_with_legacy(
+                span, SpanAttributes.GATEWAY_NAME, effective_gateway
+            )
             span.set_attribute(SpanAttributes.GATEWAY_VERSION, self.gateway_version)
             # Mirror the masked ``apikey`` request header so trace consumers
             # can pivot per-tenant without ever seeing the raw secret.
             span.set_attribute(SpanAttributes.GATEWAY_KEY, mask_key(gateway_key))
             if self.project_name:
-                span.set_attribute(SpanAttributes.PROJECT_NAME, self.project_name)
+                set_span_attr_with_legacy(
+                    span, SpanAttributes.PROJECT_NAME, self.project_name
+                )
 
             try:
                 async with aiohttp.ClientSession() as session:

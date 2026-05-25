@@ -380,9 +380,21 @@ class OpenTelemetryProvider(TelemetryProvider):
         self._logger = get_logger(service_name)
 
         # ---------- TRACING SETUP ----------
+        # IMPORTANT: bind ``self._tracer`` / ``self._meter`` to **our own**
+        # provider instances (not the OTel global). ``trace.set_tracer_provider``
+        # and ``metrics.set_meter_provider`` are one-shot per process: the
+        # second call (e.g. on a config hot-reload) is silently rejected and the
+        # global keeps pointing at the *original* boot-time provider. If we
+        # then take the meter/tracer from the global, every instrument created
+        # during the reload gets attached to the stale provider, the new
+        # reader/exporter threads we just spawned are orphaned, and application
+        # metrics stop reaching the OTLP collector with zero error logs.
+        # Binding directly to ``self._tracer_provider`` / ``self._meter_provider``
+        # makes instruments route through the reader/exporter created in this
+        # call regardless of whether the global registry accepted us.
         self._tracer_provider = TracerProvider(resource=self._resource)
         trace.set_tracer_provider(self._tracer_provider)
-        self._tracer = trace.get_tracer(__name__)
+        self._tracer = self._tracer_provider.get_tracer(__name__)
 
         otlp_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=insecure)
         span_processor = BatchSpanProcessor(otlp_exporter)
@@ -402,7 +414,8 @@ class OpenTelemetryProvider(TelemetryProvider):
         )
         metrics.set_meter_provider(self._meter_provider)
 
-        self._meter = metrics.get_meter("enkrypt.meter")
+        # See note above ``set_tracer_provider`` — bind to our own provider.
+        self._meter = self._meter_provider.get_meter("enkrypt.meter")
 
         # Flush buffered spans/metrics on process exit
         atexit.register(self.shutdown)

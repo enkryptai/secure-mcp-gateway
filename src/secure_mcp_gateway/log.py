@@ -68,6 +68,31 @@ CANONICAL_ATTR_KEYS: dict[str, str] = {
     "guardrail_name":   "enkrypt.guardrail.name",
 }
 
+# Backward-compatibility aliases for commonly-filtered identity keys.
+# We emit these alongside the canonical dotted names so existing dashboards
+# filtering on legacy snake_case fields keep working while the canonical
+# ``enkrypt.*`` fields remain the source of truth.
+LEGACY_FILTER_COMPAT_ATTR_KEYS: dict[str, str] = {
+    "enkrypt.gateway.name": "gateway_name",
+    "enkrypt.org.id": "org_id",
+    "enkrypt.project.id": "project_id",
+    "enkrypt.project.name": "project_name",
+    "enkrypt.server.name": "server_name",
+    "enkrypt.tool.name": "tool_name",
+    "enkrypt.user.id": "user_id",
+}
+
+
+def add_legacy_filter_aliases(attrs: dict[str, Any] | None) -> dict[str, Any]:
+    """Duplicate selected canonical keys under legacy snake_case aliases."""
+    if not attrs:
+        return {}
+    out = dict(attrs)
+    for canonical_key, legacy_key in LEGACY_FILTER_COMPAT_ATTR_KEYS.items():
+        if canonical_key in attrs and legacy_key not in out:
+            out[legacy_key] = attrs[canonical_key]
+    return out
+
 
 def canonicalize_attr_keys(attrs: dict[str, Any] | None) -> dict[str, Any]:
     """Rewrite known snake_case identity keys to the dotted ``enkrypt.*``
@@ -76,7 +101,8 @@ def canonicalize_attr_keys(attrs: dict[str, Any] | None) -> dict[str, Any]:
     """
     if not attrs:
         return {}
-    return {CANONICAL_ATTR_KEYS.get(k, k): v for k, v in attrs.items()}
+    canonical = {CANONICAL_ATTR_KEYS.get(k, k): v for k, v in attrs.items()}
+    return add_legacy_filter_aliases(canonical)
 
 
 # Reserved structlog / stdlib LogRecord keys we must NOT rename even if they
@@ -169,13 +195,14 @@ def _canonicalize_event_dict(
         for k, v in extra.items():
             event_dict.setdefault(k, v)
 
-    out: dict[str, Any] = {}
+    protected: dict[str, Any] = {}
+    dynamic: dict[str, Any] = {}
     for k, v in event_dict.items():
         if k in _PROTECTED_LOG_RECORD_KEYS:
-            out[k] = v
+            protected[k] = v
             continue
-        out[CANONICAL_ATTR_KEYS.get(k, k)] = v
-    return out
+        dynamic[k] = v
+    return {**protected, **canonicalize_attr_keys(dynamic)}
 
 
 def configure_logging(

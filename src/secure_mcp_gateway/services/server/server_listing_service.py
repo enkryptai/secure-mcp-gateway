@@ -4,7 +4,10 @@ from typing import Any
 
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
-from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    SpanAttributes,
+    set_span_attr_with_legacy,
+)
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 
 # Get metrics from telemetry manager
@@ -258,12 +261,16 @@ class ServerListingService:
         span.set_attribute("discover_tools", discover_tools)
         span.set_attribute(SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key))
         span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
-        span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
-        span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
-        span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+        set_span_attr_with_legacy(span, SpanAttributes.USER_ID, enkrypt_user_id)
+        set_span_attr_with_legacy(span, SpanAttributes.PROJECT_ID, enkrypt_project_id)
+        set_span_attr_with_legacy(
+            span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
+        )
         span.set_attribute(SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry)
-        span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
-        span.set_attribute(SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name)
+        set_span_attr_with_legacy(span, SpanAttributes.ORG_ID, enkrypt_org_id)
+        set_span_attr_with_legacy(
+            span, SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name
+        )
         span.set_attribute(SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version)
         span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
 
@@ -284,11 +291,13 @@ class ServerListingService:
                 SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
             credentials = self.auth_manager.get_gateway_credentials(ctx)
-            auth_span.set_attribute(
+            set_span_attr_with_legacy(
+                auth_span,
                 SpanAttributes.PROJECT_ID,
                 credentials.get("project_id") or "not_provided",
             )
-            auth_span.set_attribute(
+            set_span_attr_with_legacy(
+                auth_span,
                 SpanAttributes.USER_ID,
                 credentials.get("user_id") or "not_provided",
             )
@@ -296,7 +305,8 @@ class ServerListingService:
                 SpanAttributes.CONFIG_ID,
                 credentials.get("mcp_config_id") or "not_provided",
             )
-            auth_span.set_attribute(
+            set_span_attr_with_legacy(
+                auth_span,
                 SpanAttributes.PROJECT_NAME,
                 credentials.get("project_name") or "not_provided",
             )

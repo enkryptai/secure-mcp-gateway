@@ -9,7 +9,11 @@ from secure_mcp_gateway.exceptions import (
     create_discovery_error,
 )
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
-from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes, SpanNames
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    SpanAttributes,
+    SpanNames,
+    set_span_attr_with_legacy,
+)
 from secure_mcp_gateway.utils import (
     build_log_extra,
     get_server_info_by_name,
@@ -113,22 +117,28 @@ class ServerInfoService:
         session_key = f"{enkrypt_gateway_key}_{enkrypt_project_id}_{enkrypt_user_id}_{enkrypt_mcp_config_id}"
 
         with tracer.start_as_current_span(SpanNames.SERVER_INFO) as main_span:
-            main_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(main_span, SpanAttributes.SERVER_NAME, server_name)
             main_span.set_attribute(SpanAttributes.JOB, "enkrypt")
             main_span.set_attribute(SpanAttributes.ENV, "dev")
             main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             main_span.set_attribute(
                 SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
-            main_span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
-            main_span.set_attribute(SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name)
+            set_span_attr_with_legacy(main_span, SpanAttributes.ORG_ID, enkrypt_org_id)
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name
+            )
             main_span.set_attribute(
                 SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version
             )
-            main_span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
-            main_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.PROJECT_ID, enkrypt_project_id
+            )
+            set_span_attr_with_legacy(main_span, SpanAttributes.USER_ID, enkrypt_user_id)
             main_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
-            main_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
+            )
             main_span.set_attribute(
                 SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
             )
@@ -324,7 +334,9 @@ class ServerInfoService:
     ):
         """Get server info and check if server exists."""
         with tracer.start_as_current_span(SpanNames.SERVER_INFO_CHECK) as server_span:
-            server_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(
+                server_span, SpanAttributes.SERVER_NAME, server_name
+            )
             server_info = get_server_info_by_name(
                 self.auth_manager.get_session_gateway_config(session_key), server_name
             )
@@ -365,7 +377,7 @@ class ServerInfoService:
     ):
         """Get latest server info with all attributes."""
         with tracer.start_as_current_span(SpanNames.SERVER_INFO_LATEST) as info_span:
-            info_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(info_span, SpanAttributes.SERVER_NAME, server_name)
             info_span.set_attribute(
                 SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
@@ -376,7 +388,9 @@ class ServerInfoService:
             info_span.set_attribute("project_id", enkrypt_project_id)
             info_span.set_attribute("user_id", enkrypt_user_id)
             info_span.set_attribute("mcp_config_id", enkrypt_mcp_config_id)
-            info_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            set_span_attr_with_legacy(
+                info_span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
+            )
             info_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
 
             from secure_mcp_gateway.services.cache.cache_service import CacheService

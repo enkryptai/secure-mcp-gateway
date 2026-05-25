@@ -13,7 +13,11 @@ from secure_mcp_gateway.plugins.guardrails import (
 )
 from secure_mcp_gateway.plugins.sandbox.server_params import is_url_config
 from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
-from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes, SpanNames
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    SpanAttributes,
+    SpanNames,
+    set_span_attr_with_legacy,
+)
 from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
     record_guardrail_violations,
     record_pii_redaction,
@@ -105,7 +109,7 @@ class SecureToolExecutionService:
 
         with tracer.start_as_current_span(SpanNames.TOOL_EXECUTE) as main_span:
             # Set main span attributes
-            main_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(main_span, SpanAttributes.SERVER_NAME, server_name)
             main_span.set_attribute(SpanAttributes.NUM_TOOL_CALLS, num_tool_calls)
             main_span.set_attribute(SpanAttributes.REQUEST_ID, ctx.request_id)
             main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
@@ -244,17 +248,19 @@ class SecureToolExecutionService:
         """
         if not gateway_config:
             return
-        span.set_attribute(
-            SpanAttributes.USER_ID, gateway_config.get("user_id") or "not_provided"
+        set_span_attr_with_legacy(
+            span, SpanAttributes.USER_ID, gateway_config.get("user_id") or "not_provided"
         )
         span.set_attribute(
             SpanAttributes.USER_EMAIL, gateway_config.get("email") or "not_provided"
         )
-        span.set_attribute(
+        set_span_attr_with_legacy(
+            span,
             SpanAttributes.PROJECT_ID,
             gateway_config.get("project_id") or "not_provided",
         )
-        span.set_attribute(
+        set_span_attr_with_legacy(
+            span,
             SpanAttributes.PROJECT_NAME,
             gateway_config.get("project_name") or "not_provided",
         )
@@ -262,10 +268,11 @@ class SecureToolExecutionService:
             SpanAttributes.PROJECT_REGISTRY,
             gateway_config.get("registry_name") or "not_provided",
         )
-        span.set_attribute(
-            SpanAttributes.ORG_ID, gateway_config.get("org_id") or "not_provided"
+        set_span_attr_with_legacy(
+            span, SpanAttributes.ORG_ID, gateway_config.get("org_id") or "not_provided"
         )
-        span.set_attribute(
+        set_span_attr_with_legacy(
+            span,
             SpanAttributes.GATEWAY_NAME,
             gateway_config.get("gateway_name") or "not_provided",
         )
@@ -524,7 +531,9 @@ class SecureToolExecutionService:
     ):
         """Handle tool discovery for the server."""
         with tracer.start_as_current_span(SpanNames.DISCOVERY) as discovery_span:
-            discovery_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(
+                discovery_span, SpanAttributes.SERVER_NAME, server_name
+            )
 
             server_config_tools = server_info.get("tools", {})
             discovery_span.set_attribute(
@@ -868,9 +877,11 @@ class SecureToolExecutionService:
                 or tool_call.get("function_name")
                 or tool_call.get("function_id")
             )
-            tool_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name or "unknown")
+            set_span_attr_with_legacy(
+                tool_span, SpanAttributes.TOOL_NAME, tool_name or "unknown"
+            )
             tool_span.set_attribute(SpanAttributes.TOOL_CALL_INDEX, i)
-            tool_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(tool_span, SpanAttributes.SERVER_NAME, server_name)
 
             try:
                 args = (
@@ -1194,7 +1205,7 @@ class SecureToolExecutionService:
     def _validate_tool(self, tool_name, server_config_tools, tool_span):
         """Validate that the tool exists and is available."""
         with tracer.start_as_current_span(SpanNames.TOOL_VALIDATE) as validate_span:
-            validate_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
+            set_span_attr_with_legacy(validate_span, SpanAttributes.TOOL_NAME, tool_name)
 
             # Normalize possible formats and check membership
             if isinstance(server_config_tools, tuple) and len(server_config_tools) == 2:
@@ -1285,7 +1296,7 @@ class SecureToolExecutionService:
             input_span.set_attribute(
                 "guardrail_name", guardrails_config["input_policy_name"]
             )
-            input_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
+            set_span_attr_with_legacy(input_span, SpanAttributes.TOOL_NAME, tool_name)
 
             logger.info(
                 f"[secure_call_tools] Call {i} : Input guardrails enabled for {tool_name} of server {server_name}"
@@ -1496,7 +1507,7 @@ class SecureToolExecutionService:
     ):
         """Execute tool without input guardrails."""
         with tracer.start_as_current_span(SpanNames.TOOL_FORWARD) as exec_span:
-            exec_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
+            set_span_attr_with_legacy(exec_span, SpanAttributes.TOOL_NAME, tool_name)
             exec_span.set_attribute(SpanAttributes.ASYNC_GUARDRAILS, False)
 
             logger.info(
@@ -1570,7 +1581,7 @@ class SecureToolExecutionService:
             output_span.set_attribute(
                 SpanAttributes.HALLUCINATION_ENABLED, guardrails_config["hallucination"]
             )
-            output_span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
+            set_span_attr_with_legacy(output_span, SpanAttributes.TOOL_NAME, tool_name)
 
             if not self.ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED:
                 # Sync output guardrails

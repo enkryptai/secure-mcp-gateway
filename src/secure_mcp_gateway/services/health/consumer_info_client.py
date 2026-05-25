@@ -36,6 +36,7 @@ import aiohttp
 from secure_mcp_gateway.plugins.telemetry.conventions import (
     SpanAttributes,
     SpanNames,
+    set_span_attr_with_legacy,
 )
 from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
     record_consumer_info_lookup,
@@ -319,11 +320,13 @@ async def fetch_consumer_info(*, base_url: str, apikey: str) -> ConsumerInfo:
             # project_name pick this up regardless of which span they're
             # looking at.
             if info.user_id:
-                span.set_attribute(SpanAttributes.USER_ID, info.user_id)
+                set_span_attr_with_legacy(span, SpanAttributes.USER_ID, info.user_id)
             if info.org_id:
-                span.set_attribute(SpanAttributes.ORG_ID, info.org_id)
+                set_span_attr_with_legacy(span, SpanAttributes.ORG_ID, info.org_id)
             if info.project_name:
-                span.set_attribute(SpanAttributes.PROJECT_NAME, info.project_name)
+                set_span_attr_with_legacy(
+                    span, SpanAttributes.PROJECT_NAME, info.project_name
+                )
             if info.email:
                 span.set_attribute(SpanAttributes.USER_EMAIL, info.email)
             if info.is_internal_req is not None:

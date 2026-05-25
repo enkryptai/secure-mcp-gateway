@@ -20,6 +20,7 @@ from secure_mcp_gateway.consts import (
 )
 from secure_mcp_gateway.log import (
     CANONICAL_ATTR_KEYS,
+    add_legacy_filter_aliases,
     canonicalize_attr_keys,
     get_logger,
 )
@@ -609,7 +610,7 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
         {k: v for k, v in kwargs.items() if v is not None}
     )
 
-    return {
+    enriched = {
         CANONICAL_ATTR_KEYS["custom_id"]:       custom_id or "",
         CANONICAL_ATTR_KEYS["server_name"]:     server_name or "",
         CANONICAL_ATTR_KEYS["org_id"]:          org_id or "",
@@ -624,6 +625,7 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
         CANONICAL_ATTR_KEYS["error"]:           error or "",
         **canonical_kwargs,
     }
+    return add_legacy_filter_aliases(enriched)
 
 
 def mask_server_config_sensitive_data(server_info):

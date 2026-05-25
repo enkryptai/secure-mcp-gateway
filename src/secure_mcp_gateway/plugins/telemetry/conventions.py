@@ -324,10 +324,31 @@ class SourceProduct:
     HOOKS = "hooks"
 
 
+# Legacy snake_case aliases kept for OpenSearch filtering compatibility.
+_SPAN_LEGACY_ATTR_KEYS: dict[str, str] = {
+    SpanAttributes.GATEWAY_NAME: "gateway_name",
+    SpanAttributes.ORG_ID: "org_id",
+    SpanAttributes.PROJECT_ID: "project_id",
+    SpanAttributes.PROJECT_NAME: "project_name",
+    SpanAttributes.SERVER_NAME: "server_name",
+    SpanAttributes.TOOL_NAME: "tool_name",
+    SpanAttributes.USER_ID: "user_id",
+}
+
+
+def set_span_attr_with_legacy(span, attr_key: str, value) -> None:
+    """Set canonical span attr and (for key identity fields) legacy alias."""
+    span.set_attribute(attr_key, value)
+    legacy_key = _SPAN_LEGACY_ATTR_KEYS.get(attr_key)
+    if legacy_key is not None:
+        span.set_attribute(legacy_key, value)
+
+
 __all__ = [
     "METRIC_DESCRIPTIONS",
     "MetricNames",
     "SourceProduct",
     "SpanAttributes",
     "SpanNames",
+    "set_span_attr_with_legacy",
 ]

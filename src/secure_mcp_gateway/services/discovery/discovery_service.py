@@ -16,7 +16,11 @@ from secure_mcp_gateway.exceptions import (
 )
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
-from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes, SpanNames
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    SpanAttributes,
+    SpanNames,
+    set_span_attr_with_legacy,
+)
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 from secure_mcp_gateway.utils import (
     build_log_extra,
@@ -87,7 +91,9 @@ class DiscoveryService:
         )
 
         with tracer_obj.start_as_current_span(SpanNames.DISCOVERY) as main_span:
-            main_span.set_attribute(SpanAttributes.SERVER_NAME, server_name or "all")
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.SERVER_NAME, server_name or "all"
+            )
             main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             main_span.set_attribute(SpanAttributes.JOB, "enkrypt")
             main_span.set_attribute(SpanAttributes.ENV, "dev")
@@ -163,15 +169,21 @@ class DiscoveryService:
             main_span.set_attribute(
                 SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
-            main_span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
-            main_span.set_attribute(SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name)
+            set_span_attr_with_legacy(main_span, SpanAttributes.ORG_ID, enkrypt_org_id)
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name
+            )
             main_span.set_attribute(
                 SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version
             )
-            main_span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
-            main_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.PROJECT_ID, enkrypt_project_id
+            )
+            set_span_attr_with_legacy(main_span, SpanAttributes.USER_ID, enkrypt_user_id)
             main_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
-            main_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
+            )
             main_span.set_attribute(
                 SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
             )
@@ -346,14 +358,16 @@ class DiscoveryService:
         with tracer_obj.start_as_current_span("discover_all_servers") as all_span:
             all_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             all_span.set_attribute("discovery_started", True)
-            all_span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
+            set_span_attr_with_legacy(all_span, SpanAttributes.ORG_ID, enkrypt_org_id)
             all_span.set_attribute(
                 SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
             )
             all_span.set_attribute("project_id", enkrypt_project_id)
             all_span.set_attribute("user_id", enkrypt_user_id)
             all_span.set_attribute("mcp_config_id", enkrypt_mcp_config_id)
-            all_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            set_span_attr_with_legacy(
+                all_span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
+            )
             all_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
 
             logger.info(
@@ -555,7 +569,9 @@ class DiscoveryService:
             with tracer_obj.start_as_current_span(
                 f"validate_server_{server_name}"
             ) as server_span:
-                server_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+                set_span_attr_with_legacy(
+                    server_span, SpanAttributes.SERVER_NAME, server_name
+                )
                 server_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
 
                 try:
@@ -688,7 +704,7 @@ class DiscoveryService:
         with tracer_obj.start_as_current_span(
             f"validate_config_tools_{server_name}"
         ) as span:
-            span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(span, SpanAttributes.SERVER_NAME, server_name)
             span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
 
             try:
@@ -845,7 +861,7 @@ class DiscoveryService:
         with tracer_obj.start_as_current_span(
             f"discover_and_validate_{server_name}"
         ) as span:
-            span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(span, SpanAttributes.SERVER_NAME, server_name)
             span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
 
             try:
@@ -1025,7 +1041,7 @@ class DiscoveryService:
         """Discover tools for a single server."""
         # Server info check
         with tracer_obj.start_as_current_span("get_server_info") as info_span:
-            info_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(info_span, SpanAttributes.SERVER_NAME, server_name)
 
             server_info = get_server_info_by_name(
                 self.auth_manager.get_session_gateway_config(session_key), server_name
@@ -1070,8 +1086,8 @@ class DiscoveryService:
                 with tracer_obj.start_as_current_span(
                     "validate_server_registration"
                 ) as server_validation_span:
-                    server_validation_span.set_attribute(
-                        SpanAttributes.SERVER_NAME, server_name
+                    set_span_attr_with_legacy(
+                        server_validation_span, SpanAttributes.SERVER_NAME, server_name
                     )
 
                     logger.info(
@@ -1367,8 +1383,8 @@ class DiscoveryService:
                     with tracer_obj.start_as_current_span(
                         "validate_config_tool_registration"
                     ) as validation_span:
-                        validation_span.set_attribute(
-                            SpanAttributes.SERVER_NAME, server_name
+                        set_span_attr_with_legacy(
+                            validation_span, SpanAttributes.SERVER_NAME, server_name
                         )
 
                         # Convert config tools to list format for validation
@@ -1719,8 +1735,10 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_dynamic_server_description_config"
                         ) as dynamic_desc_span:
-                            dynamic_desc_span.set_attribute(
-                                SpanAttributes.SERVER_NAME, server_name
+                            set_span_attr_with_legacy(
+                                dynamic_desc_span,
+                                SpanAttributes.SERVER_NAME,
+                                server_name,
                             )
                             dynamic_desc_span.set_attribute(
                                 "description_source", "dynamic"
@@ -1780,8 +1798,10 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_static_server_description_config"
                         ) as static_desc_span:
-                            static_desc_span.set_attribute(
-                                SpanAttributes.SERVER_NAME, server_name
+                            set_span_attr_with_legacy(
+                                static_desc_span,
+                                SpanAttributes.SERVER_NAME,
+                                server_name,
                             )
                             static_desc_span.set_attribute(
                                 "description_source", "static"
@@ -1973,7 +1993,9 @@ class DiscoveryService:
 
         # Tool discovery
         with tracer_obj.start_as_current_span("discover_tools") as discover_span:
-            discover_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(
+                discover_span, SpanAttributes.SERVER_NAME, server_name
+            )
 
             # Cache check
             with tracer_obj.start_as_current_span("check_tools_cache") as cache_span:
@@ -2119,8 +2141,10 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_dynamic_server_description"
                         ) as dynamic_desc_span:
-                            dynamic_desc_span.set_attribute(
-                                SpanAttributes.SERVER_NAME, server_name
+                            set_span_attr_with_legacy(
+                                dynamic_desc_span,
+                                SpanAttributes.SERVER_NAME,
+                                server_name,
                             )
                             logger.info(
                                 f"[discover_server_tools] Validating dynamic server description: '{dynamic_description}'"
@@ -2178,8 +2202,10 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_static_server_description"
                         ) as static_desc_span:
-                            static_desc_span.set_attribute(
-                                SpanAttributes.SERVER_NAME, server_name
+                            set_span_attr_with_legacy(
+                                static_desc_span,
+                                SpanAttributes.SERVER_NAME,
+                                server_name,
                             )
                             static_desc_span.set_attribute(
                                 "description_source", "static"
@@ -2389,8 +2415,8 @@ class DiscoveryService:
                         with tracer_obj.start_as_current_span(
                             "validate_tool_registration"
                         ) as validation_span:
-                            validation_span.set_attribute(
-                                SpanAttributes.SERVER_NAME, server_name
+                            set_span_attr_with_legacy(
+                                validation_span, SpanAttributes.SERVER_NAME, server_name
                             )
 
                             # Extract tool list from ListToolsResult or dict
@@ -2658,8 +2684,8 @@ class DiscoveryService:
                     with tracer_obj.start_as_current_span(
                         "cache_tools"
                     ) as cache_write_span:
-                        cache_write_span.set_attribute(
-                            SpanAttributes.SERVER_NAME, server_name
+                        set_span_attr_with_legacy(
+                            cache_write_span, SpanAttributes.SERVER_NAME, server_name
                         )
                         self.cache_service.cache_tools(id, server_name, tools)
                         cache_write_span.set_attribute("cache_write_success", True)

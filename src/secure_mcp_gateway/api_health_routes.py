@@ -204,17 +204,20 @@ def _set_consumer_identity_on_current_span(info: ConsumerInfo) -> None:
 
         from secure_mcp_gateway.plugins.telemetry.conventions import (
             SpanAttributes,
+            set_span_attr_with_legacy,
         )
 
         span = trace.get_current_span()
         if span is None:
             return
         if info.user_id:
-            span.set_attribute(SpanAttributes.USER_ID, info.user_id)
+            set_span_attr_with_legacy(span, SpanAttributes.USER_ID, info.user_id)
         if info.org_id:
-            span.set_attribute(SpanAttributes.ORG_ID, info.org_id)
+            set_span_attr_with_legacy(span, SpanAttributes.ORG_ID, info.org_id)
         if info.project_name:
-            span.set_attribute(SpanAttributes.PROJECT_NAME, info.project_name)
+            set_span_attr_with_legacy(
+                span, SpanAttributes.PROJECT_NAME, info.project_name
+            )
         if info.email:
             span.set_attribute(SpanAttributes.USER_EMAIL, info.email)
         if info.is_internal_req is not None:

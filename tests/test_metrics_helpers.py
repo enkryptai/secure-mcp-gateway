@@ -103,6 +103,9 @@ def test_tool_call_outcome_routes_to_right_counter(
     # logs / metrics / traces share a single field shape in OpenSearch.
     assert attrs["enkrypt.server.name"] == "echo_server"
     assert attrs["enkrypt.tool.name"] == "echo"
+    # Backward-compat aliases stay populated for existing snake_case filters.
+    assert attrs["server_name"] == "echo_server"
+    assert attrs["tool_name"] == "echo"
     # Categorical attrs (no canonical dotted name) pass through unchanged.
     assert attrs["outcome"] == outcome
 
@@ -125,6 +128,8 @@ def test_tool_call_records_duration_when_provided(fake_manager):
     assert fake_manager.tool_call_duration.calls == [(42.5, {
         "enkrypt.server.name": "s",
         "enkrypt.tool.name": "t",
+        "server_name": "s",
+        "tool_name": "t",
         "outcome": "success",
     })]
 
@@ -178,6 +183,7 @@ def test_pii_redaction_increments_with_count(fake_manager):
     assert fake_manager.pii_redactions_counter.calls == [(3, {
         "direction": "input",
         "enkrypt.server.name": "s",
+        "server_name": "s",
     })]
 
 
@@ -277,6 +283,8 @@ def test_tool_call_outcome_carries_principal_attrs(fake_manager):
     _, attrs = fake_manager.tool_call_blocked_counter.calls[0]
     assert attrs["enkrypt.user.id"] == "user-abc"
     assert attrs["enkrypt.project.id"] == "proj-xyz"
+    assert attrs["user_id"] == "user-abc"
+    assert attrs["project_id"] == "proj-xyz"
 
 
 def test_guardrail_violation_carries_principal_attrs(fake_manager):

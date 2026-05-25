@@ -23,7 +23,11 @@ from secure_mcp_gateway.exceptions import (
     create_auth_error,
     create_configuration_error,
 )
-from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes, SpanNames
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    SpanAttributes,
+    SpanNames,
+    set_span_attr_with_legacy,
+)
 from secure_mcp_gateway.utils import (
     IS_DEBUG_LOG_LEVEL,
     build_log_extra,
@@ -176,15 +180,21 @@ class CacheStatusService:
             auth_span.set_attribute(
                 SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
-            auth_span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
-            auth_span.set_attribute(SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name)
+            set_span_attr_with_legacy(auth_span, SpanAttributes.ORG_ID, enkrypt_org_id)
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name
+            )
             auth_span.set_attribute(
                 SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version
             )
-            auth_span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
-            auth_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.PROJECT_ID, enkrypt_project_id
+            )
+            set_span_attr_with_legacy(auth_span, SpanAttributes.USER_ID, enkrypt_user_id)
             auth_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
-            auth_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
+            )
             auth_span.set_attribute(
                 SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
             )
@@ -473,7 +483,9 @@ class CacheStatusService:
     ):
         """Check cache status for a single server."""
         with tracer.start_as_current_span(SpanNames.CACHE_STATUS_SERVER) as server_span:
-            server_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(
+                server_span, SpanAttributes.SERVER_NAME, server_name
+            )
             server_span.set_attribute(SpanAttributes.CUSTOM_ID, id)
 
             if IS_DEBUG_LOG_LEVEL:

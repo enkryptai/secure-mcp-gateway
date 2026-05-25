@@ -5,7 +5,10 @@ from typing import Any
 import requests
 
 from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
-from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    SpanAttributes,
+    set_span_attr_with_legacy,
+)
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 
 # Get tracer from telemetry manager
@@ -229,16 +232,22 @@ class CacheManagementService:
             auth_span.set_attribute(
                 SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
-            auth_span.set_attribute(SpanAttributes.ORG_ID, enkrypt_org_id)
-            auth_span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
-            auth_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
+            set_span_attr_with_legacy(auth_span, SpanAttributes.ORG_ID, enkrypt_org_id)
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.PROJECT_ID, enkrypt_project_id
+            )
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
+            )
             auth_span.set_attribute(
                 SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
             )
-            auth_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
+            set_span_attr_with_legacy(auth_span, SpanAttributes.USER_ID, enkrypt_user_id)
             auth_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
             auth_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
-            auth_span.set_attribute(SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name)
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name
+            )
             auth_span.set_attribute(
                 SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version
             )
