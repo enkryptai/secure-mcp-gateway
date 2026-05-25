@@ -39,12 +39,14 @@ from secure_mcp_gateway.utils import (
     async_input_guardrails_enabled,
     async_output_guardrails_enabled,
     build_log_extra,
+    clear_request_identity_context,
     generate_custom_id,
     get_common_config,
     get_server_info_by_name,
     is_debug_log_level,
     logger,
     mask_key,
+    set_request_identity_context,
 )
 
 
@@ -235,6 +237,8 @@ class SecureToolExecutionService:
                     "status": "error",
                     "error": f"Secure batch tool call failed: {e}",
                 }
+            finally:
+                clear_request_identity_context()
 
     @staticmethod
     def _set_identity_span_attributes(span, gateway_config):
@@ -716,6 +720,7 @@ class SecureToolExecutionService:
             "gateway_name": gateway_name,
             "gateway_version": gateway_version,
         }
+        set_request_identity_context(auth_context)
 
         oauth_data, oauth_error = await prepare_oauth_for_server(
             server_name=server_name,

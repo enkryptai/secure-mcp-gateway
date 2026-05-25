@@ -74,12 +74,15 @@ CANONICAL_ATTR_KEYS: dict[str, str] = {
 # ``enkrypt.*`` fields remain the source of truth.
 LEGACY_FILTER_COMPAT_ATTR_KEYS: dict[str, str] = {
     "enkrypt.gateway.name": "gateway_name",
+    "enkrypt.gateway.version": "gateway_version",
     "enkrypt.org.id": "org_id",
     "enkrypt.project.id": "project_id",
     "enkrypt.project.name": "project_name",
+    "enkrypt.project.registry": "project_registry",
     "enkrypt.server.name": "server_name",
     "enkrypt.tool.name": "tool_name",
     "enkrypt.user.id": "user_id",
+    "enkrypt.user.email": "user_email",
 }
 
 

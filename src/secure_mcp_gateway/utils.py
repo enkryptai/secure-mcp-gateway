@@ -8,6 +8,7 @@ import string
 import sys
 import threading
 import time
+from contextvars import ContextVar
 from typing import Any
 from urllib.parse import urlparse
 
@@ -43,6 +44,35 @@ class _DebugLevel:
 IS_DEBUG_LOG_LEVEL = _DebugLevel()
 
 IS_TELEMETRY_ENABLED = None
+
+# Request-scoped identity context. Some hot paths (notably secure tool
+# execution) already resolve authenticated identity once and should not fall
+# back to header-only credentials for every log line.
+_REQUEST_IDENTITY_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar(
+    "request_identity_context", default=None
+)
+
+
+def set_request_identity_context(identity_context: dict[str, Any] | None) -> None:
+    """Set per-request identity values used by ``build_log_extra``."""
+    if not identity_context:
+        _REQUEST_IDENTITY_CONTEXT.set(None)
+        return
+    cleaned = {
+        key: value
+        for key, value in identity_context.items()
+        if value is not None and value != ""
+    }
+    _REQUEST_IDENTITY_CONTEXT.set(cleaned or None)
+
+
+def clear_request_identity_context() -> None:
+    """Clear request-scoped identity values."""
+    _REQUEST_IDENTITY_CONTEXT.set(None)
+
+
+def _get_request_identity_context() -> dict[str, Any]:
+    return _REQUEST_IDENTITY_CONTEXT.get() or {}
 
 
 def get_file_from_root(file_name):
@@ -602,6 +632,29 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
     except Exception:
         # Swallow errors and use defaults to avoid breaking logging
         pass
+
+    # If a request path resolved richer identity once (e.g. cloud auth in
+    # secure tool execution), prefer that request-scoped context over the
+    # fallback header values above.
+    request_identity = _get_request_identity_context()
+    if request_identity:
+        project_id = request_identity.get("project_id") or project_id
+        user_id = request_identity.get("user_id") or user_id
+        project_name = request_identity.get("project_name") or project_name
+        email = (
+            request_identity.get("user_email")
+            or request_identity.get("email")
+            or email
+        )
+        mcp_config_id = request_identity.get("mcp_config_id") or mcp_config_id
+        org_id = request_identity.get("org_id") or org_id
+        registry_name = (
+            request_identity.get("project_registry")
+            or request_identity.get("registry_name")
+            or registry_name
+        )
+        gateway_name = request_identity.get("gateway_name") or gateway_name
+        gateway_version = request_identity.get("gateway_version") or gateway_version
 
     # Canonicalize known kwargs to the dotted enkrypt.* namespace; pass
     # unknown kwargs through unchanged so ad-hoc diagnostic fields still
