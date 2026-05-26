@@ -29,7 +29,15 @@ class TimeoutConfig:
     """Configuration for timeout settings."""
 
     default_timeout: int = 30
-    guardrail_timeout: int = 1
+    # Bumped from previous 1s/15s -> 130s. The Enkrypt cloud guardrail
+    # endpoint (``api.dev.enkryptai.com/guardrails/...``) has a hard
+    # ~120s request ceiling. The 15s default fired before the cloud
+    # could either respond OR fail itself, surfacing as TOOL_001 even
+    # for healthy upstream tools. 130s gives ~10s of slack so the
+    # cloud's own 120s ceiling fires first (returning an HTTP error we
+    # can handle) before our wrapper trips. Healthy guardrail calls
+    # return in 100-400ms and never come close to either limit.
+    guardrail_timeout: int = 130
     auth_timeout: int = 10
     # Bumped from 60s -> 120s to survive a single cloud guardrail
     # ~120s hang (the cloud guardrail provider has been observed to hit
@@ -107,7 +115,7 @@ class TimeoutManager:
         timeout_settings = config.get("timeout_settings", {})
 
         self.config.default_timeout = timeout_settings.get("default_timeout", 30)
-        self.config.guardrail_timeout = timeout_settings.get("guardrail_timeout", 15)
+        self.config.guardrail_timeout = timeout_settings.get("guardrail_timeout", 130)
         self.config.auth_timeout = timeout_settings.get("auth_timeout", 10)
         self.config.tool_execution_timeout = timeout_settings.get(
             "tool_execution_timeout", 120

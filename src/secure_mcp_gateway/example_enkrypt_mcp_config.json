@@ -20,7 +20,7 @@
     "enkrypt_async_output_guardrails_enabled": false,
     "timeout_settings": {
       "default_timeout": 30,
-      "guardrail_timeout": 15,
+      "guardrail_timeout": 130,
       "auth_timeout": 10,
       "tool_execution_timeout": 120,
       "discovery_timeout": 180,

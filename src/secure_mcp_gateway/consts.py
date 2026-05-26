@@ -81,7 +81,7 @@ DEFAULT_COMMON_CONFIG = {
     # Timeout Management Configuration
     "timeout_settings": {
         "default_timeout": 30,
-        "guardrail_timeout": 15,
+        "guardrail_timeout": 130,
         "auth_timeout": 10,
         "tool_execution_timeout": 120,
         "discovery_timeout": 180,
