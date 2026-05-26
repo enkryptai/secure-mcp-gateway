@@ -9,6 +9,7 @@ from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
 telemetry_manager = get_telemetry_config_manager()
 # Telemetry metrics will be obtained lazily when needed
 from secure_mcp_gateway.utils import (
+    build_log_extra,
     get_common_config,
     is_debug_log_level,
     logger,
@@ -477,13 +478,21 @@ class CacheService:
                 f"[get_latest_server_info] No config tools found for {server_name}"
             )
             cached_tools = self.get_cached_tools(id, server_name)
+            # Identity attrs come from the request-scoped ContextVar set by
+            # secure_tool_execution_service.execute_secure_tools (no MCP
+            # ``ctx`` is available here; build_log_extra(None) falls back
+            # to the ContextVar) so dashboards filtered by user/project
+            # can pivot on cache hit/miss rates too.
+            cache_attrs = build_log_extra(
+                None, server_name=server_name
+            )
             if cached_tools:
                 # Update metrics lazily
                 if (
                     hasattr(telemetry_manager, "cache_hit_counter")
                     and telemetry_manager.cache_hit_counter
                 ):
-                    telemetry_manager.cache_hit_counter.add(1)
+                    telemetry_manager.cache_hit_counter.add(1, attributes=cache_attrs)
                 if is_debug_log_level():
                     logger.debug(
                         f"[get_latest_server_info] Found cached tools for {server_name}"
@@ -497,7 +506,7 @@ class CacheService:
                     hasattr(telemetry_manager, "cache_miss_counter")
                     and telemetry_manager.cache_miss_counter
                 ):
-                    telemetry_manager.cache_miss_counter.add(1)
+                    telemetry_manager.cache_miss_counter.add(1, attributes=cache_attrs)
                 if is_debug_log_level():
                     logger.debug(
                         f"[get_latest_server_info] No cached tools found for {server_name}. Need to discover them"

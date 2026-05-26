@@ -85,6 +85,36 @@ def _safe_attrs(attrs: Mapping[str, Any]) -> dict[str, Any]:
     return canonicalize_attr_keys(pruned)
 
 
+def _identity_attrs_from_context() -> dict[str, Any]:
+    """Pull identity attrs from the request-scoped ContextVar.
+
+    Set by ``secure_tool_execution_service.execute_secure_tools`` (and any
+    other entry point that resolves identity once at the top of a request)
+    via ``utils.set_request_identity_context``. Returns ``{}`` when
+    nothing is in scope, so this is safe to merge into any metric helper.
+    Both canonical and legacy alias keys land via ``_safe_attrs`` ->
+    ``canonicalize_attr_keys`` -> ``add_legacy_filter_aliases``.
+    """
+    try:
+        from secure_mcp_gateway.utils import _get_request_identity_context
+    except Exception:
+        return {}
+    ctx_identity = _get_request_identity_context() or {}
+    # Keep only the fields metric helpers already understand; let
+    # canonicalize_attr_keys do the renaming.
+    keys = (
+        "user_id",
+        "user_email",
+        "project_id",
+        "project_name",
+        "project_registry",
+        "org_id",
+        "gateway_name",
+        "gateway_version",
+    )
+    return {k: ctx_identity.get(k) for k in keys if ctx_identity.get(k)}
+
+
 def _add(
     counter: Any,
     value: int = 1,
@@ -386,6 +416,10 @@ def record_guardrail_api(
         "status_code": str(status_code),
         "provider": provider,
         "check_kind": check_kind,
+        # Merge request-scoped identity (user_id, user_email, etc.) so
+        # dashboards filtered by user/org/project can pivot on guardrail
+        # API throughput too, not just tool-call counters.
+        **_identity_attrs_from_context(),
     }
     _add(getattr(mgr, "guardrail_api_request_counter", None), 1, attrs)
     _record(getattr(mgr, "guardrail_api_request_duration", None), duration_ms, attrs)
