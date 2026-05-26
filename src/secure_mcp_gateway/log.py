@@ -38,34 +38,60 @@ _configured = False
 # carved out to avoid). ``utils.py`` re-exports both names for the metric
 # helpers and ``build_log_extra`` so there's still a single source of truth.
 #
-# The map mirrors ``plugins.telemetry.conventions.SpanAttributes`` so the
-# same identity attribute lands at ``log.attributes.enkrypt@*`` /
-# ``metric.attributes.enkrypt@*`` / ``span.attributes.enkrypt@*`` in
-# OpenSearch (Data Prepper rewrites dots to ``@`` in the field path).
-# Categorical / domain-specific keys (``outcome``, ``direction``,
-# ``provider``, ``check_kind``, ``status_code``, ``violation_type``,
-# ``failure_reason``, ``block_reason``, ``cache``, ad-hoc diagnostic kwargs)
-# don't have a canonical dotted name and pass through unchanged.
+# 2026-05-26 toggle: gateway temporarily emits only the snake_case form
+# of identity / domain attributes so dashboards, alert monitors, and the
+# OSD "Add filter" value dropdown only need to know ONE field name
+# (``log.attributes.user_email`` instead of both
+# ``log.attributes.user_email`` and ``log.attributes.enkrypt@user@email``).
+# To restore the dual-emission behaviour (snake_case alias AROUND the
+# canonical dotted name -- the original design), swap each pair of lines
+# below: uncomment the ``"enkrypt.*"`` line and comment out the
+# self-mapping line.
+#
+# Note: ``LEGACY_FILTER_COMPAT_ATTR_KEYS`` below stays as-is. It only
+# adds aliases when the input dict already contains canonical keys --
+# with this passthrough mapping those canonical keys never get written,
+# so ``add_legacy_filter_aliases`` becomes an effective no-op for the
+# identity tuple.
 CANONICAL_ATTR_KEYS: dict[str, str] = {
-    "custom_id":        "enkrypt.custom.id",
-    "server_name":      "enkrypt.server.name",
-    "org_id":           "enkrypt.org.id",
-    "project_id":       "enkrypt.project.id",
-    "project_name":     "enkrypt.project.name",
-    "registry_name":    "enkrypt.project.registry",
-    "project_registry": "enkrypt.project.registry",
-    "user_id":          "enkrypt.user.id",
-    "email":            "enkrypt.user.email",
-    "user_email":       "enkrypt.user.email",
-    "mcp_config_id":    "enkrypt.config.id",
-    "gateway_name":     "enkrypt.gateway.name",
-    "gateway_version":  "enkrypt.gateway.version",
-    "error":            "enkrypt.error.message",
-    "tool_name":        "enkrypt.tool.name",
-    "request_id":       "enkrypt.request.id",
-    "num_tool_calls":   "enkrypt.tool.num_calls",
-    "tool_arguments":   "enkrypt.tool.arguments",
-    "guardrail_name":   "enkrypt.guardrail.name",
+    # "custom_id":        "enkrypt.custom.id",
+    "custom_id":        "custom_id",
+    # "server_name":      "enkrypt.server.name",
+    "server_name":      "server_name",
+    # "org_id":           "enkrypt.org.id",
+    "org_id":           "org_id",
+    # "project_id":       "enkrypt.project.id",
+    "project_id":       "project_id",
+    # "project_name":     "enkrypt.project.name",
+    "project_name":     "project_name",
+    # "registry_name":    "enkrypt.project.registry",
+    "registry_name":    "project_registry",
+    # "project_registry": "enkrypt.project.registry",
+    "project_registry": "project_registry",
+    # "user_id":          "enkrypt.user.id",
+    "user_id":          "user_id",
+    # "email":            "enkrypt.user.email",
+    "email":            "user_email",
+    # "user_email":       "enkrypt.user.email",
+    "user_email":       "user_email",
+    # "mcp_config_id":    "enkrypt.config.id",
+    "mcp_config_id":    "mcp_config_id",
+    # "gateway_name":     "enkrypt.gateway.name",
+    "gateway_name":     "gateway_name",
+    # "gateway_version":  "enkrypt.gateway.version",
+    "gateway_version":  "gateway_version",
+    # "error":            "enkrypt.error.message",
+    "error":            "error",
+    # "tool_name":        "enkrypt.tool.name",
+    "tool_name":        "tool_name",
+    # "request_id":       "enkrypt.request.id",
+    "request_id":       "request_id",
+    # "num_tool_calls":   "enkrypt.tool.num_calls",
+    "num_tool_calls":   "num_tool_calls",
+    # "tool_arguments":   "enkrypt.tool.arguments",
+    "tool_arguments":   "tool_arguments",
+    # "guardrail_name":   "enkrypt.guardrail.name",
+    "guardrail_name":   "guardrail_name",
 }
 
 # Backward-compatibility aliases for commonly-filtered identity keys.

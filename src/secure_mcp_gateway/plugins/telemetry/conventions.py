@@ -22,18 +22,34 @@ from __future__ import annotations
 
 
 class SpanAttributes:
-    """Attribute keys attached to Enkrypt spans."""
+    """Attribute keys attached to Enkrypt spans.
+
+    2026-05-26 toggle: the identity tuple below was temporarily flipped
+    from the canonical OTel-dotted form (``enkrypt.server.name``, ...) to
+    the snake_case form so spans emit a single field name (matching what
+    metrics and logs now write). To restore the dotted form, swap each
+    pair: uncomment the ``"enkrypt.*"`` line and comment out the
+    snake_case line. ``set_span_attr_with_legacy`` keeps working either
+    way (it just writes the same key twice when both forms collapse).
+    """
 
     # --- Identity ---
-    SERVER_NAME = "enkrypt.server.name"
-    ORG_ID = "enkrypt.org.id"
-    PROJECT_ID = "enkrypt.project.id"
-    PROJECT_NAME = "enkrypt.project.name"
+    # SERVER_NAME = "enkrypt.server.name"
+    SERVER_NAME = "server_name"
+    # ORG_ID = "enkrypt.org.id"
+    ORG_ID = "org_id"
+    # PROJECT_ID = "enkrypt.project.id"
+    PROJECT_ID = "project_id"
+    # PROJECT_NAME = "enkrypt.project.name"
+    PROJECT_NAME = "project_name"
     # Cloud `request_context.registry_name`. Nested under `project.` to mirror
     # the cloud data model where every registry belongs to a project.
-    PROJECT_REGISTRY = "enkrypt.project.registry"
-    USER_ID = "enkrypt.user.id"
-    USER_EMAIL = "enkrypt.user.email"
+    # PROJECT_REGISTRY = "enkrypt.project.registry"
+    PROJECT_REGISTRY = "project_registry"
+    # USER_ID = "enkrypt.user.id"
+    USER_ID = "user_id"
+    # USER_EMAIL = "enkrypt.user.email"
+    USER_EMAIL = "user_email"
     # True when the apikey belongs to an internal Enkrypt account
     # (dashboard / next-js / staff). Populated from the cloud
     # ``/consumer-info`` response when the playground runs in
@@ -45,8 +61,10 @@ class SpanAttributes:
     # Echoes the ``X-Enkrypt-MCP-Gateway`` / ``X-Enkrypt-MCP-Gateway-Version``
     # headers the gateway sends to the cloud's ``get-gateway-config`` API, so
     # OpenSearch / Grafana can pivot per deployed gateway revision.
-    GATEWAY_NAME = "enkrypt.gateway.name"
-    GATEWAY_VERSION = "enkrypt.gateway.version"
+    # GATEWAY_NAME = "enkrypt.gateway.name"
+    GATEWAY_NAME = "gateway_name"
+    # GATEWAY_VERSION = "enkrypt.gateway.version"
+    GATEWAY_VERSION = "gateway_version"
     REQUEST_ID = "enkrypt.request.id"
     CUSTOM_ID = "enkrypt.custom.id"
     CORRELATION_ID = "enkrypt.correlation.id"
@@ -59,7 +77,8 @@ class SpanAttributes:
     ENV = "enkrypt.env"
 
     # --- Tool ---
-    TOOL_NAME = "enkrypt.tool.name"
+    # TOOL_NAME = "enkrypt.tool.name"
+    TOOL_NAME = "tool_name"
     TOOL_CALL_INDEX = "enkrypt.tool.call_index"
     TOOL_FOUND = "enkrypt.tool.found"
     NUM_TOOL_CALLS = "enkrypt.tool.num_calls"
