@@ -328,7 +328,9 @@ async def fetch_consumer_info(*, base_url: str, apikey: str) -> ConsumerInfo:
                     span, SpanAttributes.PROJECT_NAME, info.project_name
                 )
             if info.email:
-                span.set_attribute(SpanAttributes.USER_EMAIL, info.email)
+                set_span_attr_with_legacy(
+                    span, SpanAttributes.USER_EMAIL, info.email
+                )
             if info.is_internal_req is not None:
                 span.set_attribute(
                     SpanAttributes.USER_IS_INTERNAL_REQ, info.is_internal_req

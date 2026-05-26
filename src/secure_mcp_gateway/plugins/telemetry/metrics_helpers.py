@@ -85,13 +85,23 @@ def _safe_attrs(attrs: Mapping[str, Any]) -> dict[str, Any]:
     return canonicalize_attr_keys(pruned)
 
 
-def _identity_attrs_from_context() -> dict[str, Any]:
-    """Pull identity attrs from the request-scoped ContextVar.
+def _identity_attrs_from_context() -> dict[str, Any]:  # noqa: D401
+    """Snapshot identity attrs from the request-scoped ContextVar.
 
-    Set by ``secure_tool_execution_service.execute_secure_tools`` (and any
-    other entry point that resolves identity once at the top of a request)
-    via ``utils.set_request_identity_context``. Returns ``{}`` when
-    nothing is in scope, so this is safe to merge into any metric helper.
+    Set by ``ServerListingService.list_servers`` / ``DiscoveryService.
+    discover_tools`` / ``ServerInfoService.get_server_info`` /
+    ``secure_tool_execution_service.execute_secure_tools`` (and any other
+    entry point that resolves identity once at the top of a request) via
+    ``utils.set_request_identity_context``. Returns ``{}`` when nothing is
+    in scope, so this is safe to merge into any metric helper.
+
+    Also includes per-tool ``server_name`` / ``tool_name`` when a calling
+    layer pushed them via :func:`utils.push_request_identity_overlay` so
+    that helpers further down the stack (e.g. ``record_guardrail_api`` in
+    the Enkrypt guardrail provider) can tag their metrics with the full
+    request-time identity tuple without each helper having to thread the
+    values through its signature.
+
     Both canonical and legacy alias keys land via ``_safe_attrs`` ->
     ``canonicalize_attr_keys`` -> ``add_legacy_filter_aliases``.
     """
@@ -101,7 +111,8 @@ def _identity_attrs_from_context() -> dict[str, Any]:
         return {}
     ctx_identity = _get_request_identity_context() or {}
     # Keep only the fields metric helpers already understand; let
-    # canonicalize_attr_keys do the renaming.
+    # canonicalize_attr_keys do the renaming. ``server_name`` /
+    # ``tool_name`` are only present when a per-tool overlay was pushed.
     keys = (
         "user_id",
         "user_email",
@@ -111,6 +122,8 @@ def _identity_attrs_from_context() -> dict[str, Any]:
         "org_id",
         "gateway_name",
         "gateway_version",
+        "server_name",
+        "tool_name",
     )
     return {k: ctx_identity.get(k) for k in keys if ctx_identity.get(k)}
 

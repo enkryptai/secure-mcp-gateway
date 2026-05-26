@@ -71,6 +71,37 @@ def clear_request_identity_context() -> None:
     _REQUEST_IDENTITY_CONTEXT.set(None)
 
 
+def push_request_identity_overlay(
+    overlay: dict[str, Any] | None,
+) -> object:
+    """Overlay ``overlay`` onto the current identity context, returning a
+    token that callers MUST pass to :func:`reset_request_identity_overlay`
+    to restore the previous state (use ``try/finally``).
+
+    Designed for short-lived per-tool / per-span enrichment (e.g. setting
+    ``server_name`` + ``tool_name`` around a single tool execution so that
+    metrics emitted from helper modules inherit those attrs without each
+    helper having to thread them through its signature). Empty / ``None``
+    overlay values are dropped instead of overwriting an existing value.
+    """
+    if not overlay:
+        return _REQUEST_IDENTITY_CONTEXT.set(_REQUEST_IDENTITY_CONTEXT.get())
+    current = _REQUEST_IDENTITY_CONTEXT.get() or {}
+    merged = dict(current)
+    for key, value in overlay.items():
+        if value is None or value == "":
+            continue
+        merged[key] = value
+    return _REQUEST_IDENTITY_CONTEXT.set(merged or None)
+
+
+def reset_request_identity_overlay(token: object) -> None:
+    """Restore the identity context to the value captured by the matching
+    :func:`push_request_identity_overlay` call.
+    """
+    _REQUEST_IDENTITY_CONTEXT.reset(token)
+
+
 def _get_request_identity_context() -> dict[str, Any]:
     return _REQUEST_IDENTITY_CONTEXT.get() or {}
 

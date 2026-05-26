@@ -46,6 +46,8 @@ from secure_mcp_gateway.utils import (
     is_debug_log_level,
     logger,
     mask_key,
+    push_request_identity_overlay,
+    reset_request_identity_overlay,
     set_request_identity_context,
 )
 
@@ -888,6 +890,17 @@ class SecureToolExecutionService:
             tool_span.set_attribute(SpanAttributes.TOOL_CALL_INDEX, i)
             set_span_attr_with_legacy(tool_span, SpanAttributes.SERVER_NAME, server_name)
 
+            # Push per-tool overlay so guardrail / cache / PII metric helpers
+            # emitted under this tool call also tag with ``server_name`` and
+            # ``tool_name`` -- the identity ContextVar already carries
+            # user/project/org from ``_execute_tools_with_guardrails``.
+            overlay_token = push_request_identity_overlay(
+                {
+                    "server_name": server_name,
+                    "tool_name": tool_name or "unknown",
+                }
+            )
+
             try:
                 args = (
                     tool_call.get("args", {})
@@ -1206,6 +1219,11 @@ class SecureToolExecutionService:
                     "args": args,
                 }
                 return error_response
+            finally:
+                # Always restore the parent (request-level) identity context
+                # so the next tool in the same batch doesn't inherit stale
+                # ``server_name`` / ``tool_name`` overlays.
+                reset_request_identity_overlay(overlay_token)
 
     def _validate_tool(self, tool_name, server_config_tools, tool_span):
         """Validate that the tool exists and is available."""

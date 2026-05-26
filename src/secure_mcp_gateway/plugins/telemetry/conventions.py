@@ -325,14 +325,20 @@ class SourceProduct:
 
 
 # Legacy snake_case aliases kept for OpenSearch filtering compatibility.
+# Mirrors the metric/log alias map in ``log.LEGACY_FILTER_COMPAT_ATTR_KEYS``
+# so dashboards filtering by the underscore form get the same coverage across
+# all three signals.
 _SPAN_LEGACY_ATTR_KEYS: dict[str, str] = {
     SpanAttributes.GATEWAY_NAME: "gateway_name",
+    SpanAttributes.GATEWAY_VERSION: "gateway_version",
     SpanAttributes.ORG_ID: "org_id",
     SpanAttributes.PROJECT_ID: "project_id",
     SpanAttributes.PROJECT_NAME: "project_name",
+    SpanAttributes.PROJECT_REGISTRY: "project_registry",
     SpanAttributes.SERVER_NAME: "server_name",
     SpanAttributes.TOOL_NAME: "tool_name",
     SpanAttributes.USER_ID: "user_id",
+    SpanAttributes.USER_EMAIL: "user_email",
 }
 
 

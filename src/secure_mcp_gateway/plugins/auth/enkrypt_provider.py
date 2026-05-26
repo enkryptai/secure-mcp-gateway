@@ -449,7 +449,9 @@ class EnkryptAuthProvider(AuthProvider):
             set_span_attr_with_legacy(
                 span, SpanAttributes.GATEWAY_NAME, effective_gateway
             )
-            span.set_attribute(SpanAttributes.GATEWAY_VERSION, self.gateway_version)
+            set_span_attr_with_legacy(
+                span, SpanAttributes.GATEWAY_VERSION, self.gateway_version
+            )
             # Mirror the masked ``apikey`` request header so trace consumers
             # can pivot per-tenant without ever seeing the raw secret.
             span.set_attribute(SpanAttributes.GATEWAY_KEY, mask_key(gateway_key))

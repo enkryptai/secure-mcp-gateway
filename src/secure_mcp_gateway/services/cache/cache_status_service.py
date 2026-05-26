@@ -198,7 +198,9 @@ class CacheStatusService:
             auth_span.set_attribute(
                 SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
             )
-            auth_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.USER_EMAIL, enkrypt_email
+            )
 
             # Funnel through ``create_session_key`` so a ``None`` credential
             # field (cloud-auth requests omit project_id/user_id headers) is

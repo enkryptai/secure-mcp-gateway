@@ -243,7 +243,9 @@ class CacheManagementService:
                 SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
             )
             set_span_attr_with_legacy(auth_span, SpanAttributes.USER_ID, enkrypt_user_id)
-            auth_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.USER_EMAIL, enkrypt_email
+            )
             auth_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
             set_span_attr_with_legacy(
                 auth_span, SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name

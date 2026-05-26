@@ -24,9 +24,11 @@ from secure_mcp_gateway.plugins.telemetry.conventions import (
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 from secure_mcp_gateway.utils import (
     build_log_extra,
+    clear_request_identity_context,
     get_server_info_by_name,
     logger,
     mask_key,
+    set_request_identity_context,
 )
 
 
@@ -187,7 +189,9 @@ class DiscoveryService:
             main_span.set_attribute(
                 SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
             )
-            main_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.USER_EMAIL, enkrypt_email
+            )
 
             # Funnel through ``create_session_key`` so a ``None`` credential
             # field (cloud-auth requests omit project_id/user_id headers) is
@@ -197,6 +201,29 @@ class DiscoveryService:
                 credentials.get("project_id"),
                 credentials.get("user_id"),
                 enkrypt_mcp_config_id,
+            )
+
+            # Publish identity on the request-scoped ContextVar so every
+            # downstream metric / log (cache.hits, cache.misses, tool.calls,
+            # tool.duration, discovery.servers_found, ...) inherits the rich
+            # identity tags without each call site needing to thread auth.
+            #
+            # Cloud-auth MCP clients only send ``apikey`` (no project_id /
+            # user_id headers), so prefer the values resolved from the cloud
+            # response (``gateway_config``) over the raw header credentials.
+            set_request_identity_context(
+                {
+                    "user_id": gateway_config.get("user_id") or enkrypt_user_id,
+                    "user_email": enkrypt_email,
+                    "project_id": gateway_config.get("project_id")
+                    or enkrypt_project_id,
+                    "project_name": enkrypt_project_name,
+                    "project_registry": enkrypt_project_registry,
+                    "org_id": enkrypt_org_id,
+                    "gateway_name": enkrypt_gateway_name,
+                    "gateway_version": enkrypt_gateway_version,
+                    "mcp_config_id": enkrypt_mcp_config_id,
+                }
             )
 
             try:
@@ -281,6 +308,8 @@ class DiscoveryService:
                     cause=e,
                 )
                 return create_error_response(error)
+            finally:
+                clear_request_identity_context()
 
     def _generate_custom_id(self) -> str:
         """Generate a custom ID for tracking."""
@@ -368,7 +397,9 @@ class DiscoveryService:
             set_span_attr_with_legacy(
                 all_span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
             )
-            all_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
+            set_span_attr_with_legacy(
+                all_span, SpanAttributes.USER_EMAIL, enkrypt_email
+            )
 
             logger.info(
                 "[discover_server_tools] Discovering tools for all servers using three-phase parallel approach"
@@ -2010,7 +2041,10 @@ class DiscoveryService:
                         and telemetry_manager.cache_hit_counter
                     ):
                         telemetry_manager.cache_hit_counter.add(
-                            1, attributes=build_log_extra(ctx)
+                            1,
+                            attributes=build_log_extra(
+                                ctx, server_name=server_name
+                            ),
                         )
                     logger.info(
                         f"[discover_server_tools] Tools already cached for {server_name}"
@@ -2038,7 +2072,10 @@ class DiscoveryService:
                         and telemetry_manager.cache_miss_counter
                     ):
                         telemetry_manager.cache_miss_counter.add(
-                            1, attributes=build_log_extra(ctx)
+                            1,
+                            attributes=build_log_extra(
+                                ctx, server_name=server_name
+                            ),
                         )
                     logger.info(
                         f"[discover_server_tools] No cached tools found for {server_name}"
@@ -2057,7 +2094,10 @@ class DiscoveryService:
                     and telemetry_manager.tool_call_counter
                 ):
                     telemetry_manager.tool_call_counter.add(
-                        1, attributes=build_log_extra(ctx, custom_id)
+                        1,
+                        attributes=build_log_extra(
+                            ctx, custom_id, server_name=server_name
+                        ),
                     )
                 start_time = time.time()
                 result = await forward_tool_call(
@@ -2075,7 +2115,9 @@ class DiscoveryService:
                 ):
                     telemetry_manager.tool_call_duration.record(
                         end_time - start_time,
-                        attributes=build_log_extra(ctx, custom_id),
+                        attributes=build_log_extra(
+                            ctx, custom_id, server_name=server_name
+                        ),
                     )
                 tool_span.set_attribute("duration", end_time - start_time)
 

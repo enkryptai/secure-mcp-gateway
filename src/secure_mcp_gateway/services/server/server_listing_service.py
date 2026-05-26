@@ -21,9 +21,11 @@ from secure_mcp_gateway.exceptions import (
 )
 from secure_mcp_gateway.utils import (
     build_log_extra,
+    clear_request_identity_context,
     logger,
     mask_key,
     mask_server_config_sensitive_data,
+    set_request_identity_context,
 )
 
 
@@ -147,6 +149,29 @@ class ServerListingService:
                 enkrypt_gateway_version,
             )
 
+            # Once auth has resolved an authenticated identity, publish it on
+            # the request-scoped ContextVar so every downstream metric / log
+            # emitted under this request inherits the rich identity tags
+            # (project_name, user_email, org_id, ...). Cleared in ``finally``.
+            #
+            # Cloud-auth MCP clients only send ``apikey`` (no project_id /
+            # user_id headers), so prefer the values resolved from the cloud
+            # response (``gateway_config``) over the raw header credentials.
+            set_request_identity_context(
+                {
+                    "user_id": gateway_config.get("user_id") or enkrypt_user_id,
+                    "user_email": enkrypt_email,
+                    "project_id": gateway_config.get("project_id")
+                    or enkrypt_project_id,
+                    "project_name": enkrypt_project_name,
+                    "project_registry": enkrypt_project_registry,
+                    "org_id": enkrypt_org_id,
+                    "gateway_name": enkrypt_gateway_name,
+                    "gateway_version": enkrypt_gateway_version,
+                    "mcp_config_id": enkrypt_mcp_config_id,
+                }
+            )
+
             try:
                 # Authentication check
                 session_key = f"{enkrypt_gateway_key}_{enkrypt_project_id}_{enkrypt_user_id}_{enkrypt_mcp_config_id}"
@@ -223,6 +248,8 @@ class ServerListingService:
                     cause=e,
                 )
                 return create_error_response(err)
+            finally:
+                clear_request_identity_context()
 
     def _generate_custom_id(self) -> str:
         """Generate a custom ID for tracking."""
@@ -260,18 +287,22 @@ class ServerListingService:
         span.set_attribute("custom_id", custom_id)
         span.set_attribute("discover_tools", discover_tools)
         span.set_attribute(SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key))
-        span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
+        set_span_attr_with_legacy(span, SpanAttributes.USER_EMAIL, enkrypt_email)
         set_span_attr_with_legacy(span, SpanAttributes.USER_ID, enkrypt_user_id)
         set_span_attr_with_legacy(span, SpanAttributes.PROJECT_ID, enkrypt_project_id)
         set_span_attr_with_legacy(
             span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
         )
-        span.set_attribute(SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry)
+        set_span_attr_with_legacy(
+            span, SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
+        )
         set_span_attr_with_legacy(span, SpanAttributes.ORG_ID, enkrypt_org_id)
         set_span_attr_with_legacy(
             span, SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name
         )
-        span.set_attribute(SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version)
+        set_span_attr_with_legacy(
+            span, SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version
+        )
         span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
 
     async def _check_authentication(
