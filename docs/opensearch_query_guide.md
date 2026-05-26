@@ -1,5 +1,21 @@
 # OpenSearch query guide — gateway telemetry
 
+> **2026-05-26 update — snake_case-only identity attributes**
+>
+> The gateway now emits identity attributes in a **single** form
+> (`metric.attributes.user_email`, `span.attributes.user_id`,
+> `log.attributes.server_name`, ...). The dotted `enkrypt@*` form
+> documented further down is **not emitted on new docs** -- queries
+> in this file that reference `span.attributes.enkrypt@user@id`,
+> `metric.attributes.enkrypt@gateway@name`, etc. will return empty
+> on data ingested after that date.
+>
+> Quick rename: drop the `enkrypt@` prefix and convert any remaining
+> `@` to `_`. So `span.attributes.enkrypt@user@id` becomes
+> `span.attributes.user_id`. See
+> [`docs/metric_attributes_key_mismatch.md`](metric_attributes_key_mismatch.md)
+> for how to flip back to dual-emission if you need it.
+
 Frontend / dashboard reference for querying Secure MCP Gateway telemetry
 in OpenSearch. The gateway emits OTLP to an OTel collector → Data Prepper
 → three SS4O data streams; this guide gives you the exact field names,
@@ -77,28 +93,29 @@ Both paths set the same identity SpanAttributes (`enkrypt.user.id`,
 `enkrypt.org.id`, `enkrypt.project.name`, etc.), so existing
 identity-filtered dashboards pick up playground traffic automatically.
 
-Here is where to find each one per signal:
+Here is where to find each one per signal **as of the 2026-05-26
+single-form mode** (snake_case across all three signals):
 
 | Identity | Traces | Metrics | Logs |
 | -------- | ------ | ------- | ---- |
-| `user_id` | `span.attributes.enkrypt@user@id` | `metric.attributes.user_id` | `log.attributes.user_id` |
-| `gateway_saved_name` | `span.attributes.enkrypt@gateway@name` | `metric.attributes.gateway_name` | `log.attributes.gateway_name` |
-| `gateway_version` | `span.attributes.enkrypt@gateway@version` | `metric.attributes.gateway_version` | `log.attributes.gateway_version` |
-| `org_id` | `span.attributes.enkrypt@org@id` | `metric.attributes.org_id` | `log.attributes.org_id` |
-| `registry_name` | `span.attributes.enkrypt@project@registry` | `metric.attributes.project_registry` | `log.attributes.registry_name` |
-| `project_name` | `span.attributes.enkrypt@project@name` | `metric.attributes.project_name` | `log.attributes.project_name` |
+| `user_id` | `span.attributes.user_id` | `metric.attributes.user_id` | `log.attributes.user_id` |
+| `gateway_saved_name` | `span.attributes.gateway_name` | `metric.attributes.gateway_name` | `log.attributes.gateway_name` |
+| `gateway_version` | `span.attributes.gateway_version` | `metric.attributes.gateway_version` | `log.attributes.gateway_version` |
+| `org_id` | `span.attributes.org_id` | `metric.attributes.org_id` | `log.attributes.org_id` |
+| `registry_name` | `span.attributes.project_registry` | `metric.attributes.project_registry` | `log.attributes.project_registry` |
+| `project_name` | `span.attributes.project_name` | `metric.attributes.project_name` | `log.attributes.project_name` |
 
 Also useful, available on the same signals where applicable:
 
 | Field | Traces | Metrics | Logs |
 | ----- | ------ | ------- | ---- |
-| `project_id` | `span.attributes.enkrypt@project@id` | `metric.attributes.project_id` | `log.attributes.project_id` |
-| `email` | `span.attributes.enkrypt@user@email` | `metric.attributes.user_email` ² | `log.attributes.email` |
-| `mcp_config_id` | `span.attributes.enkrypt@config@id` | — | `log.attributes.mcp_config_id` |
-| `gateway_key` (masked) | `span.attributes.enkrypt@gateway@key` | — | — |
-| `server_name` | `span.attributes.enkrypt@server@name` | `metric.attributes.server_name` (where relevant) | `log.attributes.server_name` |
-| `tool_name` | — | `metric.attributes.tool_name` | — |
-| `is_internal_req` ¹ | `span.attributes.enkrypt@user@is_internal_req` | `metric.attributes.is_internal_req` | `log.attributes.is_internal_req` |
+| `project_id` | `span.attributes.project_id` | `metric.attributes.project_id` | `log.attributes.project_id` |
+| `email` / `user_email` | `span.attributes.user_email` | `metric.attributes.user_email` ² | `log.attributes.user_email` |
+| `mcp_config_id` | `span.attributes.enkrypt@config@id` ³ | — | `log.attributes.mcp_config_id` |
+| `gateway_key` (masked) | `span.attributes.enkrypt@gateway@key` ³ | — | — |
+| `server_name` | `span.attributes.server_name` | `metric.attributes.server_name` (where relevant) | `log.attributes.server_name` |
+| `tool_name` | `span.attributes.tool_name` | `metric.attributes.tool_name` | `log.attributes.tool_name` |
+| `is_internal_req` ¹ | `span.attributes.enkrypt@user@is_internal_req` ³ | `metric.attributes.is_internal_req` | `log.attributes.is_internal_req` |
 | `auth_provider` ¹ | — | — | `log.attributes.auth_provider` |
 | `playground_mode` ¹ | — | — | `log.attributes.playground_mode` |
 | `transport` ¹ | — | — | `log.attributes.transport` |
@@ -120,32 +137,39 @@ and cloud gateways called without an end-user identity leave the field
 absent (stripped by `_safe_attrs`) — filter with `exists` rather than
 expecting a sentinel.
 
+³ Three span-only attributes still use the dotted `enkrypt.*` form
+because they aren't covered by the snake_case identity toggle:
+`enkrypt.config.id`, `enkrypt.gateway.key`, and the diagnostic
+`enkrypt.user.is_internal_req`. They land as
+`span.attributes.enkrypt@config@id` etc. To bring these under the
+snake_case rule, add their constants to the comment-swap list in
+`conventions.py:SpanAttributes`.
+
 ---
 
-## 3. Why field names differ across signals
+## 3. Why field names look the same across signals (as of 2026-05-26)
 
-If you noticed the asymmetry in the table — yes, **spans namespace
-identity under `enkrypt.*`, but metrics and logs use bare snake_case**.
+All three signals now expose identity attributes under bare snake_case
+keys (`*.attributes.user_id`, `*.attributes.user_email`,
+`*.attributes.org_id`, ...). One field, one shape, three places.
 
-The "why":
+Background -- the gateway used to emit two forms simultaneously
+(`enkrypt.*` dotted alongside snake_case). The dual-emission code is
+still present in
+[`log.py:CANONICAL_ATTR_KEYS`](../src/secure_mcp_gateway/log.py) and
+[`conventions.py:SpanAttributes`](../src/secure_mcp_gateway/plugins/telemetry/conventions.py),
+just commented out. See
+[`metric_attributes_key_mismatch.md`](metric_attributes_key_mismatch.md)
+for the rationale (filter-dropdown UX, mapped-field cardinality) and
+for the swap-back instructions if you ever need the dotted form
+emitted alongside.
 
-- **Spans** are set with the gateway's typed `SpanAttributes`
-  constants (see [`conventions.py`](../src/secure_mcp_gateway/plugins/telemetry/conventions.py)).
-  Every attribute is dotted: `enkrypt.user.id`,
-  `enkrypt.gateway.name`, etc. Data Prepper's `otel_traces` processor
-  flattens those dots into `@`-separators so OpenSearch sees them as
-  flat keyword fields — hence `span.attributes.enkrypt@user@id`.
-- **Metrics** are tagged in `metrics_helpers.py` using OTel attribute
-  dicts with bare keys (`{"user_id": ..., "org_id": ...}`). No dots,
-  no flattening — they land as `metric.attributes.user_id`.
-- **Logs** flow through Python's `logging` module: `build_log_extra`
-  returns a dict with bare keys (`{"user_id": ..., "org_id": ...}`)
-  which the OTel `LoggingHandler` attaches as log record attributes.
-  Result: `log.attributes.user_id`.
-
-Quote field names containing `@` in JSON queries — they're valid JSON
-identifiers but easy to misread. URL-encode them in query strings
-(`%40`).
+The three span-only attributes still on the dotted form
+(`enkrypt.config.id`, `enkrypt.gateway.key`,
+`enkrypt.user.is_internal_req`) land as
+`span.attributes.enkrypt@config@id` etc. -- Data Prepper rewrites the
+dots to `@` in the field path. Quote any `@`-containing field name in
+JSON queries (URL-encode as `%40` in query strings).
 
 ---
 
@@ -163,8 +187,8 @@ Content-Type: application/json
   "query": {
     "bool": {
       "filter": [
-        { "term":  { "span.attributes.enkrypt@user@id": "1388b711-f2c5-45b2-930b-3c91eb26e26d" } },
-        { "term":  { "span.attributes.enkrypt@gateway@version": "v1" } },
+        { "term":  { "span.attributes.user_id": "1388b711-f2c5-45b2-930b-3c91eb26e26d" } },
+        { "term":  { "span.attributes.gateway_version": "v1" } },
         { "range": { "startTime": { "gte": "now-1h" } } }
       ]
     }
@@ -191,9 +215,9 @@ POST gateway-traces/_search
       "composite": {
         "size": 100,
         "sources": [
-          { "org":     { "terms": { "field": "span.attributes.enkrypt@org@id" } } },
-          { "gateway": { "terms": { "field": "span.attributes.enkrypt@gateway@name" } } },
-          { "version": { "terms": { "field": "span.attributes.enkrypt@gateway@version" } } }
+          { "org":     { "terms": { "field": "span.attributes.org_id" } } },
+          { "gateway": { "terms": { "field": "span.attributes.gateway_name" } } },
+          { "version": { "terms": { "field": "span.attributes.gateway_version" } } }
         ]
       }
     }
@@ -217,7 +241,7 @@ POST gateway-traces/_search
   },
   "aggs": {
     "by_tool": {
-      "terms": { "field": "span.attributes.enkrypt@tool@name", "size": 20 },
+      "terms": { "field": "span.attributes.tool_name", "size": 20 },
       "aggs":  {
         "latency_pct": {
           "percentiles": {
@@ -456,7 +480,7 @@ POST gateway-logs/_search
 5. **OpenSearch Dashboards Discover** uses the exact same field names.
    For ad-hoc validation: `http://<host>:5601` → Discover → pick the
    `gateway-metrics`/`gateway-traces`/`gateway-logs` index pattern →
-   KQL: `span.attributes.enkrypt@user@id : "<uuid>"`.
+   KQL: `span.attributes.user_id : "<uuid>"`.
 
 6. **Cardinality awareness**: `user_id`, `org_id`, `mcp_config_id`
    are high-cardinality. For top-N alerts/aggregations, use `terms`
@@ -480,7 +504,7 @@ POST gateway-logs/_search
 This is the **only** field whose name differs across all three signals
 (pre-existing inconsistency, not a recent change):
 
-- Traces: `span.attributes.enkrypt@project@registry`
+- Traces: `span.attributes.project_registry`
 - Metrics: `metric.attributes.project_registry`
 - Logs: `log.attributes.registry_name`
 
@@ -500,7 +524,7 @@ POST _plugins/_sql
 Content-Type: application/json
 
 {
-  "query": "SELECT span.attributes.\"enkrypt@user@id\" AS user_id, COUNT(*) AS spans FROM \"gateway-traces\" WHERE startTime > now() - INTERVAL 1 HOUR GROUP BY 1 ORDER BY 2 DESC LIMIT 10"
+  "query": "SELECT span.attributes.user_id AS user_id, COUNT(*) AS spans FROM \"gateway-traces\" WHERE startTime > now() - INTERVAL 1 HOUR GROUP BY 1 ORDER BY 2 DESC LIMIT 10"
 }
 ```
 
@@ -510,7 +534,7 @@ also works:
 ```http
 POST _plugins/_ppl
 {
-  "query": "source=gateway-traces | where startTime > now() - 1h | stats count() by span.attributes.enkrypt@user@id | head 10"
+  "query": "source=gateway-traces | where startTime > now() - 1h | stats count() by span.attributes.user_id | head 10"
 }
 ```
 

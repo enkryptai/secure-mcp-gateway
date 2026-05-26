@@ -100,14 +100,23 @@ All three:
 - cap mappings at 5000 fields (vs the Kong templates' 2000) because OTel
   attribute spaces are open-ended.
 
-### Important field-naming quirk: Data Prepper uses `@`-separated paths
+### Identity attribute field names
 
-Data Prepper's `otel_*` processors do **not** nest dotted OTel attribute
-keys into objects. They flatten with literal dots in the field name and
-substitute `@` for sub-key dots. So an OTel attribute called
-`enkrypt.server.name` shows up in OpenSearch as the field
-`metric.attributes.enkrypt@server@name` (note the `@`). Aggregations and
-PPL queries must use this exact spelling.
+The gateway currently emits identity attributes in **snake_case only**
+(`metric.attributes.server_name`, `log.attributes.user_email`,
+`span.attributes.org_id`, ...). Use those names in monitor aggregations,
+PPL queries, and dashboards.
+
+Background -- and how to re-enable the dotted form -- in
+[`docs/metric_attributes_key_mismatch.md`](../docs/metric_attributes_key_mismatch.md).
+Briefly: the OpenTelemetry-canonical dotted form
+(``enkrypt.server.name``, etc.) is commented out in
+``src/secure_mcp_gateway/log.py:CANONICAL_ATTR_KEYS`` and
+``src/secure_mcp_gateway/plugins/telemetry/conventions.py:SpanAttributes``.
+Swap each commented/uncommented pair to restore dual emission; when the
+dotted form is active, Data Prepper flattens it with literal dots in the
+field prefix and substitutes ``@`` for sub-key dots (OTel attr
+``enkrypt.server.name`` -> field ``metric.attributes.enkrypt@server@name``).
 
 ### ISM policy -- [`opensearch/policies/gateway_telemetry_policy.json`](opensearch/policies/gateway_telemetry_policy.json)
 

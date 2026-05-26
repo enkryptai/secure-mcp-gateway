@@ -5,7 +5,7 @@
   },
   "priority": 1000,
   "_meta": {
-    "description": "SS4O metrics for Secure MCP Gateway. Populated by Data Prepper's otel_metrics processor. Note Data Prepper's actual field naming: attributes live under `metric.attributes.*` (literal dots in key name) and nested dotted OTel attrs become `@`-separated (e.g. otel attr `enkrypt.server.name` -> `metric.attributes.enkrypt@server@name`). `serviceName` is lifted to top level. The dynamic_templates below force keyword mapping on the attribute namespaces so aggregations stay cheap."
+    "description": "SS4O metrics for Secure MCP Gateway. Populated by Data Prepper's otel_metrics processor. Field naming: attributes live under `metric.attributes.*` (literal dots in the key prefix). The gateway temporarily emits identity attributes in snake_case only (e.g. `metric.attributes.server_name`, `metric.attributes.user_email`); when the dual-emission toggle in `log.CANONICAL_ATTR_KEYS` / `SpanAttributes` is re-enabled, nested dotted OTel attrs land as `@`-separated paths too (e.g. OTel attr `enkrypt.server.name` -> field `metric.attributes.enkrypt@server@name`). `serviceName` is lifted to top level. The dynamic_templates below force keyword mapping on the attribute namespaces so aggregations stay cheap."
   },
   "template": {
     "settings": {

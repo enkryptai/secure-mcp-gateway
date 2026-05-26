@@ -26,7 +26,7 @@
               "composite": {
                 "size": 50,
                 "sources": [
-                  { "server": { "terms": { "field": "metric.attributes.enkrypt@server@name" } } }
+                  { "server": { "terms": { "field": "metric.attributes.server_name" } } }
                 ]
               },
               "aggregations": { "sum_value": { "sum": { "field": "value" } } }

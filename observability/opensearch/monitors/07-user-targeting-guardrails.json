@@ -26,7 +26,7 @@
               "composite": {
                 "size": 50,
                 "sources": [
-                  { "user_id": { "terms": { "field": "metric.attributes.enkrypt@user@id" } } }
+                  { "user_id": { "terms": { "field": "metric.attributes.user_id" } } }
                 ]
               },
               "aggregations": { "sum_value": { "sum": { "field": "value" } } }

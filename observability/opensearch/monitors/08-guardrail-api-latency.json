@@ -30,7 +30,7 @@
               "composite": {
                 "size": 50,
                 "sources": [
-                  { "server": { "terms": { "field": "metric.attributes.enkrypt@server@name" } } }
+                  { "server": { "terms": { "field": "metric.attributes.server_name" } } }
                 ]
               },
               "aggregations": { "p95_proxy_max": { "max": { "field": "max" } } }
