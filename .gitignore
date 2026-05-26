@@ -75,3 +75,6 @@ tests/traces/
 
 # ── Docs / manifests ───────────────────────────────────────────────────
 docs/secure-mcp-gateway-manifest.yaml
+# Local-only operator notes; kept on disk but not pushed.
+docs/dev_otelcol_logs_gateway_filter.md
+docs/metric_attributes_key_mismatch.md
