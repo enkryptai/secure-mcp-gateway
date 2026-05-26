@@ -83,7 +83,7 @@ DEFAULT_COMMON_CONFIG = {
         "default_timeout": 30,
         "guardrail_timeout": 15,
         "auth_timeout": 10,
-        "tool_execution_timeout": 60,
+        "tool_execution_timeout": 120,
         "discovery_timeout": 180,
         "cache_timeout": 5,
         "connectivity_timeout": 2,

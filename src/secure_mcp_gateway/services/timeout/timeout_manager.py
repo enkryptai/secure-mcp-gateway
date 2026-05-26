@@ -31,7 +31,14 @@ class TimeoutConfig:
     default_timeout: int = 30
     guardrail_timeout: int = 1
     auth_timeout: int = 10
-    tool_execution_timeout: int = 60
+    # Bumped from 60s -> 120s to survive a single cloud guardrail
+    # ~120s hang (the cloud guardrail provider has been observed to hit
+    # its hard 120s request ceiling intermittently on
+    # ``api.dev.enkryptai.com/guardrails/...``). The wrapper around
+    # ``tool_execution_service.call_tool`` covers input guardrail +
+    # forward + output guardrail end-to-end, so 60s was too tight when
+    # one of the guardrail calls hung. 120s gives ~2x headroom.
+    tool_execution_timeout: int = 120
     # NOTE: ``discovery_timeout`` is enforced *per server* by
     # ``ServerListingService._discover_and_return_servers`` (one
     # ``asyncio.wait_for`` per ``enkrypt_discover_all_tools`` call) rather
@@ -103,7 +110,7 @@ class TimeoutManager:
         self.config.guardrail_timeout = timeout_settings.get("guardrail_timeout", 15)
         self.config.auth_timeout = timeout_settings.get("auth_timeout", 10)
         self.config.tool_execution_timeout = timeout_settings.get(
-            "tool_execution_timeout", 60
+            "tool_execution_timeout", 120
         )
         self.config.discovery_timeout = timeout_settings.get("discovery_timeout", 180)
         self.config.cache_timeout = timeout_settings.get("cache_timeout", 5)
