@@ -5,7 +5,7 @@
   },
   "priority": 1000,
   "_meta": {
-    "description": "SS4O metrics for Secure MCP Gateway. Populated by Data Prepper's otel_metrics processor. Field naming: attributes live under `metric.attributes.*` (literal dots in the key prefix). The gateway temporarily emits identity attributes in snake_case only (e.g. `metric.attributes.server_name`, `metric.attributes.user_email`); when the dual-emission toggle in `log.CANONICAL_ATTR_KEYS` / `SpanAttributes` is re-enabled, nested dotted OTel attrs land as `@`-separated paths too (e.g. OTel attr `enkrypt.server.name` -> field `metric.attributes.enkrypt@server@name`). `serviceName` is lifted to top level. The dynamic_templates below force keyword mapping on the attribute namespaces so aggregations stay cheap."
+    "description": "SS4O metrics for Secure MCP Gateway. Populated by Data Prepper's otel_metrics processor. Schema is locked down with `dynamic: false`: any field not declared below is kept in `_source` but is NOT indexed (won't appear in the OSD field list and isn't searchable). To add a new emitted metric attribute, edit this template and reapply with the bootstrap script in the apiaas repo. Identity attributes (user_id / user_email / project_id / project_name / project_registry / org_id / gateway_name / gateway_version / server_name / tool_name) live under `metric.attributes.*` in snake_case only -- see docs/metric_attributes_key_mismatch.md for the toggle that controls dual emission with the canonical `enkrypt@*` form."
   },
   "template": {
     "settings": {
@@ -13,38 +13,15 @@
       "number_of_replicas": 0,
       "opendistro.index_state_management.policy_id": "gateway_telemetry_policy",
       "plugins.index_state_management.rollover_alias": "ss4o_metrics-gateway",
-      "mapping.total_fields.limit": "5000",
+      "mapping.total_fields.limit": "500",
       "refresh_interval": "5s"
     },
     "aliases": {
       "gateway-metrics": {}
     },
     "mappings": {
-      "dynamic": "true",
+      "dynamic": "false",
       "_source": { "enabled": true },
-      "dynamic_templates": [
-        {
-          "metric_attributes_strings_as_keyword": {
-            "path_match": "metric.attributes.*",
-            "match_mapping_type": "string",
-            "mapping": { "type": "keyword", "ignore_above": 1024 }
-          }
-        },
-        {
-          "resource_attributes_strings_as_keyword": {
-            "path_match": "resource.attributes.*",
-            "match_mapping_type": "string",
-            "mapping": { "type": "keyword", "ignore_above": 1024 }
-          }
-        },
-        {
-          "instrumentation_scope_strings_as_keyword": {
-            "path_match": "instrumentationScope.*",
-            "match_mapping_type": "string",
-            "mapping": { "type": "keyword", "ignore_above": 256 }
-          }
-        }
-      ],
       "properties": {
         "@timestamp":             { "type": "date" },
         "time":                   { "type": "date_nanos" },
@@ -61,13 +38,15 @@
         "schemaUrl":              { "type": "keyword", "ignore_above": 256 },
         "serviceName":            { "type": "keyword", "ignore_above": 256 },
 
-        "value":     { "type": "double" },
-        "count":     { "type": "long" },
-        "sum":       { "type": "double" },
-        "min":       { "type": "double" },
-        "max":       { "type": "double" },
-        "scale":     { "type": "integer" },
-        "zeroCount": { "type": "long" },
+        "value":               { "type": "double" },
+        "count":               { "type": "long" },
+        "sum":                 { "type": "double" },
+        "min":                 { "type": "double" },
+        "max":                 { "type": "double" },
+        "bucketCounts":        { "type": "long" },
+        "bucketCountsList":    { "type": "long" },
+        "explicitBounds":      { "type": "double" },
+        "explicitBoundsCount": { "type": "integer" },
 
         "buckets": {
           "type": "nested",
@@ -79,29 +58,6 @@
             "upperBound": { "type": "double" }
           }
         },
-        "positiveBuckets": {
-          "type": "nested",
-          "properties": {
-            "count": { "type": "long" },
-            "max":   { "type": "double" },
-            "min":   { "type": "double" }
-          }
-        },
-        "negativeBuckets": {
-          "type": "nested",
-          "properties": {
-            "count": { "type": "long" },
-            "max":   { "type": "double" },
-            "min":   { "type": "double" }
-          }
-        },
-        "quantileValues": {
-          "type": "nested",
-          "properties": {
-            "value":    { "type": "double" },
-            "quantile": { "type": "double" }
-          }
-        },
         "exemplars": {
           "type": "nested",
           "properties": {
@@ -110,7 +66,43 @@
             "spanId":  { "type": "keyword", "ignore_above": 256 },
             "value":   { "type": "double" }
           }
-        }
+        },
+
+        "instrumentationScope.name":    { "type": "keyword", "ignore_above": 256 },
+        "instrumentationScope.version": { "type": "keyword", "ignore_above": 64 },
+
+        "resource.attributes.job":          { "type": "keyword", "ignore_above": 64 },
+        "resource.attributes.service@name": { "type": "keyword", "ignore_above": 256 },
+        "resource.attributes.host@name":    { "type": "keyword", "ignore_above": 256 },
+
+        "metric.attributes.user_id":          { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "metric.attributes.user_email":       { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "metric.attributes.project_id":       { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "metric.attributes.project_name":     { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "metric.attributes.project_registry": { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "metric.attributes.org_id":           { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "metric.attributes.gateway_name":     { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "metric.attributes.gateway_version":  { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "metric.attributes.server_name":      { "type": "keyword", "ignore_above": 256 },
+        "metric.attributes.tool_name":        { "type": "keyword", "ignore_above": 256 },
+
+        "metric.attributes.mcp_config_id":    { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "metric.attributes.custom_id":        { "type": "keyword", "ignore_above": 256 },
+        "metric.attributes.error":            { "type": "keyword", "ignore_above": 1024 },
+
+        "metric.attributes.outcome":        { "type": "keyword", "ignore_above": 32 },
+        "metric.attributes.direction":      { "type": "keyword", "ignore_above": 32 },
+        "metric.attributes.status_code":    { "type": "keyword", "ignore_above": 16 },
+        "metric.attributes.provider":       { "type": "keyword", "ignore_above": 64 },
+        "metric.attributes.check_kind":     { "type": "keyword", "ignore_above": 64 },
+        "metric.attributes.violation_type": { "type": "keyword", "ignore_above": 128 },
+        "metric.attributes.block_reason":   { "type": "keyword", "ignore_above": 128 },
+        "metric.attributes.failure_reason": { "type": "keyword", "ignore_above": 128 },
+        "metric.attributes.cache":          { "type": "keyword", "ignore_above": 16 },
+        "metric.attributes.result":         { "type": "keyword", "ignore_above": 32 },
+
+        "metric.attributes.otel@span@parent@origin":  { "type": "keyword", "ignore_above": 64 },
+        "metric.attributes.otel@span@sampling_result": { "type": "keyword", "ignore_above": 64 }
       }
     }
   }

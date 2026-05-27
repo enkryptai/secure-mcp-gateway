@@ -5,7 +5,7 @@
   },
   "priority": 1000,
   "_meta": {
-    "description": "SS4O traces for Secure MCP Gateway. Populated by Data Prepper's otel_traces processor. Note: attributes land under `span.attributes.*` (with `@` separator for nested keys). Service-map data goes to a separate index (otel-v1-apm-service-map-*) managed by Data Prepper's service_map processor's built-in template."
+    "description": "SS4O traces for Secure MCP Gateway. Populated by Data Prepper's otel_traces processor. Service-map data goes to a separate index (otel-v1-apm-service-map-*) managed by Data Prepper's service_map processor's built-in template. Schema is locked down with `dynamic: false`: any field not declared below is kept in `_source` but is NOT indexed (won't appear in OSD field list and isn't searchable). To add a new span attribute, edit this template and reapply with the bootstrap script in the apiaas repo. Identity attributes (user_id / user_email / project_id / project_name / project_registry / org_id / gateway_name / gateway_version / server_name / tool_name) live under `span.attributes.*` in snake_case only -- diagnostic operational attributes (auth.*, cache.*, guardrail.*, tool.*) are still in the dotted `enkrypt@*` form because they aren't covered by the identity-only snake_case toggle in conventions.py. See docs/metric_attributes_key_mismatch.md and docs/opensearch_query_guide.md."
   },
   "template": {
     "settings": {
@@ -13,38 +13,15 @@
       "number_of_replicas": 0,
       "opendistro.index_state_management.policy_id": "gateway_telemetry_policy",
       "plugins.index_state_management.rollover_alias": "ss4o_traces-gateway",
-      "mapping.total_fields.limit": "5000",
+      "mapping.total_fields.limit": "500",
       "refresh_interval": "5s"
     },
     "aliases": {
       "gateway-traces": {}
     },
     "mappings": {
-      "dynamic": "true",
+      "dynamic": "false",
       "_source": { "enabled": true },
-      "dynamic_templates": [
-        {
-          "span_attributes_strings_as_keyword": {
-            "path_match": "span.attributes.*",
-            "match_mapping_type": "string",
-            "mapping": { "type": "keyword", "ignore_above": 1024 }
-          }
-        },
-        {
-          "resource_attributes_strings_as_keyword": {
-            "path_match": "resource.attributes.*",
-            "match_mapping_type": "string",
-            "mapping": { "type": "keyword", "ignore_above": 1024 }
-          }
-        },
-        {
-          "instrumentation_scope_strings_as_keyword": {
-            "path_match": "instrumentationScope.*",
-            "match_mapping_type": "string",
-            "mapping": { "type": "keyword", "ignore_above": 256 }
-          }
-        }
-      ],
       "properties": {
         "@timestamp":         { "type": "date" },
         "startTime":          { "type": "date_nanos" },
@@ -52,14 +29,14 @@
         "observedTimestamp":  { "type": "date" },
         "durationInNanos":    { "type": "long" },
 
-        "traceId":            { "type": "keyword", "ignore_above": 256 },
-        "spanId":             { "type": "keyword", "ignore_above": 256 },
-        "parentSpanId":       { "type": "keyword", "ignore_above": 256 },
-        "traceState":         { "type": "keyword", "ignore_above": 256 },
-        "name":               { "type": "keyword", "ignore_above": 1024 },
-        "kind":               { "type": "keyword", "ignore_above": 32 },
-        "serviceName":        { "type": "keyword", "ignore_above": 256 },
-        "traceGroup":         { "type": "keyword", "ignore_above": 1024 },
+        "traceId":      { "type": "keyword", "ignore_above": 256 },
+        "spanId":       { "type": "keyword", "ignore_above": 256 },
+        "parentSpanId": { "type": "keyword", "ignore_above": 256 },
+        "traceState":   { "type": "keyword", "ignore_above": 256 },
+        "name":         { "type": "keyword", "ignore_above": 1024 },
+        "kind":         { "type": "keyword", "ignore_above": 32 },
+        "serviceName":  { "type": "keyword", "ignore_above": 256 },
+        "traceGroup":   { "type": "keyword", "ignore_above": 1024 },
         "traceGroupFields": {
           "properties": {
             "endTime":         { "type": "date_nanos" },
@@ -77,20 +54,88 @@
         "events": {
           "type": "nested",
           "properties": {
-            "name":       { "type": "keyword", "ignore_above": 1024 },
-            "time":       { "type": "date_nanos" },
+            "name":                   { "type": "keyword", "ignore_above": 1024 },
+            "time":                   { "type": "date_nanos" },
             "droppedAttributesCount": { "type": "integer" }
           }
         },
         "links": {
           "type": "nested",
           "properties": {
-            "traceId":     { "type": "keyword", "ignore_above": 256 },
-            "spanId":      { "type": "keyword", "ignore_above": 256 },
-            "traceState":  { "type": "keyword", "ignore_above": 256 },
+            "traceId":                { "type": "keyword", "ignore_above": 256 },
+            "spanId":                 { "type": "keyword", "ignore_above": 256 },
+            "traceState":             { "type": "keyword", "ignore_above": 256 },
             "droppedAttributesCount": { "type": "integer" }
           }
-        }
+        },
+
+        "instrumentationScope.name":    { "type": "keyword", "ignore_above": 256 },
+        "instrumentationScope.version": { "type": "keyword", "ignore_above": 64 },
+
+        "resource.attributes.job":          { "type": "keyword", "ignore_above": 64 },
+        "resource.attributes.service@name": { "type": "keyword", "ignore_above": 256 },
+        "resource.attributes.host@name":    { "type": "keyword", "ignore_above": 256 },
+
+        "span.attributes.user_id":          { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "span.attributes.user_email":       { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "span.attributes.project_id":       { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "span.attributes.project_name":     { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "span.attributes.project_registry": { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "span.attributes.org_id":           { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "span.attributes.gateway_name":     { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "span.attributes.gateway_version":  { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "span.attributes.server_name":      { "type": "keyword", "ignore_above": 256 },
+        "span.attributes.tool_name":        { "type": "keyword", "ignore_above": 256 },
+
+        "span.attributes.gateway_id":               { "type": "keyword", "ignore_above": 512 },
+        "span.attributes.processing_server":        { "type": "keyword", "ignore_above": 256 },
+        "span.attributes.discovery_mode":           { "type": "keyword", "ignore_above": 32 },
+        "span.attributes.discover_tools":           { "type": "boolean" },
+        "span.attributes.has_tools":                { "type": "boolean" },
+        "span.attributes.tools_found":              { "type": "boolean" },
+        "span.attributes.tools_discovered":         { "type": "boolean" },
+        "span.attributes.server_found":             { "type": "boolean" },
+        "span.attributes.success":                  { "type": "boolean" },
+        "span.attributes.total_servers":            { "type": "long" },
+        "span.attributes.total_servers_processed":  { "type": "long" },
+        "span.attributes.num_servers":              { "type": "long" },
+        "span.attributes.servers_needing_discovery": { "type": "long" },
+        "span.attributes.duration":                 { "type": "double" },
+        "span.attributes.cache_write_success":      { "type": "boolean" },
+        "span.attributes.cache_hit":                { "type": "boolean" },
+        "span.attributes.auth_result":              { "type": "keyword", "ignore_above": 64 },
+        "span.attributes.cache_type":               { "type": "keyword", "ignore_above": 64 },
+        "span.attributes.id":                       { "type": "keyword", "ignore_above": 512 },
+        "span.attributes.error":                    { "type": "keyword", "ignore_above": 1024 },
+        "span.attributes.error_message":            { "type": "keyword", "ignore_above": 1024 },
+
+        "span.attributes.enkrypt@auth@is_authenticated":          { "type": "boolean" },
+        "span.attributes.enkrypt@auth@required_new_auth":         { "type": "boolean" },
+        "span.attributes.enkrypt@auth@result":                    { "type": "keyword", "ignore_above": 64 },
+        "span.attributes.enkrypt@cache@hit":                      { "type": "boolean" },
+        "span.attributes.enkrypt@cache@has_tools":                { "type": "boolean" },
+        "span.attributes.enkrypt@config@id":                      { "type": "keyword", "ignore_above": 256 },
+        "span.attributes.enkrypt@correlation@id":                 { "type": "keyword", "ignore_above": 256 },
+        "span.attributes.enkrypt@custom@id":                      { "type": "keyword", "ignore_above": 256 },
+        "span.attributes.enkrypt@env":                            { "type": "keyword", "ignore_above": 32 },
+        "span.attributes.enkrypt@error@message":                  { "type": "keyword", "ignore_above": 1024 },
+        "span.attributes.enkrypt@gateway@key":                    { "type": "keyword", "ignore_above": 64 },
+        "span.attributes.enkrypt@guardrail@adherence_enabled":    { "type": "boolean" },
+        "span.attributes.enkrypt@guardrail@async":                { "type": "boolean" },
+        "span.attributes.enkrypt@guardrail@hallucination_enabled": { "type": "boolean" },
+        "span.attributes.enkrypt@guardrail@input_enabled":        { "type": "boolean" },
+        "span.attributes.enkrypt@guardrail@output_enabled":       { "type": "boolean" },
+        "span.attributes.enkrypt@guardrail@pii_redaction_enabled": { "type": "boolean" },
+        "span.attributes.enkrypt@guardrail@relevancy_enabled":    { "type": "boolean" },
+        "span.attributes.enkrypt@job":                            { "type": "keyword", "ignore_above": 32 },
+        "span.attributes.enkrypt@request@id":                     { "type": "keyword", "ignore_above": 256 },
+        "span.attributes.enkrypt@session@key":                    { "type": "keyword", "ignore_above": 512 },
+        "span.attributes.enkrypt@source@product":                 { "type": "keyword", "ignore_above": 64 },
+        "span.attributes.enkrypt@source@event":                   { "type": "keyword", "ignore_above": 128 },
+        "span.attributes.enkrypt@success":                        { "type": "boolean" },
+        "span.attributes.enkrypt@tool@call_index":                { "type": "long" },
+        "span.attributes.enkrypt@tool@found":                     { "type": "boolean" },
+        "span.attributes.enkrypt@tool@num_calls":                 { "type": "long" }
       }
     }
   }

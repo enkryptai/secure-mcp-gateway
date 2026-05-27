@@ -1,8 +1,0 @@
-{
-  "list_all_servers": {
-    "raw": "Error executing tool enkrypt_list_all_servers: Missing X-Enkrypt-MCP-Gateway header and no gateway_name in auth.config \u2014 cannot fetch gateway config without a gateway name. Set auth.config.gateway_name in the gateway config, or have the MCP client send the X-Enkrypt-MCP-Gateway header."
-  },
-  "get_server_info": {
-    "raw": "Error executing tool enkrypt_get_server_info: Missing X-Enkrypt-MCP-Gateway header and no gateway_name in auth.config \u2014 cannot fetch gateway config without a gateway name. Set auth.config.gateway_name in the gateway config, or have the MCP client send the X-Enkrypt-MCP-Gateway header."
-  }
-}

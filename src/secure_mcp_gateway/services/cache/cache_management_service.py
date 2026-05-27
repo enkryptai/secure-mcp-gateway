@@ -110,8 +110,16 @@ class CacheManagementService:
                 custom_id = generate_custom_id()
 
                 # Set main span attributes
-                main_span.set_attribute("request_id", ctx.request_id)
-                main_span.set_attribute("custom_id", custom_id)
+                # request_id / custom_id were previously emitted as snake_case
+                # alongside the dotted SpanAttributes.* forms set elsewhere on
+                # the same span. Use the canonical constants only.
+                main_span.set_attribute(SpanAttributes.REQUEST_ID, ctx.request_id)
+                main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
+                # ``id`` here is the cache-context gateway-config ID
+                # (gateway_key + project_id + user_id + mcp_config_id), not a
+                # standard SpanAttribute. Keep as snake_case for cache
+                # debugging; gets dropped under dynamic:false unless added to
+                # the trace template.
                 main_span.set_attribute("id", id or "not_provided")
                 main_span.set_attribute("server_name", server_name or "not_provided")
                 main_span.set_attribute("cache_type", cache_type or "not_provided")

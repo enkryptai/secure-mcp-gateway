@@ -282,9 +282,14 @@ class ServerListingService:
         compatibility while dashboards migrated; they're now removed
         because every consumer queries the dotted form.
         """
-        span.set_attribute("job", "enkrypt")
-        span.set_attribute("env", "dev")
-        span.set_attribute("custom_id", custom_id)
+        # job / env / custom_id were emitted twice (here as snake_case and
+        # again via SpanAttributes.JOB / .ENV / .CUSTOM_ID which write the
+        # dotted ``enkrypt.*`` form). Dropped the snake_case duplicates --
+        # ``span.attributes.enkrypt@job`` / ``@env`` / ``@custom@id`` remain
+        # the only forms emitted, matching every other span in the codebase.
+        span.set_attribute(SpanAttributes.JOB, "enkrypt")
+        span.set_attribute(SpanAttributes.ENV, "dev")
+        span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
         span.set_attribute("discover_tools", discover_tools)
         span.set_attribute(SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key))
         set_span_attr_with_legacy(span, SpanAttributes.USER_EMAIL, enkrypt_email)
