@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import uuid
 from pathlib import Path
+from _common import DASHBOARDS_DIR
 from typing import Any
 
 # -------------------------------------------------------------------------
@@ -430,7 +431,7 @@ PANELS: list[tuple[dict, str]] = [
 
 def main() -> None:
     # Always write next to this script so the path works regardless of cwd.
-    out_path = Path(__file__).resolve().parent / "gateway-overview-dashboard.ndjson"
+    out_path = DASHBOARDS_DIR / "gateway-overview-dashboard.ndjson"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     viz_objects: list[dict] = []

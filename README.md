@@ -56,7 +56,7 @@ When your MCP client connects to the Gateway, it acts as an MCP server. When the
 
 Below are the list of features Enkrypt AI Secure MCP Gateway provides:
 
-1. **Authentication**: We use Unique Key to authenticate with the Gateway. We also use Enkrypt API Key if you want to protect your MCPs with Enkrypt Guardrails. Additionally, a secure `admin_apikey` (256-character random string) is automatically generated at the **root** of the config for administrative REST API operations. (When `plugins.auth.provider` is `enkrypt`, `admin_apikey` is **optional** — the Enkrypt cloud `api_key` doubles as the admin credential.)
+1. **Authentication**: We use Unique Key to authenticate with the Gateway. We also use Enkrypt API Key if you want to protect your MCPs with Enkrypt Guardrails. Additionally, a secure `admin_apikey` (256-character random string) is automatically generated at the **root** of the config for administrative REST API operations. (When `plugins.auth.provider` is `enkrypt`, `admin_apikey` is **optional** — the Enkrypt cloud `api_key` doubles as the admin credential for most REST endpoints. The cache-flush endpoint specifically uses a stricter org-id-gated policy under cloud auth — see [Hot-Reload Auth Policy](#cache-flush-authorization-policy).)
 
 2. **Ease of use**: You can configure all your MCP servers either locally in `enkrypt_mcp_config.json` or — better yet for teams and production — in **Enkrypt cloud** (run `secure-mcp-gateway generate-config --provider enkrypt`). The cloud owns the server list, guardrail policies, and `common_overrides`, and the gateway pulls them at request time with a 5-minute TTL.
 
@@ -797,7 +797,7 @@ INFO: Before starting the gateway, edit the file and set:
 **What's intentionally NOT here (cloud owns these):**
 
 - No `mcp_configs` / `projects` / `users` / `apikeys` blocks — the gateway resolves them from Enkrypt cloud via `/mcp-gateway/get-gateway-config` on every authenticated request.
-- No root-level `admin_apikey` — the cloud `enkrypt_config.api_key` doubles as the admin credential for the local REST API (see [Admin API Key Authentication](#admin-api-key-authentication)). If you want a separate admin secret, add `"admin_apikey": "<256-char-key>"` at the root.
+- No root-level `admin_apikey` — the cloud `enkrypt_config.api_key` doubles as the admin credential for most REST endpoints (see [Admin API Key Authentication](#admin-api-key-authentication)). The cache-flush endpoint specifically requires `enkrypt_config.org_id` to be set and validates incoming apikeys against `GET /consumer-info.org_id` — see [Cache-flush authorization policy](#cache-flush-authorization-policy). If you want a separate admin secret for non-flush endpoints, add `"admin_apikey": "<256-char-key>"` at the root.
 - No legacy `enkrypt_use_remote_mcp_config` / `enkrypt_remote_mcp_gateway_*` flags — those only drive the deprecated `local_apikey` remote-fetch fallback. The `enkrypt` provider has its own cleaner cloud-config flow in `EnkryptAuthProvider`.
 
 **Two operator-must-edit values before first boot:**
@@ -1810,7 +1810,7 @@ Run the appropriate `--provider enkrypt` command from the **"Verbose Docker run 
 **What's intentionally NOT here** (see [§4.1.3 cloud-variant block](#413-example-of-the-generated-config-file) for the full rationale):
 
 - No `mcp_configs` / `projects` / `users` / `apikeys` — the cloud owns those and the gateway resolves them per-request via `/mcp-gateway/get-gateway-config`.
-- No root-level `admin_apikey` — `enkrypt_config.api_key` doubles as the admin credential.
+- No root-level `admin_apikey` — `enkrypt_config.api_key` doubles as the admin credential for most REST endpoints. Cache-flush requires `enkrypt_config.org_id` to be set (cloud-org-gated; see [Cache-flush authorization policy](#cache-flush-authorization-policy)).
 - No verbose `common_mcp_gateway_config` block (cache hosts/ports, async guardrails, timeout_settings, etc.) — the cloud variant ships a deliberately minimal common block; the two values you see (`enkrypt_log_level`, `enkrypt_gateway_cache_expiration_minutes`) are the only ones operators commonly tweak. Add any other `common_mcp_gateway_config` keys by hand if you need them.
 
 **Two operator-must-edit values before first boot:**
@@ -2925,17 +2925,23 @@ The flush endpoint is mounted on **both** processes — the REST admin API (port
 ```bash
 # 1. Refresh the REST admin API process
 curl -X POST http://localhost:8001/api/v1/cache/flush-gateway-config \
-  -H "apikey: <admin_apikey>" \
+  -H "apikey: <flush_apikey>" \
   -H "Content-Type: application/json" \
   -d '{"include_tool_cache": false}'
 
 # 2. Refresh the MCP gateway process (same payload, same auth)
 curl -X POST http://localhost:8000/api/v1/cache/flush-gateway-config \
-  -H "apikey: <admin_apikey>" \
+  -H "apikey: <flush_apikey>" \
   -H "Content-Type: application/json" \
   -d '{"include_tool_cache": false}'
 
-# Returns on each: {"status":"ok","summary":{"auth_reloaded":true, ...}}
+# Returns on each:
+# {
+#   "status": "ok",
+#   "summary": { "auth_reloaded": true, "guardrails_reloaded": true, ... },
+#   "authorized_via": "org_match" | "static_admin_key",
+#   "principal": "alice@example.com" | null
+# }
 ```
 
 **What this clears (per process):**
@@ -2951,12 +2957,55 @@ The flush endpoint also accepts `"include_tool_cache": true` to additionally dro
 **Inspecting the last flush:**
 
 ```bash
-curl -H "apikey: <admin_apikey>" http://localhost:8000/api/v1/cache/last-reload
-curl -H "apikey: <admin_apikey>" http://localhost:8001/api/v1/cache/last-reload
+curl -H "apikey: <flush_apikey>" http://localhost:8000/api/v1/cache/last-reload
+curl -H "apikey: <flush_apikey>" http://localhost:8001/api/v1/cache/last-reload
 # Returns: {"last_reload_ts": <epoch>, "last_reload_summary": {...}}
 ```
 
-**Auth note:** the `apikey` header accepts, in order: root `admin_apikey` → `enkrypt_config.admin_apikey` → `enkrypt_config.api_key` (only when `plugins.auth.provider == "enkrypt"`). See `auth_policy.resolve_admin_keys` for the exact policy.
+#### Cache-flush authorization policy
+
+The `apikey` header is validated by `auth_policy.authorize_apikey_for_cache_flush`, which has two completely different paths depending on which auth provider is active. The policy is intentionally **strict under `plugins.auth.provider == "enkrypt"`**: every flush rounds-trips Enkrypt cloud's `/consumer-info` so the request's principal (email) is recorded and the cloud's `org_id` is verified against the gateway's configured `org_id`.
+
+| Provider | Accepted apikey | What gets recorded as `principal` |
+|---|---|---|
+| `plugins.auth.provider == "enkrypt"` | **Any** cloud apikey whose `/consumer-info.org_id` matches `enkrypt_config.org_id` in the gateway config. No static break-glass — root `admin_apikey` is **NOT** accepted under cloud auth. | The cloud user's `email` (or `user_id` if email is missing). |
+| `plugins.auth.provider == "local_apikey"` (and other non-enkrypt providers) | Root `admin_apikey`, or the deprecated `enkrypt_config.admin_apikey`. No cloud roundtrip. | `null` (static-admin path doesn't carry identity). |
+
+Response field `authorized_via` tells you which path matched: `"org_match"` (cloud) or `"static_admin_key"` (local).
+
+**Required config under provider=enkrypt:**
+
+```jsonc
+{
+  "enkrypt_config": {
+    "api_key": "<your operator cloud apikey>",
+    "base_url": "https://api.enkryptai.com",
+    "org_id":   "<your Enkrypt org_id — see GET /consumer-info.org_id>"
+  },
+  "plugins": { "auth": { "provider": "enkrypt", "config": {} } }
+}
+```
+
+`enkrypt_config.org_id` is **mandatory** for cache flush to work under cloud auth — without it every flush request returns `500 no_org_gating_configured`. The placeholder `"YOUR_ENKRYPT_ORG_ID"` (which `secure-mcp-gateway generate-config --provider enkrypt` emits) is also treated as not-configured.
+
+**Failure-mode reference:**
+
+| HTTP | `reason` | When |
+|---|---|---|
+| 200 | `ok_org_match` / `ok_static_admin_key` | flush succeeded; check `authorized_via` to know which path |
+| 401 | `missing_apikey` | no `apikey` header |
+| 401 | `invalid_apikey` | local-provider apikey didn't match `admin_apikey` / cloud `/consumer-info` rejected the apikey |
+| 403 | `org_mismatch` | cloud apikey is valid but belongs to a different org than `enkrypt_config.org_id` |
+| 409 | (no `reason`) | another reload is already in progress |
+| 500 | `no_admin_configured` | local provider, no `admin_apikey` set |
+| 500 | `no_org_gating_configured` | enkrypt provider, `enkrypt_config.org_id` missing or still the placeholder |
+| 502 | `cloud_unavailable` | cloud `/consumer-info` timed out or returned 5xx |
+
+**Operator implications:**
+
+- Under `provider=enkrypt`, the operator's own `enkrypt_config.api_key` still works because it survives `/consumer-info` and its `org_id` matches by construction — but the request goes through the cloud (cached 5 min after first hit per apikey).
+- The Enkrypt cloud must be reachable to flush under `provider=enkrypt`. If you need an emergency local flush during a cloud outage, temporarily switch `plugins.auth.provider` to `local_apikey` (file-watcher applies the change in ~2 s; the next flush then accepts `admin_apikey`).
+- Every successful flush leaves a structured log line: `[gateway_cache_routes] cache flushed via=<org_match|static_admin_key> principal=<email|null> include_tool_cache=<bool>` — searchable in OpenSearch via `log.attributes.principal` / `log.attributes.via`.
 
 **Relevant config keys:**
 
