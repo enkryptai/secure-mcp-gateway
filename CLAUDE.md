@@ -327,13 +327,13 @@ get_id_from_key(cache_client, gateway_key)
     "enkrypt_async_input_guardrails_enabled": false,
     "enkrypt_async_output_guardrails_enabled": false,
     "timeout_settings": {
-      "default_timeout": 30,
-      "guardrail_timeout": 15,
-      "auth_timeout": 10,
-      "tool_execution_timeout": 60,
-      "discovery_timeout": 180,
-      "cache_timeout": 5,
-      "connectivity_timeout": 2,
+      "default_timeout": 90,
+      "guardrail_timeout": 390,
+      "auth_timeout": 30,
+      "tool_execution_timeout": 360,
+      "discovery_timeout": 540,
+      "cache_timeout": 15,
+      "connectivity_timeout": 6,
       "escalation_policies": {
         "warn_threshold": 0.8,
         "timeout_threshold": 1.0,
@@ -636,20 +636,20 @@ class TimeoutManager:
 
 ```
 
-**Timeout Types**:
-- `default_timeout`: 30s
+**Timeout Types** (defaults — tripled from earlier baselines to absorb intermittent Enkrypt-cloud guardrail-API hangs; override per deployment in `timeout_settings`):
+- `default_timeout`: 90s
 
-- `guardrail_timeout`: 15s
+- `guardrail_timeout`: 390s (single Enkrypt cloud `/guardrails/*` call; observed up to 180s+ on identical 84-byte payloads in dev, so 390s gives ~2x safety over the worst observed hang)
 
-- `auth_timeout`: 10s
+- `auth_timeout`: 30s
 
-- `tool_execution_timeout`: 60s
+- `tool_execution_timeout`: 360s (wraps input-guardrail + forward + output-guardrail end-to-end; must accommodate two back-to-back guardrail calls plus the tool's own work)
 
-- `discovery_timeout`: 180s (per server, applied via `asyncio.wait_for` so one slow server doesn't sink the rest)
+- `discovery_timeout`: 540s (per server, applied via `asyncio.wait_for` so one slow server doesn't sink the rest; sized for description validation + tool-list batch validation + cold `uvx`/`npx` first run)
 
-- `cache_timeout`: 5s
+- `cache_timeout`: 15s
 
-- `connectivity_timeout`: 2s
+- `connectivity_timeout`: 6s
 
 #### **OAuth Services** ([services/oauth/](services/oauth/))
 

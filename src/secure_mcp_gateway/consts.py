@@ -91,15 +91,21 @@ DEFAULT_COMMON_CONFIG = {
         "container_cli": "auto",
         "nova_api_url": "http://localhost:9800",
     },
-    # Timeout Management Configuration
+    # Timeout Management Configuration.
+    # Defaults are sized 3x the historical numbers to absorb intermittent
+    # Enkrypt cloud guardrail-API hangs (observed up to 180s on single
+    # /detect calls in dev) without prematurely tripping DISC_001/DISC_003.
+    # If you operate against a faster, more predictable guardrail backend you
+    # may want to lower these per deployment via `timeout_settings` overrides
+    # in the gateway config.
     "timeout_settings": {
-        "default_timeout": 30,
-        "guardrail_timeout": 130,
-        "auth_timeout": 10,
-        "tool_execution_timeout": 120,
-        "discovery_timeout": 180,
-        "cache_timeout": 5,
-        "connectivity_timeout": 2,
+        "default_timeout": 90,
+        "guardrail_timeout": 390,
+        "auth_timeout": 30,
+        "tool_execution_timeout": 360,
+        "discovery_timeout": 540,
+        "cache_timeout": 15,
+        "connectivity_timeout": 6,
         "escalation_policies": {
             "warn_threshold": 0.8,
             "timeout_threshold": 1.0,

@@ -117,7 +117,7 @@ from secure_mcp_gateway.utils import (
 DEFAULT_BASE_URL = "https://api.enkryptai.com"
 DEFAULT_GATEWAY_VERSION = "v1"
 DEFAULT_CACHE_TTL_SECONDS = ENKRYPT_REMOTE_CONFIG_TTL_SECONDS
-DEFAULT_FETCH_TIMEOUT_SECONDS = 10
+DEFAULT_FETCH_TIMEOUT_SECONDS = 30  # fallback only; normal path reads `auth_timeout` from TimeoutManager. Aligned with auth_timeout=30 default.
 
 # These auth.config keys belonged to the v1 ("local fallback") provider.
 # We hard-fail at boot when they are still set, so configs surface the

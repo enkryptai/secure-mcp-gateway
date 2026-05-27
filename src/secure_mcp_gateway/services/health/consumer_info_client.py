@@ -47,7 +47,7 @@ from secure_mcp_gateway.utils import logger, mask_key
 # Constants
 # ---------------------------------------------------------------------------
 
-CONSUMER_INFO_TIMEOUT_SECONDS = 10
+CONSUMER_INFO_TIMEOUT_SECONDS = 30  # bumped 10s -> 30s to match auth_timeout default (Enkrypt cloud occasionally hangs)
 # Longer TTL than the registry lookup: /consumer-info is mostly static
 # (user / org / project bindings change rarely), and the calling path is
 # inline-mode admin / dev tooling, not customer hot path.

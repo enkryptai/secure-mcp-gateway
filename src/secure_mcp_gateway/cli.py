@@ -380,13 +380,13 @@ def generate_default_config():
             "enkrypt_async_output_guardrails_enabled": False,
             # Timeout Management Configuration
             "timeout_settings": {
-                "default_timeout": 30,
-                "guardrail_timeout": 130,
-                "auth_timeout": 10,
-                "tool_execution_timeout": 120,
-                "discovery_timeout": 180,
-                "cache_timeout": 5,
-                "connectivity_timeout": 2,
+                "default_timeout": 90,
+                "guardrail_timeout": 390,
+                "auth_timeout": 30,
+                "tool_execution_timeout": 360,
+                "discovery_timeout": 540,
+                "cache_timeout": 15,
+                "connectivity_timeout": 6,
                 "escalation_policies": {
                     "warn_threshold": 0.8,
                     "timeout_threshold": 1.0,

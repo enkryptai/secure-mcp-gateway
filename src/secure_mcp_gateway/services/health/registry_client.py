@@ -44,7 +44,7 @@ from secure_mcp_gateway.utils import logger, mask_key
 # ---------------------------------------------------------------------------
 
 DEFAULT_BASE_URL = "https://api.enkryptai.com"
-REGISTRY_LOOKUP_TIMEOUT_SECONDS = 10
+REGISTRY_LOOKUP_TIMEOUT_SECONDS = 30  # bumped 10s -> 30s to match auth_timeout default (Enkrypt cloud occasionally hangs)
 # Short TTL is deliberate: the playground is interactive and registry data
 # can change at any time.  10s is just enough to absorb dashboard double-fires
 # (e.g. React Strict Mode mounting effects twice in dev).
