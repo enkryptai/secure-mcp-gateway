@@ -52,14 +52,43 @@ async def test_nested_admin_key_accepted_for_local_provider():
 
 
 @pytest.mark.asyncio
-async def test_enkrypt_config_api_key_accepted_when_provider_enkrypt():
+async def test_enkrypt_config_api_key_NOT_static_when_provider_enkrypt(monkeypatch):
+    """Strict mode: under provider=enkrypt, even the operator's own
+    `enkrypt_config.api_key` doesn't short-circuit the cloud check.
+    It still works -- because it survives /consumer-info and its org_id
+    matches by construction -- but the request must round-trip the cloud
+    so the principal is recorded.
+    """
+    from secure_mcp_gateway.services.health.consumer_info_client import (
+        ConsumerInfo,
+    )
+
+    async def _fake(*, base_url, apikey):
+        return ConsumerInfo(
+            user_id="op-uuid",
+            org_id="op-org-uuid",
+            email="ops@enkryptai.com",
+        )
+
+    monkeypatch.setattr(
+        "secure_mcp_gateway.services.health.consumer_info_client.fetch_consumer_info",
+        _fake,
+    )
+
     cfg = {
-        "enkrypt_config": {"api_key": "cloud-key"},
+        "enkrypt_config": {
+            "api_key": "cloud-key",
+            "org_id": "op-org-uuid",
+            "base_url": "https://api.dev.example.com",
+        },
         "plugins": {"auth": {"provider": "enkrypt"}},
     }
     r = await authorize_apikey_for_cache_flush(cfg, "cloud-key")
     assert r["authorized"] is True
-    assert r["via"] == "static_admin_key"
+    # Strict mode: even the operator's own key goes through the cloud
+    # so principal is always recorded.
+    assert r["via"] == "org_match"
+    assert r["principal"] == "ops@enkryptai.com"
 
 
 @pytest.mark.asyncio
@@ -188,9 +217,10 @@ async def test_org_mismatch_rejects_403(fake_consumer_info_ok):
 
 
 @pytest.mark.asyncio
-async def test_no_org_id_configured_returns_401(monkeypatch):
-    """When provider=enkrypt but org_id is blank, only static keys work."""
-    # No cloud call should happen, so don't bother stubbing.
+async def test_no_org_id_configured_returns_500_strict():
+    """When provider=enkrypt + org_id missing/placeholder, no flush is
+    possible at all -- strict mode blocks every request with a 500
+    (mis-configuration) rather than letting static keys through."""
     cfg = {
         "enkrypt_config": {
             "api_key": "operator-key",
@@ -202,7 +232,23 @@ async def test_no_org_id_configured_returns_401(monkeypatch):
     r = await authorize_apikey_for_cache_flush(cfg, "some-customer-key")
     assert r["authorized"] is False
     assert r["reason"] == AUTHZ_NO_ORG_CONFIGURED
-    assert r["status_code"] == 401
+    assert r["status_code"] == 500
+
+
+@pytest.mark.asyncio
+async def test_placeholder_org_id_also_returns_500():
+    cfg = {
+        "enkrypt_config": {
+            "api_key": "operator-key",
+            "base_url": "https://api.dev.example.com",
+            "org_id": "YOUR_ENKRYPT_ORG_ID",  # generator placeholder
+        },
+        "plugins": {"auth": {"provider": "enkrypt"}},
+    }
+    r = await authorize_apikey_for_cache_flush(cfg, "any-key")
+    assert r["authorized"] is False
+    assert r["reason"] == AUTHZ_NO_ORG_CONFIGURED
+    assert r["status_code"] == 500
 
 
 @pytest.mark.asyncio
@@ -287,16 +333,20 @@ async def test_cloud_upstream_error_rejects_502(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_static_key_short_circuits_before_cloud_call(monkeypatch):
-    """Static admin key must NOT trigger a cloud roundtrip, even when
-    provider=enkrypt + org_id is set + the key matches a static admin
-    slot. Important for break-glass operability when the cloud is down.
+async def test_static_admin_key_REJECTED_under_enkrypt_provider(monkeypatch):
+    """Strict mode: root-level ``admin_apikey`` must NOT bypass the
+    cloud check when provider=enkrypt. Every flush goes to the cloud
+    so the principal is recorded. (Operators who need break-glass
+    flush access must switch provider back to local_apikey.)
     """
-    cloud_called = {"hit": False}
+    from secure_mcp_gateway.services.health.consumer_info_client import (
+        ConsumerAuthError,
+    )
 
     async def _fake(*, base_url, apikey):
-        cloud_called["hit"] = True
-        raise AssertionError("cloud should not be called when static admin matches")
+        # The static break-glass key is not a real cloud apikey so the
+        # cloud rejects it.
+        raise ConsumerAuthError("not a cloud key")
 
     monkeypatch.setattr(
         "secure_mcp_gateway.services.health.consumer_info_client.fetch_consumer_info",
@@ -312,6 +362,20 @@ async def test_static_key_short_circuits_before_cloud_call(monkeypatch):
         "plugins": {"auth": {"provider": "enkrypt"}},
     }
     r = await authorize_apikey_for_cache_flush(cfg, "break-glass")
+    assert r["authorized"] is False
+    assert r["reason"] == AUTHZ_BAD_KEY
+    assert r["status_code"] == 401
+
+
+@pytest.mark.asyncio
+async def test_static_admin_key_still_works_for_local_provider():
+    """Sanity: the strict policy is gated on provider=enkrypt. Under
+    local_apikey, the static admin key path is preserved (otherwise
+    local installs would have no flush mechanism)."""
+    cfg = {
+        "admin_apikey": "local-admin",
+        "plugins": {"auth": {"provider": "local_apikey"}},
+    }
+    r = await authorize_apikey_for_cache_flush(cfg, "local-admin")
     assert r["authorized"] is True
     assert r["via"] == "static_admin_key"
-    assert cloud_called["hit"] is False

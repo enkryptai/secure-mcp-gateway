@@ -139,23 +139,32 @@ async def authorize_apikey_for_cache_flush(
 ) -> Dict[str, Any]:
     """Authorize an apikey for the cache-flush admin endpoints.
 
-    Two acceptance paths (tried in order):
+    Strict, provider-aware policy:
 
-    1. **Static admin key.** The apikey matches one of the keys returned by
-       :func:`resolve_admin_keys` (root-level ``admin_apikey``, deprecated
-       ``enkrypt_config.admin_apikey``, or under ``provider=enkrypt`` the
-       operator's own ``enkrypt_config.api_key``). Returns immediately
-       without a cloud roundtrip.
+    * **provider == "enkrypt"**: the cloud is the single source of truth.
+      The presented apikey is ALWAYS sent to
+      ``GET {enkrypt_config.base_url}/consumer-info``. Authorization
+      succeeds only when the cloud returns 200 AND
+      ``consumer.org_id == enkrypt_config.org_id``. Static admin keys
+      (including ``enkrypt_config.api_key``, root ``admin_apikey``) are
+      NOT short-circuit accepted -- every flush is traceable to a real
+      cloud user. ``enkrypt_config.api_key`` still works because it
+      survives ``/consumer-info`` and its org_id matches by construction;
+      the difference is that the flush record always carries the cloud
+      ``principal`` (email) of who triggered it.
 
-    2. **Cloud-org match.** When ``plugins.auth.provider == "enkrypt"``
-       AND ``enkrypt_config.org_id`` is configured, we call
-       ``GET {enkrypt_config.base_url}/consumer-info`` with the presented
-       apikey. If the cloud accepts the apikey AND the returned
-       ``org_id`` matches the configured ``org_id``, the request is
-       authorized. This lets ANY cloud user belonging to the gateway's
-       org trigger a flush -- needed because under cloud auth the
-       customer doesn't necessarily hold the gateway operator's static
-       admin key.
+      Consequences:
+
+      - Cloud must be reachable for a flush to succeed.
+      - ``enkrypt_config.org_id`` MUST be configured.
+      - There is no static break-glass path under cloud auth -- flip the
+        provider back to ``local_apikey`` for emergency local admin
+        access.
+
+    * **provider != "enkrypt"** (``local_apikey``, custom, ...): no cloud
+      to consult, so we fall back to the static-admin-key check via
+      :func:`resolve_admin_keys`. Missing admin key configuration ->
+      500; mismatched key -> 401.
 
     Returns a dict with the following shape::
 
@@ -171,8 +180,8 @@ async def authorize_apikey_for_cache_flush(
     translated to ``authorized=False`` with a descriptive ``reason``.
 
     Heavy imports (``aiohttp`` via ``ConsumerInfoClient``) are deferred
-    inside the cloud path so plain static-key admin flushes don't pull
-    in the playground dependency stack at import time.
+    inside the cloud path so the local-provider branch doesn't pull in
+    the playground dependency stack at import time.
     """
     if not apikey:
         return {
@@ -184,23 +193,22 @@ async def authorize_apikey_for_cache_flush(
             "detail": "apikey header required",
         }
 
-    # --- Path 1: static admin keys (cheap, no I/O) --------------------------
-    accepted = resolve_admin_keys(config)
-    if apikey in accepted:
-        return {
-            "authorized": True,
-            "reason": AUTHZ_OK_STATIC,
-            "via": "static_admin_key",
-            "principal": None,
-            "status_code": 200,
-        }
-
-    # --- Path 2: cloud /consumer-info org-id match --------------------------
     provider = (
         (config.get("plugins") or {}).get("auth", {}).get("provider")
         or "local_apikey"
     )
+
+    # --- Non-enkrypt providers: static admin key is the only signal --------
     if provider != "enkrypt":
+        accepted = resolve_admin_keys(config)
+        if apikey in accepted:
+            return {
+                "authorized": True,
+                "reason": AUTHZ_OK_STATIC,
+                "via": "static_admin_key",
+                "principal": None,
+                "status_code": 200,
+            }
         # No static match AND no cloud check available. If admin is
         # *configured* but didn't match, the apikey is just wrong.
         # Otherwise, the gateway isn't admin-configured at all.
@@ -221,26 +229,27 @@ async def authorize_apikey_for_cache_flush(
             "status_code": 500,
             "detail": (
                 "Admin API key not configured on the gateway. Set "
-                "'admin_apikey' (or, for the enkrypt provider, "
-                "'enkrypt_config.api_key') in enkrypt_mcp_config.json."
+                "'admin_apikey' in enkrypt_mcp_config.json."
             ),
         }
 
+    # --- provider == "enkrypt" path -----------------------------------------
+    # Strict: the cloud is the SOLE source of truth. Every flush goes
+    # through /consumer-info so the principal (email) is recorded and
+    # the org_id is verified.
     enkrypt_cfg = config.get("enkrypt_config") or {}
     configured_org_id = (enkrypt_cfg.get("org_id") or "").strip()
     if not configured_org_id or configured_org_id == ENKRYPT_ORG_ID_PLACEHOLDER:
-        # No org gating configured (empty, missing, or still the
-        # generator placeholder). Static-key didn't match either, so
-        # we're done -- but the message should hint at the new feature.
         return {
             "authorized": False,
             "reason": AUTHZ_NO_ORG_CONFIGURED,
             "via": None,
             "principal": None,
-            "status_code": 401,
+            "status_code": 500,
             "detail": (
-                "invalid apikey (and 'enkrypt_config.org_id' is not "
-                "configured -- set it to enable org-id-gated flush)"
+                "'enkrypt_config.org_id' is not configured. Set it to your "
+                "Enkrypt cloud org_id (see /consumer-info.org_id) to enable "
+                "cache-flush authorization."
             ),
         }
 

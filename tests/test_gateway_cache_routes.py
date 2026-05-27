@@ -56,7 +56,15 @@ class _FakeMCP:
 
 @pytest.fixture
 def cfg_path(tmp_path: Path, monkeypatch) -> Path:
-    """Write a minimal config file pointing at an admin-only enkrypt provider."""
+    """Write a minimal config file with a static admin-key flow.
+
+    Uses ``provider=local_apikey`` so the static-admin-key path stays
+    valid: under strict mode (commit ``84e5b83`` and later), the
+    ``provider=enkrypt`` path always rounds-trips Enkrypt cloud's
+    ``/consumer-info`` and refuses to short-circuit on the static key.
+    The enkrypt-strict path is covered separately in
+    :mod:`tests.test_auth_policy_cache_flush`.
+    """
     path = tmp_path / "enkrypt_mcp_config.json"
     cfg: dict[str, Any] = {
         "enkrypt_config": {
@@ -71,7 +79,7 @@ def cfg_path(tmp_path: Path, monkeypatch) -> Path:
             "enkrypt_config_watcher_poll_seconds": 0,
         },
         "plugins": {
-            "auth": {"provider": "enkrypt", "config": {}},
+            "auth": {"provider": "local_apikey", "config": {}},
             "guardrails": {"provider": "enkrypt", "config": {}},
             "telemetry": {"provider": "stdout", "config": {}},
         },
@@ -282,15 +290,19 @@ def test_last_reload_requires_apikey(cfg_path: Path) -> None:
     assert r.status_code == 401
 
 
-def test_enkrypt_provider_accepts_cloud_api_key_as_admin(
+def test_enkrypt_provider_strict_requires_org_id_configured(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """When provider=enkrypt, the cloud api_key alone is enough to authenticate."""
+    """Strict mode: under provider=enkrypt, ``enkrypt_config.org_id`` is
+    MANDATORY. Without it, every flush returns 500 -- even with the
+    operator's own cloud apikey -- because there is no static
+    short-circuit and no org to compare against."""
     path = tmp_path / "enkrypt_mcp_config.json"
     cfg = {
         "enkrypt_config": {
             "api_key": "CLOUD_KEY_AS_ADMIN",
             "base_url": "https://example.invalid",
+            # org_id intentionally absent
         },
         "common_mcp_gateway_config": {},
         "plugins": {"auth": {"provider": "enkrypt", "config": {}}},
@@ -300,7 +312,6 @@ def test_enkrypt_provider_accepts_cloud_api_key_as_admin(
     from secure_mcp_gateway import (
         consts,
         gateway_cache_routes,
-        reload as reload_mod,
         utils,
     )
 
@@ -308,11 +319,6 @@ def test_enkrypt_provider_accepts_cloud_api_key_as_admin(
     monkeypatch.setattr(utils, "CONFIG_PATH", str(path), raising=False)
     monkeypatch.setattr(
         gateway_cache_routes, "CONFIG_PATH", str(path), raising=False
-    )
-    monkeypatch.setattr(
-        reload_mod,
-        "trigger_full_reload",
-        lambda include_tool_cache=False: {"status": "ok"},
     )
     utils.clear_config_cache()
 
@@ -323,5 +329,8 @@ def test_enkrypt_provider_accepts_cloud_api_key_as_admin(
             json={},
             headers={"apikey": "CLOUD_KEY_AS_ADMIN"},
         )
-    assert r.status_code == 200
-    assert r.json()["status"] == "ok"
+    assert r.status_code == 500
+    body = r.json()
+    assert body["status"] == "error"
+    assert body["reason"] == "no_org_gating_configured"
+    assert "org_id" in body["error"].lower()
