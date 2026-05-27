@@ -37,6 +37,19 @@ EXAMPLE_CONFIG_PATH = os.path.join(BASE_DIR, EXAMPLE_CONFIG_NAME)
 DEFAULT_ENKRYPT_CONFIG = {
     "api_key": "YOUR_ENKRYPT_API_KEY",
     "base_url": "https://api.enkryptai.com",
+    # Optional. When set to a real value AND
+    # ``plugins.auth.provider == "enkrypt"``, the cache-flush admin
+    # endpoints (port 8000 + 8001 ``POST /api/v1/cache/flush-gateway-config``)
+    # accept ANY apikey whose cloud ``/consumer-info.org_id`` matches this
+    # value -- not just the static admin keys in ``resolve_admin_keys``.
+    # Lets customers self-serve a flush after editing their Enkrypt cloud
+    # config without needing the gateway operator's admin_apikey.
+    #
+    # Leave as the placeholder ``"YOUR_ENKRYPT_ORG_ID"`` (or unset / empty
+    # string) to keep the legacy "static admin keys only" behaviour --
+    # ``auth_policy.authorize_apikey_for_cache_flush`` treats the
+    # placeholder as not-configured.
+    "org_id": "YOUR_ENKRYPT_ORG_ID",
 }
 
 DEFAULT_COMMON_CONFIG = {

@@ -575,6 +575,7 @@ def generate_enkrypt_cloud_config():
         "enkrypt_config": {
             "api_key": "YOUR_ENKRYPT_API_KEY",
             "base_url": "https://api.enkryptai.com",
+            "org_id": "YOUR_ENKRYPT_ORG_ID",
         },
         "plugins": {
             "auth": {

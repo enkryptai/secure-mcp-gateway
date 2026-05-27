@@ -13,9 +13,12 @@ Endpoints:
     POST /api/v1/cache/flush-gateway-config
     GET  /api/v1/cache/last-reload
 
-Both endpoints require the ``apikey`` header. The acceptable keys come from
-``auth_policy.resolve_admin_keys`` -- identical to the REST admin API -- so
-the same credential works for both surfaces.
+Both endpoints require the ``apikey`` header. Authorization is delegated
+to ``auth_policy.authorize_apikey_for_cache_flush`` so the surface stays
+identical to the REST admin API on port 8001 -- both static admin keys
+and (when provider=enkrypt + ``enkrypt_config.org_id`` is set) any
+cloud apikey whose ``/consumer-info.org_id`` matches the configured
+``org_id`` are accepted.
 
 NOTE: ``FastMCP.custom_route`` deliberately bypasses the MCP protocol's auth
 chain (it's intended for OAuth callbacks / health checks). We re-implement
@@ -30,9 +33,9 @@ from typing import TYPE_CHECKING, Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from secure_mcp_gateway.auth_policy import resolve_admin_keys
+from secure_mcp_gateway.auth_policy import authorize_apikey_for_cache_flush
 from secure_mcp_gateway.consts import CONFIG_PATH, DOCKER_CONFIG_PATH
-from secure_mcp_gateway.utils import is_docker, logger
+from secure_mcp_gateway.utils import is_docker, logger, mask_key
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -42,58 +45,55 @@ def _picked_config_path() -> str:
     return DOCKER_CONFIG_PATH if is_docker() else CONFIG_PATH
 
 
-def _load_acceptable_admin_keys() -> list[str]:
-    """Read fresh admin keys from disk so rotations take effect immediately.
+def _load_config_from_disk() -> dict[str, Any]:
+    """Read the gateway config file fresh so rotations / org_id additions
+    take effect on the next flush attempt without restarting the gateway.
 
-    Returns an empty list on any IO/JSON error -- callers treat that as a
-    fail-closed condition (no key matches -> 401).
+    Returns an empty dict on any IO/JSON error -- the authz helper then
+    decides fail-closed (no admin keys configured -> 500 / 401).
     """
     try:
         with open(_picked_config_path(), encoding="utf-8") as f:
-            cfg = json.load(f)
+            return json.load(f)
     except FileNotFoundError:
         logger.warning(
             "[gateway_cache_routes] config file not found",
             path=_picked_config_path(),
         )
-        return []
+        return {}
     except json.JSONDecodeError as e:
         logger.error(f"[gateway_cache_routes] config JSON invalid: {e}")
-        return []
+        return {}
     except Exception as e:
         logger.error(f"[gateway_cache_routes] config read failed: {e}")
-        return []
-
-    return resolve_admin_keys(cfg)
+        return {}
 
 
-def _auth_admin(request: Request) -> JSONResponse | None:
-    """Return a 401 response if the request lacks a valid admin apikey, else None."""
+async def _auth_admin(request: Request) -> tuple[JSONResponse | None, dict | None]:
+    """Run the provider-aware cache-flush authz check.
+
+    Returns ``(error_response, None)`` on rejection (caller forwards the
+    ``JSONResponse`` to the client) or ``(None, authz_result)`` on
+    success so the handler can log ``via`` / ``principal``.
+    """
     apikey = request.headers.get("apikey")
-    if not apikey:
-        return JSONResponse(
-            {"status": "error", "error": "apikey header required"},
-            status_code=401,
-        )
-    accepted = _load_acceptable_admin_keys()
-    if not accepted:
-        return JSONResponse(
+    cfg = _load_config_from_disk()
+    result = await authorize_apikey_for_cache_flush(cfg, apikey)
+    if result["authorized"]:
+        return None, result
+
+    detail = result.get("detail") or f"cache-flush authorization failed: {result['reason']}"
+    return (
+        JSONResponse(
             {
                 "status": "error",
-                "error": (
-                    "Admin API key not configured on the gateway. "
-                    "Set 'admin_apikey' (or, for the enkrypt provider, "
-                    "'enkrypt_config.api_key') in enkrypt_mcp_config.json."
-                ),
+                "error": detail,
+                "reason": result["reason"],
             },
-            status_code=500,
-        )
-    if apikey not in accepted:
-        return JSONResponse(
-            {"status": "error", "error": "invalid apikey"},
-            status_code=401,
-        )
-    return None
+            status_code=result["status_code"],
+        ),
+        None,
+    )
 
 
 async def _parse_body(request: Request) -> dict[str, Any]:
@@ -108,7 +108,7 @@ async def _parse_body(request: Request) -> dict[str, Any]:
 
 
 async def _flush_handler(request: Request) -> JSONResponse:
-    auth_err = _auth_admin(request)
+    auth_err, authz = await _auth_admin(request)
     if auth_err is not None:
         return auth_err
 
@@ -135,11 +135,26 @@ async def _flush_handler(request: Request) -> JSONResponse:
             status_code=409,
         )
 
-    return JSONResponse({"status": "ok", "summary": summary})
+    apikey = request.headers.get("apikey") or ""
+    logger.info(
+        "[gateway_cache_routes] cache flushed",
+        via=authz["via"],
+        principal=authz.get("principal") or mask_key(apikey),
+        include_tool_cache=include_tool_cache,
+    )
+
+    return JSONResponse(
+        {
+            "status": "ok",
+            "summary": summary,
+            "authorized_via": authz["via"],
+            "principal": authz.get("principal"),
+        }
+    )
 
 
 async def _last_reload_handler(request: Request) -> JSONResponse:
-    auth_err = _auth_admin(request)
+    auth_err, _ = await _auth_admin(request)
     if auth_err is not None:
         return auth_err
 
