@@ -2968,7 +2968,7 @@ The `apikey` header is validated by `auth_policy.authorize_apikey_for_cache_flus
 
 | Provider | Accepted apikey | What gets recorded as `principal` |
 |---|---|---|
-| `plugins.auth.provider == "enkrypt"` | **Any** cloud apikey whose `/consumer-info.org_id` matches `enkrypt_config.org_id` in the gateway config. No static break-glass — root `admin_apikey` is **NOT** accepted under cloud auth. | The cloud user's `email` (or `user_id` if email is missing). |
+| `plugins.auth.provider == "enkrypt"` | **Any** cloud apikey whose `/consumer-info.org_id` matches an entry in `enkrypt_config.org_id` in the gateway config (single string OR list of strings — see below). No static break-glass — root `admin_apikey` is **NOT** accepted under cloud auth. | The cloud user's `email` (or `user_id` if email is missing). |
 | `plugins.auth.provider == "local_apikey"` (and other non-enkrypt providers) | Root `admin_apikey`, or the deprecated `enkrypt_config.admin_apikey`. No cloud roundtrip. | `null` (static-admin path doesn't carry identity). |
 
 Response field `authorized_via` tells you which path matched: `"org_match"` (cloud) or `"static_admin_key"` (local).
@@ -2980,13 +2980,26 @@ Response field `authorized_via` tells you which path matched: `"org_match"` (clo
   "enkrypt_config": {
     "api_key": "<your operator cloud apikey>",
     "base_url": "https://api.enkryptai.com",
+
+    // Single-org gateway: one string.
     "org_id":   "<your Enkrypt org_id — see GET /consumer-info.org_id>"
+
+    // Multi-org gateway: a list of allowed org_ids. Cache flushes
+    // are accepted from any apikey whose /consumer-info.org_id matches
+    // any entry. Useful when one gateway fronts multiple Enkrypt orgs
+    // (e.g. operator + customer org both flushing the same shared
+    // gateway). Blank / placeholder / non-string entries are silently
+    // dropped during normalization; an empty effective list is treated
+    // the same as the field being absent (500 no_org_gating_configured).
+    // "org_id": ["<org-a-uuid>", "<org-b-uuid>"]
   },
   "plugins": { "auth": { "provider": "enkrypt", "config": {} } }
 }
 ```
 
 `enkrypt_config.org_id` is **mandatory** for cache flush to work under cloud auth — without it every flush request returns `500 no_org_gating_configured`. The placeholder `"YOUR_ENKRYPT_ORG_ID"` (which `secure-mcp-gateway generate-config --provider enkrypt` emits) is also treated as not-configured.
+
+`org_id` accepts **either** a single string (the common one-org-per-gateway case) **or** a JSON list of strings (multi-org allow-list — one gateway can authorize flushes from several distinct orgs without having to flip the auth provider). A single-entry list like `["org-uuid-X"]` behaves identically to the bare string form `"org-uuid-X"` (the error message even renders without brackets in that case, so single-org alerting stays unchanged).
 
 **Failure-mode reference:**
 
@@ -2995,7 +3008,7 @@ Response field `authorized_via` tells you which path matched: `"org_match"` (clo
 | 200 | `ok_org_match` / `ok_static_admin_key` | flush succeeded; check `authorized_via` to know which path |
 | 401 | `missing_apikey` | no `apikey` header |
 | 401 | `invalid_apikey` | local-provider apikey didn't match `admin_apikey` / cloud `/consumer-info` rejected the apikey |
-| 403 | `org_mismatch` | cloud apikey is valid but belongs to a different org than `enkrypt_config.org_id` |
+| 403 | `org_mismatch` | cloud apikey is valid but its org_id is not in `enkrypt_config.org_id` (single value or allow-list) |
 | 409 | (no `reason`) | another reload is already in progress |
 | 500 | `no_admin_configured` | local provider, no `admin_apikey` set |
 | 500 | `no_org_gating_configured` | enkrypt provider, `enkrypt_config.org_id` missing or still the placeholder |

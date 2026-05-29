@@ -56,6 +56,54 @@ ENKRYPT_API_KEY_PLACEHOLDER = "YOUR_ENKRYPT_API_KEY"
 ENKRYPT_ORG_ID_PLACEHOLDER = "YOUR_ENKRYPT_ORG_ID"
 
 
+def _normalize_org_ids(raw: Any) -> List[str]:
+    """Coerce ``enkrypt_config.org_id`` into a clean list of UUID strings.
+
+    Accepts either of the two shapes operators may use:
+
+    - **Single string** (legacy / common case)::
+
+          "org_id": "550e8400-e29b-41d4-a716-446655440000"
+
+    - **List of strings** (multi-org gateway, new)::
+
+          "org_id": ["org-a-uuid", "org-b-uuid", "org-c-uuid"]
+
+    In both cases the returned list contains only stripped, non-empty
+    values that aren't equal to ``ENKRYPT_ORG_ID_PLACEHOLDER``. Anything
+    else -- ``None``, empty string, empty list, list of only blanks /
+    placeholders, or a malformed type -- collapses to ``[]`` so the
+    caller can treat "not configured" as a single check.
+
+    Why a helper instead of inline code:
+      - The same normalization is needed by tests + future call sites
+        (e.g. config validators) and the precedence rules (placeholder
+        rejection, type guards) shouldn't drift.
+      - Keeps the authorize function readable: one ``configured_org_ids``
+        list, one ``in`` check, no per-call branching on str vs list.
+    """
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        candidate = raw.strip()
+        if not candidate or candidate == ENKRYPT_ORG_ID_PLACEHOLDER:
+            return []
+        return [candidate]
+    if isinstance(raw, (list, tuple)):
+        out: List[str] = []
+        for item in raw:
+            if not isinstance(item, str):
+                continue
+            candidate = item.strip()
+            if not candidate or candidate == ENKRYPT_ORG_ID_PLACEHOLDER:
+                continue
+            if candidate not in out:
+                out.append(candidate)
+        return out
+    # Any other type (dict, int, bool, ...) is treated as "not configured".
+    return []
+
+
 def resolve_admin_keys(config: Dict[str, Any]) -> List[str]:
     """Return the list of API keys that authenticate the REST admin API.
 
@@ -145,9 +193,12 @@ async def authorize_apikey_for_cache_flush(
       The presented apikey is ALWAYS sent to
       ``GET {enkrypt_config.base_url}/consumer-info``. Authorization
       succeeds only when the cloud returns 200 AND
-      ``consumer.org_id == enkrypt_config.org_id``. Static admin keys
-      (including ``enkrypt_config.api_key``, root ``admin_apikey``) are
-      NOT short-circuit accepted -- every flush is traceable to a real
+      ``consumer.org_id`` matches an entry in ``enkrypt_config.org_id``
+      (the configured value can be a single string OR a list of strings;
+      a list lets one gateway accept flushes from multiple orgs without
+      flipping the provider). Static admin keys (including
+      ``enkrypt_config.api_key``, root ``admin_apikey``) are NOT
+      short-circuit accepted -- every flush is traceable to a real
       cloud user. ``enkrypt_config.api_key`` still works because it
       survives ``/consumer-info`` and its org_id matches by construction;
       the difference is that the flush record always carries the cloud
@@ -156,7 +207,8 @@ async def authorize_apikey_for_cache_flush(
       Consequences:
 
       - Cloud must be reachable for a flush to succeed.
-      - ``enkrypt_config.org_id`` MUST be configured.
+      - ``enkrypt_config.org_id`` MUST be configured (string or non-empty
+        list).
       - There is no static break-glass path under cloud auth -- flip the
         provider back to ``local_apikey`` for emergency local admin
         access.
@@ -236,10 +288,10 @@ async def authorize_apikey_for_cache_flush(
     # --- provider == "enkrypt" path -----------------------------------------
     # Strict: the cloud is the SOLE source of truth. Every flush goes
     # through /consumer-info so the principal (email) is recorded and
-    # the org_id is verified.
+    # the org_id is verified against an allow-list.
     enkrypt_cfg = config.get("enkrypt_config") or {}
-    configured_org_id = (enkrypt_cfg.get("org_id") or "").strip()
-    if not configured_org_id or configured_org_id == ENKRYPT_ORG_ID_PLACEHOLDER:
+    configured_org_ids = _normalize_org_ids(enkrypt_cfg.get("org_id"))
+    if not configured_org_ids:
         return {
             "authorized": False,
             "reason": AUTHZ_NO_ORG_CONFIGURED,
@@ -248,7 +300,10 @@ async def authorize_apikey_for_cache_flush(
             "status_code": 500,
             "detail": (
                 "'enkrypt_config.org_id' is not configured. Set it to your "
-                "Enkrypt cloud org_id (see /consumer-info.org_id) to enable "
+                "Enkrypt cloud org_id -- a single string like "
+                "\"550e8400-...\" or a JSON list of strings like "
+                "[\"org-a-uuid\", \"org-b-uuid\"] to allow flushes from any "
+                "of several orgs (see /consumer-info.org_id) to enable "
                 "cache-flush authorization."
             ),
         }
@@ -325,7 +380,15 @@ async def authorize_apikey_for_cache_flush(
         }
 
     cloud_org_id = (info.org_id or "").strip()
-    if not cloud_org_id or cloud_org_id != configured_org_id:
+    if not cloud_org_id or cloud_org_id not in configured_org_ids:
+        # Format the configured allow-list compactly: single string for the
+        # common one-org case, list literal when several orgs are accepted.
+        # Keeps the error message identical to the pre-list-support shape
+        # when only one org is configured.
+        if len(configured_org_ids) == 1:
+            configured_repr = repr(configured_org_ids[0])
+        else:
+            configured_repr = repr(configured_org_ids)
         return {
             "authorized": False,
             "reason": AUTHZ_ORG_MISMATCH,
@@ -334,7 +397,7 @@ async def authorize_apikey_for_cache_flush(
             "status_code": 403,
             "detail": (
                 f"apikey org_id {cloud_org_id!r} does not match gateway "
-                f"configured org_id {configured_org_id!r}"
+                f"configured org_id {configured_repr}"
             ),
         }
 

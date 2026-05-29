@@ -235,6 +235,163 @@ async def test_no_org_id_configured_returns_500_strict():
     assert r["status_code"] == 500
 
 
+# ---------------------------------------------------------------------------
+# org_id list-mode (multi-org allow-list for one gateway)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_org_match_accepts_when_configured_as_list_with_match(
+    fake_consumer_info_ok,
+):
+    """org_id can be a list; consumer.org_id present in list -> authorized."""
+    cfg = {
+        "enkrypt_config": {
+            "api_key": "operator-key",
+            "base_url": "https://api.dev.example.com",
+            "org_id": ["org-uuid-other-a", "org-uuid-1", "org-uuid-other-b"],
+        },
+        "plugins": {"auth": {"provider": "enkrypt"}},
+    }
+    r = await authorize_apikey_for_cache_flush(cfg, "any-customer-key")
+    assert r["authorized"] is True
+    assert r["reason"] == AUTHZ_OK_ORG_MATCH
+    assert r["via"] == "org_match"
+    assert r["principal"] == "alice@example.com"
+    assert r["status_code"] == 200
+
+
+@pytest.mark.asyncio
+async def test_org_mismatch_rejects_when_list_excludes_cloud_org(
+    fake_consumer_info_ok,
+):
+    """org_id list; consumer.org_id NOT in list -> 403, message shows list."""
+    cfg = {
+        "enkrypt_config": {
+            "api_key": "operator-key",
+            "base_url": "https://api.dev.example.com",
+            "org_id": ["org-uuid-foo", "org-uuid-bar"],  # cloud says "org-uuid-1"
+        },
+        "plugins": {"auth": {"provider": "enkrypt"}},
+    }
+    r = await authorize_apikey_for_cache_flush(cfg, "different-org-key")
+    assert r["authorized"] is False
+    assert r["reason"] == AUTHZ_ORG_MISMATCH
+    assert r["status_code"] == 403
+    assert r["principal"] == "alice@example.com"
+    # Error message should surface the full allow-list so operators know
+    # what was actually configured (not just one entry).
+    assert "['org-uuid-foo', 'org-uuid-bar']" in r["detail"]
+    assert "'org-uuid-1'" in r["detail"]
+
+
+@pytest.mark.asyncio
+async def test_single_item_list_renders_like_string_in_error(monkeypatch):
+    """org_id: ['org-uuid-X'] should produce the same error shape as the
+    legacy string form ``org_id: 'org-uuid-X'`` so single-org operators
+    don't see surprise [...] brackets in alert messages."""
+    from secure_mcp_gateway.services.health.consumer_info_client import (
+        ConsumerInfo,
+    )
+
+    async def _fake(*, base_url, apikey):
+        return ConsumerInfo(
+            user_id="u",
+            org_id="org-uuid-FROM-CLOUD",
+            project_name="p",
+            email="x@y",
+            is_internal_req=False,
+        )
+
+    monkeypatch.setattr(
+        "secure_mcp_gateway.services.health.consumer_info_client.fetch_consumer_info",
+        _fake,
+    )
+    cfg = {
+        "enkrypt_config": {
+            "api_key": "operator-key",
+            "base_url": "https://api.dev.example.com",
+            "org_id": ["org-uuid-EXPECTED"],  # single-entry list
+        },
+        "plugins": {"auth": {"provider": "enkrypt"}},
+    }
+    r = await authorize_apikey_for_cache_flush(cfg, "k")
+    assert r["authorized"] is False
+    assert r["reason"] == AUTHZ_ORG_MISMATCH
+    # Single-entry list collapses to bare-string display (no brackets).
+    assert "'org-uuid-EXPECTED'" in r["detail"]
+    assert "[" not in r["detail"]
+
+
+@pytest.mark.asyncio
+async def test_org_id_list_dedupes_and_strips():
+    """Duplicate / blank / placeholder entries in the list are normalized
+    away. After normalization, an empty effective list collapses to the
+    same 500 'not configured' response as a missing field."""
+    cfg = {
+        "enkrypt_config": {
+            "api_key": "operator-key",
+            "base_url": "https://api.dev.example.com",
+            "org_id": [
+                "  ",  # blank
+                "YOUR_ENKRYPT_ORG_ID",  # placeholder
+                "",  # empty
+                None,  # wrong type, silently dropped
+            ],
+        },
+        "plugins": {"auth": {"provider": "enkrypt"}},
+    }
+    r = await authorize_apikey_for_cache_flush(cfg, "any-key")
+    assert r["authorized"] is False
+    assert r["reason"] == AUTHZ_NO_ORG_CONFIGURED
+    assert r["status_code"] == 500
+
+
+@pytest.mark.asyncio
+async def test_empty_list_org_id_is_not_configured():
+    """``org_id: []`` collapses to NO_ORG_CONFIGURED."""
+    cfg = {
+        "enkrypt_config": {
+            "api_key": "operator-key",
+            "base_url": "https://api.dev.example.com",
+            "org_id": [],
+        },
+        "plugins": {"auth": {"provider": "enkrypt"}},
+    }
+    r = await authorize_apikey_for_cache_flush(cfg, "any-key")
+    assert r["authorized"] is False
+    assert r["reason"] == AUTHZ_NO_ORG_CONFIGURED
+    assert r["status_code"] == 500
+
+
+def test_normalize_org_ids_handles_all_shapes():
+    """Unit test for the normalizer so future call sites stay correct."""
+    from secure_mcp_gateway.auth_policy import _normalize_org_ids
+
+    # String shape
+    assert _normalize_org_ids("org-1") == ["org-1"]
+    assert _normalize_org_ids("  org-1  ") == ["org-1"]
+    assert _normalize_org_ids("") == []
+    assert _normalize_org_ids("   ") == []
+    assert _normalize_org_ids("YOUR_ENKRYPT_ORG_ID") == []
+    assert _normalize_org_ids(None) == []
+
+    # List shape
+    assert _normalize_org_ids(["a", "b"]) == ["a", "b"]
+    assert _normalize_org_ids(["a", "a", "b"]) == ["a", "b"]  # de-duped
+    assert _normalize_org_ids([" a ", "b "]) == ["a", "b"]  # stripped
+    assert _normalize_org_ids(["", " ", None, 42]) == []  # all invalid -> []
+    assert _normalize_org_ids(["YOUR_ENKRYPT_ORG_ID", "real-org"]) == ["real-org"]
+    assert _normalize_org_ids([]) == []
+
+    # Tuple is also a list-like
+    assert _normalize_org_ids(("a", "b")) == ["a", "b"]
+
+    # Wrong types collapse to []
+    assert _normalize_org_ids(42) == []
+    assert _normalize_org_ids({"org_id": "x"}) == []
+
+
 @pytest.mark.asyncio
 async def test_placeholder_org_id_also_returns_500():
     cfg = {
