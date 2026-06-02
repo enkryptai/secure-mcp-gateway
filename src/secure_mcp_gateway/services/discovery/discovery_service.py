@@ -206,6 +206,21 @@ class DiscoveryService:
                 main_span.record_exception(e)
                 main_span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
 
+                # Tier-1 metric: enkrypt.discovery.server_failures.  Counts
+                # failed tool-discovery attempts per downstream server so
+                # the Discovery dashboard can show which servers are
+                # consistently failing to introspect.
+                try:
+                    from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                        record_discovery_failure,
+                    )
+                    record_discovery_failure(
+                        server_name=server_name,
+                        reason=type(e).__name__,
+                    )
+                except Exception:
+                    pass
+
                 # Use standardized error handling
                 context = ErrorContext(
                     operation="discovery.server_tools_discovery",

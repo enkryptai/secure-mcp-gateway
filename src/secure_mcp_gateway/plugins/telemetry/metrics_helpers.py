@@ -332,10 +332,290 @@ def record_guardrail_api(
     _record(getattr(mgr, "guardrail_api_request_duration", None), duration_ms, attrs)
 
 
+# ---------------------------------------------------------------------------
+# Compliance framework attribution
+# ---------------------------------------------------------------------------
+
+
+def record_compliance_hits(
+    violations: Iterable[Any],
+    direction: str,
+    server_name: str = "",
+    tool_name: str = "",
+    guardrail_name: Optional[str] = None,
+    user_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+) -> None:
+    """Walk each violation's ``metadata.details.compliance_mapping`` and
+    increment :data:`MetricNames.GUARDRAIL_COMPLIANCE_HIT` once per
+    ``(framework, framework_id)`` pair.
+
+    The upstream Enkrypt guardrail provider returns shape::
+
+        violation.metadata = {
+            "policy_type": "injection_attack",
+            "value": 1,
+            "details": {
+                "safe": "0.000075",
+                "attack": "0.999925",
+                "compliance_mapping": {
+                    "owasp_llm_2025": ["LLM01:2025 Prompt Injection"],
+                    "mitre_atlas":    ["AML.T0051", "AML.T0054"],
+                    "nist_ai_rmf":    ["MAP 2.3, MEASURE 2.3 ..."],
+                    "eu_ai_act":      ["Article 15(4) ..."],
+                    "iso_iec_standards": ["ISO/IEC 27001 A.14.2 ..."]
+                }
+            }
+        }
+
+    Each entry becomes a counter increment so the Security Posture dashboard
+    can render per-framework heat-maps without having to re-parse the raw
+    response on the query side.
+
+    No-op when ``violations`` is empty, the provider did not return a
+    ``compliance_mapping``, or telemetry is disabled.
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    counter = getattr(mgr, "guardrail_compliance_hit_counter", None)
+    if counter is None:
+        return
+
+    for v in violations or ():
+        # GuardrailViolation has ``metadata`` (dict) and ``violation_type``
+        # (enum or str).  Use getattr so this works for both attrs-style
+        # objects and plain dicts.
+        metadata = getattr(v, "metadata", None) or (
+            v.get("metadata") if isinstance(v, Mapping) else None
+        )
+        if not metadata:
+            continue
+        details = (metadata.get("details") or {}) if isinstance(metadata, Mapping) else {}
+        mapping = details.get("compliance_mapping") if isinstance(details, Mapping) else None
+        if not isinstance(mapping, Mapping):
+            continue
+        vt = getattr(v, "violation_type", None)
+        if vt is None and isinstance(v, Mapping):
+            vt = v.get("violation_type")
+        vt_str = str(vt).lower() if vt is not None else ""
+
+        for framework, ids in mapping.items():
+            if not isinstance(ids, (list, tuple)):
+                ids = [ids]
+            for fw_id in ids:
+                attrs = {
+                    "framework": str(framework),
+                    "framework_id": str(fw_id),
+                    "direction": direction,
+                    "violation_type": vt_str,
+                    "server_name": server_name,
+                    "tool_name": tool_name,
+                    "guardrail_name": guardrail_name,
+                    "user_id": user_id,
+                    "project_id": project_id,
+                }
+                _add(counter, 1, attrs)
+
+
+# ---------------------------------------------------------------------------
+# Centralised error emission (one increment per MCPGatewayError)
+# ---------------------------------------------------------------------------
+
+
+def record_error_by_code(
+    error_code: Any,
+    severity: Any = None,
+    recovery_strategy: Any = None,
+    component: Optional[str] = None,
+    server_name: Optional[str] = None,
+    tool_name: Optional[str] = None,
+) -> None:
+    """Increment :data:`MetricNames.ERRORS_BY_CODE` with the error's
+    ``ErrorCode``, ``ErrorSeverity`` and ``RecoveryStrategy`` as attributes.
+
+    Powers every widget in the *Error Forensics* dashboard.  Called from
+    :func:`error_handling.ErrorMonitor.track_error` so every error
+    automatically lands here -- no per-call-site instrumentation required.
+
+    All arguments may be enum instances *or* strings; ``str(...)`` is used
+    to coerce.  Empty values are stripped by ``_safe_attrs``.
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+
+    def _stringify(value: Any) -> str:
+        if value is None:
+            return ""
+        v = getattr(value, "value", value)
+        return str(v)
+
+    attrs = {
+        "error_code": _stringify(error_code),
+        "severity": _stringify(severity),
+        "recovery_strategy": _stringify(recovery_strategy),
+        "component": component,
+        "server_name": server_name,
+        "tool_name": tool_name,
+    }
+    _add(getattr(mgr, "errors_by_code_counter", None), 1, attrs)
+
+
+# ---------------------------------------------------------------------------
+# Tool permission denied (server-tool allow/deny policy)
+# ---------------------------------------------------------------------------
+
+
+def record_tool_permission_denied(
+    server_name: str,
+    tool_name: str,
+    reason: str = "deny_list",
+    user_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+) -> None:
+    """Increment :data:`MetricNames.TOOL_PERMISSION_DENIED` when a tool is
+    refused by the per-server allow/deny policy (before the tool even runs).
+
+    ``reason`` is the kind of policy refusal:
+      ``"deny_list"``   -- tool explicitly on the deny list
+      ``"not_in_allow_list"`` -- allow-list is set and tool is not in it
+      ``"server_disabled"``   -- the whole server is administratively off
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    attrs = {
+        "server_name": server_name,
+        "tool_name": tool_name,
+        "reason": reason,
+        "user_id": user_id,
+        "project_id": project_id,
+    }
+    _add(getattr(mgr, "tool_permission_denied_counter", None), 1, attrs)
+
+
+# ---------------------------------------------------------------------------
+# Degradation (fail-open / fail-closed verdicts)
+# ---------------------------------------------------------------------------
+
+
+def record_degradation(
+    mode: str,
+    reason: str,
+    component: str,
+    server_name: Optional[str] = None,
+    tool_name: Optional[str] = None,
+) -> None:
+    """Increment :data:`MetricNames.DEGRADATION_FAIL_OPEN` or
+    :data:`MetricNames.DEGRADATION_FAIL_CLOSED` when a guardrail / downstream
+    error forces the gateway to a degraded verdict.
+
+    Parameters
+    ----------
+    mode : str
+        ``"fail_open"`` -- the call was allowed despite the error
+        ``"fail_closed"`` -- the call was blocked because of the error
+    reason : str
+        Short reason tag, e.g. ``"guardrail_timeout"``,
+        ``"guardrail_api_error"``, ``"upstream_unreachable"``.
+    component : str
+        Which subsystem degraded, e.g. ``"input_guardrail"``,
+        ``"output_guardrail"``, ``"tool_execution"``.
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    counter_attr = (
+        "degradation_fail_open_counter"
+        if mode == "fail_open"
+        else "degradation_fail_closed_counter"
+    )
+    attrs = {
+        "mode": mode,
+        "reason": reason,
+        "component": component,
+        "server_name": server_name,
+        "tool_name": tool_name,
+    }
+    _add(getattr(mgr, counter_attr, None), 1, attrs)
+
+
+# ---------------------------------------------------------------------------
+# MCP client transport errors (HTTP / stdio)
+# ---------------------------------------------------------------------------
+
+
+def record_transport_error(
+    transport: str,
+    error_kind: str,
+    server_name: str = "",
+    tool_name: Optional[str] = None,
+    status_code: Optional[int] = None,
+) -> None:
+    """Increment :data:`MetricNames.TRANSPORT_ERRORS` when the MCP client
+    fails to talk to a downstream server.
+
+    Parameters
+    ----------
+    transport : str
+        ``"http"``, ``"stdio"``, ``"sse"``, ``"streamable_http"``.
+    error_kind : str
+        Short tag, e.g. ``"timeout"``, ``"connect_refused"``,
+        ``"unexpected_eof"``, ``"http_5xx"``, ``"unauthorized"``.
+    status_code : int | None
+        HTTP status code when available (HTTP transports only).
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    attrs = {
+        "transport": transport,
+        "error_kind": error_kind,
+        "server_name": server_name,
+        "tool_name": tool_name,
+        "status_code": str(status_code) if status_code is not None else None,
+    }
+    _add(getattr(mgr, "transport_error_counter", None), 1, attrs)
+
+
+# ---------------------------------------------------------------------------
+# Discovery failures per downstream MCP server
+# ---------------------------------------------------------------------------
+
+
+def record_discovery_failure(
+    server_name: str,
+    reason: str,
+    transport: Optional[str] = None,
+) -> None:
+    """Increment :data:`MetricNames.DISCOVERY_SERVER_FAILURES` when a
+    downstream server's tool discovery fails.
+
+    ``reason`` is a short tag, e.g. ``"timeout"``, ``"connect_refused"``,
+    ``"initialize_failed"``, ``"empty_result"``, ``"transport_error"``.
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    attrs = {
+        "server_name": server_name,
+        "reason": reason,
+        "transport": transport,
+    }
+    _add(getattr(mgr, "discovery_server_failure_counter", None), 1, attrs)
+
+
 __all__ = [
     "record_tool_call_outcome",
     "record_guardrail_violations",
     "record_pii_redaction",
     "record_auth_outcome",
     "record_guardrail_api",
+    "record_compliance_hits",
+    "record_error_by_code",
+    "record_tool_permission_denied",
+    "record_degradation",
+    "record_transport_error",
+    "record_discovery_failure",
 ]

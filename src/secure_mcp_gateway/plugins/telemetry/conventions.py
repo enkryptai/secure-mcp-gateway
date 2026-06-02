@@ -156,6 +156,13 @@ class MetricNames:
     GUARDRAIL_RELEVANCY_BLOCKS = "enkrypt.guardrail.relevancy_blocks"
     GUARDRAIL_ADHERENCE_BLOCKS = "enkrypt.guardrail.adherence_blocks"
     GUARDRAIL_HALLUCINATION_BLOCKS = "enkrypt.guardrail.hallucination_blocks"
+    # Compliance-framework attribution per blocked violation. One increment
+    # per (framework, framework_id) tuple parsed from the upstream
+    # guardrail provider's `compliance_mapping` block (e.g. OWASP LLM01:2025,
+    # MITRE ATLAS AML.T0051, NIST AI RMF MAP 2.3, EU AI Act Article 15(4),
+    # ISO/IEC 27001 A.14.2). Powers the per-framework heatmaps in the
+    # Security Posture dashboard.
+    GUARDRAIL_COMPLIANCE_HIT = "enkrypt.guardrail.compliance_hit"
 
     # Tool metrics
     TOOL_CALLS = "enkrypt.tool.calls"
@@ -164,6 +171,35 @@ class MetricNames:
     TOOL_FAILURES = "enkrypt.tool.failures"
     TOOL_ERRORS = "enkrypt.tool.errors"
     TOOL_BLOCKED = "enkrypt.tool.blocked"
+    # Tools refused at the per-server allow-list / deny-list (server-tool
+    # guardrail). Distinct from TOOL_BLOCKED, which counts guardrail-API
+    # decisions (input/output content); permission_denied counts policy-
+    # level allow/deny decisions before the tool even runs.
+    TOOL_PERMISSION_DENIED = "enkrypt.tool.permission_denied"
+
+    # Errors (centralised). One increment per MCPGatewayError raised,
+    # carrying the ErrorCode enum value + severity + recovery_strategy as
+    # attributes. Powers the Error Forensics dashboard's per-code,
+    # per-severity, per-recovery_strategy widgets.
+    ERRORS_BY_CODE = "enkrypt.errors.by_code"
+
+    # Degradation -- when a guardrail or downstream service errors and the
+    # gateway has to fall back to a fail-open (allow the call) or
+    # fail-closed (block the call) verdict. Powers the SLO and Error
+    # Forensics fail-open/fail-closed widgets and is critical for security
+    # auditing (knowing how often you trusted-by-default vs blocked-by-
+    # default during partial outages).
+    DEGRADATION_FAIL_OPEN = "enkrypt.degradation.fail_open"
+    DEGRADATION_FAIL_CLOSED = "enkrypt.degradation.fail_closed"
+
+    # Transport errors at the MCP-client layer (HTTP / stdio session
+    # failures forwarding to downstream MCP servers).
+    TRANSPORT_ERRORS = "enkrypt.transport.errors"
+
+    # Discovery failures per downstream MCP server (timeout, refused,
+    # malformed initialize response, etc.). Distinct from
+    # DISCOVERY_FOUND (which counts successful discoveries).
+    DISCOVERY_SERVER_FAILURES = "enkrypt.discovery.server_failures"
 
     # Auth metrics
     AUTH_SUCCESS = "enkrypt.auth.success"
@@ -215,12 +251,39 @@ METRIC_DESCRIPTIONS: dict[str, str] = {
     MetricNames.GUARDRAIL_RELEVANCY_BLOCKS: "Relevancy guardrail violations",
     MetricNames.GUARDRAIL_ADHERENCE_BLOCKS: "Adherence guardrail violations",
     MetricNames.GUARDRAIL_HALLUCINATION_BLOCKS: "Hallucination guardrail violations",
+    MetricNames.GUARDRAIL_COMPLIANCE_HIT: (
+        "Compliance framework hits per blocked guardrail call "
+        "(one per framework + framework_id pair)"
+    ),
     MetricNames.TOOL_CALLS: "Total tool executions",
     MetricNames.TOOL_DURATION: "Tool execution duration in seconds",
     MetricNames.TOOL_SUCCESS: "Successful tool executions",
     MetricNames.TOOL_FAILURES: "Failed tool executions",
     MetricNames.TOOL_ERRORS: "Tool execution errors",
     MetricNames.TOOL_BLOCKED: "Tool calls blocked by guardrails",
+    MetricNames.TOOL_PERMISSION_DENIED: (
+        "Tools refused by server-level allow/deny policy "
+        "(server-tool guardrail, evaluated before tool execution)"
+    ),
+    MetricNames.ERRORS_BY_CODE: (
+        "MCPGatewayErrors emitted, broken down by ErrorCode, "
+        "severity, recovery_strategy"
+    ),
+    MetricNames.DEGRADATION_FAIL_OPEN: (
+        "Calls that were allowed after a guardrail/downstream error "
+        "(fail-open verdict)"
+    ),
+    MetricNames.DEGRADATION_FAIL_CLOSED: (
+        "Calls that were blocked after a guardrail/downstream error "
+        "(fail-closed verdict)"
+    ),
+    MetricNames.TRANSPORT_ERRORS: (
+        "MCP client transport failures (HTTP / stdio) when forwarding to "
+        "downstream MCP servers"
+    ),
+    MetricNames.DISCOVERY_SERVER_FAILURES: (
+        "Failed tool discovery attempts against downstream MCP servers"
+    ),
     MetricNames.AUTH_SUCCESS: "Successful authentications",
     MetricNames.AUTH_FAILURE: "Failed authentications",
     MetricNames.CACHE_HITS: "Cache hits",

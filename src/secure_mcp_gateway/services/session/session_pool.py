@@ -150,12 +150,45 @@ class PooledSession:
                             if not req.future.done():
                                 req.future.set_result(result)
                         except Exception as exc:
+                            # Tier-1 metric: enkrypt.transport.errors.  A
+                            # mid-flight call_tool failure on a pooled
+                            # session is almost always an MCP transport
+                            # failure (stdio EOF, HTTP RST, sock close)
+                            # because business-logic errors come back via
+                            # the protocol envelope, not as exceptions.
+                            try:
+                                from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                                    record_transport_error,
+                                )
+                                record_transport_error(
+                                    transport="http" if is_url else "stdio",
+                                    error_kind=type(exc).__name__,
+                                    server_name=self.server_name,
+                                    tool_name=req.tool_name,
+                                )
+                            except Exception:
+                                pass
                             if not req.future.done():
                                 req.future.set_exception(exc)
         except Exception as exc:
             logger.error(
                 f"[SessionPool] Worker for {self.server_name} crashed: {exc}"
             )
+            # Tier-1 metric: enkrypt.transport.errors.  The outer except
+            # catches failures from build_server_params / session.initialize
+            # which are *only* transport-layer problems (the wire couldn't
+            # be opened or the MCP handshake never completed).
+            try:
+                from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                    record_transport_error,
+                )
+                record_transport_error(
+                    transport="http" if is_url else "stdio",
+                    error_kind=type(exc).__name__,
+                    server_name=self.server_name,
+                )
+            except Exception:
+                pass
             self._closed = True
             if not self._ready.is_set():
                 self._ready.set()

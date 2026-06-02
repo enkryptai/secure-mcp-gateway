@@ -447,6 +447,47 @@ class OpenTelemetryProvider(TelemetryProvider):
         self.hallucination_violation_counter = self._meter.create_counter(
             M.GUARDRAIL_HALLUCINATION_BLOCKS, description=D[M.GUARDRAIL_HALLUCINATION_BLOCKS], unit="1",
         )
+        # Compliance-framework attribution (per blocked violation, per
+        # (framework, framework_id) pair). Emitted alongside
+        # GUARDRAIL_BLOCKS by record_compliance_hits().
+        self.guardrail_compliance_hit_counter = self._meter.create_counter(
+            M.GUARDRAIL_COMPLIANCE_HIT,
+            description=D[M.GUARDRAIL_COMPLIANCE_HIT],
+            unit="1",
+        )
+        # Per-server allow/deny policy refusals (server-tool guardrail).
+        self.tool_permission_denied_counter = self._meter.create_counter(
+            M.TOOL_PERMISSION_DENIED,
+            description=D[M.TOOL_PERMISSION_DENIED],
+            unit="1",
+        )
+        # Centralised error counter (one increment per MCPGatewayError).
+        self.errors_by_code_counter = self._meter.create_counter(
+            M.ERRORS_BY_CODE, description=D[M.ERRORS_BY_CODE], unit="1",
+        )
+        # Degradation verdicts (fail-open / fail-closed fallbacks).
+        self.degradation_fail_open_counter = self._meter.create_counter(
+            M.DEGRADATION_FAIL_OPEN,
+            description=D[M.DEGRADATION_FAIL_OPEN],
+            unit="1",
+        )
+        self.degradation_fail_closed_counter = self._meter.create_counter(
+            M.DEGRADATION_FAIL_CLOSED,
+            description=D[M.DEGRADATION_FAIL_CLOSED],
+            unit="1",
+        )
+        # MCP client transport errors (HTTP / stdio).
+        self.transport_error_counter = self._meter.create_counter(
+            M.TRANSPORT_ERRORS,
+            description=D[M.TRANSPORT_ERRORS],
+            unit="1",
+        )
+        # Discovery failures per downstream MCP server.
+        self.discovery_server_failure_counter = self._meter.create_counter(
+            M.DISCOVERY_SERVER_FAILURES,
+            description=D[M.DISCOVERY_SERVER_FAILURES],
+            unit="1",
+        )
 
         # Health-check API metrics (REST endpoints under /api/v1/health/mcp/*)
         self.health_request_counter = self._meter.create_counter(
@@ -548,6 +589,13 @@ class OpenTelemetryProvider(TelemetryProvider):
         self.relevancy_violation_counter = NoOpCounter()
         self.adherence_violation_counter = NoOpCounter()
         self.hallucination_violation_counter = NoOpCounter()
+        self.guardrail_compliance_hit_counter = NoOpCounter()
+        self.tool_permission_denied_counter = NoOpCounter()
+        self.errors_by_code_counter = NoOpCounter()
+        self.degradation_fail_open_counter = NoOpCounter()
+        self.degradation_fail_closed_counter = NoOpCounter()
+        self.transport_error_counter = NoOpCounter()
+        self.discovery_server_failure_counter = NoOpCounter()
         self.auth_success_counter = NoOpCounter()
         self.auth_failure_counter = NoOpCounter()
         self.active_sessions_gauge = NoOpCounter()

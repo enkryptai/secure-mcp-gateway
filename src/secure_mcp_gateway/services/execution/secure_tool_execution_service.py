@@ -14,9 +14,12 @@ from secure_mcp_gateway.plugins.guardrails import (
 from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
 from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes, SpanNames
 from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+    record_compliance_hits,
+    record_degradation,
     record_guardrail_violations,
     record_pii_redaction,
     record_tool_call_outcome,
+    record_tool_permission_denied,
 )
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 from secure_mcp_gateway.services.execution.execution_utils import (
@@ -829,6 +832,17 @@ class SecureToolExecutionService:
                             block_reason="deny_list",
                             **auth_context,
                         )
+                        # Tier-1 metric: enkrypt.tool.permission_denied.
+                        # Counts policy-level allow/deny refusals separately
+                        # from guardrail-API blocks so the Tools/Servers
+                        # dashboard's "Permission denied" widget shows the
+                        # admin which server's allow/deny list is active.
+                        record_tool_permission_denied(
+                            server_name=server_name,
+                            tool_name=tool_name,
+                            reason="deny_list",
+                            **auth_context,
+                        )
                         return {
                             "status": "denied",
                             "error": f"Tool '{tool_name}' is denied: {reason}",
@@ -1270,6 +1284,17 @@ class SecureToolExecutionService:
                     context=context,
                 )
                 error_logger.log_error(error)
+                # Tier-1 metric: enkrypt.degradation.fail_closed.  We chose
+                # to raise (block) rather than fall back to "allow", so this
+                # is a fail-closed degradation.  Powers the SLO dashboard's
+                # fail-open / fail-closed split.
+                record_degradation(
+                    mode="fail_closed",
+                    reason="guardrail_validation_failed",
+                    component="input_guardrail",
+                    server_name=server_name,
+                    tool_name=tool_name,
+                )
                 raise error
 
             if not guardrail_response.is_safe:
@@ -1296,6 +1321,17 @@ class SecureToolExecutionService:
                 record_guardrail_violations(
                     "input",
                     violation_types,
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    **auth_context,
+                )
+                # Tier-1 metric: enkrypt.guardrail.compliance_hit.  One
+                # emission per (framework, framework_id) entry in the
+                # upstream provider's compliance_mapping; the Security
+                # Posture dashboard's per-framework breakdowns read this.
+                record_compliance_hits(
+                    guardrail_response.violations,
+                    "input",
                     server_name=server_name,
                     tool_name=tool_name,
                     **auth_context,
@@ -1556,6 +1592,14 @@ class SecureToolExecutionService:
                     tool_name=tool_name,
                     **auth_context,
                 )
+                # Tier-1 metric: enkrypt.guardrail.compliance_hit (output).
+                record_compliance_hits(
+                    guardrail_response.violations,
+                    "output",
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    **auth_context,
+                )
                 return self._build_blocked_result(
                     "blocked_output",
                     f"Request blocked due to output guardrail violations: {', '.join(violation_types)}",
@@ -1693,6 +1737,14 @@ class SecureToolExecutionService:
                 record_guardrail_violations(
                     "output",
                     violation_types,
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    **auth_context,
+                )
+                # Tier-1 metric: enkrypt.guardrail.compliance_hit (output).
+                record_compliance_hits(
+                    guardrail_response.violations,
+                    "output",
                     server_name=server_name,
                     tool_name=tool_name,
                     **auth_context,

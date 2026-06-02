@@ -57,6 +57,14 @@ class FakeManager:
         "pii_redactions_counter",
         "auth_success_counter",
         "auth_failure_counter",
+        # Tier-1 (PR #41) additions:
+        "guardrail_compliance_hit_counter",
+        "tool_permission_denied_counter",
+        "errors_by_code_counter",
+        "degradation_fail_open_counter",
+        "degradation_fail_closed_counter",
+        "transport_error_counter",
+        "discovery_server_failure_counter",
     )
 
     def __init__(self):
@@ -223,6 +231,12 @@ def test_helpers_are_silent_when_telemetry_unavailable(monkeypatch):
     mh.record_pii_redaction("input", 1)
     mh.record_auth_outcome("p", "success")
     mh.record_guardrail_api("output", 200, 5.0)
+    mh.record_compliance_hits([], "input")
+    mh.record_error_by_code("E001", "high", "fail_closed")
+    mh.record_tool_permission_denied("s", "t")
+    mh.record_degradation("fail_open", "x", "y")
+    mh.record_transport_error("http", "timeout")
+    mh.record_discovery_failure("s", "boom")
 
 
 def test_helpers_swallow_counter_errors(monkeypatch):
@@ -246,6 +260,22 @@ def test_helpers_swallow_counter_errors(monkeypatch):
     mh.record_pii_redaction("input", 1)
     mh.record_auth_outcome("p", "success")
     mh.record_guardrail_api("output", 200, 5.0)
+
+    # Tier-1 helpers must also swallow SDK errors.
+    fake_violation = type(
+        "V",
+        (),
+        {
+            "violation_type": "x",
+            "metadata": {"details": {"compliance_mapping": {"owasp_llm_2025": ["LLM01"]}}},
+        },
+    )()
+    mh.record_compliance_hits([fake_violation], "input")
+    mh.record_error_by_code("E001", "high", "fail_closed")
+    mh.record_tool_permission_denied("s", "t")
+    mh.record_degradation("fail_open", "x", "y")
+    mh.record_transport_error("http", "timeout")
+    mh.record_discovery_failure("s", "boom")
 
 
 def test_drops_none_attributes(fake_manager):
@@ -329,3 +359,160 @@ def test_principal_attrs_omitted_when_empty_string(fake_manager):
     _, attrs = fake_manager.guardrail_violation_counter.calls[0]
     assert "user_id" not in attrs
     assert "project_id" not in attrs
+
+
+# ---------------------------------------------------------------------------
+# Tier-1 additions (PR #41): compliance_hit / errors_by_code /
+# permission_denied / degradation / transport_errors / discovery_failures
+# ---------------------------------------------------------------------------
+
+
+class _StubViolation:
+    """Mimics ``GuardrailViolation`` enough for ``record_compliance_hits``."""
+
+    def __init__(self, violation_type, compliance_mapping):
+        self.violation_type = violation_type
+        self.metadata = {
+            "policy_type": violation_type,
+            "details": {"compliance_mapping": compliance_mapping},
+        }
+
+
+def test_compliance_hits_emits_one_per_framework_id(fake_manager):
+    """Each (framework, framework_id) pair in compliance_mapping should
+    increment the counter once, with framework + framework_id labels."""
+    v = _StubViolation(
+        "injection_attack",
+        {
+            "owasp_llm_2025": ["LLM01:2025 Prompt Injection"],
+            "mitre_atlas": ["AML.T0051", "AML.T0054"],
+        },
+    )
+    mh.record_compliance_hits(
+        [v], "input", server_name="srv", tool_name="tool",
+        user_id="u1", project_id="p1",
+    )
+    calls = fake_manager.guardrail_compliance_hit_counter.calls
+    assert len(calls) == 3  # 1 owasp + 2 mitre
+    frameworks = {attrs["framework"] for _, attrs in calls}
+    framework_ids = {attrs["framework_id"] for _, attrs in calls}
+    assert frameworks == {"owasp_llm_2025", "mitre_atlas"}
+    assert "LLM01:2025 Prompt Injection" in framework_ids
+    assert "AML.T0051" in framework_ids
+    # Standard attrs propagate
+    _, first_attrs = calls[0]
+    assert first_attrs["direction"] == "input"
+    assert first_attrs["violation_type"] == "injection_attack"
+    assert first_attrs["server_name"] == "srv"
+    assert first_attrs["user_id"] == "u1"
+
+
+def test_compliance_hits_handles_string_value_not_list(fake_manager):
+    """Some providers return a bare string instead of a list; we wrap."""
+    v = _StubViolation("policy_violation", {"eu_ai_act": "Article 15(4)"})
+    mh.record_compliance_hits([v], "output")
+    assert len(fake_manager.guardrail_compliance_hit_counter.calls) == 1
+
+
+def test_compliance_hits_is_noop_without_mapping(fake_manager):
+    v = _StubViolation("policy_violation", None)
+    v.metadata["details"].pop("compliance_mapping", None)
+    mh.record_compliance_hits([v], "input")
+    assert fake_manager.guardrail_compliance_hit_counter.calls == []
+
+
+def test_compliance_hits_is_noop_on_empty_input(fake_manager):
+    mh.record_compliance_hits([], "input")
+    mh.record_compliance_hits(None, "input")
+    assert fake_manager.guardrail_compliance_hit_counter.calls == []
+
+
+def test_compliance_hits_works_with_dict_violations(fake_manager):
+    """The helper must also handle violations that come as plain dicts
+    (e.g. when replayed from a cached upstream response)."""
+    v = {
+        "violation_type": "injection_attack",
+        "metadata": {
+            "details": {"compliance_mapping": {"owasp_llm_2025": ["LLM01"]}}
+        },
+    }
+    mh.record_compliance_hits([v], "input")
+    assert len(fake_manager.guardrail_compliance_hit_counter.calls) == 1
+
+
+def test_error_by_code_stringifies_enum_like_values(fake_manager):
+    """ErrorCode / ErrorSeverity / RecoveryStrategy may be passed as enums
+    or strings; helper must produce string label values either way."""
+
+    class _EnumLike:
+        def __init__(self, v):
+            self.value = v
+
+    mh.record_error_by_code(
+        error_code=_EnumLike("DISC_003"),
+        severity=_EnumLike("high"),
+        recovery_strategy=_EnumLike("fail_closed"),
+        component="discovery",
+        server_name="deepwiki",
+    )
+    assert len(fake_manager.errors_by_code_counter.calls) == 1
+    _, attrs = fake_manager.errors_by_code_counter.calls[0]
+    assert attrs["error_code"] == "DISC_003"
+    assert attrs["severity"] == "high"
+    assert attrs["recovery_strategy"] == "fail_closed"
+    assert attrs["component"] == "discovery"
+    assert attrs["server_name"] == "deepwiki"
+
+
+def test_tool_permission_denied_carries_reason(fake_manager):
+    mh.record_tool_permission_denied(
+        server_name="github",
+        tool_name="create_or_update_file",
+        reason="deny_list",
+        user_id="u1",
+    )
+    assert len(fake_manager.tool_permission_denied_counter.calls) == 1
+    _, attrs = fake_manager.tool_permission_denied_counter.calls[0]
+    assert attrs["reason"] == "deny_list"
+    assert attrs["server_name"] == "github"
+    assert attrs["user_id"] == "u1"
+
+
+def test_degradation_routes_to_fail_open_vs_fail_closed(fake_manager):
+    mh.record_degradation("fail_open", "guardrail_timeout", "input_guardrail")
+    mh.record_degradation("fail_closed", "guardrail_api_error", "input_guardrail")
+    assert len(fake_manager.degradation_fail_open_counter.calls) == 1
+    assert len(fake_manager.degradation_fail_closed_counter.calls) == 1
+    _, open_attrs = fake_manager.degradation_fail_open_counter.calls[0]
+    assert open_attrs["mode"] == "fail_open"
+    assert open_attrs["reason"] == "guardrail_timeout"
+    assert open_attrs["component"] == "input_guardrail"
+
+
+def test_transport_error_carries_transport_and_kind(fake_manager):
+    mh.record_transport_error(
+        transport="stdio",
+        error_kind="BrokenPipeError",
+        server_name="echo",
+        tool_name="echo",
+    )
+    assert len(fake_manager.transport_error_counter.calls) == 1
+    _, attrs = fake_manager.transport_error_counter.calls[0]
+    assert attrs["transport"] == "stdio"
+    assert attrs["error_kind"] == "BrokenPipeError"
+    assert attrs["server_name"] == "echo"
+
+
+def test_transport_error_serialises_status_code(fake_manager):
+    mh.record_transport_error("http", "http_5xx", "srv", status_code=503)
+    _, attrs = fake_manager.transport_error_counter.calls[0]
+    assert attrs["status_code"] == "503"  # always stringified for label compat
+
+
+def test_discovery_failure_carries_reason(fake_manager):
+    mh.record_discovery_failure("deepwiki", "TimeoutError", transport="http")
+    assert len(fake_manager.discovery_server_failure_counter.calls) == 1
+    _, attrs = fake_manager.discovery_server_failure_counter.calls[0]
+    assert attrs["server_name"] == "deepwiki"
+    assert attrs["reason"] == "TimeoutError"
+    assert attrs["transport"] == "http"
