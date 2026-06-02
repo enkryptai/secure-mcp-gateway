@@ -180,9 +180,36 @@ class SessionPool:
     Sessions that sit idle longer than *ttl_seconds* are reaped automatically.
     """
 
-    def __init__(self, ttl_seconds: float = 300.0, enabled: bool = True) -> None:
+    def __init__(
+        self,
+        ttl_seconds: float = 300.0,
+        enabled: bool = True,
+        *,
+        # Bound how long a poisoned/in-flight session can block new callers.
+        # When a prior request hangs holding _use_lock (typical: its worker's
+        # session.call_tool(...) stalls on a NAT-silently-dropped TCP
+        # connection to the upstream MCP server), every subsequent call_tool
+        # arriving for the same (user, server) pool entry will wait at
+        # entry._use_lock.acquire() forever -- because nothing ever releases
+        # it. We bound that wait. On timeout we evict + close the poisoned
+        # entry (best-effort) and proceed to create a fresh session.
+        # Default 30s matches Cursor's MCP transport timeout: we'd rather
+        # return a useful error to the caller within their window than
+        # silently hang.
+        acquire_timeout: float = 30.0,
+        # Bound how long a FRESH MCP HTTP handshake can hang (no prior
+        # session in the pool, so PooledSession.start() runs from scratch).
+        # If the upstream is dead or NAT silently dropped the SYN/SYN-ACK
+        # exchange, this would otherwise wait on the kernel's TCP retransmit
+        # ceiling (~15 minutes). 15s is comfortable headroom for a healthy
+        # handshake (sub-second typically) but short enough that callers
+        # don't lose patience.
+        connect_timeout: float = 15.0,
+    ) -> None:
         self._ttl = ttl_seconds
         self._enabled = enabled
+        self._acquire_timeout = acquire_timeout
+        self._connect_timeout = connect_timeout
         self._pool: Dict[Tuple[str, str], PooledSession] = {}
         self._pool_lock = asyncio.Lock()
         self._reaper_task: Optional[asyncio.Task] = None
@@ -196,8 +223,29 @@ class SessionPool:
         return self._ttl
 
     def start_reaper(self) -> None:
-        if self._reaper_task is None or self._reaper_task.done():
-            self._reaper_task = asyncio.ensure_future(self._reaper_loop())
+        """Best-effort: schedule the idle-session reaper on the running loop.
+
+        Safe to call from any thread / context:
+        - If a loop is running in this thread, the reaper is scheduled on it.
+        - Otherwise the call is a no-op (the reaper will be lazily started
+          the first time ``acquire()`` runs inside a request, which always
+          has a running loop).
+        """
+        if self._reaper_task is not None and not self._reaper_task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            try:
+                loop = asyncio.get_event_loop_policy().get_event_loop()
+                if not loop.is_running():
+                    loop = None
+            except RuntimeError:
+                loop = None
+        if loop is None:
+            self._reaper_task = None
+            return
+        self._reaper_task = loop.create_task(self._reaper_loop())
 
     async def acquire(
         self,
@@ -211,22 +259,76 @@ class SessionPool:
         If pooling is disabled or no cached session exists, a new session
         is created.  *reused* is ``True`` when an existing session was found.
         """
+        # Lazily ensure the reaper is running. If the pool was constructed
+        # from a thread without an event loop (e.g. config watcher), the
+        # reaper was deferred to here -- the request handler is awaited, so
+        # we are guaranteed a running loop now.
+        if self._reaper_task is None or self._reaper_task.done():
+            self.start_reaper()
         key = (pool_key, server_name)
 
         if self._enabled:
             async with self._pool_lock:
                 entry = self._pool.get(key)
                 if entry is not None and not entry._closed:
-                    await entry._use_lock.acquire()
-                    entry.touch()
-                    logger.info(
-                        f"[SessionPool] Reusing session for {server_name} "
-                        f"(idle {entry.age_seconds:.1f}s)"
-                    )
-                    return entry, True
+                    # Bounded wait. If a prior request hung holding
+                    # _use_lock (typical: NAT silently dropped the TCP
+                    # underlying the worker's session.call_tool), every
+                    # later caller would queue here forever. Evict + create
+                    # a fresh session on timeout instead.
+                    try:
+                        await asyncio.wait_for(
+                            entry._use_lock.acquire(),
+                            timeout=self._acquire_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            f"[SessionPool] Evicting poisoned session for "
+                            f"{server_name}: _use_lock not released within "
+                            f"{self._acquire_timeout:.1f}s (prior request "
+                            f"likely hung on dead upstream connection); "
+                            f"creating fresh session"
+                        )
+                        # Drop from pool immediately so no other caller
+                        # picks the poisoned entry while we're cleaning up.
+                        self._pool.pop(key, None)
+                        # entry.close() itself may take up to ~10s to
+                        # cancel the stuck worker; do it in the background
+                        # so the current caller can proceed with a fresh
+                        # session right away.
+                        asyncio.create_task(entry.close())
+                        entry = None  # fall through to fresh-session path
+                    else:
+                        entry.touch()
+                        logger.info(
+                            f"[SessionPool] Reusing session for {server_name} "
+                            f"(idle {entry.age_seconds:.1f}s)"
+                        )
+                        return entry, True
 
+        # Fresh session path. Bounded so a hung MCP HTTP handshake
+        # (e.g. against a dead/silent upstream) fails fast rather than
+        # waiting on the kernel's TCP retransmit ceiling.
         pooled = PooledSession(pool_key, server_name)
-        await pooled.start(server_config, server_entry)
+        try:
+            await asyncio.wait_for(
+                pooled.start(server_config, server_entry),
+                timeout=self._connect_timeout,
+            )
+        except asyncio.TimeoutError as exc:
+            logger.error(
+                f"[SessionPool] Session-start timeout for {server_name} "
+                f"after {self._connect_timeout:.1f}s -- upstream MCP server "
+                f"unresponsive or TCP silently dropped (e.g. NAT idle drop)"
+            )
+            # Best-effort cleanup; the partially-started worker may itself
+            # be stuck, so don't block this caller's error path on its close.
+            asyncio.create_task(pooled.close())
+            raise RuntimeError(
+                f"Could not establish MCP session for {server_name} within "
+                f"{self._connect_timeout:.1f}s"
+            ) from exc
+
         await pooled._use_lock.acquire()
 
         if self._enabled:
@@ -346,4 +448,42 @@ def get_session_pool() -> SessionPool:
     if _pool is None:
         _pool = SessionPool(ttl_seconds=300.0, enabled=True)
         _pool.start_reaper()
+    return _pool
+
+
+def reset_session_pool(common_config: Optional[Dict[str, Any]] = None) -> SessionPool:
+    """Replace the singleton session pool with a freshly built one.
+
+    Safe to call from any thread (including the config watcher daemon
+    thread, which has no event loop). The old pool's pooled sessions are
+    abandoned: if we have a running loop we schedule a best-effort
+    ``close_all`` on it, otherwise the old pool gets garbage-collected.
+    ``start_reaper`` on the new pool is also best-effort -- if there is no
+    loop yet, the reaper will be started lazily on the first ``acquire()``.
+    """
+    global _pool
+    old_pool = _pool
+
+    if common_config is None:
+        from secure_mcp_gateway.utils import get_common_config
+
+        common_config = get_common_config()
+
+    ttl = common_config.get("session_pool_ttl", 300)
+    enabled = common_config.get("session_pool_enabled", True)
+    _pool = SessionPool(ttl_seconds=float(ttl), enabled=enabled)
+    _pool.start_reaper()
+
+    if old_pool is not None:
+        try:
+            loop = asyncio.get_running_loop()
+            asyncio.ensure_future(old_pool.close_all())
+            logger.info("[SessionPool] reset scheduled close_all on running loop")
+        except RuntimeError:
+            logger.info(
+                "[SessionPool] reset: no running loop in this thread, "
+                "abandoning old pool to GC"
+            )
+        except Exception as e:
+            logger.warning(f"[SessionPool] reset close_all skipped: {e}")
     return _pool
