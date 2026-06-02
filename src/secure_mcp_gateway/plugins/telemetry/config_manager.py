@@ -459,6 +459,53 @@ class TelemetryConfigManager:
         """Backward-compatible metric accessor for health-check failed requests."""
         return self._get_metric_from_provider("health_failure_counter")
 
+    # ------------------------------------------------------------------
+    # Tier-1 additions (PR #41) -- compliance, errors, permission_denied,
+    # degradation, transport_errors, discovery_failures.
+    #
+    # These exist on the underlying OpenTelemetryProvider but the manager
+    # exposes every metric via an explicit ``@property`` that proxies to
+    # ``_get_metric_from_provider``.  ``metrics_helpers._add`` does
+    # ``getattr(mgr, "<counter>", None)`` -- without a property defined
+    # here that returns ``None`` and the emission is silently skipped.
+    # Adding the proxies wires the new counters into the same emission
+    # pipeline as the pre-existing ones.
+    # ------------------------------------------------------------------
+    @property
+    def guardrail_compliance_hit_counter(self):
+        """Tier-1 metric accessor for ``enkrypt.guardrail.compliance_hit``."""
+        return self._get_metric_from_provider("guardrail_compliance_hit_counter")
+
+    @property
+    def tool_permission_denied_counter(self):
+        """Tier-1 metric accessor for ``enkrypt.tool.permission_denied``."""
+        return self._get_metric_from_provider("tool_permission_denied_counter")
+
+    @property
+    def errors_by_code_counter(self):
+        """Tier-1 metric accessor for ``enkrypt.errors.by_code``."""
+        return self._get_metric_from_provider("errors_by_code_counter")
+
+    @property
+    def degradation_fail_open_counter(self):
+        """Tier-1 metric accessor for ``enkrypt.degradation.fail_open``."""
+        return self._get_metric_from_provider("degradation_fail_open_counter")
+
+    @property
+    def degradation_fail_closed_counter(self):
+        """Tier-1 metric accessor for ``enkrypt.degradation.fail_closed``."""
+        return self._get_metric_from_provider("degradation_fail_closed_counter")
+
+    @property
+    def transport_error_counter(self):
+        """Tier-1 metric accessor for ``enkrypt.transport.errors``."""
+        return self._get_metric_from_provider("transport_error_counter")
+
+    @property
+    def discovery_server_failure_counter(self):
+        """Tier-1 metric accessor for ``enkrypt.discovery.server_failures``."""
+        return self._get_metric_from_provider("discovery_server_failure_counter")
+
 
 # ============================================================================
 # Global Instance
