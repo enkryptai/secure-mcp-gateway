@@ -66,21 +66,6 @@ from secure_mcp_gateway.cli import (
 from secure_mcp_gateway.cli import (
     get_api_key as get_api_key_details,
 )
-from secure_mcp_gateway.audit import log_audit
-
-
-def _actor_id(apikey: str | None) -> str:
-    """Audit display for the admin apikey (only the last 4 chars).
-
-    The admin-API auth flow only knows ``api_key`` (the
-    ``admin_apikey`` from config); there's no per-user identity here,
-    so we use a stable label ``admin_apikey`` and the suffix as the
-    actor_id pivot.  Future per-user admin auth would replace this.
-    """
-    if not apikey:
-        return "unknown"
-    return f"****{apikey[-4:]}" if len(apikey) >= 4 else "****"
-
 
 # Create router for additional routes
 router = APIRouter()
@@ -109,7 +94,6 @@ async def create_project_endpoint(
     request: ProjectCreateRequest, api_key: str = Depends(get_api_key)
 ):
     """Create a new project."""
-    actor_id = _actor_id(api_key)
     try:
         f = io.StringIO()
         with redirect_stdout(f):
@@ -118,33 +102,13 @@ async def create_project_endpoint(
         result = f.getvalue().strip()
         project_id = result.split(": ")[1] if ": " in result else result
 
-        log_audit(
-            action="project_created",
-            resource_type="project",
-            surface="rest_api",
-            actor="admin_apikey",
-            actor_id=actor_id,
-            target_id=project_id,
-            success=True,
-            project_name=request.project_name,
-        )
         return SuccessResponse(
             message="Project created successfully",
             data={"project_id": project_id, "project_name": request.project_name},
         )
     except SystemExit:
-        log_audit(
-            action="project_created", resource_type="project", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=request.project_name,
-            success=False, failure_reason="creation_failed",
-        )
         raise HTTPException(status_code=400, detail="Project creation failed")
     except Exception as e:
-        log_audit(
-            action="project_created", resource_type="project", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=request.project_name,
-            success=False, failure_reason="internal_error",
-        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -173,31 +137,15 @@ async def delete_project_endpoint(
     project_identifier: str, api_key: str = Depends(get_api_key)
 ):
     """Delete a project."""
-    actor_id = _actor_id(api_key)
     try:
         f = io.StringIO()
         with redirect_stdout(f):
             remove_project(PICKED_CONFIG_PATH, project_identifier)
 
-        log_audit(
-            action="project_deleted", resource_type="project", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=project_identifier,
-            success=True,
-        )
         return SuccessResponse(message="Project deleted successfully")
     except SystemExit:
-        log_audit(
-            action="project_deleted", resource_type="project", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=project_identifier,
-            success=False, failure_reason="deletion_failed",
-        )
         raise HTTPException(status_code=400, detail="Project deletion failed")
     except Exception as e:
-        log_audit(
-            action="project_deleted", resource_type="project", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=project_identifier,
-            success=False, failure_reason="internal_error",
-        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -428,7 +376,6 @@ async def create_user_endpoint(
     request: UserCreateRequest, api_key: str = Depends(get_api_key)
 ):
     """Create a new user."""
-    actor_id = _actor_id(api_key)
     try:
         f = io.StringIO()
         with redirect_stdout(f):
@@ -437,28 +384,13 @@ async def create_user_endpoint(
         result = f.getvalue().strip()
         user_id = result.split(": ")[1] if ": " in result else result
 
-        log_audit(
-            action="user_created", resource_type="user", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=user_id,
-            success=True, email=request.email,
-        )
         return SuccessResponse(
             message="User created successfully",
             data={"user_id": user_id, "email": request.email},
         )
     except SystemExit:
-        log_audit(
-            action="user_created", resource_type="user", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=request.email,
-            success=False, failure_reason="creation_failed",
-        )
         raise HTTPException(status_code=400, detail="User creation failed")
     except Exception as e:
-        log_audit(
-            action="user_created", resource_type="user", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=request.email,
-            success=False, failure_reason="internal_error",
-        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -504,31 +436,15 @@ async def delete_user_endpoint(
     api_key: str = Depends(get_api_key),
 ):
     """Delete a user."""
-    actor_id = _actor_id(api_key)
     try:
         f = io.StringIO()
         with redirect_stdout(f):
             delete_user(PICKED_CONFIG_PATH, user_identifier, request.force)
 
-        log_audit(
-            action="user_deleted", resource_type="user", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=user_identifier,
-            success=True, force=request.force,
-        )
         return SuccessResponse(message="User deleted successfully")
     except SystemExit:
-        log_audit(
-            action="user_deleted", resource_type="user", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=user_identifier,
-            success=False, failure_reason="deletion_failed",
-        )
         raise HTTPException(status_code=400, detail="User deletion failed")
     except Exception as e:
-        log_audit(
-            action="user_deleted", resource_type="user", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=user_identifier,
-            success=False, failure_reason="internal_error",
-        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -557,7 +473,6 @@ async def generate_user_api_key_endpoint(
     api_key: str = Depends(get_api_key),
 ):
     """Generate an API key for a user."""
-    actor_id = _actor_id(api_key)
     try:
         project_identifier = request.project_name or request.project_id
         if not project_identifier:
@@ -574,28 +489,12 @@ async def generate_user_api_key_endpoint(
         result = f.getvalue().strip()
         new_api_key = result.split(": ")[1] if ": " in result else result
 
-        log_audit(
-            action="apikey_created", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id,
-            target_id=f"****{new_api_key[-4:]}" if len(new_api_key) >= 4 else "****",
-            success=True, user_id=user_identifier, project=project_identifier,
-        )
         return SuccessResponse(
             message="API key generated successfully", data={"api_key": new_api_key}
         )
     except SystemExit:
-        log_audit(
-            action="apikey_created", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=user_identifier,
-            success=False, failure_reason="generation_failed",
-        )
         raise HTTPException(status_code=400, detail="API key generation failed")
     except Exception as e:
-        log_audit(
-            action="apikey_created", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=user_identifier,
-            success=False, failure_reason="internal_error",
-        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -679,8 +578,6 @@ async def rotate_api_key_endpoint(
     request: ApiKeyRotateRequest, api_key: str = Depends(get_api_key)
 ):
     """Rotate an API key."""
-    actor_id = _actor_id(api_key)
-    old_suffix = f"****{request.api_key[-4:]}" if len(request.api_key) >= 4 else "****"
     try:
         f = io.StringIO()
         with redirect_stdout(f):
@@ -688,30 +585,13 @@ async def rotate_api_key_endpoint(
 
         result = f.getvalue().strip()
         new_api_key = result.split(": ")[1] if ": " in result else result
-        new_suffix = f"****{new_api_key[-4:]}" if len(new_api_key) >= 4 else "****"
 
-        log_audit(
-            action="apikey_rotated", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=old_suffix,
-            success=True, new_apikey_suffix=new_suffix,
-            changed_fields=("apikey_value",),
-        )
         return SuccessResponse(
             message="API key rotated successfully", data={"new_api_key": new_api_key}
         )
     except SystemExit:
-        log_audit(
-            action="apikey_rotated", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=old_suffix,
-            success=False, failure_reason="rotation_failed",
-        )
         raise HTTPException(status_code=400, detail="API key rotation failed")
     except Exception as e:
-        log_audit(
-            action="apikey_rotated", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=old_suffix,
-            success=False, failure_reason="internal_error",
-        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -720,31 +600,15 @@ async def disable_api_key_endpoint(
     api_key: str, api_key_dep: str = Depends(get_api_key)
 ):
     """Disable an API key."""
-    actor_id = _actor_id(api_key_dep)
-    suffix = f"****{api_key[-4:]}" if len(api_key) >= 4 else "****"
     try:
         f = io.StringIO()
         with redirect_stdout(f):
             disable_user_api_key(PICKED_CONFIG_PATH, api_key)
 
-        log_audit(
-            action="apikey_disabled", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=suffix, success=True,
-        )
         return SuccessResponse(message="API key disabled successfully")
     except SystemExit:
-        log_audit(
-            action="apikey_disabled", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=suffix,
-            success=False, failure_reason="disable_failed",
-        )
         raise HTTPException(status_code=400, detail="API key disable failed")
     except Exception as e:
-        log_audit(
-            action="apikey_disabled", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=suffix,
-            success=False, failure_reason="internal_error",
-        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -752,39 +616,16 @@ async def disable_api_key_endpoint(
 async def enable_api_key_endpoint(
     api_key: str, api_key_dep: str = Depends(get_api_key)
 ):
-    """Enable an API key.
-
-    Note: "enable" is the inverse of "disable" but the Audit Trail
-    dashboard only surfaces an *Apikey Disabled* tile (re-enabling is
-    rare and not separately tracked).  We emit via the umbrella
-    ``record_admin_action`` so the action still shows up in the
-    "Admin Actions (total)" KPI and the per-action breakdown.
-    """
-    actor_id = _actor_id(api_key_dep)
-    suffix = f"****{api_key[-4:]}" if len(api_key) >= 4 else "****"
+    """Enable an API key."""
     try:
         f = io.StringIO()
         with redirect_stdout(f):
             enable_user_api_key(PICKED_CONFIG_PATH, api_key)
 
-        log_audit(
-            action="apikey_enabled", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=suffix, success=True,
-        )
         return SuccessResponse(message="API key enabled successfully")
     except SystemExit:
-        log_audit(
-            action="apikey_enabled", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=suffix,
-            success=False, failure_reason="enable_failed",
-        )
         raise HTTPException(status_code=400, detail="API key enable failed")
     except Exception as e:
-        log_audit(
-            action="apikey_enabled", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=suffix,
-            success=False, failure_reason="internal_error",
-        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -793,31 +634,15 @@ async def delete_api_key_endpoint(
     api_key: str, api_key_dep: str = Depends(get_api_key)
 ):
     """Delete an API key."""
-    actor_id = _actor_id(api_key_dep)
-    suffix = f"****{api_key[-4:]}" if len(api_key) >= 4 else "****"
     try:
         f = io.StringIO()
         with redirect_stdout(f):
             delete_user_api_key(PICKED_CONFIG_PATH, api_key)
 
-        log_audit(
-            action="apikey_deleted", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=suffix, success=True,
-        )
         return SuccessResponse(message="API key deleted successfully")
     except SystemExit:
-        log_audit(
-            action="apikey_deleted", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=suffix,
-            success=False, failure_reason="deletion_failed",
-        )
         raise HTTPException(status_code=400, detail="API key deletion failed")
     except Exception as e:
-        log_audit(
-            action="apikey_deleted", resource_type="apikey", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=suffix,
-            success=False, failure_reason="internal_error",
-        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -865,31 +690,15 @@ async def system_backup_endpoint(
     request: SystemBackupRequest, api_key: str = Depends(get_api_key)
 ):
     """Backup system configuration."""
-    actor_id = _actor_id(api_key)
     try:
         f = io.StringIO()
         with redirect_stdout(f):
             system_backup(PICKED_CONFIG_PATH, request.output_file)
 
-        log_audit(
-            action="system_backup", resource_type="system", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=request.output_file,
-            success=True,
-        )
         return SuccessResponse(message="System backup completed successfully")
     except SystemExit:
-        log_audit(
-            action="system_backup", resource_type="system", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=request.output_file,
-            success=False, failure_reason="backup_failed",
-        )
         raise HTTPException(status_code=400, detail="System backup failed")
     except Exception as e:
-        log_audit(
-            action="system_backup", resource_type="system", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=request.output_file,
-            success=False, failure_reason="internal_error",
-        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -898,31 +707,15 @@ async def system_restore_endpoint(
     request: SystemRestoreRequest, api_key: str = Depends(get_api_key)
 ):
     """Restore system configuration."""
-    actor_id = _actor_id(api_key)
     try:
         f = io.StringIO()
         with redirect_stdout(f):
             system_restore(PICKED_CONFIG_PATH, request.input_file)
 
-        log_audit(
-            action="system_restore", resource_type="system", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=request.input_file,
-            success=True,
-        )
         return SuccessResponse(message="System restore completed successfully")
     except SystemExit:
-        log_audit(
-            action="system_restore", resource_type="system", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=request.input_file,
-            success=False, failure_reason="restore_failed",
-        )
         raise HTTPException(status_code=400, detail="System restore failed")
     except Exception as e:
-        log_audit(
-            action="system_restore", resource_type="system", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, target_id=request.input_file,
-            success=False, failure_reason="internal_error",
-        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -931,29 +724,13 @@ async def system_reset_endpoint(
     request: SystemResetRequest, api_key: str = Depends(get_api_key)
 ):
     """Reset system configuration."""
-    actor_id = _actor_id(api_key)
     try:
         f = io.StringIO()
         with redirect_stdout(f):
             system_reset(PICKED_CONFIG_PATH, request.confirm)
 
-        log_audit(
-            action="system_reset", resource_type="system", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id, success=True,
-            confirmed=request.confirm,
-        )
         return SuccessResponse(message="System reset completed successfully")
     except SystemExit:
-        log_audit(
-            action="system_reset", resource_type="system", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id,
-            success=False, failure_reason="reset_failed",
-        )
         raise HTTPException(status_code=400, detail="System reset failed")
     except Exception as e:
-        log_audit(
-            action="system_reset", resource_type="system", surface="rest_api",
-            actor="admin_apikey", actor_id=actor_id,
-            success=False, failure_reason="internal_error",
-        )
         raise HTTPException(status_code=500, detail=str(e))

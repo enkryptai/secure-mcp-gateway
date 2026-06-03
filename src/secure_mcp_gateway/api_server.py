@@ -125,6 +125,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Audit middleware -- auto-emits log_audit() events for every mutation
+# endpoint based on (method, path) inference, without per-endpoint
+# instrumentation.  See ``audit_middleware.py`` for the route table.
+from secure_mcp_gateway.audit_middleware import audit_http_middleware  # noqa: E402
+
+app.middleware("http")(audit_http_middleware)
+
 # =============================================================================
 # PYDANTIC MODELS
 # =============================================================================
