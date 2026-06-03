@@ -53,9 +53,12 @@ NEW_METRIC_CONSTS = (
     "DEGRADATION_FAIL_CLOSED",
     "TRANSPORT_ERRORS",
     "DISCOVERY_SERVER_FAILURES",
+    # Guardrail-detail
+    "GUARDRAIL_PII_ENTITY",
+    "GUARDRAIL_TOXICITY_SUBTYPE",
 )
 missing = [n for n in NEW_METRIC_CONSTS if not hasattr(MetricNames, n)]
-check("7 new MetricNames constants", not missing, f"missing: {missing}")
+check("Tier-1 + guardrail-detail MetricNames constants", not missing, f"missing: {missing}")
 
 # ---- PR #41: 6 new helpers exported --------------------------------------
 from secure_mcp_gateway.plugins.telemetry import metrics_helpers as mh
@@ -67,9 +70,12 @@ NEW_HELPERS = (
     "record_degradation",
     "record_transport_error",
     "record_discovery_failure",
+    # Guardrail-detail
+    "record_pii_entities",
+    "record_toxicity_subtypes",
 )
 missing = [h for h in NEW_HELPERS if not hasattr(mh, h)]
-check("6 new metrics_helpers", not missing, f"missing: {missing}")
+check("Tier-1 + guardrail-detail metrics_helpers", not missing, f"missing: {missing}")
 
 # ---- PR #41 commit 5f68755: 7 new @property accessors --------------------
 # Without these, metrics_helpers._add() silently no-ops because the manager
@@ -87,10 +93,13 @@ NEW_PROPS = (
     "degradation_fail_closed_counter",
     "transport_error_counter",
     "discovery_server_failure_counter",
+    # Guardrail-detail
+    "guardrail_pii_entity_counter",
+    "guardrail_toxicity_subtype_counter",
 )
 missing = [p for p in NEW_PROPS if not hasattr(TelemetryConfigManager, p)]
 check(
-    "7 new @property accessors (commit 5f68755)",
+    "Tier-1 + guardrail-detail @property accessors (commit 5f68755)",
     not missing,
     f"missing: {missing} -- without these the helpers silently no-op",
 )
@@ -225,6 +234,32 @@ check(
 check(
     "gateway_cache_routes.py emits action=cache_flush",
     'action="cache_flush"' in _gcr_src,
+)
+
+# ---- Guardrail-detail: STES has the per-detector emission wired ---------
+# Read from /app/src, same rationale as api_server.py above.
+_stes_path = "/app/src/secure_mcp_gateway/services/execution/secure_tool_execution_service.py"
+with open(_stes_path, encoding="utf-8") as _f:
+    _stes_src = _f.read()
+check(
+    "STES imports record_pii_entities",
+    "record_pii_entities," in _stes_src,
+)
+check(
+    "STES imports record_toxicity_subtypes",
+    "record_toxicity_subtypes," in _stes_src,
+)
+# We injected 3 call sites (input + sync output + async output).
+# Allow >=2 because the async output anchor is best-effort (see patch_stes).
+_pii_calls = _stes_src.count("record_pii_entities(")
+_tox_calls = _stes_src.count("record_toxicity_subtypes(")
+check(
+    f"STES has >=2 record_pii_entities call sites (found {_pii_calls})",
+    _pii_calls >= 2,
+)
+check(
+    f"STES has >=2 record_toxicity_subtypes call sites (found {_tox_calls})",
+    _tox_calls >= 2,
 )
 
 

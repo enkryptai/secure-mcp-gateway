@@ -146,6 +146,9 @@ def patch_conventions(src: str) -> str:
         SYSTEM_RESET = "enkrypt.system.reset"
         SYSTEM_RESTORE = "enkrypt.system.restore"
         AUTH_UNAUTHORIZED_HTTP = "enkrypt.auth.unauthorized_http"
+        # ----- Guardrail-detail additions (PII entities + toxicity subtypes) -
+        GUARDRAIL_PII_ENTITY = "enkrypt.guardrail.pii_entity"
+        GUARDRAIL_TOXICITY_SUBTYPE = "enkrypt.guardrail.toxicity_subtype"
     ''').strip("\n")
 
     # Inject the constants block just before the "# Metric descriptions"
@@ -231,6 +234,15 @@ def patch_conventions(src: str) -> str:
         MetricNames.SYSTEM_RESET: "System reset events",
         MetricNames.SYSTEM_RESTORE: "System restore events",
         MetricNames.AUTH_UNAUTHORIZED_HTTP: "401/403 admin REST responses",
+        # Guardrail-detail additions
+        MetricNames.GUARDRAIL_PII_ENTITY: (
+            "PII entities detected by the guardrail, one increment per "
+            "entity (attribute entity_type)"
+        ),
+        MetricNames.GUARDRAIL_TOXICITY_SUBTYPE: (
+            "Toxicity subtypes above threshold (attributes subtype + "
+            "score_bucket low|medium|high)"
+        ),
     ''').strip("\n")
 
     # Find the METRIC_DESCRIPTIONS dict closing brace.  v2.2.0 declares it as
@@ -363,6 +375,17 @@ def patch_opentelemetry_provider(src: str) -> str:
             description=D[M.DISCOVERY_SERVER_FAILURES],
             unit="1",
         )
+        # ----- Guardrail-detail additions ----------------------------------
+        self.guardrail_pii_entity_counter = self._meter.create_counter(
+            M.GUARDRAIL_PII_ENTITY,
+            description=D[M.GUARDRAIL_PII_ENTITY],
+            unit="1",
+        )
+        self.guardrail_toxicity_subtype_counter = self._meter.create_counter(
+            M.GUARDRAIL_TOXICITY_SUBTYPE,
+            description=D[M.GUARDRAIL_TOXICITY_SUBTYPE],
+            unit="1",
+        )
     ''').strip("\n")
 
     # Anchor inside _create_metrics: the last existing counter declaration
@@ -408,6 +431,9 @@ def patch_opentelemetry_provider(src: str) -> str:
         self.degradation_fail_closed_counter = NoOpCounter()
         self.transport_error_counter = NoOpCounter()
         self.discovery_server_failure_counter = NoOpCounter()
+        # Guardrail-detail no-op shims
+        self.guardrail_pii_entity_counter = NoOpCounter()
+        self.guardrail_toxicity_subtype_counter = NoOpCounter()
     ''').strip("\n")
 
     # Insert NoOps inside _setup_disabled_telemetry right before the
@@ -453,6 +479,8 @@ def patch_metrics_helpers(src: str) -> str:
     # Extend __all__ if present.
     new_names = (
         "    \"record_compliance_hits\",\n"
+        "    \"record_pii_entities\",\n"
+        "    \"record_toxicity_subtypes\",\n"
         "    \"record_error_by_code\",\n"
         "    \"record_tool_permission_denied\",\n"
         "    \"record_degradation\",\n"
@@ -510,6 +538,17 @@ def patch_config_manager(src: str) -> str:
         def discovery_server_failure_counter(self):
             """Tier-1 metric accessor for enkrypt.discovery.server_failures."""
             return self._get_metric_from_provider("discovery_server_failure_counter")
+
+        # ----- Guardrail-detail accessors --------------------------------
+        @property
+        def guardrail_pii_entity_counter(self):
+            """Per-entity PII counter ``enkrypt.guardrail.pii_entity``."""
+            return self._get_metric_from_provider("guardrail_pii_entity_counter")
+
+        @property
+        def guardrail_toxicity_subtype_counter(self):
+            """Toxicity subtype counter ``enkrypt.guardrail.toxicity_subtype``."""
+            return self._get_metric_from_provider("guardrail_toxicity_subtype_counter")
 
     ''').strip("\n") + "\n"
 
@@ -584,12 +623,136 @@ def patch_exceptions(src: str) -> str:
 # Main
 # ---------------------------------------------------------------------------
 
+def patch_stes(src: str) -> str:
+    """Inject ``record_pii_entities`` + ``record_toxicity_subtypes`` plus a
+    matching ``logger.info`` at the 3 guardrail-violation sites in
+    secure_tool_execution_service.py.
+
+    Why this is overlay-only
+    ------------------------
+    The audit / Tier-1 overlay deliberately skipped STES because their 5
+    call sites included sites with significant line drift between v2.2.0
+    and main (deny_list path, guardrail-None fail-closed path).  The 3
+    sites we need here (input violation, sync output violation, async
+    output violation) are stable -- the ``if not guardrail_response.
+    is_safe:`` / ``record_guardrail_violations(...)`` pattern lives in
+    the same shape on v2.2.0.  We anchor on ``record_guardrail_violations(``
+    plus the trailing ``**auth_context,\\n                )`` closer and
+    splice the new helpers in directly after it.
+
+    The helpers themselves arrived via patch_metrics_helpers; the
+    instruments via patch_opentelemetry_provider + patch_config_manager.
+    This file-side patch is what actually CALLS them.
+    """
+    # Add the two imports to the existing metrics_helpers import block.
+    # v2.2.0 imports record_guardrail_violations from metrics_helpers; we
+    # piggyback on that line so the diff stays one-shot.
+    import_anchor = "    record_guardrail_violations,"
+    if import_anchor not in src:
+        raise RuntimeError(
+            "v2.2.0 STES missing 'record_guardrail_violations,' import "
+            "anchor; cannot wire guardrail-detail helpers"
+        )
+    src = src.replace(
+        import_anchor,
+        (
+            import_anchor
+            + "\n    record_pii_entities,"
+            + "\n    record_toxicity_subtypes,"
+        ),
+        1,
+    )
+
+    # Common injection -- everything after the record_guardrail_violations()
+    # call returns.  We splice ONLY the two new helper calls (no log line
+    # here -- the helpers' return dicts are intentionally NOT logged on
+    # v2.2.0 because the violation log lines on v2.2.0 use a different
+    # build_log_extra shape than main; the metric emission alone is what
+    # the dashboard needs).
+    def _new_block(direction: str) -> str:
+        return (
+            "                # Guardrail-detail: per-entity PII + per-subtype\n"
+            "                # toxicity emission (overlay-injected). Feeds the\n"
+            "                # Guardrails Deep Dive 'PII Entities by Direction',\n"
+            "                # 'Top PII Entity Types', 'Toxicity Subtypes' and\n"
+            "                # 'Top Toxicity Subtypes by Score Bucket' panels.\n"
+            "                try:\n"
+            "                    record_pii_entities(\n"
+            "                        guardrail_response.violations,\n"
+            f"                        \"{direction}\",\n"
+            "                        server_name=server_name,\n"
+            "                        tool_name=tool_name,\n"
+            "                    )\n"
+            "                    record_toxicity_subtypes(\n"
+            "                        guardrail_response.violations,\n"
+            f"                        \"{direction}\",\n"
+            "                        server_name=server_name,\n"
+            "                        tool_name=tool_name,\n"
+            "                    )\n"
+            "                except Exception:\n"
+            "                    pass\n"
+        )
+
+    # All 3 sites use the same closing for record_guardrail_violations.
+    # Order matters: input site fires BEFORE the two output sites; we use
+    # replace(... count=1) on each occurrence to take them in document order.
+    rg_close = (
+        "                record_guardrail_violations(\n"
+        "                    \"{direction}\",\n"
+        "                    violation_types,\n"
+        "                    server_name=server_name,\n"
+        "                    tool_name=tool_name,\n"
+        "                    **auth_context,\n"
+        "                )"
+    )
+    # 1) input violation site
+    anchor_in = rg_close.format(direction="input")
+    if anchor_in not in src:
+        raise RuntimeError("v2.2.0 STES missing input violation record_guardrail_violations anchor")
+    src = src.replace(
+        anchor_in,
+        anchor_in + "\n" + _new_block("input"),
+        1,
+    )
+
+    # 2) sync output violation site
+    # 3) async output violation site
+    # Both use direction="output" so they share the same anchor literal;
+    # do two sequential single-replacement injections.
+    anchor_out = rg_close.format(direction="output")
+    if anchor_out not in src:
+        raise RuntimeError("v2.2.0 STES missing output violation record_guardrail_violations anchor")
+    src = src.replace(
+        anchor_out,
+        anchor_out + "\n" + _new_block("output"),
+        1,
+    )
+    if anchor_out not in src:
+        # Second occurrence might not be there if v2.2.0 only has the sync
+        # output path -- that's fine, log and continue.
+        print("[merge] STES second output anchor not found (async path absent?) -- skipping")
+        return src
+    src = src.replace(
+        anchor_out,
+        anchor_out + "\n" + _new_block("output"),
+        1,
+    )
+    return src
+
+
 PATCHERS = {
     "plugins/telemetry/conventions.py": patch_conventions,
     "plugins/telemetry/opentelemetry_provider.py": patch_opentelemetry_provider,
     "plugins/telemetry/metrics_helpers.py": patch_metrics_helpers,
     "plugins/telemetry/config_manager.py": patch_config_manager,
     "exceptions.py": patch_exceptions,
+    # Guardrail-detail: inject record_pii_entities + record_toxicity_subtypes
+    # at the 3 violation sites in secure_tool_execution_service.py.  This is
+    # the FIRST time we patch STES via overlay -- the audit/Tier-1 work
+    # deliberately skipped it because their 5 call sites had bigger line
+    # drift, but the violation-handling sites we need here are stable
+    # between v2.2.0 and main, so a surgical anchor-based patch works.
+    "services/execution/secure_tool_execution_service.py": patch_stes,
 }
 
 

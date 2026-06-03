@@ -83,6 +83,16 @@ COPY build/tier1_overlay/plugins/telemetry/config_manager.py \
 COPY build/tier1_overlay/services/session/session_pool.py \
      ${PKG_ROOT}/services/session/session_pool.py
 
+# --- Guardrail-detail: STES per-detector PII + toxicity emission -----------
+# Surgically patches v2.2.0's secure_tool_execution_service.py at the 3
+# guardrail-violation sites (input, sync output, async output) so each
+# blocked call also fires record_pii_entities + record_toxicity_subtypes.
+# Unlocks the Guardrails Deep Dive "PII Entities by Direction", "Top PII
+# Entity Types", "Toxicity Subtypes" and "Top Toxicity Subtypes by Score
+# Bucket" panels.
+COPY build/tier1_overlay/services/execution/secure_tool_execution_service.py \
+     ${PKG_ROOT}/services/execution/secure_tool_execution_service.py
+
 # --- Audit (Phase A + B) -- new modules + api_server.py patch --------------
 COPY build/tier1_overlay/audit.py \
      ${PKG_ROOT}/audit.py
