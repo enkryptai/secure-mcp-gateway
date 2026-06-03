@@ -384,10 +384,23 @@ def panel(viz_id: str, x: int, y: int, w: int, h: int, idx: int) -> dict[str, An
 
 PANELS: list[tuple[dict, str]] = [
     # Row 1: 5 KPI cards
-    (kpi_metric_vis("Total Tool Calls", "enkrypt.tool.calls", custom_label="Tool Calls"),
-     'name : "enkrypt.tool.calls"'),
-    (kpi_metric_vis("Total Tool Failures", "enkrypt.tool.errors", custom_label="Failures"),
-     'name : "enkrypt.tool.errors"'),
+    #
+    # Why these specific metric names?
+    # ---------------------------------
+    # v2.2.0 emits ``enkrypt.tool.calls`` only from a subset of the gateway's
+    # MCP-method entry points (discovery, etc.) -- NOT from every
+    # ``enkrypt_secure_call_tools`` invocation.  ``enkrypt.tool.success`` is
+    # incremented once per *successful inner tool execution* via
+    # ``record_tool_call_outcome``, which is what users actually want to see
+    # for "tool calls". So "Total Tool Calls" reads tool.success here.
+    #
+    # We expose successes and failures as separate KPIs (rather than summing
+    # client-side, which the OSD metric viz can't do across multiple metric
+    # name filters in one panel).
+    (kpi_metric_vis("Total Tool Calls (success)", "enkrypt.tool.success", custom_label="Successful"),
+     'name : "enkrypt.tool.success"'),
+    (kpi_metric_vis("Total Tool Failures", "enkrypt.tool.failures", custom_label="Failures"),
+     'name : "enkrypt.tool.failures"'),
     (kpi_metric_vis("Total Blocked", "enkrypt.tool.blocked", custom_label="Blocked"),
      'name : "enkrypt.tool.blocked"'),
     (kpi_metric_vis("Total Guardrail Blocks", "enkrypt.guardrail.blocks", custom_label="Blocks"),
@@ -396,8 +409,10 @@ PANELS: list[tuple[dict, str]] = [
      'name : "enkrypt.pii.redactions"'),
 
     # Row 2: tool calls + blocked over time
-    (time_series_vis("Total Tool Calls Over Time", "enkrypt.tool.calls", "Tool Calls", chart_type="histogram"),
-     'name : "enkrypt.tool.calls"'),
+    # Same rationale as Row 1: tool.success is the reliable per-invocation
+    # counter; tool.calls would only show discovery-style entry points.
+    (time_series_vis("Successful Tool Calls Over Time", "enkrypt.tool.success", "Successful", chart_type="histogram"),
+     'name : "enkrypt.tool.success"'),
     (time_series_vis("Tools Blocked Over Time", "enkrypt.tool.blocked", "Blocked", chart_type="histogram"),
      'name : "enkrypt.tool.blocked"'),
 
@@ -410,15 +425,17 @@ PANELS: list[tuple[dict, str]] = [
      'name : "enkrypt.guardrail.output_blocks"'),
 
     # Row 4: top users
-    (horizontal_bar_topN_vis("Top 5 Active Users (by tool calls)", "metric.attributes.user_email", "User Email", "Tool Calls", size=5),
-     'name : "enkrypt.tool.calls"'),
+    # tool.success carries the user_email attribute reliably (set in
+    # record_tool_call_outcome's auth_context); tool.calls does not.
+    (horizontal_bar_topN_vis("Top 5 Active Users (by successful tool calls)", "metric.attributes.user_email", "User Email", "Successful", size=5),
+     'name : "enkrypt.tool.success"'),
     (horizontal_bar_topN_vis("Top 5 Users by Violations", "metric.attributes.user_email", "User Email", "Violations", size=5),
      'name : "enkrypt.guardrail.blocks"'),
 
     # Row 5: top servers / tools / block reasons
-    (horizontal_bar_topN_vis("Top Servers (by tool calls)", "metric.attributes.server_name", "Server", "Tool Calls", size=10),
-     'name : "enkrypt.tool.calls"'),
-    (horizontal_bar_topN_vis("Top Tools (by tool calls)", "metric.attributes.tool_name", "Tool", "Tool Calls", size=10),
+    (horizontal_bar_topN_vis("Top Servers (by successful tool calls)", "metric.attributes.server_name", "Server", "Successful", size=10),
+     'name : "enkrypt.tool.success"'),
+    (horizontal_bar_topN_vis("Top Tools (by successful tool calls)", "metric.attributes.tool_name", "Tool", "Successful", size=10),
      'name : "enkrypt.tool.success"'),
     (pie_vis("Violation Types Distribution", "metric.attributes.violation_type", "Violation", size=10),
      'name : "enkrypt.guardrail.blocks"'),
