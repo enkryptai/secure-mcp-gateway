@@ -209,10 +209,16 @@ PANEL_SPECS = [
     (data_table_vis(
         "Recent Admin Actions (last 25)",
         bucket_fields=[
+            # Field names aligned with the audit module's emission contract
+            # in log_audit() -- ``actor`` (the human display, typically an
+            # email) and ``target_id`` (the resource being acted on).
+            # The earlier draft used ``actor_email``/``resource_id`` which
+            # the audit module never emits, so the data_table aggregation
+            # could not group and the panel rendered as 'No results found'.
             ("log.attributes.admin_action", "Admin Action"),
-            ("log.attributes.actor_email", "Actor"),
+            ("log.attributes.actor", "Actor"),
             ("log.attributes.resource_type", "Resource Type"),
-            ("log.attributes.resource_id", "Resource ID"),
+            ("log.attributes.target_id", "Target ID"),
         ],
         size=25,
         metric_label="Count",
@@ -224,7 +230,7 @@ PANEL_SPECS = [
         "Recent Audit Events (changed_fields)",
         bucket_fields=[
             ("log.attributes.audit_action", "Audit Action"),
-            ("log.attributes.actor_email", "Actor"),
+            ("log.attributes.actor", "Actor"),
             ("log.attributes.changed_fields", "Changed Fields"),
         ],
         size=25,
