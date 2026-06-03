@@ -229,6 +229,13 @@ PANEL_SPECS = [
     (data_table_vis(
         "Recent Audit Events (changed_fields)",
         bucket_fields=[
+            # Filter scopes this panel to mutations that carry a
+            # changed_fields trail (project_updated / user_updated /
+            # apikey_rotated / config_modified / settings_changed,
+            # etc.).  Cache flushes do not emit changed_fields, so
+            # the panel intentionally stays empty until one of those
+            # admin actions fires -- panel title "(changed_fields)"
+            # makes the scope explicit.
             ("log.attributes.audit_action", "Audit Action"),
             ("log.attributes.actor", "Actor"),
             ("log.attributes.changed_fields", "Changed Fields"),
@@ -238,7 +245,7 @@ PANEL_SPECS = [
         aggregation="count",
         field="",
     ),
-        'log.attributes.audit_action : *', LOGS_DATAVIEW_ID, (24, 112, 24, 16)),
+        'log.attributes.changed_fields : *', LOGS_DATAVIEW_ID, (24, 112, 24, 16)),
 ]
 
 
