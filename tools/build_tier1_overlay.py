@@ -459,6 +459,30 @@ def patch_metrics_helpers(src: str) -> str:
     a different starting set.  Strategy: append my Tier-1-only block and
     a new __all__ extension.
     """
+    # v2.2.0's metrics_helpers imports ``from typing import TYPE_CHECKING,
+    # Any, Optional`` -- missing ``Mapping`` and ``Iterable`` which BOTH
+    # record_compliance_hits AND the new record_pii_entities /
+    # record_toxicity_subtypes need.  Without this fix the appended
+    # helpers NameError on first invocation; the surrounding try/except
+    # at the call site swallows it -> silent no-op + permanently empty
+    # dashboard panels.  Caught during dev verification of the
+    # guardrail-detail overlay.
+    typing_anchor = "from typing import TYPE_CHECKING, Any, Optional"
+    if typing_anchor in src:
+        src = src.replace(
+            typing_anchor,
+            "from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional",
+            1,
+        )
+    elif "from typing import " in src and "Mapping" not in src.split("\n")[:30].__str__():
+        # Fallback: if v2.2.0 changed the order, just ensure both names are present
+        # by injecting a second import line.
+        src = src.replace(
+            "from typing import",
+            "from typing import Iterable, Mapping  # patched by overlay\nfrom typing import",
+            1,
+        )
+
     additions = (REPO / "src" / "secure_mcp_gateway" / "plugins" / "telemetry" / "metrics_helpers.py").read_text(encoding="utf-8")
     # The Tier-1 helpers live after the marker comment introduced in
     # commit 3f703ab.  Extract from that marker onwards (skipping the
@@ -677,20 +701,46 @@ def patch_stes(src: str) -> str:
             "                # 'Top PII Entity Types', 'Toxicity Subtypes' and\n"
             "                # 'Top Toxicity Subtypes by Score Bucket' panels.\n"
             "                try:\n"
-            "                    record_pii_entities(\n"
+            "                    _pii_result = record_pii_entities(\n"
             "                        guardrail_response.violations,\n"
             f"                        \"{direction}\",\n"
             "                        server_name=server_name,\n"
             "                        tool_name=tool_name,\n"
             "                    )\n"
-            "                    record_toxicity_subtypes(\n"
+            "                    _tox_result = record_toxicity_subtypes(\n"
             "                        guardrail_response.violations,\n"
             f"                        \"{direction}\",\n"
             "                        server_name=server_name,\n"
             "                        tool_name=tool_name,\n"
             "                    )\n"
-            "                except Exception:\n"
-            "                    pass\n"
+            "                    # Structured log line carrying the same shape\n"
+            "                    # the dashboard's log-based panels query.\n"
+            "                    # Also doubles as a schema-drift probe -- the\n"
+            "                    # *_details_keys arrays surface what Enkrypt\n"
+            "                    # actually put in metadata.details, so an\n"
+            "                    # operator can spot when the upstream API\n"
+            "                    # changes shape (e.g. 'entities' -> 'pii_list')\n"
+            "                    # WITHOUT another deploy.\n"
+            "                    logger.info(\n"
+            "                        \"secure_tool_execution.guardrail.detector_detail\",\n"
+            "                        extra={\n"
+            f"                            \"direction\": \"{direction}\",\n"
+            "                            \"server_name\": server_name,\n"
+            "                            \"tool_name\": tool_name,\n"
+            "                            **(_pii_result or {}),\n"
+            "                            **(_tox_result or {}),\n"
+            "                        },\n"
+            "                    )\n"
+            "                except Exception as _exc:\n"
+            "                    # Don't lose the failure silently -- log it once\n"
+            "                    # so we can fix the schema mismatch quickly.\n"
+            "                    try:\n"
+            "                        logger.warning(\n"
+            "                            \"secure_tool_execution.guardrail.detector_detail.exc\",\n"
+            "                            extra={\"error\": str(_exc), \"error_kind\": type(_exc).__name__},\n"
+            "                        )\n"
+            "                    except Exception:\n"
+            "                        pass\n"
         )
 
     # All 3 sites use the same closing for record_guardrail_violations.
