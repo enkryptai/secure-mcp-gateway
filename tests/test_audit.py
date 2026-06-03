@@ -68,6 +68,9 @@ def captured_logs(monkeypatch):
 
     class FakeLogger:
         def info(self, event, **kwargs):
+            # structlog-style: kwargs are the bound context surfaced
+            # directly in the log record.  We capture both for assertion
+            # convenience: ``event`` + the kwargs splatted out.
             captured.append({"event": event, **kwargs})
 
     monkeypatch.setattr(audit, "_audit_logger", FakeLogger())
@@ -86,19 +89,21 @@ def test_log_audit_emits_log_and_routes_to_apikey_counter(fake_manager, captured
         changed_fields=("apikey_value",),
     )
 
-    # Log record present with the canonical field set
+    # Log record present with the canonical field set (kwargs are
+    # splatted by structlog -- the dashboard's KQL queries pivot on
+    # log.attributes.audit_action etc. directly, NOT on a nested
+    # ``extra`` dict).
     assert len(captured_logs) == 1
     log = captured_logs[0]
     assert log["event"] == "audit.apikey_rotated"
-    extra = log["extra"]
-    assert extra["audit_action"] == "apikey_rotated"
-    assert extra["admin_action"] == "apikey_rotated"  # dashboard pivots on either
-    assert extra["resource_type"] == "apikey"
-    assert extra["surface"] == "cli"
-    assert extra["actor"] == "alice@enkryptai.com"
-    assert extra["target_id"] == "****1234"
-    assert extra["changed_fields"] == "apikey_value"
-    assert extra["success"] == "true"
+    assert log["audit_action"] == "apikey_rotated"
+    assert log["admin_action"] == "apikey_rotated"  # dashboard pivots on either
+    assert log["resource_type"] == "apikey"
+    assert log["surface"] == "cli"
+    assert log["actor"] == "alice@enkryptai.com"
+    assert log["target_id"] == "****1234"
+    assert log["changed_fields"] == "apikey_value"
+    assert log["success"] == "true"
 
     # Metrics: umbrella + privileged + specific rotated + umbrella rotations
     assert len(fake_manager.admin_actions_counter.calls) == 1
@@ -117,8 +122,8 @@ def test_log_audit_failure_path_emits_failure_reason(fake_manager, captured_logs
         failure_reason="unauthorized",
     )
     log = captured_logs[0]
-    assert log["extra"]["success"] == "false"
-    assert log["extra"]["failure_reason"] == "unauthorized"
+    assert log["success"] == "false"
+    assert log["failure_reason"] == "unauthorized"
     # Specific metric still fires even on failure -- dashboard uses success
     # attribute to compute success rate.
     _, attrs = fake_manager.audit_apikey_deleted_counter.calls[0]
@@ -250,10 +255,10 @@ def test_log_audit_constructed_log_keys_cannot_be_overwritten_by_extras(
     )
     log = captured_logs[0]
     # Canonical values win
-    assert log["extra"]["audit_action"] == "apikey_created"
-    assert log["extra"]["admin_action"] == "apikey_created"
-    assert log["extra"]["actor"] == "alice"
-    assert log["extra"]["resource_type"] == "apikey"
+    assert log["audit_action"] == "apikey_created"
+    assert log["admin_action"] == "apikey_created"
+    assert log["actor"] == "alice"
+    assert log["resource_type"] == "apikey"
     # Non-reserved extras still attach
-    assert log["extra"]["scope"] == "should_propagate"
-    assert log["extra"]["old_provider"] == "opentelemetry"
+    assert log["scope"] == "should_propagate"
+    assert log["old_provider"] == "opentelemetry"

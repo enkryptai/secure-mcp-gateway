@@ -273,9 +273,15 @@ def log_audit(
     log_attrs.update(extra_payload)
 
     try:
+        # structlog binds **kwargs as bound context that the json/console
+        # renderer surfaces alongside the event.  ``extra=log_attrs`` would
+        # bury the whole audit envelope under a single ``extra`` key in
+        # the rendered log record, which the dashboard's KQL queries
+        # (log.attributes.admin_action, log.attributes.actor, ...)
+        # cannot pivot on.  Splat the dict instead.
         _audit_logger.info(  # always INFO so audit events survive log-level filters
             f"audit.{action}",
-            extra=log_attrs,
+            **log_attrs,
         )
     except Exception:  # pragma: no cover - never let logging crash a mutation
         pass
