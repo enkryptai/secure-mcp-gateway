@@ -52,16 +52,38 @@ from typing import Any, Iterable, Mapping, Optional
 
 from .plugins.telemetry import metrics_helpers as mh
 
-# A real structlog logger is preferred so log records render as JSON with
-# the ``log.attributes.*`` shape the Audit Trail dashboard's saved query
-# expects.  If structlog isn't set up yet (e.g. unit-test boot), fall back
-# to stdlib logging so the call never crashes.
+# Try to import structlog up-front so the import error (if any) only
+# happens once.  But we resolve the BoundLogger lazily inside each
+# log_audit() call (see ``_get_audit_logger``) -- structlog's processor
+# chain can be reconfigured at runtime (e.g. by telemetry reload), and a
+# BoundLogger captured at module import time keeps its old processors,
+# so log lines emitted after the reload silently route to a dead chain.
+# Resolving each call ensures we always pick up the current config.
 try:
-    import structlog
+    import structlog as _structlog
+except Exception:  # pragma: no cover - structlog may not be installed
+    _structlog = None  # type: ignore[assignment]
 
-    _audit_logger: Any = structlog.get_logger("enkrypt.audit")
-except Exception:  # pragma: no cover - structlog may not be initialised
-    _audit_logger = logging.getLogger("enkrypt.audit")
+
+def _get_audit_logger() -> Any:
+    """Return a fresh logger for the audit channel.
+
+    structlog (when available) gives us JSON output with the canonical
+    ``log.attributes.*`` shape the dashboard pivots on.  If structlog
+    isn't installed or fails to construct, fall back to stdlib logging
+    so the call never crashes.
+    """
+    if _structlog is not None:
+        try:
+            return _structlog.get_logger("enkrypt.audit")
+        except Exception:
+            pass
+    return logging.getLogger("enkrypt.audit")
+
+
+# Backwards-compat alias.  Existing tests monkeypatch this; we keep it
+# pointing at a freshly-resolved logger so the test fixture still works.
+_audit_logger: Any = _get_audit_logger()
 
 
 # ---------------------------------------------------------------------------
@@ -273,14 +295,20 @@ def log_audit(
     log_attrs.update(extra_payload)
 
     try:
-        # structlog binds **kwargs as bound context that the json/console
-        # renderer surfaces alongside the event.  ``extra=log_attrs`` would
-        # bury the whole audit envelope under a single ``extra`` key in
-        # the rendered log record, which the dashboard's KQL queries
-        # (log.attributes.admin_action, log.attributes.actor, ...)
-        # cannot pivot on.  Splat the dict instead.
-        _audit_logger.info(  # always INFO so audit events survive log-level filters
-            f"audit.{action}",
+        # Resolve the logger AT CALL TIME, not at module import.  The
+        # gateway's telemetry reload re-initialises structlog's processor
+        # chain; a BoundLogger captured at import time keeps the old
+        # chain and silently routes to no handlers after reload.  Tests
+        # monkeypatch ``_get_audit_logger`` to inject a recording fake.
+        #
+        # structlog binds **kwargs as bound context that the JSON/console
+        # renderer surfaces alongside the event.  ``extra=log_attrs``
+        # would bury the whole audit envelope under a single ``extra``
+        # key in the rendered log record, which the dashboard's KQL
+        # queries (log.attributes.admin_action, log.attributes.actor,
+        # ...) cannot pivot on.  Splat the dict instead.
+        _get_audit_logger().info(
+            f"audit.{action}",  # always INFO so audit events survive log-level filters
             **log_attrs,
         )
     except Exception:  # pragma: no cover - never let logging crash a mutation

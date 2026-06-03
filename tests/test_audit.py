@@ -73,7 +73,10 @@ def captured_logs(monkeypatch):
             # convenience: ``event`` + the kwargs splatted out.
             captured.append({"event": event, **kwargs})
 
-    monkeypatch.setattr(audit, "_audit_logger", FakeLogger())
+    # audit.log_audit calls _get_audit_logger() at request time (not
+    # module import); patch that resolver so every call gets the fake.
+    fake = FakeLogger()
+    monkeypatch.setattr(audit, "_get_audit_logger", lambda: fake)
     return captured
 
 
