@@ -84,6 +84,9 @@ class FakeManager:
         "system_reset_counter",
         "system_restore_counter",
         "auth_unauthorized_http_counter",
+        # Guardrail-detail (Phase: PII entities + Toxicity subtypes):
+        "guardrail_pii_entity_counter",
+        "guardrail_toxicity_subtype_counter",
     )
 
     def __init__(self):
@@ -742,4 +745,180 @@ def test_audit_helpers_silent_when_manager_unavailable(monkeypatch):
     mh.record_system_op("backup", "cli")
     mh.record_settings_change("telemetry_changed", "cli")
     mh.record_config_modified("cli")
+
+
+# ---------------------------------------------------------------------------
+# Guardrail-detail: PII entities
+# ---------------------------------------------------------------------------
+
+
+class _FakeViolation:
+    """Mimics GuardrailViolation just enough for the helpers."""
+
+    def __init__(self, violation_type: str, details=None):
+        # The real class uses an enum (.value gives the string); a bare
+        # string is fine for the helpers because they str()-cast and
+        # lower-case before matching.
+        self.violation_type = violation_type
+        self.metadata = {"details": details} if details is not None else {}
+
+
+def test_record_pii_entities_extracts_list_of_dicts(fake_manager):
+    """Most common Enkrypt shape:
+    details = {"entities": [{"type": "EMAIL", ...}, {"type": "PHONE", ...}]}"""
+    v = _FakeViolation("pii", details={
+        "entities": [
+            {"type": "EMAIL", "value": "a@b.com"},
+            {"type": "PHONE", "value": "+1..."},
+            {"type": "EMAIL", "value": "c@d.com"},
+        ],
+    })
+    result = mh.record_pii_entities(
+        [v], "input", server_name="srv", tool_name="ask",
+    )
+    assert result["pii_entities_count"] == 3
+    assert result["pii_entity_types"] == ["EMAIL", "PHONE"]  # dedup+sort
+    assert "entities" in result["pii_details_keys"]
+    # 3 increments: EMAIL, PHONE, EMAIL
+    assert len(fake_manager.guardrail_pii_entity_counter.calls) == 3
+    types_emitted = [
+        attrs["entity_type"]
+        for _, attrs in fake_manager.guardrail_pii_entity_counter.calls
+    ]
+    assert types_emitted == ["EMAIL", "PHONE", "EMAIL"]
+    _, attrs = fake_manager.guardrail_pii_entity_counter.calls[0]
+    assert attrs["direction"] == "input"
+    assert attrs["server_name"] == "srv"
+    assert attrs["tool_name"] == "ask"
+
+
+def test_record_pii_entities_extracts_bare_string_list(fake_manager):
+    """Older shape: details = {"entities": ["EMAIL", "PHONE"]}"""
+    v = _FakeViolation("pii", details={"entities": ["email", "phone"]})
+    result = mh.record_pii_entities([v], "input")
+    assert result["pii_entities_count"] == 2
+    # Upper-cased for stable dashboard rendering
+    assert result["pii_entity_types"] == ["EMAIL", "PHONE"]
+    assert len(fake_manager.guardrail_pii_entity_counter.calls) == 2
+
+
+def test_record_pii_entities_ignores_non_pii_violations(fake_manager):
+    """A toxicity violation in the same batch is skipped."""
+    pii_v = _FakeViolation("pii", details={"entities": [{"type": "SSN"}]})
+    tox_v = _FakeViolation("toxicity", details={"toxicity": 0.9})
+    result = mh.record_pii_entities([pii_v, tox_v], "input")
+    assert result["pii_entities_count"] == 1
+    assert result["pii_entity_types"] == ["SSN"]
+    assert len(fake_manager.guardrail_pii_entity_counter.calls) == 1
+
+
+def test_record_pii_entities_empty_details_returns_zero(fake_manager):
+    v = _FakeViolation("pii", details={})
+    result = mh.record_pii_entities([v], "input")
+    assert result["pii_entities_count"] == 0
+    assert result["pii_entity_types"] == []
+    # Zero entries: no metric emission (avoid noise counters at 0)
+    assert fake_manager.guardrail_pii_entity_counter.calls == []
+
+
+def test_record_pii_entities_silent_when_manager_unavailable(monkeypatch):
+    monkeypatch.setattr(mh, "_get_manager", lambda: None)
+    v = _FakeViolation("pii", details={"entities": [{"type": "EMAIL"}]})
+    result = mh.record_pii_entities([v], "input")
+    # Even without telemetry, the return value must be safe to splat
+    # into a log call -- the dashboard's log-based panels depend on it.
+    assert result["pii_entities_count"] == 1
+    assert result["pii_entity_types"] == ["EMAIL"]
+
+
+# ---------------------------------------------------------------------------
+# Guardrail-detail: Toxicity subtypes
+# ---------------------------------------------------------------------------
+
+
+def test_record_toxicity_subtypes_flat_dict(fake_manager):
+    """Most common Enkrypt shape: flat per-subtype scores."""
+    v = _FakeViolation("toxicity", details={
+        "toxicity":        0.91,
+        "severe_toxicity": 0.12,   # below threshold -> skipped
+        "insult":          0.74,
+        "threat":          0.0,    # below threshold
+        "identity_hate":   0.55,
+    })
+    result = mh.record_toxicity_subtypes([v], "input", threshold=0.5)
+    assert set(result["toxicity_subtypes"]) == {"toxicity", "insult", "identity_hate"}
+    # Top is the highest scoring -> toxicity at 0.91
+    assert result["toxicity_top_subtype"] == "toxicity"
+    assert result["toxicity_top_score"] == pytest.approx(0.91, rel=1e-3)
+    assert len(fake_manager.guardrail_toxicity_subtype_counter.calls) == 3
+    # Score buckets: 0.91=high, 0.74=medium, 0.55=medium
+    buckets = sorted(
+        attrs["score_bucket"]
+        for _, attrs in fake_manager.guardrail_toxicity_subtype_counter.calls
+    )
+    assert buckets == ["high", "medium", "medium"]
+
+
+def test_record_toxicity_subtypes_nested_categories(fake_manager):
+    """Variant shape: details = {"categories": {...}}."""
+    v = _FakeViolation("toxic_content", details={
+        "categories": {"insult": 0.88, "threat": 0.3},
+    })
+    result = mh.record_toxicity_subtypes([v], "output")
+    assert result["toxicity_subtypes"] == ["insult"]
+    assert result["toxicity_top_subtype"] == "insult"
+    assert "categories" in result["toxicity_details_keys"]
+
+
+def test_record_toxicity_subtypes_below_threshold_keeps_metric_at_zero(fake_manager):
+    """No subtype above threshold -> nothing emitted, but details_keys
+    still returned so operators can see what arrived."""
+    v = _FakeViolation("toxicity", details={"toxicity": 0.2, "insult": 0.1})
+    result = mh.record_toxicity_subtypes([v], "input", threshold=0.5)
+    assert result["toxicity_subtypes"] == []
+    assert result["toxicity_top_subtype"] == ""
+    assert result["toxicity_top_score"] == 0.0
+    assert sorted(result["toxicity_details_keys"]) == ["insult", "toxicity"]
+    assert fake_manager.guardrail_toxicity_subtype_counter.calls == []
+
+
+def test_record_toxicity_subtypes_ignores_non_toxicity_violations(fake_manager):
+    pii_v = _FakeViolation("pii", details={"entities": [{"type": "EMAIL"}]})
+    tox_v = _FakeViolation("toxicity", details={"insult": 0.9})
+    result = mh.record_toxicity_subtypes([pii_v, tox_v], "input")
+    assert result["toxicity_subtypes"] == ["insult"]
+    assert len(fake_manager.guardrail_toxicity_subtype_counter.calls) == 1
+
+
+def test_record_toxicity_subtypes_silent_when_manager_unavailable(monkeypatch):
+    monkeypatch.setattr(mh, "_get_manager", lambda: None)
+    v = _FakeViolation("toxicity", details={"insult": 0.9})
+    result = mh.record_toxicity_subtypes([v], "input")
+    # Same contract as PII helper: return dict is always safe to splat
+    # into structured logs even when telemetry isn't initialised.
+    assert result["toxicity_top_subtype"] == "insult"
+    assert result["toxicity_top_score"] == pytest.approx(0.9, rel=1e-3)
+
+
+# ---------------------------------------------------------------------------
+# _score_bucket boundary check (covers the only piece of pure logic that
+# can drift the dashboards' low|medium|high pivots).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "score,expected",
+    [
+        (0.0,  "low"),
+        (0.49, "low"),
+        (0.50, "medium"),
+        (0.84, "medium"),
+        (0.85, "high"),
+        (1.0,  "high"),
+        ("garbage", "unknown"),
+        (None,      "unknown"),
+    ],
+)
+def test_score_bucket_boundaries(score, expected):
+    assert mh._score_bucket(score) == expected
     mh.record_unauthorized_http("/x", "rest_api")
