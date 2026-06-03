@@ -254,6 +254,22 @@ class MetricNames:
 
     # PII metrics
     PII_REDACTIONS = "enkrypt.pii.redactions"
+    # Per-entity-type counter (one increment per detected PII entity).
+    # Attribute: ``entity_type`` (e.g. EMAIL, PHONE, SSN, CREDIT_CARD,
+    # NAME, ADDRESS, IP_ADDRESS, URL).  Powers the Guardrails Deep Dive
+    # "PII Entities by Category" and "Top PII Entity Types" panels.
+    GUARDRAIL_PII_ENTITY = "enkrypt.guardrail.pii_entity"
+
+    # =====================================================================
+    # Per-detector violation detail metrics  (Guardrails Deep Dive)
+    # =====================================================================
+    # Toxicity subtype attribution.  Enkrypt's toxicity detector returns
+    # per-subtype scores (toxicity, severe_toxicity, obscene, threat,
+    # insult, identity_hate).  One increment per subtype that crossed the
+    # detector's threshold, with attributes ``subtype`` and ``score_bucket``
+    # (low|medium|high).  Powers the Guardrails Deep Dive "Toxicity
+    # Subtypes" panels.
+    GUARDRAIL_TOXICITY_SUBTYPE = "enkrypt.guardrail.toxicity_subtype"
 
     # Session / user gauges
     SESSION_ACTIVE = "enkrypt.session.active"
@@ -378,6 +394,16 @@ METRIC_DESCRIPTIONS: dict[str, str] = {
     MetricNames.CACHE_HITS: "Cache hits",
     MetricNames.CACHE_MISSES: "Cache misses",
     MetricNames.PII_REDACTIONS: "PII redaction operations",
+    MetricNames.GUARDRAIL_PII_ENTITY: (
+        "PII entities detected by the guardrail, one increment per "
+        "entity. Attribute: entity_type (EMAIL/PHONE/SSN/...)."
+    ),
+    MetricNames.GUARDRAIL_TOXICITY_SUBTYPE: (
+        "Toxicity subtypes flagged by the guardrail, one increment "
+        "per subtype above threshold. Attributes: subtype "
+        "(insult/threat/severe_toxicity/...), score_bucket "
+        "(low|medium|high)."
+    ),
     MetricNames.SESSION_ACTIVE: "Currently active sessions",
     MetricNames.USERS_ACTIVE: "Currently active users",
     MetricNames.DISCOVERY_LIST: "Server list endpoint calls",

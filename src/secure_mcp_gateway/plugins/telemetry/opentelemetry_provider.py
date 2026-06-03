@@ -92,6 +92,8 @@ class OpenTelemetryProvider(TelemetryProvider):
         self.active_sessions_gauge = None
         self.active_users_gauge = None
         self.pii_redactions_counter = None
+        self.guardrail_pii_entity_counter = None
+        self.guardrail_toxicity_subtype_counter = None
         self.tool_call_blocked_counter = None
         self.input_guardrail_violation_counter = None
         self.output_guardrail_violation_counter = None
@@ -429,6 +431,23 @@ class OpenTelemetryProvider(TelemetryProvider):
         self.pii_redactions_counter = self._meter.create_counter(
             M.PII_REDACTIONS, description=D[M.PII_REDACTIONS], unit="1",
         )
+        # Per-entity-type PII counter (drives Guardrails Deep Dive PII
+        # entity breakdown panels). One increment per detected entity,
+        # attribute entity_type.
+        self.guardrail_pii_entity_counter = self._meter.create_counter(
+            M.GUARDRAIL_PII_ENTITY,
+            description=D[M.GUARDRAIL_PII_ENTITY],
+            unit="1",
+        )
+        # Toxicity subtype counter (drives Guardrails Deep Dive
+        # toxicity subtype panels). One increment per subtype that
+        # crossed the detector's threshold, attributes subtype +
+        # score_bucket.
+        self.guardrail_toxicity_subtype_counter = self._meter.create_counter(
+            M.GUARDRAIL_TOXICITY_SUBTYPE,
+            description=D[M.GUARDRAIL_TOXICITY_SUBTYPE],
+            unit="1",
+        )
         self.tool_call_blocked_counter = self._meter.create_counter(
             M.TOOL_BLOCKED, description=D[M.TOOL_BLOCKED], unit="1",
         )
@@ -714,6 +733,8 @@ class OpenTelemetryProvider(TelemetryProvider):
         self.active_sessions_gauge = NoOpCounter()
         self.active_users_gauge = NoOpCounter()
         self.pii_redactions_counter = NoOpCounter()
+        self.guardrail_pii_entity_counter = NoOpCounter()
+        self.guardrail_toxicity_subtype_counter = NoOpCounter()
 
         # Health-check API metrics
         self.health_request_counter = NoOpCounter()

@@ -419,6 +419,322 @@ def record_compliance_hits(
 
 
 # ---------------------------------------------------------------------------
+# Per-detector violation detail (PII entities + Toxicity subtypes)
+#
+# The upstream Enkrypt guardrail provider returns rich per-detector detail
+# inside ``violation.metadata["details"]``, but the schema is opaque (Enkrypt
+# changes shapes between detector versions and is not strictly typed on our
+# side).  These helpers parse the most common shapes defensively, emit
+# metrics for what they find, and ALWAYS return a small dict the caller can
+# splat into a structlog ``info()`` call (so log-based dashboards still get
+# the breakdown even if the metric shape evolves).
+#
+# Schema reference (best-effort, from observed responses + fallback default
+# at ``enkrypt_provider._DETECTOR_DEFAULTS``):
+#
+#   PII detector       -> details["pii"]["entities"]: list[{"type": "EMAIL",
+#                                                            "value": "...",
+#                                                            "start": int,
+#                                                            "end":   int}]
+#                         OR list of bare type strings ["EMAIL", "PHONE"].
+#
+#   Toxicity detector  -> details["toxicity"] is a dict of subtype->score
+#                         floats, e.g. {"toxicity": 0.91, "severe_toxicity":
+#                         0.12, "insult": 0.74, "threat": 0.0, ...}.
+#                         Sometimes nested under "categories" or "scores".
+#
+# When the actual response deviates we still want a record of what arrived;
+# the helpers therefore return ``details_keys`` (the top-level keys of the
+# details dict) so the operator can spot drift in the Audit / Guardrails
+# Deep Dive dashboards and update the parser.
+# ---------------------------------------------------------------------------
+
+
+# Toxicity subtypes Enkrypt is known to surface today.  Anything outside
+# this set still gets emitted as long as the value is numeric -- the set is
+# only used to tag the metric attribute when we want a stable enum value.
+_KNOWN_TOXICITY_SUBTYPES = frozenset({
+    "toxicity",
+    "severe_toxicity",
+    "obscene",
+    "threat",
+    "insult",
+    "identity_hate",
+    "identity_attack",
+    "hate",
+})
+
+
+def _score_bucket(score: float) -> str:
+    """Map a 0..1 detector score to a coarse bucket for dashboarding.
+
+    Detector scores are continuous floats; turning them into a 3-bucket
+    keyword (low|medium|high) lets dashboards do a simple pie/stack-bar
+    without needing percentile aggregations on every panel.
+    """
+    try:
+        v = float(score)
+    except (TypeError, ValueError):
+        return "unknown"
+    if v >= 0.85:
+        return "high"
+    if v >= 0.5:
+        return "medium"
+    return "low"
+
+
+def _extract_pii_entities(details: Any) -> tuple[list[str], int]:
+    """Return ``(entity_types, count)`` from a PII details payload.
+
+    Defensive against the three shapes we have seen Enkrypt return:
+      - ``{"entities": [{"type": "EMAIL", ...}, ...]}``  (most common)
+      - ``{"entities": ["EMAIL", "PHONE"]}``
+      - ``["EMAIL", "PHONE"]``                            (bare list)
+
+    Empty list and ``count == 0`` mean "nothing to emit"; callers should
+    skip emission rather than emit a zero-count metric.
+    """
+    if not details:
+        return [], 0
+
+    raw_entities: list[Any] = []
+    if isinstance(details, Mapping):
+        for key in ("entities", "pii_entities", "found_entities", "types"):
+            v = details.get(key)
+            if isinstance(v, list) and v:
+                raw_entities = v
+                break
+    elif isinstance(details, list):
+        raw_entities = details
+
+    types: list[str] = []
+    for item in raw_entities:
+        if isinstance(item, Mapping):
+            t = (
+                item.get("type")
+                or item.get("entity_type")
+                or item.get("label")
+                or item.get("name")
+            )
+            if t:
+                types.append(str(t).upper())
+        elif isinstance(item, str):
+            types.append(item.upper())
+    return types, len(types)
+
+
+def _extract_toxicity_subtypes(
+    details: Any,
+    threshold: float = 0.5,
+) -> tuple[list[tuple[str, float]], list[str]]:
+    """Return ``(triggered, all_keys_seen)`` where ``triggered`` is a list
+    of ``(subtype, score)`` tuples for every subtype above ``threshold``.
+
+    Defensive against Enkrypt shapes:
+      - flat ``{"insult": 0.85, "threat": 0.02, ...}``   (most common)
+      - nested ``{"categories": {<same>}}`` / ``{"scores": {<same>}}``
+      - list ``[{"name": "insult", "score": 0.85}, ...]``
+
+    Returns the raw keys-seen list so the caller can attach
+    ``toxicity_details_keys`` to a debug log when nothing crossed the
+    threshold (helps operators spot schema drift).
+    """
+    if not details:
+        return [], []
+
+    payload: Mapping[str, Any]
+    if isinstance(details, Mapping):
+        for key in ("categories", "scores", "subtypes"):
+            inner = details.get(key)
+            if isinstance(inner, Mapping):
+                payload = inner
+                break
+        else:
+            payload = details
+    else:
+        payload = {}
+
+    triggered: list[tuple[str, float]] = []
+    keys_seen: list[str] = []
+
+    if isinstance(payload, Mapping):
+        for k, v in payload.items():
+            keys_seen.append(str(k))
+            try:
+                score = float(v)
+            except (TypeError, ValueError):
+                continue
+            if score >= threshold:
+                triggered.append((str(k).lower(), score))
+    elif isinstance(details, list):
+        for item in details:
+            if isinstance(item, Mapping):
+                name = item.get("name") or item.get("subtype") or item.get("type")
+                score_raw = (
+                    item.get("score")
+                    or item.get("value")
+                    or item.get("confidence")
+                )
+                if not name:
+                    continue
+                keys_seen.append(str(name))
+                try:
+                    score = float(score_raw)
+                except (TypeError, ValueError):
+                    continue
+                if score >= threshold:
+                    triggered.append((str(name).lower(), score))
+
+    triggered.sort(key=lambda t: t[1], reverse=True)
+    return triggered, sorted(set(keys_seen))
+
+
+def record_pii_entities(
+    violations: Iterable[Any],
+    direction: str,
+    server_name: str = "",
+    tool_name: str = "",
+    guardrail_name: Optional[str] = None,
+    user_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Walk violations of type ``pii``, extract per-entity detail and emit
+    ``enkrypt.guardrail.pii_entity`` (one increment per entity, attribute
+    ``entity_type``).
+
+    Returns a dict suitable for splatting into a structured log so log-based
+    dashboards get matching fields:
+
+        {"pii_entities_count":  int,
+         "pii_entity_types":    list[str],   # unique, sorted
+         "pii_details_keys":    list[str]}   # for debug/drift detection
+    """
+    mgr = _get_manager()
+    counter = getattr(mgr, "guardrail_pii_entity_counter", None) if mgr else None
+
+    total = 0
+    types_all: list[str] = []
+    details_keys: set[str] = set()
+
+    for v in violations or ():
+        vt = getattr(v, "violation_type", None)
+        if vt is None and isinstance(v, Mapping):
+            vt = v.get("violation_type")
+        vt_str = str(vt).lower() if vt is not None else ""
+        if "pii" not in vt_str:
+            continue
+
+        metadata = getattr(v, "metadata", None) or (
+            v.get("metadata") if isinstance(v, Mapping) else None
+        )
+        if not metadata:
+            continue
+        details = metadata.get("details") if isinstance(metadata, Mapping) else None
+        if isinstance(details, Mapping):
+            details_keys.update(str(k) for k in details.keys())
+
+        types, count = _extract_pii_entities(details)
+        if not types:
+            continue
+        total += count
+        types_all.extend(types)
+
+        if counter is not None:
+            for t in types:
+                _add(counter, 1, {
+                    "entity_type":    t,
+                    "direction":      direction,
+                    "server_name":    server_name,
+                    "tool_name":      tool_name,
+                    "guardrail_name": guardrail_name,
+                    "user_id":        user_id,
+                    "project_id":     project_id,
+                })
+
+    return {
+        "pii_entities_count": total,
+        "pii_entity_types":   sorted(set(types_all)) if types_all else [],
+        "pii_details_keys":   sorted(details_keys) if details_keys else [],
+    }
+
+
+def record_toxicity_subtypes(
+    violations: Iterable[Any],
+    direction: str,
+    server_name: str = "",
+    tool_name: str = "",
+    guardrail_name: Optional[str] = None,
+    user_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+    threshold: float = 0.5,
+) -> dict[str, Any]:
+    """Walk violations of type ``toxicity`` (or ``toxic_content``), extract
+    per-subtype scores above ``threshold`` and emit
+    ``enkrypt.guardrail.toxicity_subtype`` (one increment per subtype,
+    attributes ``subtype`` + ``score_bucket``).
+
+    Returns a dict suitable for splatting into a structured log:
+
+        {"toxicity_subtypes":      list[str],   # unique sorted
+         "toxicity_top_subtype":   str | "",
+         "toxicity_top_score":     float,
+         "toxicity_details_keys":  list[str]}
+    """
+    mgr = _get_manager()
+    counter = getattr(mgr, "guardrail_toxicity_subtype_counter", None) if mgr else None
+
+    triggered_all: list[tuple[str, float]] = []
+    details_keys: set[str] = set()
+
+    for v in violations or ():
+        vt = getattr(v, "violation_type", None)
+        if vt is None and isinstance(v, Mapping):
+            vt = v.get("violation_type")
+        vt_str = str(vt).lower() if vt is not None else ""
+        # Match both "toxicity" and the ViolationType.TOXIC_CONTENT enum
+        # name ("toxic_content"); strict equality would miss either form.
+        if "toxic" not in vt_str:
+            continue
+
+        metadata = getattr(v, "metadata", None) or (
+            v.get("metadata") if isinstance(v, Mapping) else None
+        )
+        if not metadata:
+            continue
+        details = metadata.get("details") if isinstance(metadata, Mapping) else None
+        if isinstance(details, Mapping):
+            details_keys.update(str(k) for k in details.keys())
+
+        triggered, _ = _extract_toxicity_subtypes(details, threshold=threshold)
+        triggered_all.extend(triggered)
+
+        if counter is not None:
+            for subtype, score in triggered:
+                _add(counter, 1, {
+                    "subtype":        subtype,
+                    "score_bucket":   _score_bucket(score),
+                    "direction":      direction,
+                    "server_name":    server_name,
+                    "tool_name":      tool_name,
+                    "guardrail_name": guardrail_name,
+                    "user_id":        user_id,
+                    "project_id":     project_id,
+                })
+
+    subtypes_unique = sorted({s for s, _ in triggered_all})
+    top_subtype, top_score = ("", 0.0)
+    if triggered_all:
+        top_subtype, top_score = max(triggered_all, key=lambda t: t[1])
+
+    return {
+        "toxicity_subtypes":     subtypes_unique,
+        "toxicity_top_subtype":  top_subtype,
+        "toxicity_top_score":    round(top_score, 4) if top_score else 0.0,
+        "toxicity_details_keys": sorted(details_keys) if details_keys else [],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Centralised error emission (one increment per MCPGatewayError)
 # ---------------------------------------------------------------------------
 
@@ -1079,6 +1395,8 @@ __all__ = [
     "record_auth_outcome",
     "record_guardrail_api",
     "record_compliance_hits",
+    "record_pii_entities",
+    "record_toxicity_subtypes",
     "record_error_by_code",
     "record_tool_permission_denied",
     "record_degradation",

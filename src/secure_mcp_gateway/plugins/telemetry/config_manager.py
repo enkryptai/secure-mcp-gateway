@@ -390,6 +390,16 @@ class TelemetryConfigManager:
         """Backward-compatible metric accessor"""
         return self._get_metric_from_provider("pii_redactions_counter")
 
+    @property
+    def guardrail_pii_entity_counter(self):
+        """Per-entity PII counter ``enkrypt.guardrail.pii_entity``."""
+        return self._get_metric_from_provider("guardrail_pii_entity_counter")
+
+    @property
+    def guardrail_toxicity_subtype_counter(self):
+        """Toxicity subtype counter ``enkrypt.guardrail.toxicity_subtype``."""
+        return self._get_metric_from_provider("guardrail_toxicity_subtype_counter")
+
     # Timeout management metrics
     @property
     def timeout_operations_total(self):

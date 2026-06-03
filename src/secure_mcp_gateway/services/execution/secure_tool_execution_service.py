@@ -17,7 +17,9 @@ from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
     record_compliance_hits,
     record_degradation,
     record_guardrail_violations,
+    record_pii_entities,
     record_pii_redaction,
+    record_toxicity_subtypes,
     record_tool_call_outcome,
     record_tool_permission_denied,
 )
@@ -1336,6 +1338,40 @@ class SecureToolExecutionService:
                     tool_name=tool_name,
                     **auth_context,
                 )
+                # Per-detector violation detail (Guardrails Deep Dive
+                # dashboard).  Extract PII entity types + toxicity
+                # subtypes from each violation's metadata.details and
+                # emit per-entity / per-subtype counters plus structured
+                # log fields.  Returns small dicts that we splat into
+                # the violation log below so the same shape is also
+                # queryable from the logs index.
+                pii_detail = record_pii_entities(
+                    guardrail_response.violations,
+                    "input",
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    **auth_context,
+                )
+                tox_detail = record_toxicity_subtypes(
+                    guardrail_response.violations,
+                    "input",
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    **auth_context,
+                )
+                if pii_detail.get("pii_entities_count") or tox_detail.get("toxicity_subtypes"):
+                    logger.info(
+                        "secure_tool_execution.guardrail.detector_detail",
+                        extra=build_log_extra(
+                            ctx,
+                            custom_id,
+                            server_name,
+                            tool_name=tool_name,
+                            direction="input",
+                            **pii_detail,
+                            **tox_detail,
+                        ),
+                    )
                 record_tool_call_outcome(
                     server_name,
                     tool_name,
@@ -1600,6 +1636,34 @@ class SecureToolExecutionService:
                     tool_name=tool_name,
                     **auth_context,
                 )
+                # Per-detector violation detail (sync output path).
+                pii_detail = record_pii_entities(
+                    guardrail_response.violations,
+                    "output",
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    **auth_context,
+                )
+                tox_detail = record_toxicity_subtypes(
+                    guardrail_response.violations,
+                    "output",
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    **auth_context,
+                )
+                if pii_detail.get("pii_entities_count") or tox_detail.get("toxicity_subtypes"):
+                    logger.info(
+                        "secure_tool_execution.guardrail.detector_detail",
+                        extra=build_log_extra(
+                            ctx,
+                            custom_id,
+                            server_name,
+                            tool_name=tool_name,
+                            direction="output",
+                            **pii_detail,
+                            **tox_detail,
+                        ),
+                    )
                 return self._build_blocked_result(
                     "blocked_output",
                     f"Request blocked due to output guardrail violations: {', '.join(violation_types)}",
@@ -1749,6 +1813,34 @@ class SecureToolExecutionService:
                     tool_name=tool_name,
                     **auth_context,
                 )
+                # Per-detector violation detail (async output path).
+                pii_detail = record_pii_entities(
+                    guardrail_response.violations,
+                    "output",
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    **auth_context,
+                )
+                tox_detail = record_toxicity_subtypes(
+                    guardrail_response.violations,
+                    "output",
+                    server_name=server_name,
+                    tool_name=tool_name,
+                    **auth_context,
+                )
+                if pii_detail.get("pii_entities_count") or tox_detail.get("toxicity_subtypes"):
+                    logger.info(
+                        "secure_tool_execution.guardrail.detector_detail",
+                        extra=build_log_extra(
+                            ctx,
+                            custom_id,
+                            server_name,
+                            tool_name=tool_name,
+                            direction="output",
+                            **pii_detail,
+                            **tox_detail,
+                        ),
+                    )
                 return self._build_blocked_result(
                     "blocked_output",
                     f"Request blocked due to output guardrail violations: {', '.join(violation_types)}",
