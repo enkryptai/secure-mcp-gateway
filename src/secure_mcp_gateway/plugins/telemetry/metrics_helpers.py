@@ -2,6 +2,21 @@
 Safe, no-throw helpers for incrementing the Prometheus counter / histogram
 instruments declared in ``opentelemetry_provider.py``.
 
+Per-request phase timing (Cache & Performance dashboard)
+--------------------------------------------------------
+``RequestTimings`` lives on a ``contextvars.ContextVar`` so async tasks
+inside the same request share the same accumulator without having to
+thread it through method signatures.  Each phase is wrapped with
+``phase_timer("preprocess_duration_ms")`` which records elapsed
+wall-clock ms under that field name.  At log time, the success /
+blocked log lines splat ``**finalize_request_timings()`` to surface
+the breakdown alongside the existing structured fields.
+
+The dashboard's "Per-Request Latency Breakdown" panels query the
+corresponding ``log.attributes.*_duration_ms`` fields (already
+declared in ``gateway-logs-elastic-template.json``).
+
+
 Why this module exists
 ----------------------
 The OpenTelemetry provider declares ~17 metric instruments, but most
@@ -44,10 +59,160 @@ Helpers
 
 from __future__ import annotations
 
+import contextvars
 import logging
+import time
 from typing import Any, Iterable, Mapping, Optional
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Per-request phase timing  (Cache & Performance dashboard)
+# ---------------------------------------------------------------------------
+
+# A contextvar so async tasks within the same request share the same
+# accumulator without per-method-signature threading.  When two phases
+# run concurrently (e.g. async input guardrails) we accumulate -- the
+# resulting *_duration_ms field will be the SUM of overlapping phases,
+# not wall time, but the total_request_duration_ms (computed from a
+# single start mark) is wall time.  Dashboards label each panel "Avg
+# (ms)" so summed concurrent phases are still meaningful.
+_REQUEST_TIMINGS: contextvars.ContextVar[Optional[dict[str, Any]]] = (
+    contextvars.ContextVar("enkrypt_request_timings", default=None)
+)
+
+
+def start_request_timings() -> dict[str, Any]:
+    """Initialise a fresh timings dict for the current request /
+    contextvar scope.  Returns the dict so the caller can attach it
+    to the span if desired.
+
+    Idempotent: if a dict already exists, returns it unchanged.
+    """
+    existing = _REQUEST_TIMINGS.get()
+    if existing is not None:
+        return existing
+    t: dict[str, Any] = {"_request_start": time.perf_counter()}
+    _REQUEST_TIMINGS.set(t)
+    return t
+
+
+def get_request_timings() -> Optional[dict[str, Any]]:
+    """Return the active timings dict (or None if not in a request)."""
+    return _REQUEST_TIMINGS.get()
+
+
+def finalize_request_timings() -> dict[str, Any]:
+    """Compute ``total_request_duration_ms`` from the request start
+    mark and return a clean ``*_duration_ms`` dict suitable for
+    splatting into ``logger.info(..., extra=build_log_extra(..., **))``.
+
+    Always returns at least ``{}`` -- never raises.  Internal
+    bookkeeping keys (prefixed ``_``) are stripped from the return.
+    """
+    t = _REQUEST_TIMINGS.get()
+    if not t:
+        return {}
+    start = t.pop("_request_start", None)
+    if start is not None:
+        t["total_request_duration_ms"] = (time.perf_counter() - start) * 1000.0
+    # Drop any other underscore-prefixed bookkeeping; keep only numeric
+    # _duration_ms fields rounded to 2 dp for dashboard readability.
+    return {
+        k: round(float(v), 2)
+        for k, v in t.items()
+        if not k.startswith("_") and isinstance(v, (int, float))
+    }
+
+
+def reset_request_timings() -> None:
+    """Drop the current request's timings dict.  Call at request exit
+    if you don't want it leaking to the next operation in the same
+    async context (rare; contextvars usually scope per-task)."""
+    _REQUEST_TIMINGS.set(None)
+
+
+class phase_timer:
+    """Context manager + async context manager that records elapsed
+    ms into the active request timings dict under ``field_name``.
+
+    Repeated entries with the same name ACCUMULATE (so a multi-leg
+    phase like "two guardrail checks" naturally sums into one
+    ``guardrail_duration_ms`` field).  No-op if no request timings
+    dict is active.
+
+    Example::
+
+        async with phase_timer("preprocess_duration_ms"):
+            await input_guardrail.validate(...)
+        async with phase_timer("guardrail_duration_ms"):
+            await input_guardrail.validate(...)   # adds to same accumulator
+    """
+
+    __slots__ = ("field_name", "_start", "_also_into")
+
+    def __init__(self, field_name: str, *also_into: str) -> None:
+        self.field_name = field_name
+        # Extra accumulator names -- e.g. preprocess_duration_ms also
+        # contributes to guardrail_duration_ms.  Passed positionally.
+        self._also_into = also_into
+        self._start: float = 0.0
+
+    def __enter__(self) -> "phase_timer":
+        self._start = time.perf_counter()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self._record()
+
+    async def __aenter__(self) -> "phase_timer":
+        self._start = time.perf_counter()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        self._record()
+
+    def _record(self) -> None:
+        elapsed_ms = (time.perf_counter() - self._start) * 1000.0
+        t = _REQUEST_TIMINGS.get()
+        if t is None:
+            return
+        for name in (self.field_name, *self._also_into):
+            t[name] = t.get(name, 0.0) + elapsed_ms
+
+
+def record_session_active(delta: int, server_name: str = "") -> None:
+    """Bump the ``enkrypt.session.active`` UpDownCounter by ``delta``.
+
+    Positive on session acquire (new worker), negative on release /
+    evict / reap.  No-op if telemetry is disabled.  Server name is
+    attached as an attribute so the dashboard's "Active Sessions"
+    panel can pivot per-server.
+    """
+    mgr = _get_manager()
+    if mgr is None or delta == 0:
+        return
+    _add(getattr(mgr, "active_sessions_gauge", None), delta, {
+        "server_name": server_name,
+    })
+
+
+def record_phase_ms(field_name: str, elapsed_ms: float, *also_into: str) -> None:
+    """Manually record a phase duration (when a context manager isn't
+    convenient -- e.g. timing was captured by a different mechanism
+    like an OTel span end-time).  No-op if no request timings dict
+    is active.
+    """
+    t = _REQUEST_TIMINGS.get()
+    if t is None:
+        return
+    try:
+        v = float(elapsed_ms)
+    except (TypeError, ValueError):
+        return
+    for name in (field_name, *also_into):
+        t[name] = t.get(name, 0.0) + v
 
 
 def _get_manager():
@@ -1397,6 +1562,14 @@ __all__ = [
     "record_compliance_hits",
     "record_pii_entities",
     "record_toxicity_subtypes",
+    # Per-request phase timing (Cache & Performance dashboard)
+    "start_request_timings",
+    "get_request_timings",
+    "finalize_request_timings",
+    "reset_request_timings",
+    "phase_timer",
+    "record_phase_ms",
+    "record_session_active",
     "record_error_by_code",
     "record_tool_permission_denied",
     "record_degradation",

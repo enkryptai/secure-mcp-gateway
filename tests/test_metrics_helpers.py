@@ -87,6 +87,8 @@ class FakeManager:
         # Guardrail-detail (Phase: PII entities + Toxicity subtypes):
         "guardrail_pii_entity_counter",
         "guardrail_toxicity_subtype_counter",
+        # Cache & Performance (session-pool active gauge wiring):
+        "active_sessions_gauge",
     )
 
     def __init__(self):
@@ -921,4 +923,157 @@ def test_record_toxicity_subtypes_silent_when_manager_unavailable(monkeypatch):
 )
 def test_score_bucket_boundaries(score, expected):
     assert mh._score_bucket(score) == expected
+
+
+# ---------------------------------------------------------------------------
+# Cache & Performance: per-request phase timing
+# ---------------------------------------------------------------------------
+
+
+def test_phase_timer_records_into_request_timings():
+    """A phase_timer block accumulates wall-clock ms into the active
+    contextvar dict under the named field."""
+    mh.reset_request_timings()
+    mh.start_request_timings()
+    with mh.phase_timer("preprocess_duration_ms"):
+        # No-op sleep; just take a measurable amount of time
+        for _ in range(100):
+            _ = sum(range(100))
+    timings = mh.get_request_timings()
+    assert "preprocess_duration_ms" in timings
+    assert timings["preprocess_duration_ms"] > 0
+    mh.reset_request_timings()
+
+
+def test_phase_timer_accumulates_on_repeat_entry():
+    """Calling phase_timer twice with the same field name SUMS into
+    the same accumulator (used for multi-leg phases like
+    guardrail_duration_ms = input + output)."""
+    mh.reset_request_timings()
+    mh.start_request_timings()
+    with mh.phase_timer("guardrail_duration_ms"):
+        for _ in range(50):
+            _ = sum(range(50))
+    first = mh.get_request_timings()["guardrail_duration_ms"]
+    with mh.phase_timer("guardrail_duration_ms"):
+        for _ in range(50):
+            _ = sum(range(50))
+    total = mh.get_request_timings()["guardrail_duration_ms"]
+    assert total > first  # accumulation is monotonic
+    mh.reset_request_timings()
+
+
+def test_phase_timer_also_into_propagates_to_aggregate():
+    """``phase_timer("preprocess_duration_ms", "guardrail_duration_ms")``
+    records the same elapsed under BOTH fields so the dashboard can
+    show per-phase AND aggregate-phase numbers off the same code path."""
+    mh.reset_request_timings()
+    mh.start_request_timings()
+    with mh.phase_timer("preprocess_duration_ms", "guardrail_duration_ms"):
+        for _ in range(50):
+            _ = sum(range(50))
+    t = mh.get_request_timings()
+    assert "preprocess_duration_ms" in t
+    assert "guardrail_duration_ms" in t
+    # The two should be within float-rounding of each other (same wall time).
+    assert abs(t["preprocess_duration_ms"] - t["guardrail_duration_ms"]) < 0.001
+    mh.reset_request_timings()
+
+
+def test_finalize_request_timings_adds_total_and_strips_underscores():
+    """finalize_request_timings() returns a clean dict suitable for
+    splatting into build_log_extra(...): no leading-underscore keys,
+    all values rounded to 2 dp, total_request_duration_ms computed
+    from start mark."""
+    mh.reset_request_timings()
+    mh.start_request_timings()
+    with mh.phase_timer("preprocess_duration_ms"):
+        for _ in range(20):
+            _ = sum(range(50))
+    out = mh.finalize_request_timings()
+    assert "total_request_duration_ms" in out
+    assert out["total_request_duration_ms"] > 0
+    assert "preprocess_duration_ms" in out
+    # No underscore-prefixed bookkeeping survives finalize
+    assert not any(k.startswith("_") for k in out)
+    # All values are floats rounded to 2 dp
+    for v in out.values():
+        assert isinstance(v, float)
+        assert round(v, 2) == v
+
+
+def test_finalize_when_no_timings_returns_empty():
+    """No request context active -> empty dict, never raises."""
+    mh.reset_request_timings()
+    assert mh.finalize_request_timings() == {}
+
+
+def test_phase_timer_noop_without_request_timings():
+    """phase_timer is safe to use when no request timings dict is
+    active -- it just doesn't record anywhere."""
+    mh.reset_request_timings()
+    # No start_request_timings() called
+    with mh.phase_timer("execution_duration_ms"):
+        for _ in range(10):
+            _ = sum(range(10))
+    # Should not have created a timings dict
+    assert mh.get_request_timings() is None
+
+
+@pytest.mark.asyncio
+async def test_phase_timer_async_context_works():
+    """phase_timer is also an async context manager for ``async with``
+    callsites (the more common use in STES)."""
+    mh.reset_request_timings()
+    mh.start_request_timings()
+
+    async def work():
+        for _ in range(50):
+            _ = sum(range(50))
+
+    async with mh.phase_timer("execution_duration_ms"):
+        await work()
+    t = mh.get_request_timings()
+    assert t["execution_duration_ms"] > 0
+    mh.reset_request_timings()
+
+
+def test_record_session_active_attaches_server_name(fake_manager):
+    """record_session_active(+/-) bumps active_sessions_gauge with
+    server_name attribute so the Active Sessions panel can pivot
+    per-server."""
+    mh.record_session_active(+1, server_name="srv1")
+    mh.record_session_active(-1, server_name="srv1")
+    mh.record_session_active(+1, server_name="srv2")
+    assert len(fake_manager.active_sessions_gauge.calls) == 3
+    deltas = [v for v, _ in fake_manager.active_sessions_gauge.calls]
+    assert deltas == [+1, -1, +1]
+    server_names = [a["server_name"] for _, a in fake_manager.active_sessions_gauge.calls]
+    assert server_names == ["srv1", "srv1", "srv2"]
+
+
+def test_record_session_active_zero_delta_is_noop(fake_manager):
+    """Zero deltas don't pollute the gauge -- avoid 0-add noise."""
+    mh.record_session_active(0, server_name="srv1")
+    assert fake_manager.active_sessions_gauge.calls == []
+
+
+def test_record_session_active_silent_when_manager_unavailable(monkeypatch):
+    monkeypatch.setattr(mh, "_get_manager", lambda: None)
+    # Just must not raise
+    mh.record_session_active(+1, server_name="x")
+    mh.record_session_active(-5, server_name="y")
+
+
+def test_record_phase_ms_manual_recording():
+    """record_phase_ms(field, ms) is the manual-recording variant for
+    cases where a context manager isn't convenient (e.g. timing was
+    captured by a span end-time)."""
+    mh.reset_request_timings()
+    mh.start_request_timings()
+    mh.record_phase_ms("mcp_handshake_duration_ms", 42.5)
+    mh.record_phase_ms("mcp_handshake_duration_ms", 7.5)  # accumulates
+    t = mh.get_request_timings()
+    assert t["mcp_handshake_duration_ms"] == 50.0
+    mh.reset_request_timings()
     mh.record_unauthorized_http("/x", "rest_api")

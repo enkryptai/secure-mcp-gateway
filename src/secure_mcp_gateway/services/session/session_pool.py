@@ -120,11 +120,21 @@ class PooledSession:
             effective_entry = {**server_entry, "config": server_config}
 
         try:
+            # Time the MCP handshake so the Cache & Performance
+            # dashboard's "MCP Handshake Latency" panel populates.
+            # phase_timer is a no-op if the worker is started outside
+            # a request context (e.g. a warm session pre-warm task),
+            # which is the correct behaviour -- only request-scoped
+            # handshakes should count toward per-request timing.
+            from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                phase_timer,
+            )
             async with build_server_params(
                 effective_entry, command, args, env
             ) as (read, write):
                 async with ClientSession(read, write) as session:
-                    init_result = await session.initialize()
+                    async with phase_timer("mcp_handshake_duration_ms"):
+                        init_result = await session.initialize()
 
                     server_info = getattr(init_result, "serverInfo", {})
                     self._server_description = getattr(server_info, "description", "")
@@ -267,7 +277,24 @@ class SessionPool:
                 old = self._pool.get(key)
                 if old is not None and not old._closed:
                     await old.close()
+                    # Old session evicted to make room.  Decrement gauge
+                    # so the count reflects the net delta of this acquire.
+                    try:
+                        from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                            record_session_active,
+                        )
+                        record_session_active(-1, server_name=server_name)
+                    except Exception:
+                        pass
                 self._pool[key] = pooled
+                # Fresh session added to the pool -- bump the gauge.
+                try:
+                    from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                        record_session_active,
+                    )
+                    record_session_active(+1, server_name=server_name)
+                except Exception:
+                    pass
 
         return pooled, False
 
@@ -297,6 +324,13 @@ class SessionPool:
             except RuntimeError:
                 pass
             await entry.close()
+            try:
+                from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                    record_session_active,
+                )
+                record_session_active(-1, server_name=server_name)
+            except Exception:
+                pass
             logger.info(f"[SessionPool] Evicted session for {server_name}")
 
     async def close_all(self) -> None:
@@ -312,6 +346,13 @@ class SessionPool:
             self._pool.clear()
         for entry in entries:
             await entry.close()
+            try:
+                from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                    record_session_active,
+                )
+                record_session_active(-1, server_name=entry.server_name)
+            except Exception:
+                pass
         logger.info(f"[SessionPool] Closed {len(entries)} pooled session(s)")
 
     def get_stats(self) -> Dict[str, Any]:
@@ -354,6 +395,13 @@ class SessionPool:
                 entry = self._pool.pop(key, None)
             if entry is not None:
                 await entry.close()
+                try:
+                    from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                        record_session_active,
+                    )
+                    record_session_active(-1, server_name=entry.server_name)
+                except Exception:
+                    pass
                 logger.info(
                     f"[SessionPool] Reaped expired session for {entry.server_name} "
                     f"(idle {entry.age_seconds:.0f}s > TTL {self._ttl:.0f}s)"

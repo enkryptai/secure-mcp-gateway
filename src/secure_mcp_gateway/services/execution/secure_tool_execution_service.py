@@ -14,6 +14,8 @@ from secure_mcp_gateway.plugins.guardrails import (
 from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
 from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes, SpanNames
 from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+    finalize_request_timings,
+    phase_timer,
     record_compliance_hits,
     record_degradation,
     record_guardrail_violations,
@@ -22,6 +24,7 @@ from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
     record_toxicity_subtypes,
     record_tool_call_outcome,
     record_tool_permission_denied,
+    start_request_timings,
 )
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 from secure_mcp_gateway.services.execution.execution_utils import (
@@ -96,6 +99,12 @@ class SecureToolExecutionService:
         tool_calls = tool_calls or []
         num_tool_calls = len(tool_calls)
         custom_id = generate_custom_id()
+
+        # Per-request phase timing accumulator (Cache & Performance
+        # dashboard).  Lives on a contextvar so async children share it
+        # without method-signature threading; finalised at success log
+        # emission.  See plugins.telemetry.metrics_helpers for details.
+        start_request_timings()
 
         with tracer.start_as_current_span(
             SpanNames.TOOL_EXECUTE
@@ -1184,9 +1193,10 @@ class SecureToolExecutionService:
 
             if input_guardrail is None:
                 # Guardrails not enabled, proceed directly
-                result = await self.tool_execution_service.call_tool(
-                    session, tool_name, args
-                )
+                async with phase_timer("execution_duration_ms", "tool_call_duration_ms"):
+                    result = await self.tool_execution_service.call_tool(
+                        session, tool_name, args
+                    )
                 text_result = self._extract_text_result(result)
                 return {
                     "text_result": text_result,
@@ -1211,25 +1221,34 @@ class SecureToolExecutionService:
             # Validate with plugin
             if self.ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED:
                 input_span.set_attribute(SpanAttributes.ASYNC_GUARDRAILS, True)
-                # Start both guardrail and tool call tasks concurrently with timeouts
-                guardrail_task = asyncio.create_task(
-                    timeout_manager.execute_with_timeout(
-                        input_guardrail.validate, "guardrail", f"guardrail_{i}", request
+                # Async-input mode: guardrail and tool call run
+                # CONCURRENTLY.  The single phase_timer around gather()
+                # captures wall-clock of the combined leg; we book it
+                # under tool_call_duration_ms (the dominant phase) and
+                # also into guardrail_duration_ms because the guardrail
+                # leg is masked by the overlap.  preprocess /
+                # execution_duration_ms remain 0 for this code path --
+                # they're not meaningful when phases overlap.
+                async with phase_timer("tool_call_duration_ms", "guardrail_duration_ms"):
+                    # Start both guardrail and tool call tasks concurrently with timeouts
+                    guardrail_task = asyncio.create_task(
+                        timeout_manager.execute_with_timeout(
+                            input_guardrail.validate, "guardrail", f"guardrail_{i}", request
+                        )
                     )
-                )
-                tool_call_task = asyncio.create_task(
-                    timeout_manager.execute_with_timeout(
-                        self.tool_execution_service.call_tool,
-                        "tool_execution",
-                        f"tool_call_{i}",
-                        session,
-                        tool_name,
-                        args,
+                    tool_call_task = asyncio.create_task(
+                        timeout_manager.execute_with_timeout(
+                            self.tool_execution_service.call_tool,
+                            "tool_execution",
+                            f"tool_call_{i}",
+                            session,
+                            tool_name,
+                            args,
+                        )
                     )
-                )
-                guardrail_response, result = await asyncio.gather(
-                    guardrail_task, tool_call_task
-                )
+                    guardrail_response, result = await asyncio.gather(
+                        guardrail_task, tool_call_task
+                    )
 
                 # Extract results from timeout results
                 if hasattr(guardrail_response, "result"):
@@ -1238,17 +1257,22 @@ class SecureToolExecutionService:
                     result = result.result
             else:
                 input_span.set_attribute(SpanAttributes.ASYNC_GUARDRAILS, False)
-                guardrail_response = await timeout_manager.execute_with_timeout(
-                    input_guardrail.validate, "guardrail", f"guardrail_{i}", request
-                )
-                result = await timeout_manager.execute_with_timeout(
-                    self.tool_execution_service.call_tool,
-                    "tool_execution",
-                    f"tool_call_{i}",
-                    session,
-                    tool_name,
-                    args,
-                )
+                # Sync path: input guardrail runs strictly BEFORE the
+                # tool call.  Time each separately; guardrail leg also
+                # contributes to guardrail_duration_ms.
+                async with phase_timer("preprocess_duration_ms", "guardrail_duration_ms"):
+                    guardrail_response = await timeout_manager.execute_with_timeout(
+                        input_guardrail.validate, "guardrail", f"guardrail_{i}", request
+                    )
+                async with phase_timer("execution_duration_ms", "tool_call_duration_ms"):
+                    result = await timeout_manager.execute_with_timeout(
+                        self.tool_execution_service.call_tool,
+                        "tool_execution",
+                        f"tool_call_{i}",
+                        session,
+                        tool_name,
+                        args,
+                    )
 
                 # Extract results from timeout results
                 if hasattr(guardrail_response, "result"):
@@ -1318,6 +1342,7 @@ class SecureToolExecutionService:
                         tool_name=tool_name,
                         input_violations_detected=True,
                         input_violation_types=violation_types,
+                        **finalize_request_timings(),
                     ),
                 )
                 record_guardrail_violations(
@@ -1445,9 +1470,10 @@ class SecureToolExecutionService:
                 extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name),
             )
 
-            result = await self.tool_execution_service.call_tool(
-                session, tool_name, args
-            )
+            async with phase_timer("execution_duration_ms", "tool_call_duration_ms"):
+                result = await self.tool_execution_service.call_tool(
+                    session, tool_name, args
+                )
             text_result = self._extract_text_result(result)
             return {"text_result": text_result, "result": result}
 
@@ -1588,9 +1614,10 @@ class SecureToolExecutionService:
         )
 
         # Validate output (includes ALL checks: policy, relevancy, adherence, hallucination)
-        guardrail_response = await output_guardrail.validate(
-            response_content=text_result, original_request=original_request
-        )
+        async with phase_timer("postprocess_duration_ms", "guardrail_duration_ms"):
+            guardrail_response = await output_guardrail.validate(
+                response_content=text_result, original_request=original_request
+            )
 
         # Check if blocked
         if not guardrail_response.is_safe:
@@ -1619,6 +1646,7 @@ class SecureToolExecutionService:
                         tool_name=tool_name,
                         output_violations_detected=True,
                         output_violation_types=violation_types,
+                        **finalize_request_timings(),
                     ),
                 )
                 record_guardrail_violations(
@@ -1782,9 +1810,10 @@ class SecureToolExecutionService:
         )
 
         # Single call - provider handles async internally
-        guardrail_response = await output_guardrail.validate(
-            response_content=text_result, original_request=original_request
-        )
+        async with phase_timer("postprocess_duration_ms", "guardrail_duration_ms"):
+            guardrail_response = await output_guardrail.validate(
+                response_content=text_result, original_request=original_request
+            )
 
         # Check if blocked
         if not guardrail_response.is_safe:
@@ -1970,12 +1999,22 @@ class SecureToolExecutionService:
     ):
         """Build a successful result."""
         auth_context = auth_context or {}
+        # Per-request phase timings (Cache & Performance dashboard).
+        # finalize_request_timings reads the contextvar set by
+        # start_request_timings() at execute_secure_tools entry, adds
+        # total_request_duration_ms from the entry mark, and returns a
+        # dict of *_duration_ms fields ready to splat into log_extra.
+        # Empty dict if the request didn't go through STES entry (e.g.
+        # error path that bypassed start_request_timings).
+        _timings = finalize_request_timings()
         logger.info(
             f"[secure_call_tools] Call {i}: Completed successfully for {tool_name} of server {server_name}"
         )
         logger.info(
             "secure_tool_execution.execute_secure_tools.completed_successfully",
-            extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name),
+            extra=build_log_extra(
+                ctx, custom_id, server_name, tool_name=tool_name, **_timings,
+            ),
         )
         record_tool_call_outcome(server_name, tool_name, "success", **auth_context)
 

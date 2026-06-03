@@ -93,6 +93,15 @@ COPY build/tier1_overlay/services/session/session_pool.py \
 COPY build/tier1_overlay/services/execution/secure_tool_execution_service.py \
      ${PKG_ROOT}/services/execution/secure_tool_execution_service.py
 
+# --- Cache & Performance: cache_service phase_timer + session_pool gauge ---
+# cache_service.py wraps the cache lookup with phase_timer("cache_lookup_
+# duration_ms").  session_pool.py is ALREADY copied from v2.2.0-sessionpool
+# patch image above; the overlay tool's patch_session_pool layered the
+# MCP-handshake timer + record_session_active gauge wiring on top before
+# the file was written, so no extra COPY line is needed for it.
+COPY build/tier1_overlay/services/cache/cache_service.py \
+     ${PKG_ROOT}/services/cache/cache_service.py
+
 # --- Audit (Phase A + B) -- new modules + api_server.py patch --------------
 COPY build/tier1_overlay/audit.py \
      ${PKG_ROOT}/audit.py

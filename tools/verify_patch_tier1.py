@@ -262,5 +262,73 @@ check(
     _tox_calls >= 2,
 )
 
+# ---- Cache & Performance: phase_timer + start/finalize wired into STES ---
+check(
+    "STES imports phase_timer / start_request_timings / finalize_request_timings",
+    "phase_timer" in _stes_src
+    and "start_request_timings" in _stes_src
+    and "finalize_request_timings" in _stes_src,
+)
+check(
+    "STES wraps preprocess phase with phase_timer",
+    "phase_timer(\"preprocess_duration_ms\"" in _stes_src,
+)
+check(
+    "STES wraps execution phase with phase_timer",
+    "phase_timer(\"execution_duration_ms\"" in _stes_src,
+)
+check(
+    "STES wraps postprocess phase with phase_timer",
+    "phase_timer(\"postprocess_duration_ms\"" in _stes_src,
+)
+check(
+    "STES success log splices **finalize_request_timings()",
+    "_timings = finalize_request_timings()" in _stes_src,
+)
+
+# ---- helpers exported -----------------------------------------------------
+TIMING_HELPERS = (
+    "start_request_timings",
+    "get_request_timings",
+    "finalize_request_timings",
+    "phase_timer",
+    "record_phase_ms",
+    "record_session_active",
+)
+missing_timing = [h for h in TIMING_HELPERS if not hasattr(mh, h)]
+check(
+    "Cache & Performance timing helpers exported from metrics_helpers",
+    not missing_timing,
+    f"missing: {missing_timing}",
+)
+
+# ---- session_pool.py: handshake timer + active gauge wiring --------------
+_sp_path = "/app/src/secure_mcp_gateway/services/session/session_pool.py"
+try:
+    with open(_sp_path, encoding="utf-8") as _f:
+        _sp_src = _f.read()
+    check(
+        "session_pool wraps session.initialize() with phase_timer",
+        "phase_timer(\"mcp_handshake_duration_ms\")" in _sp_src,
+    )
+    check(
+        "session_pool calls record_session_active on acquire / evict",
+        _sp_src.count("record_session_active") >= 2,
+    )
+except FileNotFoundError:
+    check("session_pool.py present at /app/src", False, _sp_path)
+
+# ---- cache_service.py: cache_lookup_duration_ms timer --------------------
+_cs_path = "/app/src/secure_mcp_gateway/services/cache/cache_service.py"
+try:
+    with open(_cs_path, encoding="utf-8") as _f:
+        _cs_src = _f.read()
+    check(
+        "cache_service wraps get_cached_tools with cache_lookup_duration_ms timer",
+        "phase_timer(\"cache_lookup_duration_ms\")" in _cs_src,
+    )
+except FileNotFoundError:
+    check("cache_service.py present at /app/src", False, _cs_path)
+
 
 print("\nALL_PATCHES_VERIFIED")

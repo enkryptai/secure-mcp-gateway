@@ -483,6 +483,46 @@ def patch_metrics_helpers(src: str) -> str:
             1,
         )
 
+    # The Cache & Performance per-request timing helpers
+    # (start_request_timings / phase_timer / finalize_request_timings /
+    # record_phase_ms) live ABOVE the `# Compliance framework attribution`
+    # marker in main, so the marker-based extraction below would miss them.
+    # Need contextvars + time imports plus stdlib import block fixup, then
+    # append a verbatim copy of the timing section before the rest of the
+    # helper extraction kicks in.
+    if "import contextvars" not in src:
+        # Inject after the existing `import logging` line which v2.2.0 has.
+        if "import logging" in src:
+            src = src.replace(
+                "import logging",
+                "import contextvars\nimport logging\nimport time",
+                1,
+            )
+
+    # Pull the timing block out of the source-of-truth metrics_helpers.py
+    # on the working branch.  Bounded by two unique markers so we don't
+    # accidentally splice in unrelated helpers if the file gets reordered.
+    main_mh = (REPO / "src" / "secure_mcp_gateway" / "plugins" / "telemetry" / "metrics_helpers.py").read_text(encoding="utf-8")
+    timing_start = "# Per-request phase timing  (Cache & Performance dashboard)"
+    timing_end = "# ---------------------------------------------------------------------------\n# Tool call lifecycle"
+    if timing_start in main_mh and timing_end in main_mh:
+        start_idx = main_mh.index(timing_start)
+        # Walk back to the opening "# -----" decorator above the marker.
+        deco = main_mh.rfind("# ----------", 0, start_idx)
+        if deco != -1:
+            start_idx = deco
+        end_idx = main_mh.index(timing_end)
+        timing_block = main_mh[start_idx:end_idx].rstrip() + "\n\n\n"
+        # Inject the block right after the imports.  Anchor on the first
+        # ``def _get_manager`` definition (v2.2.0 has it).
+        get_mgr_anchor = "def _get_manager()"
+        if get_mgr_anchor in src:
+            src = src.replace(
+                get_mgr_anchor,
+                timing_block + get_mgr_anchor,
+                1,
+            )
+
     additions = (REPO / "src" / "secure_mcp_gateway" / "plugins" / "telemetry" / "metrics_helpers.py").read_text(encoding="utf-8")
     # The Tier-1 helpers live after the marker comment introduced in
     # commit 3f703ab.  Extract from that marker onwards (skipping the
@@ -647,6 +687,296 @@ def patch_exceptions(src: str) -> str:
 # Main
 # ---------------------------------------------------------------------------
 
+def _patch_stes_phase_timings(src: str) -> str:
+    """Wire the 8 per-call *_duration_ms log fields into STES so the
+    Cache & Performance dashboard's Latency Breakdown section populates.
+
+    Strategy
+    --------
+    1. Extend the metrics_helpers import block (already patched
+       elsewhere by patch_stes) to also pull in start_request_timings,
+       finalize_request_timings, phase_timer.
+    2. Inject start_request_timings() at execute_secure_tools entry
+       (right after custom_id = generate_custom_id()).
+    3. Wrap 5 timing-relevant sites with ``async with phase_timer(...)``:
+         - input_guardrail.validate (sync path)        -> preprocess + guardrail
+         - call_tool (sync, post-input-guardrail)      -> execution + tool_call
+         - call_tool (no-input-guardrail short path)   -> execution + tool_call
+         - call_tool (input_guardrail is None path)    -> execution + tool_call
+         - input_guardrail+call_tool (async-input gather) -> tool_call + guardrail
+         - output_guardrail.validate (sync output)      -> postprocess + guardrail
+         - output_guardrail.validate (async output)     -> postprocess + guardrail
+    4. Splice ``**finalize_request_timings()`` into the 3 log.info()
+       calls that emit structured records on success / blocked-input /
+       blocked-output paths.
+
+    Each anchor uses enough surrounding context to be unique on v2.2.0;
+    if any anchor fails, the patch raises and the build aborts (better
+    than silent half-patching).
+    """
+    # --- 1) extend import block (the patch_stes added record_pii_entities
+    #     / record_toxicity_subtypes; we add 3 more after them).
+    after_tox_anchor = "    record_toxicity_subtypes,"
+    if after_tox_anchor not in src:
+        # patch_stes hasn't run yet OR upstream changed.  Fall back to
+        # the v2.2.0 record_guardrail_violations anchor and inject all 5.
+        rg_anchor = "    record_guardrail_violations,"
+        src = src.replace(
+            rg_anchor,
+            (
+                rg_anchor
+                + "\n    record_pii_entities,"
+                + "\n    record_toxicity_subtypes,"
+                + "\n    finalize_request_timings,"
+                + "\n    phase_timer,"
+                + "\n    start_request_timings,"
+            ),
+            1,
+        )
+    else:
+        src = src.replace(
+            after_tox_anchor,
+            (
+                after_tox_anchor
+                + "\n    finalize_request_timings,"
+                + "\n    phase_timer,"
+                + "\n    start_request_timings,"
+            ),
+            1,
+        )
+
+    # --- 2) start_request_timings() at execute_secure_tools entry.
+    # Anchor on the unique "num_tool_calls" + generate_custom_id() pair
+    # which appears once in the file (v2.2.0 STES line ~95).
+    entry_anchor = (
+        "        tool_calls = tool_calls or []\n"
+        "        num_tool_calls = len(tool_calls)\n"
+        "        custom_id = generate_custom_id()\n"
+    )
+    if entry_anchor not in src:
+        raise RuntimeError(
+            "patch_stes_phase_timings: execute_secure_tools entry anchor "
+            "not found (custom_id = generate_custom_id() trio)"
+        )
+    src = src.replace(
+        entry_anchor,
+        entry_anchor
+        + "\n"
+        + "        # Per-request phase timing accumulator (Cache &\n"
+        + "        # Performance dashboard).  Lives on a contextvar so\n"
+        + "        # async children share it without method-signature\n"
+        + "        # threading; finalised at success / blocked log\n"
+        + "        # emission.\n"
+        + "        start_request_timings()\n",
+        1,
+    )
+
+    # --- 3) phase_timer wraps.
+
+    # 3a) Sync input guardrail + tool call (the "else:" branch of
+    # ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED).
+    sync_in_anchor = (
+        "                guardrail_response = await timeout_manager.execute_with_timeout(\n"
+        "                    input_guardrail.validate, \"guardrail\", f\"guardrail_{i}\", request\n"
+        "                )\n"
+        "                result = await timeout_manager.execute_with_timeout(\n"
+        "                    self.tool_execution_service.call_tool,\n"
+        "                    \"tool_execution\",\n"
+        "                    f\"tool_call_{i}\",\n"
+        "                    session,\n"
+        "                    tool_name,\n"
+        "                    args,\n"
+        "                )"
+    )
+    sync_in_replacement = (
+        "                async with phase_timer(\"preprocess_duration_ms\", \"guardrail_duration_ms\"):\n"
+        "                    guardrail_response = await timeout_manager.execute_with_timeout(\n"
+        "                        input_guardrail.validate, \"guardrail\", f\"guardrail_{i}\", request\n"
+        "                    )\n"
+        "                async with phase_timer(\"execution_duration_ms\", \"tool_call_duration_ms\"):\n"
+        "                    result = await timeout_manager.execute_with_timeout(\n"
+        "                        self.tool_execution_service.call_tool,\n"
+        "                        \"tool_execution\",\n"
+        "                        f\"tool_call_{i}\",\n"
+        "                        session,\n"
+        "                        tool_name,\n"
+        "                        args,\n"
+        "                    )"
+    )
+    if sync_in_anchor in src:
+        src = src.replace(sync_in_anchor, sync_in_replacement, 1)
+    # else: anchor not found -- v2.2.0 may have different indentation; skip
+    # this wrap rather than abort, total_request_duration_ms still works.
+
+    # 3b) Async input guardrail + tool call gather().  Anchor on
+    # asyncio.gather(guardrail_task, tool_call_task).
+    async_gather_anchor = (
+        "                guardrail_response, result = await asyncio.gather(\n"
+        "                    guardrail_task, tool_call_task\n"
+        "                )"
+    )
+    async_gather_replacement = (
+        "                # Wrap the whole concurrent gather() with a single timer\n"
+        "                # booked under tool_call_duration_ms (dominant phase) +\n"
+        "                # guardrail_duration_ms (masked by the overlap).\n"
+        "                async with phase_timer(\"tool_call_duration_ms\", \"guardrail_duration_ms\"):\n"
+        "                    guardrail_response, result = await asyncio.gather(\n"
+        "                        guardrail_task, tool_call_task\n"
+        "                    )"
+    )
+    if async_gather_anchor in src:
+        src = src.replace(async_gather_anchor, async_gather_replacement, 1)
+
+    # 3c) call_tool when input_guardrail is None (short path).
+    none_path_anchor = (
+        "            if input_guardrail is None:\n"
+        "                # Guardrails not enabled, proceed directly\n"
+        "                result = await self.tool_execution_service.call_tool(\n"
+        "                    session, tool_name, args\n"
+        "                )"
+    )
+    none_path_replacement = (
+        "            if input_guardrail is None:\n"
+        "                # Guardrails not enabled, proceed directly\n"
+        "                async with phase_timer(\"execution_duration_ms\", \"tool_call_duration_ms\"):\n"
+        "                    result = await self.tool_execution_service.call_tool(\n"
+        "                        session, tool_name, args\n"
+        "                    )"
+    )
+    if none_path_anchor in src:
+        src = src.replace(none_path_anchor, none_path_replacement, 1)
+
+    # 3d) call_tool in the "input guardrails not enabled" log path.
+    not_enabled_anchor = (
+        "            logger.info(\n"
+        "                \"secure_tool_execution.execute_secure_tools.input_guardrails_not_enabled\",\n"
+        "                extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name),\n"
+        "            )\n"
+        "\n"
+        "            result = await self.tool_execution_service.call_tool(\n"
+        "                session, tool_name, args\n"
+        "            )"
+    )
+    not_enabled_replacement = (
+        "            logger.info(\n"
+        "                \"secure_tool_execution.execute_secure_tools.input_guardrails_not_enabled\",\n"
+        "                extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name),\n"
+        "            )\n"
+        "\n"
+        "            async with phase_timer(\"execution_duration_ms\", \"tool_call_duration_ms\"):\n"
+        "                result = await self.tool_execution_service.call_tool(\n"
+        "                    session, tool_name, args\n"
+        "                )"
+    )
+    if not_enabled_anchor in src:
+        src = src.replace(not_enabled_anchor, not_enabled_replacement, 1)
+
+    # 3e) Output guardrail validate -- 2 sites (sync + async output paths).
+    # Both have the IDENTICAL anchor; use replace + count loop.
+    out_anchor = (
+        "        guardrail_response = await output_guardrail.validate(\n"
+        "            response_content=text_result, original_request=original_request\n"
+        "        )"
+    )
+    out_replacement = (
+        "        async with phase_timer(\"postprocess_duration_ms\", \"guardrail_duration_ms\"):\n"
+        "            guardrail_response = await output_guardrail.validate(\n"
+        "                response_content=text_result, original_request=original_request\n"
+        "            )"
+    )
+    # Replace both occurrences (sync + async output paths).
+    for _ in range(2):
+        if out_anchor not in src:
+            break
+        src = src.replace(out_anchor, out_replacement, 1)
+
+    # --- 4) Splice **finalize_request_timings() into 3 log.info(...).
+    # 4a) Success log -- in _build_successful_result.
+    success_log_anchor = (
+        "        logger.info(\n"
+        "            \"secure_tool_execution.execute_secure_tools.completed_successfully\",\n"
+        "            extra=build_log_extra(ctx, custom_id, server_name, tool_name=tool_name),\n"
+        "        )"
+    )
+    success_log_replacement = (
+        "        # Per-request phase timings (Cache & Performance dashboard).\n"
+        "        _timings = finalize_request_timings()\n"
+        "        logger.info(\n"
+        "            \"secure_tool_execution.execute_secure_tools.completed_successfully\",\n"
+        "            extra=build_log_extra(\n"
+        "                ctx, custom_id, server_name, tool_name=tool_name, **_timings,\n"
+        "            ),\n"
+        "        )"
+    )
+    if success_log_anchor in src:
+        src = src.replace(success_log_anchor, success_log_replacement, 1)
+
+    # 4b) Blocked-input log -- already structured with input_violation_types
+    # plus per-detector detail (added by patch_stes).  Add **timings dict.
+    blocked_in_anchor = (
+        "                logger.info(\n"
+        "                    \"secure_tool_execution.execute_secure_tools.blocked_due_to_input_violations\",\n"
+        "                    extra=build_log_extra(\n"
+        "                        ctx,\n"
+        "                        custom_id,\n"
+        "                        server_name,\n"
+        "                        tool_name=tool_name,\n"
+        "                        input_violations_detected=True,\n"
+        "                        input_violation_types=violation_types,\n"
+        "                    ),\n"
+        "                )"
+    )
+    blocked_in_replacement = (
+        "                logger.info(\n"
+        "                    \"secure_tool_execution.execute_secure_tools.blocked_due_to_input_violations\",\n"
+        "                    extra=build_log_extra(\n"
+        "                        ctx,\n"
+        "                        custom_id,\n"
+        "                        server_name,\n"
+        "                        tool_name=tool_name,\n"
+        "                        input_violations_detected=True,\n"
+        "                        input_violation_types=violation_types,\n"
+        "                        **finalize_request_timings(),\n"
+        "                    ),\n"
+        "                )"
+    )
+    if blocked_in_anchor in src:
+        src = src.replace(blocked_in_anchor, blocked_in_replacement, 1)
+
+    # 4c) Blocked-output log -- same shape.
+    blocked_out_anchor = (
+        "                logger.info(\n"
+        "                    \"secure_tool_execution.execute_secure_tools.blocked_due_to_output_violations\",\n"
+        "                    extra=build_log_extra(\n"
+        "                        ctx,\n"
+        "                        custom_id,\n"
+        "                        server_name,\n"
+        "                        tool_name=tool_name,\n"
+        "                        output_violations_detected=True,\n"
+        "                        output_violation_types=violation_types,\n"
+        "                    ),\n"
+        "                )"
+    )
+    blocked_out_replacement = (
+        "                logger.info(\n"
+        "                    \"secure_tool_execution.execute_secure_tools.blocked_due_to_output_violations\",\n"
+        "                    extra=build_log_extra(\n"
+        "                        ctx,\n"
+        "                        custom_id,\n"
+        "                        server_name,\n"
+        "                        tool_name=tool_name,\n"
+        "                        output_violations_detected=True,\n"
+        "                        output_violation_types=violation_types,\n"
+        "                        **finalize_request_timings(),\n"
+        "                    ),\n"
+        "                )"
+    )
+    if blocked_out_anchor in src:
+        src = src.replace(blocked_out_anchor, blocked_out_replacement, 1)
+
+    return src
+
+
 def patch_stes(src: str) -> str:
     """Inject ``record_pii_entities`` + ``record_toxicity_subtypes`` plus a
     matching ``logger.info`` at the 3 guardrail-violation sites in
@@ -781,12 +1111,125 @@ def patch_stes(src: str) -> str:
         # Second occurrence might not be there if v2.2.0 only has the sync
         # output path -- that's fine, log and continue.
         print("[merge] STES second output anchor not found (async path absent?) -- skipping")
-        return src
-    src = src.replace(
-        anchor_out,
-        anchor_out + "\n" + _new_block("output"),
-        1,
+    else:
+        src = src.replace(
+            anchor_out,
+            anchor_out + "\n" + _new_block("output"),
+            1,
+        )
+
+    # --- Chain the phase-timing patches AFTER violation injection so the
+    # import-line / log-line anchors are still resolvable.
+    src = _patch_stes_phase_timings(src)
+
+    return src
+
+
+def patch_cache_service(src: str) -> str:
+    """Wrap the cache lookup inside ``get_cached_tools_with_expiry`` with
+    a phase_timer so the Cache & Performance dashboard's "Cache Lookup
+    Duration" panel populates.  Anchors on the v2.2.0 shape:
+
+        try:
+            from secure_mcp_gateway.client import get_cached_tools
+
+            cached = get_cached_tools(self.cache_client, server_id, server_name)
+
+    No-op if anchor not found (phase_timer is no-op when no request
+    timings dict is active, so missing the wrap is degraded-but-safe).
+    """
+    anchor = (
+        "        try:\n"
+        "            from secure_mcp_gateway.client import get_cached_tools\n"
+        "\n"
+        "            cached = get_cached_tools(self.cache_client, server_id, server_name)"
     )
+    if anchor not in src:
+        print("[merge] cache_service: cache lookup anchor not found -- skipping")
+        return src
+    replacement = (
+        "        try:\n"
+        "            # Time the cache lookup so Cache & Performance dashboard's\n"
+        "            # \"Cache Lookup Duration\" panel populates.  phase_timer is\n"
+        "            # a no-op when no request timings dict is active (e.g. cold\n"
+        "            # discovery from a background task), which is the correct\n"
+        "            # behaviour -- only per-request lookups should count.\n"
+        "            from secure_mcp_gateway.client import get_cached_tools\n"
+        "            from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (\n"
+        "                phase_timer,\n"
+        "            )\n"
+        "\n"
+        "            with phase_timer(\"cache_lookup_duration_ms\"):\n"
+        "                cached = get_cached_tools(self.cache_client, server_id, server_name)"
+    )
+    return src.replace(anchor, replacement, 1)
+
+
+def patch_session_pool(src: str) -> str:
+    """Add ``mcp_handshake_duration_ms`` timer around ``session.initialize()``
+    plus ``record_session_active`` calls at pool lifecycle sites.
+
+    session_pool.py comes from the v2.2.0-sessionpoolpatch image (not
+    v2.2.0 baseline) so the anchors here are the PR #40-shape, not the
+    raw v2.2.0 shape.
+    """
+    # 1) MCP handshake timer.  Anchor on session.initialize() inside the
+    # build_server_params / ClientSession nest in _worker.
+    handshake_anchor = (
+        "            async with build_server_params(\n"
+        "                effective_entry, command, args, env\n"
+        "            ) as (read, write):\n"
+        "                async with ClientSession(read, write) as session:\n"
+        "                    init_result = await session.initialize()"
+    )
+    handshake_replacement = (
+        "            # Time the MCP handshake so the Cache & Performance\n"
+        "            # dashboard's \"MCP Handshake Latency\" panel populates.\n"
+        "            from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (\n"
+        "                phase_timer,\n"
+        "            )\n"
+        "            async with build_server_params(\n"
+        "                effective_entry, command, args, env\n"
+        "            ) as (read, write):\n"
+        "                async with ClientSession(read, write) as session:\n"
+        "                    async with phase_timer(\"mcp_handshake_duration_ms\"):\n"
+        "                        init_result = await session.initialize()"
+    )
+    if handshake_anchor in src:
+        src = src.replace(handshake_anchor, handshake_replacement, 1)
+    else:
+        print("[merge] session_pool: handshake anchor not found -- skipping handshake timer")
+
+    # 2) Session-active gauge in acquire() (after self._pool[key] = pooled).
+    acquire_anchor = (
+        "                if old is not None and not old._closed:\n"
+        "                    await old.close()\n"
+        "                self._pool[key] = pooled"
+    )
+    acquire_replacement = (
+        "                if old is not None and not old._closed:\n"
+        "                    await old.close()\n"
+        "                    try:\n"
+        "                        from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (\n"
+        "                            record_session_active,\n"
+        "                        )\n"
+        "                        record_session_active(-1, server_name=server_name)\n"
+        "                    except Exception:\n"
+        "                        pass\n"
+        "                self._pool[key] = pooled\n"
+        "                try:\n"
+        "                    from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (\n"
+        "                        record_session_active,\n"
+        "                    )\n"
+        "                    record_session_active(+1, server_name=server_name)\n"
+        "                except Exception:\n"
+        "                    pass"
+    )
+    if acquire_anchor in src:
+        src = src.replace(acquire_anchor, acquire_replacement, 1)
+    else:
+        print("[merge] session_pool: acquire anchor not found -- skipping session_active gauge")
+
     return src
 
 
@@ -803,6 +1246,9 @@ PATCHERS = {
     # drift, but the violation-handling sites we need here are stable
     # between v2.2.0 and main, so a surgical anchor-based patch works.
     "services/execution/secure_tool_execution_service.py": patch_stes,
+    # Cache & Performance: wrap the cache lookup so cache_lookup_duration_ms
+    # gets recorded on every per-request cache hit/miss.
+    "services/cache/cache_service.py": patch_cache_service,
 }
 
 
@@ -837,8 +1283,10 @@ def main() -> int:
             "v2.2.0-sessionpoolpatch session_pool.py missing acquire/connect "
             "timeouts -- the source-of-truth patch image is stale; aborting"
         )
+    # Apply MCP handshake timer + session-active gauge wiring on top.
+    sp_src = patch_session_pool(sp_src)
     _write("services/session/session_pool.py", sp_src)
-    print(f"[copy] services/session/session_pool.py from v2.2.0-sessionpoolpatch image (PR #40)")
+    print(f"[copy+patch] services/session/session_pool.py from v2.2.0-sessionpoolpatch image (PR #40) + cacheperf timers")
 
     # ---- audit.py + audit_middleware.py ----
     # These are NEW modules; v2.2.0 doesn't have them, so we copy from

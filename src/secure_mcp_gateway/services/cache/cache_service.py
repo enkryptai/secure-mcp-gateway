@@ -205,9 +205,18 @@ class CacheService:
         ``(payload, expires_at | None)``.
         """
         try:
+            # Time the cache lookup so the Cache & Performance dashboard's
+            # "Cache Lookup Duration" panel populates.  phase_timer is
+            # a no-op if no request-timings dict is active (e.g. cold
+            # discovery from background reload task), so safe to wrap
+            # unconditionally.
             from secure_mcp_gateway.client import get_cached_tools
+            from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                phase_timer,
+            )
 
-            cached = get_cached_tools(self.cache_client, server_id, server_name)
+            with phase_timer("cache_lookup_duration_ms"):
+                cached = get_cached_tools(self.cache_client, server_id, server_name)
             if cached is None:
                 return None
             # Local in-memory cache returns (value, expires_at); external cache
