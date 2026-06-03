@@ -116,8 +116,13 @@ PANEL_SPECS = [
     # ============================================================
     (markdown_vis("Section: Session Pool", markdown="### 3. MCP Session Pool"),
         "", METRICS_DATAVIEW_ID, (0, 50, 48, 2)),
+    # Gateway emits enkrypt.session.active as an UpDownCounter (gauge in
+    # OS terms).  Aggregation "max" reads the most recent value within
+    # the time bucket, which is what "Active Sessions" should show.
+    # Original generator queried enkrypt.session.pool.active -- a metric
+    # name the gateway never emits; repointed to the actual emission.
     (kpi_metric_vis("Active Sessions", aggregation="max", custom_label="Active"),
-        'name : "enkrypt.session.pool.active"', METRICS_DATAVIEW_ID, (0, 52, 12, 6)),
+        'name : "enkrypt.session.active"', METRICS_DATAVIEW_ID, (0, 52, 12, 6)),
     (kpi_metric_vis("Acquire Events", custom_label="Acquires"),
         'name : "enkrypt.session.pool.acquire"', METRICS_DATAVIEW_ID, (12, 52, 12, 6)),
     (gauge_vis(
@@ -210,13 +215,24 @@ PANEL_SPECS = [
                       chart_type="line", aggregation="avg",
                       field="log.attributes.guardrail_duration_ms"),
         'log.attributes.guardrail_duration_ms : *', LOGS_DATAVIEW_ID, (24, 98, 24, 12)),
-    (multi_series_time_vis(
-        "MCP Handshake Latency (p50/p95/p99 s)",
-        LATENCY_P_SERIES,
+    # MCP Handshake Latency: original panel queried
+    # enkrypt.mcp.connection.handshake.duration -- a metric instrument
+    # the gateway never declares.  Repoint to the log-side timing field
+    # ``log.attributes.mcp_handshake_duration_ms`` which IS populated
+    # (only on fresh handshakes -- pool reuses skip session.initialize
+    # by design, so this panel naturally shows the "cold start" cost).
+    # Switching to avg(value) over time gives a similar 'latency over
+    # time' view at a fraction of the OS-side complexity required for
+    # percentile aggs on histogram bucket data.
+    (time_series_vis(
+        "MCP Handshake Latency (avg ms, fresh handshakes only)",
+        "ms",
         chart_type="line",
+        aggregation="avg",
+        field="log.attributes.mcp_handshake_duration_ms",
     ),
-        'name : "enkrypt.mcp.connection.handshake.duration"',
-        METRICS_DATAVIEW_ID, (0, 110, 48, 12)),
+        'log.attributes.mcp_handshake_duration_ms : *',
+        LOGS_DATAVIEW_ID, (0, 110, 48, 12)),
 ]
 
 
