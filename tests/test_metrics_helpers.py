@@ -65,6 +65,25 @@ class FakeManager:
         "degradation_fail_closed_counter",
         "transport_error_counter",
         "discovery_server_failure_counter",
+        # Audit (Phase A) additions:
+        "admin_actions_counter",
+        "privileged_operations_counter",
+        "admin_cache_flush_counter",
+        "apikey_rotations_counter",
+        "audit_apikey_created_counter",
+        "audit_apikey_deleted_counter",
+        "audit_apikey_disabled_counter",
+        "audit_apikey_rotated_counter",
+        "audit_config_modified_counter",
+        "audit_settings_enkrypt_api_key_set_counter",
+        "audit_settings_telemetry_changed_counter",
+        "audit_user_created_counter",
+        "audit_user_deleted_counter",
+        "projects_created_counter",
+        "system_backup_completed_counter",
+        "system_reset_counter",
+        "system_restore_counter",
+        "auth_unauthorized_http_counter",
     )
 
     def __init__(self):
@@ -516,3 +535,211 @@ def test_discovery_failure_carries_reason(fake_manager):
     assert attrs["server_name"] == "deepwiki"
     assert attrs["reason"] == "TimeoutError"
     assert attrs["transport"] == "http"
+
+
+# ---------------------------------------------------------------------------
+# Audit / compliance helpers (Phase A) -- 9 helpers, ~17 tests below.
+#
+# All audit helpers fire TWO counters: the umbrella (admin_actions_counter,
+# and privileged_operations_counter when applicable) + the specific
+# category counter.  Every test asserts both sides of that contract so a
+# future refactor that drops one path breaks loudly.
+# ---------------------------------------------------------------------------
+
+
+def test_admin_action_fires_only_umbrella_for_unknown_action(fake_manager):
+    mh.record_admin_action(
+        action="config_search",
+        resource_type="config",
+        surface="cli",
+        actor="alice",
+    )
+    # Umbrella fires; no specific counter for this action exists.
+    assert len(fake_manager.admin_actions_counter.calls) == 1
+    assert fake_manager.privileged_operations_counter.calls == []
+    _, attrs = fake_manager.admin_actions_counter.calls[0]
+    assert attrs["action"] == "config_search"
+    assert attrs["resource_type"] == "config"
+    assert attrs["surface"] == "cli"
+    assert attrs["actor"] == "alice"
+    assert attrs["success"] == "true"
+
+
+def test_admin_action_marks_failure(fake_manager):
+    mh.record_admin_action(
+        action="apikey_export",
+        resource_type="apikey",
+        surface="rest_api",
+        actor="bob",
+        success=False,
+        failure_reason="unauthorized",
+    )
+    _, attrs = fake_manager.admin_actions_counter.calls[0]
+    assert attrs["success"] == "false"
+    assert attrs["failure_reason"] == "unauthorized"
+
+
+def test_cache_flush_fires_both_umbrella_and_specific(fake_manager):
+    mh.record_cache_flush(
+        scope="gateway_config",
+        surface="mcp_gateway",
+        authorization_path="admin_apikey",
+        actor="alice",
+        target_id="all",
+    )
+    # Cache flush is a privileged action: umbrella + privileged + specific.
+    assert len(fake_manager.admin_actions_counter.calls) == 1
+    assert len(fake_manager.privileged_operations_counter.calls) == 1
+    assert len(fake_manager.admin_cache_flush_counter.calls) == 1
+    _, attrs = fake_manager.admin_cache_flush_counter.calls[0]
+    assert attrs["action"] == "cache_flush"
+    assert attrs["scope"] == "gateway_config"
+    assert attrs["surface"] == "mcp_gateway"
+    assert attrs["authorization_path"] == "admin_apikey"
+
+
+@pytest.mark.parametrize(
+    "event,expected_counter",
+    [
+        ("created", "audit_apikey_created_counter"),
+        ("deleted", "audit_apikey_deleted_counter"),
+        ("disabled", "audit_apikey_disabled_counter"),
+        ("rotated", "audit_apikey_rotated_counter"),
+    ],
+)
+def test_apikey_lifecycle_routes_to_correct_specific_counter(
+    fake_manager, event, expected_counter
+):
+    mh.record_apikey_lifecycle(
+        event=event, surface="cli", actor="alice", target_id="****abcd"
+    )
+    # Always: umbrella + privileged + specific
+    assert len(fake_manager.admin_actions_counter.calls) == 1
+    assert len(fake_manager.privileged_operations_counter.calls) == 1
+    counter = getattr(fake_manager, expected_counter)
+    assert len(counter.calls) == 1
+    # Rotation also fires the umbrella apikey_rotations_counter.
+    if event == "rotated":
+        assert len(fake_manager.apikey_rotations_counter.calls) == 1
+    else:
+        assert fake_manager.apikey_rotations_counter.calls == []
+
+
+def test_apikey_lifecycle_unknown_event_falls_through_to_umbrella(fake_manager):
+    mh.record_apikey_lifecycle(event="exported", surface="cli")
+    assert len(fake_manager.admin_actions_counter.calls) == 1
+    # No specific counter matched -- shouldn't have fired any:
+    for name in (
+        "audit_apikey_created_counter",
+        "audit_apikey_deleted_counter",
+        "audit_apikey_disabled_counter",
+        "audit_apikey_rotated_counter",
+    ):
+        assert getattr(fake_manager, name).calls == []
+
+
+@pytest.mark.parametrize(
+    "event,expected_counter",
+    [
+        ("created", "audit_user_created_counter"),
+        ("deleted", "audit_user_deleted_counter"),
+    ],
+)
+def test_user_lifecycle_routes_to_correct_specific_counter(
+    fake_manager, event, expected_counter
+):
+    mh.record_user_lifecycle(event=event, surface="rest_api", actor="alice")
+    assert len(fake_manager.admin_actions_counter.calls) == 1
+    counter = getattr(fake_manager, expected_counter)
+    assert len(counter.calls) == 1
+
+
+def test_project_created_fires_specific_counter(fake_manager):
+    mh.record_project_created(surface="cli", actor="alice", target_id="proj_xyz")
+    assert len(fake_manager.admin_actions_counter.calls) == 1
+    assert len(fake_manager.projects_created_counter.calls) == 1
+    _, attrs = fake_manager.projects_created_counter.calls[0]
+    assert attrs["resource_type"] == "project"
+    assert attrs["target_id"] == "proj_xyz"
+
+
+@pytest.mark.parametrize(
+    "op,expected_counter",
+    [
+        ("backup", "system_backup_completed_counter"),
+        ("reset", "system_reset_counter"),
+        ("restore", "system_restore_counter"),
+    ],
+)
+def test_system_op_routes_to_correct_specific_counter_and_is_privileged(
+    fake_manager, op, expected_counter
+):
+    mh.record_system_op(op=op, surface="cli", actor="root")
+    assert len(fake_manager.admin_actions_counter.calls) == 1
+    # All system ops are privileged
+    assert len(fake_manager.privileged_operations_counter.calls) == 1
+    assert len(getattr(fake_manager, expected_counter).calls) == 1
+
+
+@pytest.mark.parametrize(
+    "setting,expected_counter",
+    [
+        ("enkrypt_api_key_set", "audit_settings_enkrypt_api_key_set_counter"),
+        ("telemetry_changed", "audit_settings_telemetry_changed_counter"),
+    ],
+)
+def test_settings_change_routes_correctly(fake_manager, setting, expected_counter):
+    mh.record_settings_change(setting=setting, surface="cli", actor="alice")
+    assert len(fake_manager.admin_actions_counter.calls) == 1
+    # Settings changes are privileged
+    assert len(fake_manager.privileged_operations_counter.calls) == 1
+    assert len(getattr(fake_manager, expected_counter).calls) == 1
+
+
+def test_config_modified_serialises_changed_fields(fake_manager):
+    """changed_fields must be sorted-unique-joined to keep label
+    cardinality bounded (one per panel value, not one per field name)."""
+    mh.record_config_modified(
+        surface="cli",
+        actor="alice",
+        target_id="config_default",
+        change_kind="update_server",
+        changed_fields=["input_guardrails", "config.command", "input_guardrails"],
+    )
+    assert len(fake_manager.audit_config_modified_counter.calls) == 1
+    _, attrs = fake_manager.audit_config_modified_counter.calls[0]
+    # Sorted + de-duped
+    assert attrs["changed_fields"] == "config.command,input_guardrails"
+    assert attrs["change_kind"] == "update_server"
+
+
+def test_unauthorized_http_attaches_endpoint_and_status(fake_manager):
+    mh.record_unauthorized_http(
+        endpoint="/api/v1/configs",
+        surface="rest_api",
+        method="POST",
+        status_code=401,
+        reason="missing_apikey",
+    )
+    assert len(fake_manager.auth_unauthorized_http_counter.calls) == 1
+    _, attrs = fake_manager.auth_unauthorized_http_counter.calls[0]
+    assert attrs["endpoint"] == "/api/v1/configs"
+    assert attrs["status_code"] == "401"  # stringified
+    assert attrs["reason"] == "missing_apikey"
+    # Unauthorized HTTP is *not* a general admin action, so umbrella stays at 0.
+    assert fake_manager.admin_actions_counter.calls == []
+
+
+def test_audit_helpers_silent_when_manager_unavailable(monkeypatch):
+    """Same no-op contract as the Tier-1 helpers: never raise when
+    telemetry isn't initialised."""
+    monkeypatch.setattr(mh, "_get_manager", lambda: None)
+    mh.record_admin_action("x", "y", "cli")
+    mh.record_cache_flush("all", "cli")
+    mh.record_apikey_lifecycle("created", "cli")
+    mh.record_user_lifecycle("created", "cli")
+    mh.record_project_created("cli")
+    mh.record_system_op("backup", "cli")
+    mh.record_settings_change("telemetry_changed", "cli")
+    mh.record_config_modified("cli")
+    mh.record_unauthorized_http("/x", "rest_api")

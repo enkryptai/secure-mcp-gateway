@@ -506,6 +506,109 @@ class TelemetryConfigManager:
         """Tier-1 metric accessor for ``enkrypt.discovery.server_failures``."""
         return self._get_metric_from_provider("discovery_server_failure_counter")
 
+    # ------------------------------------------------------------------
+    # Audit / compliance accessors (Audit Trail dashboard).
+    #
+    # Same silent-no-op trap applies here as for the Tier-1 counters: if
+    # the @property is missing, ``metrics_helpers._add(getattr(mgr,
+    # "<counter>", None), ...)`` returns None and the emission is dropped
+    # without any error.  Every audit counter declared in
+    # opentelemetry_provider.py MUST have a property below.
+    # ------------------------------------------------------------------
+    @property
+    def admin_actions_counter(self):
+        """Audit accessor for ``enkrypt.admin.actions``."""
+        return self._get_metric_from_provider("admin_actions_counter")
+
+    @property
+    def privileged_operations_counter(self):
+        """Audit accessor for ``enkrypt.privileged.operations``."""
+        return self._get_metric_from_provider("privileged_operations_counter")
+
+    @property
+    def admin_cache_flush_counter(self):
+        """Audit accessor for ``enkrypt.admin.cache_flush``."""
+        return self._get_metric_from_provider("admin_cache_flush_counter")
+
+    @property
+    def apikey_rotations_counter(self):
+        """Audit accessor for ``enkrypt.apikey.rotations``."""
+        return self._get_metric_from_provider("apikey_rotations_counter")
+
+    @property
+    def audit_apikey_created_counter(self):
+        """Audit accessor for ``enkrypt.audit.apikey.created``."""
+        return self._get_metric_from_provider("audit_apikey_created_counter")
+
+    @property
+    def audit_apikey_deleted_counter(self):
+        """Audit accessor for ``enkrypt.audit.apikey.deleted``."""
+        return self._get_metric_from_provider("audit_apikey_deleted_counter")
+
+    @property
+    def audit_apikey_disabled_counter(self):
+        """Audit accessor for ``enkrypt.audit.apikey.disabled``."""
+        return self._get_metric_from_provider("audit_apikey_disabled_counter")
+
+    @property
+    def audit_apikey_rotated_counter(self):
+        """Audit accessor for ``enkrypt.audit.apikey.rotated``."""
+        return self._get_metric_from_provider("audit_apikey_rotated_counter")
+
+    @property
+    def audit_config_modified_counter(self):
+        """Audit accessor for ``enkrypt.audit.config.modified``."""
+        return self._get_metric_from_provider("audit_config_modified_counter")
+
+    @property
+    def audit_settings_enkrypt_api_key_set_counter(self):
+        """Audit accessor for ``enkrypt.audit.settings.enkrypt_api_key_set``."""
+        return self._get_metric_from_provider(
+            "audit_settings_enkrypt_api_key_set_counter"
+        )
+
+    @property
+    def audit_settings_telemetry_changed_counter(self):
+        """Audit accessor for ``enkrypt.audit.settings.telemetry_changed``."""
+        return self._get_metric_from_provider(
+            "audit_settings_telemetry_changed_counter"
+        )
+
+    @property
+    def audit_user_created_counter(self):
+        """Audit accessor for ``enkrypt.audit.user.created``."""
+        return self._get_metric_from_provider("audit_user_created_counter")
+
+    @property
+    def audit_user_deleted_counter(self):
+        """Audit accessor for ``enkrypt.audit.user.deleted``."""
+        return self._get_metric_from_provider("audit_user_deleted_counter")
+
+    @property
+    def projects_created_counter(self):
+        """Audit accessor for ``enkrypt.projects.created``."""
+        return self._get_metric_from_provider("projects_created_counter")
+
+    @property
+    def system_backup_completed_counter(self):
+        """Audit accessor for ``enkrypt.system.backup.completed``."""
+        return self._get_metric_from_provider("system_backup_completed_counter")
+
+    @property
+    def system_reset_counter(self):
+        """Audit accessor for ``enkrypt.system.reset``."""
+        return self._get_metric_from_provider("system_reset_counter")
+
+    @property
+    def system_restore_counter(self):
+        """Audit accessor for ``enkrypt.system.restore``."""
+        return self._get_metric_from_provider("system_restore_counter")
+
+    @property
+    def auth_unauthorized_http_counter(self):
+        """Audit accessor for ``enkrypt.auth.unauthorized_http``."""
+        return self._get_metric_from_provider("auth_unauthorized_http_counter")
+
 
 # ============================================================================
 # Global Instance

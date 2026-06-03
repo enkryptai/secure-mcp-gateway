@@ -201,6 +201,49 @@ class MetricNames:
     # DISCOVERY_FOUND (which counts successful discoveries).
     DISCOVERY_SERVER_FAILURES = "enkrypt.discovery.server_failures"
 
+    # =====================================================================
+    # Audit / compliance metrics  (Audit Trail dashboard)
+    # =====================================================================
+    # Every gateway state-mutation flows through one of these counters so
+    # the Audit Trail dashboard can answer SOC2/ISO 27001 review questions
+    # like "who rotated which apikey when, from which surface" without
+    # log-grep.
+    #
+    # Two emission layers:
+    #   - The "umbrella" counters (ADMIN_ACTIONS, PRIVILEGED_OPERATIONS)
+    #     fire on EVERY mutation, with action / resource_type / surface
+    #     attributes that the dashboard pivots on.
+    #   - The "specific" counters fire alongside for the events the
+    #     dashboard surfaces as their own KPI tile (apikey CRUD, project /
+    #     user CRUD, cache flush, system backup/restore/reset, settings
+    #     changes).  Recording both means the dashboard can show top-N
+    #     actors AND per-action drill-downs without re-querying.
+
+    # Umbrella: every admin/audit event increments these.
+    ADMIN_ACTIONS = "enkrypt.admin.actions"
+    PRIVILEGED_OPERATIONS = "enkrypt.privileged.operations"
+
+    # Specific event categories
+    ADMIN_CACHE_FLUSH = "enkrypt.admin.cache_flush"
+    APIKEY_ROTATIONS = "enkrypt.apikey.rotations"
+    AUDIT_APIKEY_CREATED = "enkrypt.audit.apikey.created"
+    AUDIT_APIKEY_DELETED = "enkrypt.audit.apikey.deleted"
+    AUDIT_APIKEY_DISABLED = "enkrypt.audit.apikey.disabled"
+    AUDIT_APIKEY_ROTATED = "enkrypt.audit.apikey.rotated"
+    AUDIT_CONFIG_MODIFIED = "enkrypt.audit.config.modified"
+    AUDIT_SETTINGS_ENKRYPT_API_KEY_SET = "enkrypt.audit.settings.enkrypt_api_key_set"
+    AUDIT_SETTINGS_TELEMETRY_CHANGED = "enkrypt.audit.settings.telemetry_changed"
+    AUDIT_USER_CREATED = "enkrypt.audit.user.created"
+    AUDIT_USER_DELETED = "enkrypt.audit.user.deleted"
+    PROJECTS_CREATED = "enkrypt.projects.created"
+    SYSTEM_BACKUP_COMPLETED = "enkrypt.system.backup.completed"
+    SYSTEM_RESET = "enkrypt.system.reset"
+    SYSTEM_RESTORE = "enkrypt.system.restore"
+
+    # 401/403 responses from the admin REST / gateway MCP surface.
+    # Distinct from AUTH_FAILURE (which is per-apikey, per-provider).
+    AUTH_UNAUTHORIZED_HTTP = "enkrypt.auth.unauthorized_http"
+
     # Auth metrics
     AUTH_SUCCESS = "enkrypt.auth.success"
     AUTH_FAILURE = "enkrypt.auth.failure"
@@ -283,6 +326,52 @@ METRIC_DESCRIPTIONS: dict[str, str] = {
     ),
     MetricNames.DISCOVERY_SERVER_FAILURES: (
         "Failed tool discovery attempts against downstream MCP servers"
+    ),
+    # ---- Audit / compliance (Audit Trail dashboard) -------------------
+    MetricNames.ADMIN_ACTIONS: (
+        "Every gateway state-mutation (config CRUD, project/user lifecycle, "
+        "apikey CRUD, cache flush, system ops, settings change). Attributes: "
+        "action, resource_type, surface (cli|rest_api|mcp_gateway), actor, "
+        "success."
+    ),
+    MetricNames.PRIVILEGED_OPERATIONS: (
+        "Subset of admin actions that require elevated privileges "
+        "(system reset/restore/backup, settings changes, cache flush)."
+    ),
+    MetricNames.ADMIN_CACHE_FLUSH: (
+        "Cache flush requests. Attributes: scope (all|gateway_config|"
+        "server_config|tool_cache), surface, actor, authorization_path "
+        "(admin_apikey|org_id_allowlist)."
+    ),
+    MetricNames.APIKEY_ROTATIONS: (
+        "Successful apikey rotations (umbrella counter; AUDIT_APIKEY_ROTATED "
+        "fires too with apikey-specific attributes)."
+    ),
+    MetricNames.AUDIT_APIKEY_CREATED: "API key creation events",
+    MetricNames.AUDIT_APIKEY_DELETED: "API key deletion events",
+    MetricNames.AUDIT_APIKEY_DISABLED: "API key disable events",
+    MetricNames.AUDIT_APIKEY_ROTATED: "API key rotation events (per-key)",
+    MetricNames.AUDIT_CONFIG_MODIFIED: (
+        "MCP config file modification events (any add/update/remove on "
+        "mcp_configs / servers / guardrails)"
+    ),
+    MetricNames.AUDIT_SETTINGS_ENKRYPT_API_KEY_SET: (
+        "Enkrypt cloud apikey setting changed via CLI or REST"
+    ),
+    MetricNames.AUDIT_SETTINGS_TELEMETRY_CHANGED: (
+        "Telemetry plugin config changed (provider, endpoint, enabled flag)"
+    ),
+    MetricNames.AUDIT_USER_CREATED: "User account creation events",
+    MetricNames.AUDIT_USER_DELETED: "User account deletion events",
+    MetricNames.PROJECTS_CREATED: "Project creation events",
+    MetricNames.SYSTEM_BACKUP_COMPLETED: (
+        "Successful system backup completions (CLI / REST)"
+    ),
+    MetricNames.SYSTEM_RESET: "System reset events (destructive!)",
+    MetricNames.SYSTEM_RESTORE: "System restore-from-backup events",
+    MetricNames.AUTH_UNAUTHORIZED_HTTP: (
+        "401/403 responses from the admin REST surface or gateway MCP "
+        "surface (per-request, not per-apikey)"
     ),
     MetricNames.AUTH_SUCCESS: "Successful authentications",
     MetricNames.AUTH_FAILURE: "Failed authentications",

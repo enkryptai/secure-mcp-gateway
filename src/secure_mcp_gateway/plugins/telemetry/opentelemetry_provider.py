@@ -489,6 +489,100 @@ class OpenTelemetryProvider(TelemetryProvider):
             unit="1",
         )
 
+        # ---------------------------------------------------------------
+        # Audit / compliance counters (Audit Trail dashboard).
+        # See conventions.MetricNames audit block for the two-layer
+        # umbrella+specific emission contract.
+        # ---------------------------------------------------------------
+        self.admin_actions_counter = self._meter.create_counter(
+            M.ADMIN_ACTIONS, description=D[M.ADMIN_ACTIONS], unit="1",
+        )
+        self.privileged_operations_counter = self._meter.create_counter(
+            M.PRIVILEGED_OPERATIONS,
+            description=D[M.PRIVILEGED_OPERATIONS],
+            unit="1",
+        )
+        self.admin_cache_flush_counter = self._meter.create_counter(
+            M.ADMIN_CACHE_FLUSH,
+            description=D[M.ADMIN_CACHE_FLUSH],
+            unit="1",
+        )
+        self.apikey_rotations_counter = self._meter.create_counter(
+            M.APIKEY_ROTATIONS,
+            description=D[M.APIKEY_ROTATIONS],
+            unit="1",
+        )
+        self.audit_apikey_created_counter = self._meter.create_counter(
+            M.AUDIT_APIKEY_CREATED,
+            description=D[M.AUDIT_APIKEY_CREATED],
+            unit="1",
+        )
+        self.audit_apikey_deleted_counter = self._meter.create_counter(
+            M.AUDIT_APIKEY_DELETED,
+            description=D[M.AUDIT_APIKEY_DELETED],
+            unit="1",
+        )
+        self.audit_apikey_disabled_counter = self._meter.create_counter(
+            M.AUDIT_APIKEY_DISABLED,
+            description=D[M.AUDIT_APIKEY_DISABLED],
+            unit="1",
+        )
+        self.audit_apikey_rotated_counter = self._meter.create_counter(
+            M.AUDIT_APIKEY_ROTATED,
+            description=D[M.AUDIT_APIKEY_ROTATED],
+            unit="1",
+        )
+        self.audit_config_modified_counter = self._meter.create_counter(
+            M.AUDIT_CONFIG_MODIFIED,
+            description=D[M.AUDIT_CONFIG_MODIFIED],
+            unit="1",
+        )
+        self.audit_settings_enkrypt_api_key_set_counter = self._meter.create_counter(
+            M.AUDIT_SETTINGS_ENKRYPT_API_KEY_SET,
+            description=D[M.AUDIT_SETTINGS_ENKRYPT_API_KEY_SET],
+            unit="1",
+        )
+        self.audit_settings_telemetry_changed_counter = self._meter.create_counter(
+            M.AUDIT_SETTINGS_TELEMETRY_CHANGED,
+            description=D[M.AUDIT_SETTINGS_TELEMETRY_CHANGED],
+            unit="1",
+        )
+        self.audit_user_created_counter = self._meter.create_counter(
+            M.AUDIT_USER_CREATED,
+            description=D[M.AUDIT_USER_CREATED],
+            unit="1",
+        )
+        self.audit_user_deleted_counter = self._meter.create_counter(
+            M.AUDIT_USER_DELETED,
+            description=D[M.AUDIT_USER_DELETED],
+            unit="1",
+        )
+        self.projects_created_counter = self._meter.create_counter(
+            M.PROJECTS_CREATED,
+            description=D[M.PROJECTS_CREATED],
+            unit="1",
+        )
+        self.system_backup_completed_counter = self._meter.create_counter(
+            M.SYSTEM_BACKUP_COMPLETED,
+            description=D[M.SYSTEM_BACKUP_COMPLETED],
+            unit="1",
+        )
+        self.system_reset_counter = self._meter.create_counter(
+            M.SYSTEM_RESET,
+            description=D[M.SYSTEM_RESET],
+            unit="1",
+        )
+        self.system_restore_counter = self._meter.create_counter(
+            M.SYSTEM_RESTORE,
+            description=D[M.SYSTEM_RESTORE],
+            unit="1",
+        )
+        self.auth_unauthorized_http_counter = self._meter.create_counter(
+            M.AUTH_UNAUTHORIZED_HTTP,
+            description=D[M.AUTH_UNAUTHORIZED_HTTP],
+            unit="1",
+        )
+
         # Health-check API metrics (REST endpoints under /api/v1/health/mcp/*)
         self.health_request_counter = self._meter.create_counter(
             M.HEALTH_REQUESTS, description=D[M.HEALTH_REQUESTS], unit="1",
@@ -596,6 +690,25 @@ class OpenTelemetryProvider(TelemetryProvider):
         self.degradation_fail_closed_counter = NoOpCounter()
         self.transport_error_counter = NoOpCounter()
         self.discovery_server_failure_counter = NoOpCounter()
+        # Audit / compliance no-op shims
+        self.admin_actions_counter = NoOpCounter()
+        self.privileged_operations_counter = NoOpCounter()
+        self.admin_cache_flush_counter = NoOpCounter()
+        self.apikey_rotations_counter = NoOpCounter()
+        self.audit_apikey_created_counter = NoOpCounter()
+        self.audit_apikey_deleted_counter = NoOpCounter()
+        self.audit_apikey_disabled_counter = NoOpCounter()
+        self.audit_apikey_rotated_counter = NoOpCounter()
+        self.audit_config_modified_counter = NoOpCounter()
+        self.audit_settings_enkrypt_api_key_set_counter = NoOpCounter()
+        self.audit_settings_telemetry_changed_counter = NoOpCounter()
+        self.audit_user_created_counter = NoOpCounter()
+        self.audit_user_deleted_counter = NoOpCounter()
+        self.projects_created_counter = NoOpCounter()
+        self.system_backup_completed_counter = NoOpCounter()
+        self.system_reset_counter = NoOpCounter()
+        self.system_restore_counter = NoOpCounter()
+        self.auth_unauthorized_http_counter = NoOpCounter()
         self.auth_success_counter = NoOpCounter()
         self.auth_failure_counter = NoOpCounter()
         self.active_sessions_gauge = NoOpCounter()

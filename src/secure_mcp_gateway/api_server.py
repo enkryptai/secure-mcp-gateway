@@ -424,6 +424,52 @@ def run_cli_function_with_error_handling(func, *args, **kwargs):
             return None, str(e)
 
 
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    """Emit ``enkrypt.auth.unauthorized_http`` on every 401/403, then
+    return the response FastAPI would have returned anyway.
+
+    Why here, not inside ``get_api_key``?  Because every admin endpoint
+    uses ``get_api_key`` as a Depends() and we'd otherwise need to thread
+    the FastAPI Request object through that dependency just to record
+    the endpoint/method labels.  Centralising in an exception handler
+    catches all unauthorized responses (current + future) from any
+    endpoint, with full request context, and adds zero noise to the
+    auth code path.
+
+    For all other HTTPException codes, just preserve FastAPI's default
+    behavior (re-raise to the framework so the original status code +
+    payload are returned unchanged).
+    """
+    if exc.status_code in (401, 403):
+        try:
+            from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                record_unauthorized_http,
+            )
+
+            record_unauthorized_http(
+                endpoint=request.url.path,
+                surface="rest_api",
+                method=request.method,
+                status_code=exc.status_code,
+                # Reason comes from the message inside the HTTPException
+                # detail (when it's a dict that came from
+                # create_error_response, the message lives at
+                # detail["error"]["message"]; when it's a plain string,
+                # use that directly).  Defensive about both shapes.
+                reason=(
+                    exc.detail.get("error", {}).get("message")
+                    if isinstance(exc.detail, dict) else str(exc.detail)
+                ),
+            )
+        except Exception:  # pragma: no cover - metrics must never break responses
+            pass
+
+    # Preserve FastAPI's default response shape (don't wrap in our
+    # create_error_response unless caller already did).
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     """Global exception handler for unhandled errors."""

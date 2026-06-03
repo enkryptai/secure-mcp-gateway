@@ -606,6 +606,472 @@ def record_discovery_failure(
     _add(getattr(mgr, "discovery_server_failure_counter", None), 1, attrs)
 
 
+# ---------------------------------------------------------------------------
+# Audit / compliance (Audit Trail dashboard)
+# ---------------------------------------------------------------------------
+#
+# Two-layer emission contract, applied by every helper below:
+#   1. The "umbrella" counters (admin_actions_counter and -- when the
+#      operation is privileged -- privileged_operations_counter) always fire,
+#      with a standardised attribute set: action / resource_type / surface /
+#      actor / actor_id / success.  These power top-N actor, by-action, by-
+#      surface aggregations in the Audit Trail dashboard.
+#   2. The "specific" counter for the event category fires alongside (e.g.
+#      audit_apikey_rotated_counter for rotate-apikey, projects_created_counter
+#      for create-project).  These power per-KPI tiles like "API Keys Rotated".
+#
+# Why both?  The umbrella alone can't power per-event-type KPI cards without
+# expensive client-side aggregation; the specific alone can't power "Top
+# Actors" because OSD can't union-aggregate across 17 separate metric names
+# in one panel.  Emitting both is cheap (~17 instruments, one .add() each)
+# and keeps every Audit Trail panel queryable without bespoke pivots.
+#
+# Each helper also accepts ``surface`` (cli / rest_api / mcp_gateway), which
+# is the dashboard's "Operations by Surface (gateway:8000 vs api:8001)"
+# panel pivot.
+
+_PRIVILEGED_ACTIONS = {
+    # System destructive / installer-level
+    "system_reset",
+    "system_restore",
+    "system_backup",
+    # Settings that change auth posture
+    "settings_enkrypt_api_key_set",
+    "settings_telemetry_changed",
+    # Cache mutations
+    "cache_flush",
+    # Anything that creates / rotates / deletes credentials
+    "apikey_created",
+    "apikey_deleted",
+    "apikey_disabled",
+    "apikey_rotated",
+}
+
+
+def _record_admin_envelope(
+    mgr: Any,
+    *,
+    action: str,
+    resource_type: str,
+    surface: str,
+    actor: Optional[str] = None,
+    actor_id: Optional[str] = None,
+    target_id: Optional[str] = None,
+    success: bool = True,
+    failure_reason: Optional[str] = None,
+    extra: Optional[Mapping[str, Any]] = None,
+) -> dict[str, Any]:
+    """Increment the umbrella counters + return the attribute dict the
+    caller should reuse for the specific counter.
+
+    Internal -- public callers go through the typed helpers below.
+    """
+    attrs: dict[str, Any] = {
+        "action": action,
+        "resource_type": resource_type,
+        "surface": surface,
+        "actor": actor,
+        "actor_id": actor_id,
+        "target_id": target_id,
+        "success": "true" if success else "false",
+    }
+    if extra:
+        # Don't let extras silently overwrite the canonical attributes --
+        # the dashboard pivots on those exact field names.
+        for k, v in extra.items():
+            attrs.setdefault(k, v)
+    if not success and failure_reason:
+        attrs["failure_reason"] = failure_reason
+
+    _add(getattr(mgr, "admin_actions_counter", None), 1, attrs)
+    if action in _PRIVILEGED_ACTIONS:
+        _add(getattr(mgr, "privileged_operations_counter", None), 1, attrs)
+    return attrs
+
+
+def record_admin_action(
+    action: str,
+    resource_type: str,
+    surface: str,
+    actor: Optional[str] = None,
+    actor_id: Optional[str] = None,
+    target_id: Optional[str] = None,
+    success: bool = True,
+    failure_reason: Optional[str] = None,
+    **extra: Any,
+) -> None:
+    """Generic admin-action emission for mutations that don't have a
+    specific counter (e.g. listing/searching/exporting/importing).
+
+    For mutations that DO have a dedicated counter (apikey/user/project
+    lifecycle, system ops, cache flush, settings), prefer the typed
+    helpers below -- they call this internally AND fire the specific
+    counter alongside.
+
+    Parameters
+    ----------
+    action : str
+        Short tag for the action, snake_case (e.g. ``"config_list"``,
+        ``"apikey_export"``).
+    resource_type : str
+        What the action operates on: ``"config"``, ``"apikey"``,
+        ``"user"``, ``"project"``, ``"settings"``, ``"system"``,
+        ``"cache"``.
+    surface : str
+        ``"cli"`` (admin CLI), ``"rest_api"`` (admin API on port 8001),
+        or ``"mcp_gateway"`` (cache-flush endpoint on port 8000).
+    actor : str | None
+        Human-readable actor (email, CLI username).  Optional.
+    actor_id : str | None
+        Stable actor ID (apikey suffix, user_id).  Optional.
+    target_id : str | None
+        ID of the resource being acted on.  Optional.
+    success : bool
+        Whether the action succeeded.  Always emit on both paths so the
+        dashboard can show success rate.
+    failure_reason : str | None
+        Short tag when success is False (e.g. ``"unauthorized"``,
+        ``"not_found"``, ``"validation_error"``).
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    _record_admin_envelope(
+        mgr,
+        action=action,
+        resource_type=resource_type,
+        surface=surface,
+        actor=actor,
+        actor_id=actor_id,
+        target_id=target_id,
+        success=success,
+        failure_reason=failure_reason,
+        extra=extra,
+    )
+
+
+def record_cache_flush(
+    scope: str,
+    surface: str,
+    authorization_path: Optional[str] = None,
+    actor: Optional[str] = None,
+    actor_id: Optional[str] = None,
+    target_id: Optional[str] = None,
+    success: bool = True,
+    failure_reason: Optional[str] = None,
+) -> None:
+    """Emit for every cache-flush request.
+
+    Parameters
+    ----------
+    scope : str
+        ``"all"`` | ``"gateway_config"`` | ``"server_config"`` |
+        ``"tool_cache"`` -- matches the cache-management service's
+        cache_type argument.
+    surface : str
+        ``"rest_api"`` (port 8001) or ``"mcp_gateway"`` (port 8000) --
+        the two surfaces that expose the flush endpoint.
+    authorization_path : str | None
+        ``"admin_apikey"`` (super-admin) or ``"org_id_allowlist"``
+        (per-org allow-list) -- which auth route accepted the request.
+        Powers the "Cache Flush Authorization Paths" panel.
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    attrs = _record_admin_envelope(
+        mgr,
+        action="cache_flush",
+        resource_type="cache",
+        surface=surface,
+        actor=actor,
+        actor_id=actor_id,
+        target_id=target_id,
+        success=success,
+        failure_reason=failure_reason,
+        extra={"scope": scope, "authorization_path": authorization_path},
+    )
+    _add(getattr(mgr, "admin_cache_flush_counter", None), 1, attrs)
+
+
+_APIKEY_LIFECYCLE_COUNTERS = {
+    "created": "audit_apikey_created_counter",
+    "deleted": "audit_apikey_deleted_counter",
+    "disabled": "audit_apikey_disabled_counter",
+    "rotated": "audit_apikey_rotated_counter",
+}
+
+
+def record_apikey_lifecycle(
+    event: str,
+    surface: str,
+    actor: Optional[str] = None,
+    actor_id: Optional[str] = None,
+    target_id: Optional[str] = None,
+    success: bool = True,
+    failure_reason: Optional[str] = None,
+) -> None:
+    """Emit on apikey CRUD.
+
+    ``event`` is one of ``created`` | ``deleted`` | ``disabled`` |
+    ``rotated``.  Rotation additionally bumps the umbrella
+    ``apikey_rotations_counter``.
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    specific = _APIKEY_LIFECYCLE_COUNTERS.get(event)
+    if specific is None:
+        # Unknown event -- only emit the envelope so the request still
+        # shows up in totals; don't silently drop.
+        record_admin_action(
+            action=f"apikey_{event}",
+            resource_type="apikey",
+            surface=surface,
+            actor=actor,
+            actor_id=actor_id,
+            target_id=target_id,
+            success=success,
+            failure_reason=failure_reason,
+        )
+        return
+    attrs = _record_admin_envelope(
+        mgr,
+        action=f"apikey_{event}",
+        resource_type="apikey",
+        surface=surface,
+        actor=actor,
+        actor_id=actor_id,
+        target_id=target_id,
+        success=success,
+        failure_reason=failure_reason,
+    )
+    _add(getattr(mgr, specific, None), 1, attrs)
+    if event == "rotated":
+        _add(getattr(mgr, "apikey_rotations_counter", None), 1, attrs)
+
+
+_USER_LIFECYCLE_COUNTERS = {
+    "created": "audit_user_created_counter",
+    "deleted": "audit_user_deleted_counter",
+}
+
+
+def record_user_lifecycle(
+    event: str,
+    surface: str,
+    actor: Optional[str] = None,
+    actor_id: Optional[str] = None,
+    target_id: Optional[str] = None,
+    success: bool = True,
+    failure_reason: Optional[str] = None,
+) -> None:
+    """Emit on user CRUD.  ``event`` is ``created`` | ``deleted``."""
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    specific = _USER_LIFECYCLE_COUNTERS.get(event)
+    attrs = _record_admin_envelope(
+        mgr,
+        action=f"user_{event}",
+        resource_type="user",
+        surface=surface,
+        actor=actor,
+        actor_id=actor_id,
+        target_id=target_id,
+        success=success,
+        failure_reason=failure_reason,
+    )
+    if specific:
+        _add(getattr(mgr, specific, None), 1, attrs)
+
+
+def record_project_created(
+    surface: str,
+    actor: Optional[str] = None,
+    actor_id: Optional[str] = None,
+    target_id: Optional[str] = None,
+    success: bool = True,
+    failure_reason: Optional[str] = None,
+) -> None:
+    """Emit on project create.  Currently the only project lifecycle
+    event the dashboard surfaces as a KPI."""
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    attrs = _record_admin_envelope(
+        mgr,
+        action="project_created",
+        resource_type="project",
+        surface=surface,
+        actor=actor,
+        actor_id=actor_id,
+        target_id=target_id,
+        success=success,
+        failure_reason=failure_reason,
+    )
+    _add(getattr(mgr, "projects_created_counter", None), 1, attrs)
+
+
+_SYSTEM_OP_COUNTERS = {
+    "backup": "system_backup_completed_counter",
+    "reset": "system_reset_counter",
+    "restore": "system_restore_counter",
+}
+
+
+def record_system_op(
+    op: str,
+    surface: str,
+    actor: Optional[str] = None,
+    actor_id: Optional[str] = None,
+    success: bool = True,
+    failure_reason: Optional[str] = None,
+) -> None:
+    """Emit on system ops.  ``op`` is ``backup`` | ``reset`` | ``restore``.
+
+    These are intentionally tagged as privileged ops (see
+    ``_PRIVILEGED_ACTIONS``) -- the dashboard's "Privileged Operations"
+    panel will pick them up automatically via the umbrella counter.
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    specific = _SYSTEM_OP_COUNTERS.get(op)
+    attrs = _record_admin_envelope(
+        mgr,
+        action=f"system_{op}",
+        resource_type="system",
+        surface=surface,
+        actor=actor,
+        actor_id=actor_id,
+        success=success,
+        failure_reason=failure_reason,
+    )
+    if specific:
+        _add(getattr(mgr, specific, None), 1, attrs)
+
+
+_SETTINGS_COUNTERS = {
+    "enkrypt_api_key_set": "audit_settings_enkrypt_api_key_set_counter",
+    "telemetry_changed": "audit_settings_telemetry_changed_counter",
+}
+
+
+def record_settings_change(
+    setting: str,
+    surface: str,
+    actor: Optional[str] = None,
+    actor_id: Optional[str] = None,
+    success: bool = True,
+    failure_reason: Optional[str] = None,
+    **extra: Any,
+) -> None:
+    """Emit on changes to security-sensitive settings.
+
+    ``setting`` is ``enkrypt_api_key_set`` | ``telemetry_changed``.
+    Other settings without a dedicated counter fall back to the umbrella
+    via ``record_admin_action`` so they're still visible in totals.
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    specific = _SETTINGS_COUNTERS.get(setting)
+    attrs = _record_admin_envelope(
+        mgr,
+        action=f"settings_{setting}",
+        resource_type="settings",
+        surface=surface,
+        actor=actor,
+        actor_id=actor_id,
+        success=success,
+        failure_reason=failure_reason,
+        extra=extra,
+    )
+    if specific:
+        _add(getattr(mgr, specific, None), 1, attrs)
+
+
+def record_config_modified(
+    surface: str,
+    actor: Optional[str] = None,
+    actor_id: Optional[str] = None,
+    target_id: Optional[str] = None,
+    change_kind: Optional[str] = None,
+    changed_fields: Optional[Iterable[str]] = None,
+    success: bool = True,
+    failure_reason: Optional[str] = None,
+) -> None:
+    """Emit on every successful change to mcp_configs / servers /
+    guardrails / projects/users/apikeys at the *file* level (i.e. things
+    that go through ``cli config update-*`` or the equivalent REST
+    endpoints).
+
+    Parameters
+    ----------
+    change_kind : str | None
+        Short tag (``add_server``, ``update_server``, ``remove_server``,
+        ``update_guardrails``, ...).  Powers the dashboard's
+        "Actions by Type" panel.
+    changed_fields : iterable of str | None
+        Names of fields that were modified.  Joined comma-separated into
+        a single ``changed_fields`` attribute so the panel "Recent Audit
+        Events (changed_fields)" can show them; *not* exploded into
+        per-field labels to avoid cardinality blow-up.
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    extra: dict[str, Any] = {}
+    if change_kind:
+        extra["change_kind"] = change_kind
+    if changed_fields:
+        extra["changed_fields"] = ",".join(sorted(set(changed_fields)))
+    attrs = _record_admin_envelope(
+        mgr,
+        action="config_modified",
+        resource_type="config",
+        surface=surface,
+        actor=actor,
+        actor_id=actor_id,
+        target_id=target_id,
+        success=success,
+        failure_reason=failure_reason,
+        extra=extra,
+    )
+    _add(getattr(mgr, "audit_config_modified_counter", None), 1, attrs)
+
+
+def record_unauthorized_http(
+    endpoint: str,
+    surface: str,
+    method: Optional[str] = None,
+    status_code: Optional[int] = None,
+    reason: Optional[str] = None,
+    actor_id: Optional[str] = None,
+) -> None:
+    """Emit on every 401/403 from the admin REST surface or the
+    gateway-MCP surface.
+
+    Distinct from :func:`record_auth_outcome` (which counts per-apikey,
+    per-provider auth decisions): this counter is per-HTTP-request and
+    pivots on endpoint / status_code / reason for the "Unauthorized HTTP"
+    KPI tile.
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    attrs = {
+        "endpoint": endpoint,
+        "surface": surface,
+        "method": method,
+        "status_code": str(status_code) if status_code is not None else None,
+        "reason": reason,
+        "actor_id": actor_id,
+    }
+    _add(getattr(mgr, "auth_unauthorized_http_counter", None), 1, attrs)
+
+
 __all__ = [
     "record_tool_call_outcome",
     "record_guardrail_violations",
@@ -618,4 +1084,14 @@ __all__ = [
     "record_degradation",
     "record_transport_error",
     "record_discovery_failure",
+    # Audit / compliance (Audit Trail dashboard)
+    "record_admin_action",
+    "record_cache_flush",
+    "record_apikey_lifecycle",
+    "record_user_lifecycle",
+    "record_project_created",
+    "record_system_op",
+    "record_settings_change",
+    "record_config_modified",
+    "record_unauthorized_http",
 ]
