@@ -82,7 +82,11 @@ PANEL_SPECS = [
         'name : "enkrypt.admin.actions"', METRICS_DATAVIEW_ID, (0, 26, 24, 12)),
     (pie_vis(
         "Actions by Source (CLI vs REST)",
-        bucket_field="metric.attributes.source",
+        # ``surface`` is what the audit helpers emit (cli | rest_api |
+        # mcp_gateway); the original ``source`` name was the pre-
+        # implementation design.  Renamed to match the live emission
+        # contract so the panel actually populates.
+        bucket_field="metric.attributes.surface",
         bucket_label="Source",
         size=4,
     ),
@@ -101,7 +105,10 @@ PANEL_SPECS = [
         "", METRICS_DATAVIEW_ID, (0, 50, 48, 2)),
     (pie_vis(
         "Privileged Operations by Type",
-        bucket_field="metric.attributes.operation",
+        # ``action`` is what the audit helpers emit (cache_flush,
+        # apikey_rotated, system_reset, ...).  Renamed from the
+        # pre-implementation ``operation``.
+        bucket_field="metric.attributes.action",
         bucket_label="Operation",
         size=10,
     ),
@@ -115,7 +122,11 @@ PANEL_SPECS = [
         'name : "enkrypt.privileged.operations"', METRICS_DATAVIEW_ID, (16, 52, 16, 12)),
     (horizontal_bar_topN_vis(
         "Cache Flush Authorization Paths",
-        bucket_field="metric.attributes.authorized_via",
+        # ``authorization_path`` is the emission contract from
+        # record_cache_flush -- matches the existing
+        # auth_policy.authorize_apikey_for_cache_flush result["via"]
+        # values: admin_apikey | org_match | unauthorized.
+        bucket_field="metric.attributes.authorization_path",
         bucket_label="Auth Via",
         metric_label="Flushes",
         size=5,
@@ -124,10 +135,15 @@ PANEL_SPECS = [
     (data_table_vis(
         "Cache Flush Audit (last 25)",
         bucket_fields=[
+            # Aligned with the emission contract of
+            # ``record_cache_flush`` -- actor / authorization_path /
+            # scope / success.  ``include_tool_cache`` was the legacy
+            # name for what we now call ``scope`` (and outcome is now
+            # the canonical ``success`` boolean attribute).
             ("metric.attributes.actor", "Actor"),
-            ("metric.attributes.authorized_via", "Auth Via"),
-            ("metric.attributes.include_tool_cache", "Include Tool Cache"),
-            ("metric.attributes.outcome", "Outcome"),
+            ("metric.attributes.authorization_path", "Auth Via"),
+            ("metric.attributes.scope", "Scope"),
+            ("metric.attributes.success", "Success"),
         ],
         size=25,
         metric_label="Flushes",
