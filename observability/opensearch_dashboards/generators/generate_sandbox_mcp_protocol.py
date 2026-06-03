@@ -201,28 +201,28 @@ PANEL_SPECS = [
         bucket_label="Destructive?",
         size=4,
     ),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (0, 102, 12, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (0, 102, 12, 12)),
     (pie_vis(
         "Read-Only Tool Calls",
         bucket_field="metric.attributes.read_only_hint",
         bucket_label="Read-Only?",
         size=4,
     ),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (12, 102, 12, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (12, 102, 12, 12)),
     (pie_vis(
         "Idempotent Tool Calls",
         bucket_field="metric.attributes.idempotent_hint",
         bucket_label="Idempotent?",
         size=4,
     ),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (24, 102, 12, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (24, 102, 12, 12)),
     (pie_vis(
         "Open-World Tool Calls",
         bucket_field="metric.attributes.open_world_hint",
         bucket_label="Open-World?",
         size=4,
     ),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (36, 102, 12, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (36, 102, 12, 12)),
     # ============================================================
     # Notifications
     # ============================================================

@@ -55,9 +55,9 @@ PANEL_SPECS = [
     (markdown_vis("Section: KPIs", markdown="### Tenant KPIs"),
         "", METRICS_DATAVIEW_ID, (0, 4, 48, 2)),
     (kpi_metric_vis("Tool Calls", custom_label="Calls"),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (0, 6, 8, 6)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (0, 6, 8, 6)),
     (kpi_metric_vis("Tool Errors", custom_label="Errors"),
-        'name : "enkrypt.tool.errors"', METRICS_DATAVIEW_ID, (8, 6, 8, 6)),
+        'name : "enkrypt.tool.failures"', METRICS_DATAVIEW_ID, (8, 6, 8, 6)),
     (kpi_metric_vis("Blocked Calls", custom_label="Blocked"),
         'name : "enkrypt.tool.blocked"', METRICS_DATAVIEW_ID, (16, 6, 8, 6)),
     (kpi_metric_vis("PII Redactions", custom_label="Redacted"),
@@ -78,7 +78,7 @@ PANEL_SPECS = [
         metric_label="Calls",
         size=10,
     ),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (0, 14, 24, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (0, 14, 24, 12)),
     (horizontal_bar_topN_vis(
         "Top Tools Called",
         bucket_field="metric.attributes.tool_name",
@@ -86,9 +86,9 @@ PANEL_SPECS = [
         metric_label="Calls",
         size=10,
     ),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (24, 14, 24, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (24, 14, 24, 12)),
     (time_series_vis("Tool Calls Over Time", "Calls", chart_type="histogram"),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (0, 26, 24, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (0, 26, 24, 12)),
     (percentile_vis("Tool Call p95 (s)", percentile=95, custom_label="p95"),
         'name : "enkrypt.tool.duration"', METRICS_DATAVIEW_ID, (24, 26, 12, 12)),
     (percentile_vis("Tool Call p99 (s)", percentile=99, custom_label="p99"),
@@ -172,7 +172,7 @@ PANEL_SPECS = [
     (markdown_vis("Section: Pattern", markdown="### 5. Usage Pattern"),
         "", METRICS_DATAVIEW_ID, (0, 98, 48, 2)),
     (time_series_vis("Requests/sec (hourly)", "Requests", chart_type="histogram"),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (0, 100, 24, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (0, 100, 24, 12)),
     (data_table_vis(
         "Activity per User (top 25)",
         bucket_fields=[
@@ -182,7 +182,7 @@ PANEL_SPECS = [
         size=25,
         metric_label="Calls",
     ),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (24, 100, 24, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (24, 100, 24, 12)),
 ]
 
 

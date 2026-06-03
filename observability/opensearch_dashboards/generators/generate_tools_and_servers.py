@@ -95,7 +95,7 @@ PANEL_SPECS = [
         metric_label="Calls",
         size=15,
     ),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (0, 26, 24, 14)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (0, 26, 24, 14)),
     (horizontal_bar_topN_vis(
         "Top 10 Tools by p95 Latency (s)",
         bucket_field="metric.attributes.tool_name",
@@ -112,7 +112,7 @@ PANEL_SPECS = [
         metric_label="Calls",
         size=10,
     ),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (0, 40, 24, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (0, 40, 24, 12)),
     (horizontal_bar_topN_vis(
         "Top Tools with Errors",
         bucket_field="metric.attributes.tool_name",
@@ -120,7 +120,7 @@ PANEL_SPECS = [
         metric_label="Errors",
         size=10,
     ),
-        'name : "enkrypt.tool.errors"', METRICS_DATAVIEW_ID, (24, 40, 24, 12)),
+        'name : "enkrypt.tool.failures"', METRICS_DATAVIEW_ID, (24, 40, 24, 12)),
     # ============================================================
     # Discovery activity
     # ============================================================
@@ -234,28 +234,28 @@ PANEL_SPECS = [
         bucket_label="Destructive?",
         size=4,
     ),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (0, 132, 12, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (0, 132, 12, 12)),
     (pie_vis(
         "Read-Only Calls",
         bucket_field="metric.attributes.read_only_hint",
         bucket_label="Read-Only?",
         size=4,
     ),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (12, 132, 12, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (12, 132, 12, 12)),
     (pie_vis(
         "Idempotent Calls",
         bucket_field="metric.attributes.idempotent_hint",
         bucket_label="Idempotent?",
         size=4,
     ),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (24, 132, 12, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (24, 132, 12, 12)),
     (pie_vis(
         "Open-World Calls",
         bucket_field="metric.attributes.open_world_hint",
         bucket_label="Open-World?",
         size=4,
     ),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (36, 132, 12, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (36, 132, 12, 12)),
     (heatmap_vis(
         "Annotation Matrix (destructive × read_only)",
         x_field="metric.attributes.destructive_hint",
@@ -263,7 +263,7 @@ PANEL_SPECS = [
         x_size=2,
         y_size=2,
     ),
-        'name : "enkrypt.tool.calls"', METRICS_DATAVIEW_ID, (0, 144, 24, 12)),
+        'name : "enkrypt.tool.success"', METRICS_DATAVIEW_ID, (0, 144, 24, 12)),
     (data_table_vis(
         "Tool not_found / invalid_args breakdown",
         bucket_fields=[
