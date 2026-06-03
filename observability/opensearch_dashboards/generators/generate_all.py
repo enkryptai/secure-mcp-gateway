@@ -5,7 +5,7 @@ Usage::
     python observability/opensearch_dashboards/generate_all.py
 
 This runs each individual ``generate_*.py`` script's ``main()`` in sequence
-and produces 12 ``gateway-*-dashboard.ndjson`` files next to this script.
+and produces 13 ``gateway-*-dashboard.ndjson`` files next to this script.
 
 The order is fixed so dashboard cross-references (none today, but planned)
 resolve deterministically.
@@ -27,6 +27,7 @@ GENERATORS = [
     "generate_guardrails_deep_dive",    # Per-detector deep dive
     "generate_tools_and_servers",       # Tools & MCP Servers
     "generate_per_tenant",              # Per-Tenant
+    "generate_identity_breakdown",      # Identity Breakdown (6-up by gateway/org/project/user/server/tool)
     "generate_cloud_cost",              # Cloud Cost & API Usage
     "generate_cache_performance",       # Cache & Performance
     "generate_hot_reload_config",       # Hot Reload & Config
