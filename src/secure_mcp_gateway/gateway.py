@@ -967,6 +967,23 @@ if __name__ == "__main__":
         mcp.settings.stateless_http = False
         mcp.settings.dependencies = __dependencies__
         # --------------------------------------------
+        # Mount the playground HTTP routes (/mcp-playground/test-server,
+        # /mcp-playground/get-tools, /mcp-playground/call-tool) onto the
+        # FastMCP gateway so the playground UI works without needing
+        # api_server.py to run in a separate process / container.  Same
+        # pattern as gateway_cache_routes -- the routes are added via
+        # FastMCP.custom_route inside the registration function and so
+        # they MUST be attached before mcp.run() builds the ASGI app.
+        try:
+            from secure_mcp_gateway.gateway_playground_routes import (
+                register_gateway_playground_routes,
+            )
+            register_gateway_playground_routes(mcp)
+        except Exception as _exc:
+            logger.warning(
+                f"[gateway] failed to register playground routes: {_exc}"
+            )
+        # --------------------------------------------
         # Transport mode: "streamable-http" (default) or "stdio"
         # Use MCP_TRANSPORT=stdio env var for stdio mode
         transport_mode = os.environ.get("MCP_TRANSPORT", "streamable-http").lower()

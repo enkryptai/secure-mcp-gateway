@@ -1288,10 +1288,14 @@ def main() -> int:
     _write("services/session/session_pool.py", sp_src)
     print(f"[copy+patch] services/session/session_pool.py from v2.2.0-sessionpoolpatch image (PR #40) + cacheperf timers")
 
-    # ---- audit.py + audit_middleware.py ----
+    # ---- audit.py + audit_middleware.py + gateway_playground_routes.py ----
     # These are NEW modules; v2.2.0 doesn't have them, so we copy from
     # the working branch directly.  No merge needed.
-    for new_file in ("audit.py", "audit_middleware.py"):
+    for new_file in (
+        "audit.py",
+        "audit_middleware.py",
+        "gateway_playground_routes.py",
+    ):
         src_text = (REPO / "src" / "secure_mcp_gateway" / new_file).read_text(
             encoding="utf-8"
         )
@@ -1306,6 +1310,16 @@ def main() -> int:
     api_server_src = _dump_from_image("api_server.py")
     api_server_patched = patch_api_server(api_server_src)
     _write("api_server.py", api_server_patched)
+
+    # ---- gateway.py: register the playground routes on FastMCP --------
+    # Mounts /mcp-playground/{test-server,get-tools,call-tool} onto the
+    # FastMCP gateway via custom_route so the playground UI works on
+    # the existing port 8000 / ingress -- no api_server.py process or
+    # k8s changes needed.
+    gateway_src = _dump_from_image("gateway.py")
+    gateway_patched = patch_gateway(gateway_src)
+    _write("gateway.py", gateway_patched)
+    print("[merge] gateway.py + playground routes registration")
 
     # ---- gateway_cache_routes.py: inject log_audit for cache flush ----
     # This file lives in v2.2.0 only (main doesn't have it yet) so the
@@ -1400,6 +1414,68 @@ def patch_gateway_cache_routes(src: str) -> str:
     src = src.replace(unauthorized_anchor, unauthorized_injection, 1)
 
     return src
+
+
+def patch_gateway(src: str) -> str:
+    """Add ``register_gateway_playground_routes(mcp)`` to v2.2.0's
+    gateway.py so the FastMCP server mounts the 3 playground HTTP
+    routes (/mcp-playground/test-server, /mcp-playground/get-tools,
+    /mcp-playground/call-tool) on port 8000 -- making the playground
+    UI reachable via the existing ingress without needing api_server.py
+    to run in a separate process.
+
+    Anchors on the END of v2.2.0's existing try/except that registers
+    gateway_cache_routes (around line 955-970).  We inject a parallel
+    try/except right after the closing ``)`` of the cache-routes
+    except-block.
+
+    Why this is a SEPARATE try/except (not appended inside the cache one)
+    --------------------------------------------------------------------
+    Bundling them means a failure to import playground would also kill
+    cache-flush registration, regressing PR #40 functionality.  Keeping
+    them isolated lets either one degrade independently -- the gateway
+    starts up and runs whether one, both, or neither route module
+    imports cleanly.
+    """
+    anchor = (
+        "try:\n"
+        "    from secure_mcp_gateway.gateway_cache_routes import (\n"
+        "        register_gateway_cache_routes,\n"
+        "    )\n"
+        "\n"
+        "    register_gateway_cache_routes(mcp)\n"
+        "except Exception as e:\n"
+        "    logger.error(\n"
+        "        \"[gateway] failed to register gateway cache routes\",\n"
+        "        error=str(e),\n"
+        "        exc_info=True,\n"
+        "    )"
+    )
+    if anchor not in src:
+        raise RuntimeError(
+            "patch_gateway: v2.2.0 cache-routes registration anchor not "
+            "found; cannot safely append playground-routes registration"
+        )
+    injection = (
+        "\n\n"
+        "# Mount the playground HTTP routes onto the gateway so the\n"
+        "# playground UI works against the SAME port + ingress as the\n"
+        "# MCP protocol -- no separate api_server.py process required.\n"
+        "# See gateway_playground_routes.py for the full rationale.\n"
+        "try:\n"
+        "    from secure_mcp_gateway.gateway_playground_routes import (\n"
+        "        register_gateway_playground_routes,\n"
+        "    )\n"
+        "\n"
+        "    register_gateway_playground_routes(mcp)\n"
+        "except Exception as e:\n"
+        "    logger.error(\n"
+        "        \"[gateway] failed to register gateway playground routes\",\n"
+        "        error=str(e),\n"
+        "        exc_info=True,\n"
+        "    )"
+    )
+    return src.replace(anchor, anchor + injection, 1)
 
 
 def patch_api_server(src: str) -> str:

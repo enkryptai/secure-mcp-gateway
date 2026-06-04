@@ -262,6 +262,28 @@ check(
     _tox_calls >= 2,
 )
 
+# ---- Playground: gateway_playground_routes mounted on FastMCP ----------
+from secure_mcp_gateway import gateway_playground_routes  # noqa: F401
+check("gateway_playground_routes module importable", True)
+check(
+    "register_gateway_playground_routes is callable",
+    callable(
+        getattr(
+            gateway_playground_routes, "register_gateway_playground_routes", None
+        )
+    ),
+)
+_gw_path = "/app/src/secure_mcp_gateway/gateway.py"
+try:
+    with open(_gw_path, encoding="utf-8") as _f:
+        _gw_src = _f.read()
+    check(
+        "gateway.py registers playground routes",
+        "register_gateway_playground_routes(mcp)" in _gw_src,
+    )
+except FileNotFoundError:
+    check("gateway.py present at /app/src", False, _gw_path)
+
 # ---- Cache & Performance: phase_timer + start/finalize wired into STES ---
 check(
     "STES imports phase_timer / start_request_timings / finalize_request_timings",

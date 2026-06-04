@@ -112,6 +112,15 @@ COPY build/tier1_overlay/api_server.py \
 COPY build/tier1_overlay/gateway_cache_routes.py \
      ${PKG_ROOT}/gateway_cache_routes.py
 
+# --- Playground: new gateway_playground_routes.py + patched gateway.py ----
+# Mounts /mcp-playground/{test-server,get-tools,call-tool} onto FastMCP
+# so the playground UI works against the existing :8000 ingress without
+# needing api_server.py to run in a separate process / container.
+COPY build/tier1_overlay/gateway_playground_routes.py \
+     ${PKG_ROOT}/gateway_playground_routes.py
+COPY build/tier1_overlay/gateway.py \
+     ${PKG_ROOT}/gateway.py
+
 # --- Mirror /app/src patches to site-packages ------------------------------
 # So that ``import secure_mcp_gateway.X`` from any context (the verify
 # script, ad-hoc ``python -c`` probes, future tooling) hits the SAME
