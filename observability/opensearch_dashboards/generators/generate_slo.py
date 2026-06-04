@@ -193,7 +193,10 @@ PANEL_SPECS = [
     (kpi_metric_vis("Concurrent MCP Reqs", aggregation="max", custom_label="In-flight"),
         'name : "enkrypt.mcp.http.requests_in_flight"', METRICS_DATAVIEW_ID, (16, 102, 8, 6)),
     (kpi_metric_vis("Active Sessions (pool)", aggregation="max", custom_label="Pool"),
-        'name : "enkrypt.session.pool.active"', METRICS_DATAVIEW_ID, (24, 102, 8, 6)),
+        # Gateway emits enkrypt.session.active (not enkrypt.session.pool.active)
+        # as an UpDownCounter wired in session_pool.acquire/evict/close_all/_reap.
+        # Same naming repoint already applied on Cache & Performance dashboard.
+        'name : "enkrypt.session.active"', METRICS_DATAVIEW_ID, (24, 102, 8, 6)),
     (kpi_metric_vis("Process Memory RSS (max)", aggregation="max", custom_label="Bytes"),
         'name : "process.runtime.memory.rss"', METRICS_DATAVIEW_ID, (32, 102, 8, 6)),
     (kpi_metric_vis("Open FDs (max)", aggregation="max", custom_label="FDs"),

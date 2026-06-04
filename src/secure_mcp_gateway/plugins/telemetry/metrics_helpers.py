@@ -277,7 +277,13 @@ def record_tool_call_outcome(
     duration_ms: Optional[float] = None,
     block_reason: Optional[str] = None,
     user_id: Optional[str] = None,
+    user_email: Optional[str] = None,
     project_id: Optional[str] = None,
+    project_name: Optional[str] = None,
+    project_registry: Optional[str] = None,
+    org_id: Optional[str] = None,
+    gateway_name: Optional[str] = None,
+    gateway_version: Optional[str] = None,
 ) -> None:
     """Increment the right tool-call lifecycle counter.
 
@@ -292,12 +298,14 @@ def record_tool_call_outcome(
     block_reason : str | None
         Only used when ``outcome == "blocked"`` (e.g. ``input_violation``,
         ``output_violation``, ``deny_list``).
-    user_id, project_id : str | None
-        Authenticated request principal.  Optional — when present, attached as
-        metric attributes so per-user / per-project Grafana alerts (e.g. the
-        ``User Repeatedly Triggering Guardrails`` rule) can target a single
-        offender.  ``_safe_attrs`` strips these when ``None``/empty so we don't
-        explode label cardinality with empty strings.
+    user_id, user_email, project_id, project_name, project_registry, org_id,
+    gateway_name, gateway_version : str | None
+        Identity attributes echoed from request_context (cloud auth) or the
+        local apikey lookup.  Optional -- when present, attached as metric
+        attributes so per-tenant / per-gateway-revision PromQL alerts (e.g.
+        ``sum by (gateway_version)``, ``sum by (org_id)``) work without a
+        Loki pivot.  ``_safe_attrs`` strips these when ``None``/empty so we
+        don't explode label cardinality with empty strings.
     """
     mgr = _get_manager()
     if mgr is None:
@@ -308,7 +316,13 @@ def record_tool_call_outcome(
         "tool_name": tool_name,
         "outcome": outcome,
         "user_id": user_id,
+        "user_email": user_email,
         "project_id": project_id,
+        "project_name": project_name,
+        "project_registry": project_registry,
+        "org_id": org_id,
+        "gateway_name": gateway_name,
+        "gateway_version": gateway_version,
     }
     if outcome == "blocked" and block_reason:
         attrs["block_reason"] = block_reason
@@ -345,7 +359,13 @@ def record_guardrail_violations(
     tool_name: str = "",
     guardrail_name: Optional[str] = None,
     user_id: Optional[str] = None,
+    user_email: Optional[str] = None,
     project_id: Optional[str] = None,
+    project_name: Optional[str] = None,
+    project_registry: Optional[str] = None,
+    org_id: Optional[str] = None,
+    gateway_name: Optional[str] = None,
+    gateway_version: Optional[str] = None,
 ) -> None:
     """Record one or more guardrail violations.
 
@@ -358,11 +378,13 @@ def record_guardrail_violations(
 
     Parameters
     ----------
-    user_id, project_id : str | None
-        Authenticated request principal.  Optional — when present, attached as
-        metric attributes so the Grafana ``User Repeatedly Triggering
-        Guardrails`` alert can target a single offender via PromQL ``sum by
-        (user_id) (...)``.  ``_safe_attrs`` strips these when ``None``/empty.
+    user_id, user_email, project_id, project_name, project_registry, org_id,
+    gateway_name, gateway_version : str | None
+        Identity attributes echoed from request_context.  Optional -- when
+        present, attached as metric attributes so the Grafana ``User
+        Repeatedly Triggering Guardrails`` alert can target a single offender
+        via PromQL ``sum by (user_id) (...)`` or ``sum by (user_email) (...)``.
+        ``_safe_attrs`` strips these when ``None``/empty.
     """
     mgr = _get_manager()
     if mgr is None:
@@ -379,7 +401,13 @@ def record_guardrail_violations(
             "tool_name": tool_name,
             "guardrail_name": guardrail_name,
             "user_id": user_id,
+            "user_email": user_email,
             "project_id": project_id,
+            "project_name": project_name,
+            "project_registry": project_registry,
+            "org_id": org_id,
+            "gateway_name": gateway_name,
+            "gateway_version": gateway_version,
         }
         _add(getattr(mgr, "guardrail_violation_counter", None), 1, attrs)
         if directional_name:
@@ -400,13 +428,21 @@ def record_pii_redaction(
     server_name: str = "",
     tool_name: str = "",
     user_id: Optional[str] = None,
+    user_email: Optional[str] = None,
     project_id: Optional[str] = None,
+    project_name: Optional[str] = None,
+    project_registry: Optional[str] = None,
+    org_id: Optional[str] = None,
+    gateway_name: Optional[str] = None,
+    gateway_version: Optional[str] = None,
 ) -> None:
     """Increment ``pii_redactions_counter`` when input is redacted or output
     is de-anonymised.  ``direction`` is ``"input"`` or ``"output"``.
 
-    ``user_id`` / ``project_id`` are attached as metric attributes when
-    present so the ``PII Detected`` alert can pivot per-principal.
+    Identity attributes (user_id / user_email / project_id / project_name /
+    project_registry / org_id / gateway_name / gateway_version) are attached
+    when present so the ``PII Detected`` alert can pivot per-principal or
+    per-gateway revision.
     """
     if count <= 0:
         return
@@ -418,7 +454,13 @@ def record_pii_redaction(
         "server_name": server_name,
         "tool_name": tool_name,
         "user_id": user_id,
+        "user_email": user_email,
         "project_id": project_id,
+        "project_name": project_name,
+        "project_registry": project_registry,
+        "org_id": org_id,
+        "gateway_name": gateway_name,
+        "gateway_version": gateway_version,
     }
     _add(getattr(mgr, "pii_redactions_counter", None), count, attrs)
 

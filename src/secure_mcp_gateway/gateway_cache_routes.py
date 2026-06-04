@@ -110,6 +110,23 @@ async def _parse_body(request: Request) -> dict[str, Any]:
 async def _flush_handler(request: Request) -> JSONResponse:
     auth_err, authz = await _auth_admin(request)
     if auth_err is not None:
+        # Audit-trail the unauthorized attempt so the Audit Trail dashboard
+        # can show 401/403 cache_flush attempts alongside the successful
+        # ones.  Wrapped in try so an audit-module import failure can't
+        # affect the actual authn rejection path.
+        try:
+            from secure_mcp_gateway.audit import log_audit
+
+            log_audit(
+                action="cache_flush",
+                resource_type="cache",
+                surface="mcp_gateway",
+                actor_id=mask_key(request.headers.get("apikey") or ""),
+                success=False,
+                failure_reason="unauthorized",
+            )
+        except Exception:
+            pass
         return auth_err
 
     body = await _parse_body(request)
@@ -142,6 +159,27 @@ async def _flush_handler(request: Request) -> JSONResponse:
         principal=authz.get("principal") or mask_key(apikey),
         include_tool_cache=include_tool_cache,
     )
+
+    # Audit-trail the successful flush.  Powers the Audit Trail dashboard's
+    # "Cache Flushes" KPI, "Cache Flush Authorization Paths" pie, and the
+    # "Cache Flush Audit (last 25)" table.  Wrapped in try so an audit-
+    # module import failure can't affect the actual flush response shape.
+    try:
+        from secure_mcp_gateway.audit import log_audit
+
+        log_audit(
+            action="cache_flush",
+            resource_type="cache",
+            surface="mcp_gateway",
+            actor=authz.get("principal"),
+            actor_id=mask_key(apikey),
+            target_id="all" if include_tool_cache else "gateway_config",
+            success=True,
+            scope="all" if include_tool_cache else "gateway_config",
+            authorization_path=authz["via"],
+        )
+    except Exception:
+        pass
 
     return JSONResponse(
         {
