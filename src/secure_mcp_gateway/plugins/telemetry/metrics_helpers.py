@@ -1553,6 +1553,98 @@ def record_unauthorized_http(
     _add(getattr(mgr, "auth_unauthorized_http_counter", None), 1, attrs)
 
 
+# ---------------------------------------------------------------------------
+# Playground registry lookup (/mcp-playground/* in registry-header mode)
+# ---------------------------------------------------------------------------
+
+
+def record_registry_lookup(
+    outcome: str,
+    duration_ms: float,
+    status_code: Optional[int] = None,
+    cache: str = "miss",
+    saved_name: Optional[str] = None,
+    server_version: Optional[str] = None,
+    registry_name: Optional[str] = None,
+    project_name: Optional[str] = None,
+) -> None:
+    """Record latency of a ``GET /mcp-registry/get-server`` call.
+
+    ``outcome`` is one of
+    ``"success" | "auth_error" | "not_found" | "upstream_error" | "timeout"``.
+    ``cache`` is ``"hit"`` if served from the in-process 10s cache,
+    ``"miss"`` if the cloud was actually contacted.
+
+    The saved_name / server_version / registry_name / project_name labels are
+    echoed from the request headers so per-server / per-registry dashboards
+    work without a Loki pivot.  ``_safe_attrs`` strips None / empty values
+    so label cardinality stays bounded.
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    attrs = {
+        "outcome": outcome,
+        "cache": cache,
+        "status_code": str(status_code) if status_code is not None else None,
+        "saved_name": saved_name,
+        "server_version": server_version,
+        "registry_name": registry_name,
+        "project_name": project_name,
+    }
+    _record(
+        getattr(mgr, "playground_registry_lookup_duration", None),
+        duration_ms,
+        attrs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Playground consumer-info lookup (/mcp-playground/* inline mode + provider=enkrypt)
+# ---------------------------------------------------------------------------
+
+
+def record_consumer_info_lookup(
+    outcome: str,
+    duration_ms: float,
+    status_code: Optional[int] = None,
+    cache: str = "miss",
+    user_id: Optional[str] = None,
+    org_id: Optional[str] = None,
+    project_name: Optional[str] = None,
+    is_internal_req: Optional[bool] = None,
+) -> None:
+    """Record latency of a ``GET /consumer-info`` call.
+
+    ``outcome`` is one of
+    ``"success" | "auth_error" | "upstream_error" | "timeout"``.
+    ``cache`` is ``"hit"`` if served from the in-process 5min cache,
+    ``"miss"`` if the cloud was actually contacted.
+
+    Identity labels (user_id, org_id, project_name, is_internal_req) match
+    ``record_tool_call_outcome`` so per-tenant dashboards stay consistent.
+    """
+    mgr = _get_manager()
+    if mgr is None:
+        return
+    attrs = {
+        "outcome": outcome,
+        "cache": cache,
+        "status_code": str(status_code) if status_code is not None else None,
+        "user_id": user_id,
+        "org_id": org_id,
+        "project_name": project_name,
+        "is_internal_req": str(is_internal_req).lower()
+        if is_internal_req is not None
+        else None,
+    }
+    _record(
+        getattr(mgr, "playground_consumer_info_lookup_duration", None),
+        duration_ms,
+        attrs,
+    )
+
+
 __all__ = [
     "record_tool_call_outcome",
     "record_guardrail_violations",
@@ -1570,6 +1662,8 @@ __all__ = [
     "phase_timer",
     "record_phase_ms",
     "record_session_active",
+    "record_registry_lookup",
+    "record_consumer_info_lookup",
     "record_error_by_code",
     "record_tool_permission_denied",
     "record_degradation",

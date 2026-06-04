@@ -68,12 +68,55 @@ from secure_mcp_gateway.exceptions import (
 from secure_mcp_gateway.utils import (
     CONFIG_PATH,
     DOCKER_CONFIG_PATH,
+    get_common_config,
     is_docker,
     logger,
 )
 from secure_mcp_gateway.version import __version__
 
-# logger.info(f"Initializing Enkrypt Secure MCP Gateway REST API Server v{__version__}")
+# ---------------------------------------------------------------------------
+# Telemetry + sandbox bootstrap
+# ---------------------------------------------------------------------------
+# ``gateway.py`` initialises the telemetry + sandbox plugins on import, but
+# ``api_server.py`` historically did not — so every span / metric /
+# structured-log call inside ``/mcp-playground/*`` routes (which run through
+# ``MCPHealthService``) was silently no-op'd via the
+# ``except Exception: return None`` fallback in
+# ``services/health/mcp_health_service.py::_get_tracer``. The visible symptom
+# was: REST API works fine end-to-end, but **nothing shows up in OpenSearch /
+# OTel collector** for playground calls. Frontend (Vaibhav) confirmed this
+# locally — playground APIs return 200s but no traces / metrics land.
+#
+# We mirror the gateway bootstrap order here (telemetry first so subsequent
+# inits get a live tracer, sandbox second so per-call sandbox overrides
+# resolve against a real provider). Both managers are singletons, so this is
+# a no-op when ``api_server`` is imported a second time within the same
+# process. Failures are caught + logged so an OTLP collector being offline
+# never blocks the REST API from booting.
+try:
+    _common_config = get_common_config()
+    from secure_mcp_gateway.plugins.telemetry import initialize_telemetry_system
+
+    _telemetry_manager = initialize_telemetry_system(_common_config)
+    logger.info(
+        "[api_server] telemetry providers loaded",
+        extra={"providers": _telemetry_manager.list_providers()},
+    )
+except Exception as _telemetry_exc:  # pragma: no cover - exporter offline
+    logger.warning(
+        "[api_server] telemetry bootstrap failed - playground spans/metrics will be no-op",
+        extra={"error": f"{type(_telemetry_exc).__name__}: {_telemetry_exc}"},
+    )
+
+try:
+    from secure_mcp_gateway.plugins.sandbox import initialize_sandbox_system
+
+    initialize_sandbox_system(_common_config)
+except Exception as _sandbox_exc:  # pragma: no cover - runtime not installed
+    logger.warning(
+        "[api_server] sandbox bootstrap failed - inline mode will run unsandboxed",
+        extra={"error": f"{type(_sandbox_exc).__name__}: {_sandbox_exc}"},
+    )
 
 # Configuration
 is_docker_running = is_docker()
@@ -172,8 +215,6 @@ class ServerAddRequest(BaseModel):
     description: str = ""
     input_guardrails_config: dict[str, Any] | None = None
     output_guardrails_config: dict[str, Any] | None = None
-    tool_guardrails_config: dict[str, Any] | None = None
-    enable_server_info_validation: bool | None = None
     sandbox: dict[str, Any] | None = None
 
 
@@ -186,8 +227,6 @@ class ServerUpdateRequest(BaseModel):
     sandbox: dict[str, Any] | None = None
     input_guardrails_config: dict[str, Any] | None = None
     output_guardrails_config: dict[str, Any] | None = None
-    tool_guardrails_config: dict[str, Any] | None = None
-    enable_server_info_validation: bool | None = None
 
 
 class GuardrailsUpdateRequest(BaseModel):
@@ -302,7 +341,19 @@ class TelemetryConfigRequest(BaseModel):
 
 
 def get_api_key(apikey: str | None = Header(None)) -> str:
-    """Extract and validate API key from the 'apikey' header (cloud-compatible)."""
+    """Extract and validate API key from the 'apikey' header (cloud-compatible).
+
+    Delegates the actual key-resolution policy to
+    :func:`secure_mcp_gateway.auth_policy.resolve_admin_keys` so this and
+    ``api_models.get_api_key`` stay in lock-step. See that helper for the
+    provider-aware policy (Enkrypt auth provider also accepts the cloud
+    ``api_key``; other providers require ``admin_apikey``).
+    """
+    from secure_mcp_gateway.auth_policy import (
+        describe_missing_admin_key_hint,
+        resolve_admin_keys,
+    )
+
     context = ErrorContext(operation="api_key_validation")
 
     if not apikey:
@@ -317,16 +368,22 @@ def get_api_key(apikey: str | None = Header(None)) -> str:
             detail=create_error_response(error),
         )
 
-    # Validate admin API key exists in config
     try:
         with open(PICKED_CONFIG_PATH) as f:
             config = json.load(f)
 
-        # Check if admin_apikey exists and matches
-        if "admin_apikey" not in config:
+        acceptable = resolve_admin_keys(config)
+        if not acceptable:
+            provider = (
+                (config.get("plugins") or {}).get("auth", {}).get("provider")
+                or "local_apikey"
+            )
             error = create_auth_error(
                 code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-                message="Admin API key not configured. Please regenerate configuration.",
+                message=(
+                    "Admin API key not configured. "
+                    + describe_missing_admin_key_hint(provider)
+                ),
                 context=context,
             )
             error_logger.log_error(error)
@@ -335,7 +392,7 @@ def get_api_key(apikey: str | None = Header(None)) -> str:
                 detail=create_error_response(error),
             )
 
-        if apikey != config["admin_apikey"]:
+        if apikey not in acceptable:
             error = create_auth_error(
                 code=ErrorCode.AUTH_INVALID_CREDENTIALS,
                 message="Invalid API key.",
@@ -834,10 +891,6 @@ async def add_server_to_config_endpoint(
                 json.dumps(request.output_guardrails_config)
                 if request.output_guardrails_config
                 else None,
-                tool_guardrails=json.dumps(request.tool_guardrails_config)
-                if request.tool_guardrails_config
-                else None,
-                enable_server_info_validation=request.enable_server_info_validation,
             )
 
         if request.sandbox:
@@ -892,10 +945,6 @@ async def update_server_in_config_endpoint(
                 output_guardrails=json.dumps(request.output_guardrails_config)
                 if request.output_guardrails_config
                 else None,
-                tool_guardrails=json.dumps(request.tool_guardrails_config)
-                if request.tool_guardrails_config
-                else None,
-                enable_server_info_validation=request.enable_server_info_validation,
             )
 
         if request.sandbox:
@@ -1174,7 +1223,7 @@ async def set_enkrypt_api_key_endpoint(
     request: EnkryptApiKeyRequest,
     api_key: str = Depends(get_api_key),
 ):
-    """Set Enkrypt API key in guardrails configuration."""
+    """Set Enkrypt API key in the centralized enkrypt_config."""
     _result, error = run_cli_function_with_error_handling(
         set_enkrypt_api_key,
         PICKED_CONFIG_PATH,
@@ -1197,7 +1246,7 @@ async def set_enkrypt_api_key_endpoint(
 async def get_enkrypt_api_key_endpoint(
     api_key: str = Depends(get_api_key),
 ):
-    """Get Enkrypt API key from guardrails configuration."""
+    """Get Enkrypt API key from the centralized enkrypt_config."""
     result, error = run_cli_function_with_error_handling(
         get_enkrypt_api_key,
         PICKED_CONFIG_PATH,
@@ -1266,6 +1315,13 @@ try:
     app.include_router(health_router)
 except Exception as e:
     logger.error(f"[api_server] Skipping health routes due to import error: {e}")
+
+try:
+    from secure_mcp_gateway.api_cache_routes import cache_router
+
+    app.include_router(cache_router)
+except Exception as e:
+    logger.error(f"[api_server] Skipping cache routes due to import error: {e}")
 
 # =============================================================================
 # MAIN FUNCTION

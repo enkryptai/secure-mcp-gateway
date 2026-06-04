@@ -36,7 +36,15 @@ def _print_result(label: str, result):
             print(f"  [{label}] {text[:300]}")
 
 
-async def test_server(server_name: str):
+async def _run_session_pool_check(server_name: str):
+    """Manually exercise the gateway's session pool for one server.
+
+    Renamed from ``test_server`` to a non-``test_*`` name so pytest's
+    auto-discovery no longer attempts to collect this helper as a test
+    case (it takes a positional arg, not a fixture, and is intended to
+    be called from ``main()`` below — see module docstring for the
+    manual invocation pattern).
+    """
     print(f"\n{'='*60}")
     print(f"Testing session pool with: {server_name}")
     print(f"{'='*60}")
@@ -105,10 +113,10 @@ async def main():
     print("=" * 60)
 
     # Test with sandbox-enabled server
-    result_bwrap = await test_server("playwright_bwrap")
+    result_bwrap = await _run_session_pool_check("playwright_bwrap")
 
     # Test with non-sandboxed server
-    result_no_sandbox = await test_server("playwright_no_sandbox")
+    result_no_sandbox = await _run_session_pool_check("playwright_no_sandbox")
 
     print(f"\n{'='*60}")
     print("RESULTS:")

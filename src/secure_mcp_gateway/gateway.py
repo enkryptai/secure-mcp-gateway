@@ -64,8 +64,21 @@ _boot_logger = get_logger("secure_mcp_gateway.gateway")
 from secure_mcp_gateway.dependencies import __dependencies__
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 from secure_mcp_gateway.utils import (
+    async_input_guardrails_enabled,
+    async_output_guardrails_enabled,
     get_common_config,
+    get_fastmcp_log_level,
+    get_guardrail_api_key,
+    get_guardrail_base_url,
+    get_log_level,
+    get_remote_gateway_name,
+    get_remote_gateway_version,
+    get_telemetry_endpoint,
+    is_debug_log_level,
     is_docker,
+    is_telemetry_enabled,
+    use_external_cache,
+    use_remote_mcp_config,
 )
 from secure_mcp_gateway.version import __version__
 
@@ -117,10 +130,8 @@ from secure_mcp_gateway.plugins.guardrails.example_providers import (
     OpenAIGuardrailProvider,
 )
 from secure_mcp_gateway.services.cache.cache_service import (
-    ENKRYPT_GATEWAY_CACHE_EXPIRATION,
-    ENKRYPT_MCP_USE_EXTERNAL_CACHE,
-    ENKRYPT_TOOL_CACHE_EXPIRATION,
     cache_client,
+    cache_service,
 )
 from secure_mcp_gateway.services.discovery import DiscoveryService
 from secure_mcp_gateway.services.server.server_info_service import ServerInfoService
@@ -171,71 +182,64 @@ logger.info(
 # Plugin loading is now handled by the initialization functions above
 logger.info(f"Registered guardrail providers: {guardrail_manager.list_providers()}")
 
+# Start config-file watcher so edits to enkrypt_mcp_config.json take effect
+# without restarting the process. The watcher is a daemon thread so it does
+# not block process shutdown. Disabled when poll_seconds <= 0.
+try:
+    from secure_mcp_gateway.config_watcher import start_config_watcher
 
-ENKRYPT_LOG_LEVEL = common_config.get("enkrypt_log_level", "INFO").lower()
-IS_DEBUG_LOG_LEVEL = ENKRYPT_LOG_LEVEL == "debug"
-FASTMCP_LOG_LEVEL = ENKRYPT_LOG_LEVEL.upper()
+    start_config_watcher()
+except Exception as e:
+    logger.warning(f"[gateway] config watcher startup failed: {e}")
 
-# Get API key and base URL from plugin configurations
-plugins_config = common_config.get("plugins", {})
-guardrails_config = plugins_config.get("guardrails", {}).get("config", {})
-auth_config = plugins_config.get("auth", {}).get("config", {})
 
-GUARDRAIL_URL = guardrails_config.get(
-    "base_url", auth_config.get("base_url", "https://api.enkryptai.com")
-)
-ENKRYPT_USE_REMOTE_MCP_CONFIG = common_config.get(
-    "enkrypt_use_remote_mcp_config", False
-)
-ENKRYPT_REMOTE_MCP_GATEWAY_NAME = common_config.get(
-    "enkrypt_remote_mcp_gateway_name", "Test MCP Gateway"
-)
-ENKRYPT_REMOTE_MCP_GATEWAY_VERSION = common_config.get(
-    "enkrypt_remote_mcp_gateway_version", "v1"
-)
-ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED = common_config.get(
-    "enkrypt_async_input_guardrails_enabled", False
-)
-ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED = common_config.get(
-    "enkrypt_async_output_guardrails_enabled", False
-)
-# Get telemetry configuration from plugin config
-telemetry_plugin_config = common_config.get("plugins", {}).get("telemetry", {})
-TELEMETRY_ENABLED = telemetry_plugin_config.get("config", {}).get("enabled", False)
-TELEMETRY_ENDPOINT = telemetry_plugin_config.get("config", {}).get(
-    "url", "http://localhost:4317"
-)
-
-GUARDRAIL_API_KEY = guardrails_config.get("api_key", auth_config.get("api_key", "null"))
-
+# NOTE: gateway runtime settings are now resolved lazily via accessors in
+# secure_mcp_gateway.utils so changes to enkrypt_mcp_config.json take effect
+# on the next request without restarting the gateway. The module-level
+# globals that used to live here have been removed. See:
+#   - get_log_level / is_debug_log_level / get_fastmcp_log_level
+#   - get_guardrail_base_url / get_guardrail_api_key
+#   - use_remote_mcp_config / get_remote_gateway_name / get_remote_gateway_version
+#   - async_input_guardrails_enabled / async_output_guardrails_enabled
+#   - is_telemetry_enabled / get_telemetry_endpoint
+#   - use_external_cache / get_tool_cache_ttl_hours / get_gateway_cache_ttl_seconds
 
 logger.info("--------------------------------")
-logger.info(f"enkrypt_log_level: {ENKRYPT_LOG_LEVEL}")
-logger.info(f"is_debug_log_level: {IS_DEBUG_LOG_LEVEL}")
-logger.info(f"guardrail_url: {GUARDRAIL_URL}")
-logger.info(f"enkrypt_use_remote_mcp_config: {ENKRYPT_USE_REMOTE_MCP_CONFIG}")
-if ENKRYPT_USE_REMOTE_MCP_CONFIG:
-    logger.info(f"enkrypt_remote_mcp_gateway_name: {ENKRYPT_REMOTE_MCP_GATEWAY_NAME}")
+logger.info(f"enkrypt_log_level: {get_log_level()}")
+logger.info(f"is_debug_log_level: {is_debug_log_level()}")
+logger.info(f"guardrail_url: {get_guardrail_base_url()}")
+logger.info(f"enkrypt_use_remote_mcp_config: {use_remote_mcp_config()}")
+if use_remote_mcp_config():
+    logger.info(f"enkrypt_remote_mcp_gateway_name: {get_remote_gateway_name()}")
     logger.info(
-        f"enkrypt_remote_mcp_gateway_version: {ENKRYPT_REMOTE_MCP_GATEWAY_VERSION}"
+        f"enkrypt_remote_mcp_gateway_version: {get_remote_gateway_version()}"
     )
-logger.info(f'guardrail_api_key: {"****" + GUARDRAIL_API_KEY[-4:]}')
-logger.info(f"enkrypt_tool_cache_expiration: {ENKRYPT_TOOL_CACHE_EXPIRATION}")
-logger.info(f"enkrypt_gateway_cache_expiration: {ENKRYPT_GATEWAY_CACHE_EXPIRATION}")
-logger.info(f"enkrypt_mcp_use_external_cache: {ENKRYPT_MCP_USE_EXTERNAL_CACHE}")
+_gk = get_guardrail_api_key()
+logger.info(f"guardrail_api_key: {'****' + (_gk[-4:] if len(_gk) >= 4 else _gk)}")
 logger.info(
-    f"enkrypt_async_input_guardrails_enabled: {ENKRYPT_ASYNC_INPUT_GUARDRAILS_ENABLED}"
+    f"enkrypt_tool_cache_expiration: {cache_service.tool_cache_expiration}"
 )
-if IS_DEBUG_LOG_LEVEL:
+logger.info(
+    f"enkrypt_gateway_cache_expiration: {cache_service.gateway_cache_expiration}"
+)
+logger.info(f"enkrypt_mcp_use_external_cache: {use_external_cache()}")
+logger.info(
+    f"enkrypt_async_input_guardrails_enabled: {async_input_guardrails_enabled()}"
+)
+if is_debug_log_level():
     logger.debug(
-        f"enkrypt_async_output_guardrails_enabled: {ENKRYPT_ASYNC_OUTPUT_GUARDRAILS_ENABLED}"
+        f"enkrypt_async_output_guardrails_enabled: {async_output_guardrails_enabled()}"
     )
-logger.info(f"telemetry_enabled: {TELEMETRY_ENABLED}")
-logger.info(f"telemetry_endpoint: {TELEMETRY_ENDPOINT}")
+logger.info(f"telemetry_enabled: {is_telemetry_enabled()}")
+logger.info(f"telemetry_endpoint: {get_telemetry_endpoint()}")
 logger.info("--------------------------------")
 
 # TODO
-AUTH_SERVER_VALIDATE_URL = f"{GUARDRAIL_URL}/mcp-gateway/get-gateway"
+
+
+def get_auth_server_validate_url() -> str:
+    """Return the upstream cloud auth validate URL using the latest config."""
+    return f"{get_guardrail_base_url()}/mcp-gateway/get-gateway"
 
 # For Output Checks if they are enabled in output_guardrails_config['additional_config']
 RELEVANCY_THRESHOLD = 0.75
@@ -271,10 +275,14 @@ def get_gateway_credentials(ctx: Context):
 
 
 # Read from local MCP config file
-async def get_local_mcp_config(gateway_key, project_id=None, user_id=None):
+async def get_local_mcp_config(
+    gateway_key, project_id=None, user_id=None, gateway_name=None
+):
     """Wrapper for getting local MCP config using the auth manager."""
     auth_manager = get_auth_config_manager()
-    return await auth_manager.get_local_mcp_config(gateway_key, project_id, user_id)
+    return await auth_manager.get_local_mcp_config(
+        gateway_key, project_id, user_id, gateway_name=gateway_name
+    )
 
 
 async def enkrypt_authenticate(ctx: Context):
@@ -325,7 +333,7 @@ async def enkrypt_list_all_servers(ctx: Context, discover_tools: bool = True):
         discover_tools=discover_tools,
         tracer=tracer,
         logger=logger,
-        IS_DEBUG_LOG_LEVEL=IS_DEBUG_LOG_LEVEL,
+        IS_DEBUG_LOG_LEVEL=is_debug_log_level(),
         cache_client=cache_client,
     )
 
@@ -448,7 +456,9 @@ def _filter_tools_payload(tools, denied, allowed):
     return tools, []
 
 
-def _filter_denied_from_discovery(result, local_config, server_name, filter_denied_tools):
+def _filter_denied_from_discovery(
+    result, local_config, server_name, filter_denied_tools
+):
     """
     Remove denied tools from discovery results in-place and **always** attach
     ``policy_denied_tools`` (list) and ``policy_denied_count`` (int) so callers
@@ -531,11 +541,12 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
     gateway_key = creds.get("gateway_key")
     project_id = creds.get("project_id")
     user_id = creds.get("user_id")
+    gateway_name = creds.get("gateway_name")
 
     # Get mcp_config_id from local config
     auth_manager = get_auth_config_manager()
     local_config = await auth_manager.get_local_mcp_config(
-        gateway_key, project_id, user_id
+        gateway_key, project_id, user_id, gateway_name=gateway_name
     )
     mcp_config_id = (
         local_config.get("mcp_config_id", "not_provided")
@@ -552,7 +563,7 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
         server_name=server_name,
         tracer_obj=tracer,
         logger_instance=logger,
-        IS_DEBUG_LOG_LEVEL=IS_DEBUG_LOG_LEVEL,
+        IS_DEBUG_LOG_LEVEL=is_debug_log_level(),
         session_key=session_key,
     )
 
@@ -928,8 +939,8 @@ mcp = FastMCP(
     # event_store=None,
     # TODO: Not sure if we need to specify tools as it discovers them automatically
     tools=GATEWAY_TOOLS,
-    debug=True if FASTMCP_LOG_LEVEL == "DEBUG" else False,
-    log_level=FASTMCP_LOG_LEVEL,
+    debug=True if get_fastmcp_log_level() == "DEBUG" else False,
+    log_level=get_fastmcp_log_level(),
     host="0.0.0.0",
     port=8000,
     mount_path="/",
@@ -940,6 +951,22 @@ mcp = FastMCP(
     stateless_http=False,
     dependencies=__dependencies__,
 )
+
+# Mount admin HTTP routes onto the gateway so a single REST call can flush
+# this process's in-memory caches (mirrors api_cache_routes on the REST API
+# server). See gateway_cache_routes.py for the full rationale.
+try:
+    from secure_mcp_gateway.gateway_cache_routes import (
+        register_gateway_cache_routes,
+    )
+
+    register_gateway_cache_routes(mcp)
+except Exception as e:
+    logger.error(
+        "[gateway] failed to register gateway cache routes",
+        error=str(e),
+        exc_info=True,
+    )
 
 
 # --- Run ---
@@ -957,8 +984,9 @@ if __name__ == "__main__":
         # mcp.instructions = "This is the Enkrypt Secure MCP Gateway. It is used to secure the MCP calls to the servers by authenticating with a gateway key and using guardrails to check both requests and responses."
         mcp.tools = GATEWAY_TOOLS
         # --------------------------------------------
-        mcp.settings.debug = True if FASTMCP_LOG_LEVEL == "DEBUG" else False
-        mcp.settings.log_level = FASTMCP_LOG_LEVEL
+        _fastmcp_log_level = get_fastmcp_log_level()
+        mcp.settings.debug = True if _fastmcp_log_level == "DEBUG" else False
+        mcp.settings.log_level = _fastmcp_log_level
         mcp.settings.host = "0.0.0.0"
         mcp.settings.port = 8000
         mcp.settings.mount_path = "/"

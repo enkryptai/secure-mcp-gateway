@@ -1,7 +1,7 @@
 # Secure MCP Gateway - Complete Project Analysis
 
 **Version**: 2.1.2
-**Last Updated**: 2025-10-15
+**Last Updated**: 2026-05-17
 **Project Type**: Python Security Middleware for Model Context Protocol (MCP)
 
 ---
@@ -35,8 +35,11 @@ secure-mcp-gateway/
 │   ├── gateway.py                     # ⭐ Main MCP server (FastMCP)
 │   ├── client.py                      # ⭐ MCP client to actual servers
 │   ├── cli.py                         # ⭐ CLI interface (huge file)
-│   ├── api_server.py                  # FastAPI REST API server
+│   ├── api_server.py                  # FastAPI REST API server (port 8001)
 │   ├── api_routes.py                  # Additional API routes
+│   ├── api_cache_routes.py            # REST cache flush endpoints (port 8001)
+│   ├── api_health_routes.py           # REST health endpoints (port 8001)
+│   ├── gateway_cache_routes.py        # MCP gateway cache flush endpoints (port 8000)
 │   │
 │   ├── error_handling.py              # Standardized error handling
 │   ├── exceptions.py                  # Custom exception classes
@@ -112,16 +115,36 @@ secure-mcp-gateway/
 │   │
 │   └── example_enkrypt_mcp_config.json  # Example configuration
 │
-├── infra/                             # Infrastructure configs
-│   ├── docker-compose.yml             # Full observability stack
-│   ├── grafana/                       # Grafana dashboards
-│   ├── prometheus/                    # Prometheus config
-│   ├── loki/                          # Loki logging config
-│   └── otel_collector/                # OpenTelemetry collector
+├── observability/                     # Observability stack -- TWO backends, run one
+│   ├── docker-compose.opensearch.yml  # OpenSearch/Data Prepper stack (PRIMARY; OTLP host :4317/:4318)
+│   ├── docker-compose.grafana.yml     # Grafana/Prometheus/Loki/Jaeger stack (legacy; OTLP host :4327/:4328)
+│   ├── .env.opensearch.example        # env template -> copy to .env.opensearch
+│   ├── .env.grafana.example           # env template -> copy to .env.grafana
+│   ├── README.opensearch.md           # OpenSearch stack operator guide
+│   ├── README.md                      # Grafana stack operator guide
+│   ├── emit_dummy_telemetry.py        # synthetic OTLP emitter (dashboard/monitor verification)
+│   ├── opensearch/                    # bootstrap.sh + ISM policy / templates / monitors / channel
+│   │   ├── bootstrap.sh               # idempotent installer (policy, templates, data streams, monitors, local user)
+│   │   ├── policies/                  # gateway_telemetry_policy.json (7d hot->delete, prio 1000)
+│   │   ├── templates/                 # gateway-{metrics,traces,logs}-elastic-template.json (SS4O data streams)
+│   │   ├── monitors/                  # 01..09 bucket-level alerting monitors
+│   │   └── notification_channels/     # slack-mcpgw-alerts.json
+│   ├── opensearch_dashboards/         # saved-objects.ndjson + gateway-dashboards.ndjson (13 viz + 3 dashboards)
+│   ├── data_prepper/                  # pipelines.yaml + render_pipelines.py (+ unit tests) + config
+│   ├── otel_collector/                # otel-collector-config.yaml (Grafana) + .opensearch.yaml (OpenSearch)
+│   ├── grafana/                       # Grafana dashboards + alert provisioning
+│   ├── prometheus/                    # Prometheus scrape config
+│   ├── loki/                          # Loki log-aggregation config
+│   └── promtail/                      # Promtail config
+│
+│   NOTE: the apiaas repo is canonical for the OpenSearch resources;
+│   observability/opensearch{,_dashboards}/ is a vendored mirror kept in
+│   sync by scripts/install/opensearch/sync-check.sh (see apiaas repo).
 │
 ├── docs/                              # Documentation
-├── pyproject.toml                     # Python project config
-├── setup.py                           # Setup script
+├── pyproject.toml                     # Python project config (PEP 621)
+├── requirements.txt                   # Pinned runtime deps
+├── Dockerfile / Dockerfile-Base       # Container build
 ├── README.md                          # Main documentation
 ├── CHANGELOG.md                       # Version history
 ├── CLI-Commands-Reference.md          # CLI documentation
@@ -197,6 +220,15 @@ secure-mcp-gateway/
 - **API Key Management**: generate, list, rotate, disable, enable, delete
 
 - **System Operations**: backup, restore, reset, health-check, version
+
+- **Config Generation**: `generate-config [--overwrite] [--provider {local_apikey,enkrypt}]`
+  - `local_apikey` (default) → full local schema (`mcp_configs`/`projects`/`users`/`apikeys` + sample echo server, root `admin_apikey`)
+  - `enkrypt` → minimal cloud-backed schema from `example_enkrypt_cloud_config.json` (no `admin_apikey`, no servers/projects/users blocks — cloud owns those)
+
+**Docker passthrough wrapper** (`--docker` global flag, [cli.py `_run_in_docker`](cli.py)):
+- Auto-detects host OS, sets `HOST_OS` and `HOST_ENKRYPT_HOME`, mounts `~/.enkrypt/docker` and (for `install`) `~/.cursor` + Claude config dir into the container
+- **Image tag is pinned to `__version__` by default** (e.g. `enkryptai/secure-mcp-gateway:2.2.0`) to prevent host-vs-container flag-skew. Override with `--docker-image`; the wrapper emits a `WARN:` if the override doesn't contain the host version
+- **`build_docker_args(env_var_names)` helper** — provider-aware Docker run-args generator used by `install_cursor` / `install_claude_desktop` / `install_claude_code` to emit one `-e VAR_NAME` flag per provider env var (3 for `local_apikey`: `ENKRYPT_GATEWAY_KEY`/`ENKRYPT_PROJECT_ID`/`ENKRYPT_USER_ID`, 1 for `enkrypt`: `ENKRYPT_APIKEY`). Replaces the old hard-coded `DOCKER_ARGS` constant; backed by tests in `tests/test_cli_install.py`
 
 #### **REST API Server** ([api_server.py:1049](api_server.py), [api_routes.py:716](api_routes.py))
 
@@ -295,13 +327,13 @@ get_id_from_key(cache_client, gateway_key)
     "enkrypt_async_input_guardrails_enabled": false,
     "enkrypt_async_output_guardrails_enabled": false,
     "timeout_settings": {
-      "default_timeout": 30,
-      "guardrail_timeout": 15,
-      "auth_timeout": 10,
-      "tool_execution_timeout": 60,
-      "discovery_timeout": 20,
-      "cache_timeout": 5,
-      "connectivity_timeout": 2,
+      "default_timeout": 90,
+      "guardrail_timeout": 390,
+      "auth_timeout": 30,
+      "tool_execution_timeout": 360,
+      "discovery_timeout": 540,
+      "cache_timeout": 15,
+      "connectivity_timeout": 6,
       "escalation_policies": {
         "warn_threshold": 0.8,
         "timeout_threshold": 1.0,
@@ -341,7 +373,6 @@ get_id_from_key(cache_client, gateway_key)
             "args": ["PATH_TO_ECHO_MCP"]
           },
           "tools": {},
-          "enable_tool_guardrails": true,
           "input_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
@@ -605,20 +636,20 @@ class TimeoutManager:
 
 ```
 
-**Timeout Types**:
-- `default_timeout`: 30s
+**Timeout Types** (defaults — tripled from earlier baselines to absorb intermittent Enkrypt-cloud guardrail-API hangs; override per deployment in `timeout_settings`):
+- `default_timeout`: 90s
 
-- `guardrail_timeout`: 15s
+- `guardrail_timeout`: 390s (single Enkrypt cloud `/guardrails/*` call; observed up to 180s+ on identical 84-byte payloads in dev, so 390s gives ~2x safety over the worst observed hang)
 
-- `auth_timeout`: 10s
+- `auth_timeout`: 30s
 
-- `tool_execution_timeout`: 60s
+- `tool_execution_timeout`: 360s (wraps input-guardrail + forward + output-guardrail end-to-end; must accommodate two back-to-back guardrail calls plus the tool's own work)
 
-- `discovery_timeout`: 20s
+- `discovery_timeout`: 540s (per server, applied via `asyncio.wait_for` so one slow server doesn't sink the rest; sized for description validation + tool-list batch validation + cold `uvx`/`npx` first run)
 
-- `cache_timeout`: 5s
+- `cache_timeout`: 15s
 
-- `connectivity_timeout`: 2s
+- `connectivity_timeout`: 6s
 
 #### **OAuth Services** ([services/oauth/](services/oauth/))
 
@@ -898,6 +929,86 @@ DEFAULT_COMMON_CONFIG = {
 
 ---
 
+## 🔁 Zero-Restart Hot-Reload
+
+Edits to `enkrypt_mcp_config.json` take effect on the **next request** without restarting the gateway process. There are two trigger paths:
+
+1. **Automatic** — A daemon thread (`config_watcher.py`) polls the file mtime every `enkrypt_config_watcher_poll_seconds` (default 2s). On change it calls `reload.trigger_full_reload()`.
+2. **Manual (REST API process, port 8001)** — `POST http://localhost:8001/api/v1/cache/flush-gateway-config` (in `api_cache_routes.py`) calls `trigger_full_reload`. Requires `apikey: <admin_apikey>` header.
+3. **Manual (MCP gateway process, port 8000)** — `POST http://localhost:8000/api/v1/cache/flush-gateway-config` (in `gateway_cache_routes.py`, mounted via `FastMCP.custom_route`) calls the same orchestrator. Same auth, same payload. Mount it on the gateway as well because the REST API and the MCP gateway are **separate processes** with **separate in-memory caches** — flushing one does not flush the other.
+
+Both endpoints return the full `trigger_full_reload` summary including `auth_reloaded` (which means the `EnkryptAuthProvider` instance was rebuilt and its cloud-config TTL cache is now empty). A companion `GET /api/v1/cache/last-reload` is exposed on both ports for inspecting when the last in-process reload happened.
+
+### **Orchestration (`reload.py:trigger_full_reload`)**
+
+Under a single `threading.Lock`, in order:
+
+1. `utils.clear_config_cache()` — drops the file-level mtime cache
+2. `get_common_config()` — reads the fresh dict
+3. `AuthConfigManager.reload(config)` — unregisters provider, clears sessions, re-runs `PluginLoader`
+4. `GuardrailConfigManager.reload(config)` — rebuilds registry + factory
+5. `TelemetryConfigManager.reload(config)` — re-initializes the active provider (preserves in-flight tracer/logger objects to avoid dropping trace IDs)
+6. `reset_timeout_manager(config)` — singleton swap
+7. `reset_session_pool(config)` — singleton swap; old pool's `close_all()` is scheduled best-effort
+8. `flush_all_gateway_config_cache(include_tool_cache=False)` — drops per-gateway mapped configs from both local and Redis
+
+### **Layers fixed (the 6 things that were caching config)**
+
+| # | Layer | Where | Strategy |
+|---|-------|-------|----------|
+| L1 | File mtime cache | `utils._config_cache` | Already worked; now also cleared on flush |
+| L2 | Cloud-auth cache | `EnkryptAuthProvider._cache` | TTL-driven, dropped on `AuthConfigManager.reload` |
+| L3 | Gateway-config cache | `client.local_cache` / Redis | Lazy TTL read on every write + jitter; bulk flush via `flush_all_gateway_config_cache` |
+| L4 | Authenticated sessions | `AuthConfigManager.sessions` | New `created_at`-based TTL check evicts on next use; cleared on reload |
+| L5 | Module-level globals | `gateway.py`, `client.py`, `cache_service.py` | Replaced with ~14 lazy accessors in `utils.py` (`get_guardrail_api_key()`, `is_debug_log_level()`, `use_external_cache()`, ...) |
+| L6 | Provider / manager instances | Auth, Guardrails, Telemetry, Timeout, SessionPool | New `reload()` / `reset_*()` methods rebuild them in place |
+
+### **Relevant config**
+
+```json
+{
+  "common_mcp_gateway_config": {
+    "enkrypt_gateway_cache_expiration_minutes": 5,
+    "enkrypt_gateway_cache_expiration": 24,
+    "enkrypt_config_watcher_poll_seconds": 2.0
+  }
+}
+```
+
+- `enkrypt_gateway_cache_expiration_minutes` wins over `enkrypt_gateway_cache_expiration` (hours) when both are set. Both go through `utils.get_gateway_cache_ttl_seconds()` with `float()` casting so sub-hour values (e.g. `0.0833` = 5min) no longer silently truncate to 0.
+- `enkrypt_config_watcher_poll_seconds <= 0` disables the watcher (manual flush API still works).
+
+### **Settings still requiring restart**
+
+| Setting | Reason |
+|---------|--------|
+| `0.0.0.0:8000` listen port | Socket bound once at FastMCP startup |
+| `enkrypt_mcp_use_external_cache` toggle | In-memory ↔ Redis swap loses in-flight ops |
+| `enkrypt_cache_host` / `enkrypt_cache_port` | Connection pool rebuild risks dropping pipelines |
+| `plugins.telemetry.config.url` / `enabled` | OTel global TracerProvider / MeterProvider can only be set once per process |
+
+### **Important code locations**
+
+- Orchestrator: [reload.py](src/secure_mcp_gateway/reload.py)
+- File watcher: [config_watcher.py](src/secure_mcp_gateway/config_watcher.py)
+- REST API endpoint (port 8001): [api_cache_routes.py](src/secure_mcp_gateway/api_cache_routes.py)
+- MCP gateway endpoint (port 8000): [gateway_cache_routes.py](src/secure_mcp_gateway/gateway_cache_routes.py) — registered onto `FastMCP` in [gateway.py](src/secure_mcp_gateway/gateway.py)
+- Lazy accessors: [utils.py](src/secure_mcp_gateway/utils.py) (`get_log_level`, `is_debug_log_level`, `get_guardrail_api_key`, `get_guardrail_base_url`, `use_remote_mcp_config`, `get_remote_gateway_name/version`, `async_input/output_guardrails_enabled`, `is_telemetry_enabled`, `get_telemetry_endpoint`, `get_tool_cache_ttl_hours`, `get_gateway_cache_ttl_seconds`, `get_config_watcher_poll_seconds`, `use_external_cache`, `get_cache_host/port/db/password`)
+- Bulk flush: `client.flush_all_gateway_config_cache()` and `services.cache.cache_service.flush_all_gateway_config_cache()`
+- Manager `reload()` methods: [plugins/auth/config_manager.py](src/secure_mcp_gateway/plugins/auth/config_manager.py), [plugins/guardrails/config_manager.py](src/secure_mcp_gateway/plugins/guardrails/config_manager.py), [plugins/telemetry/config_manager.py](src/secure_mcp_gateway/plugins/telemetry/config_manager.py)
+- Singleton resets: `services/timeout/timeout_manager.py:reset_timeout_manager`, `services/session/session_pool.py:reset_session_pool`
+
+### **Tests**
+
+[tests/test_hot_reload.py](tests/test_hot_reload.py) covers:
+
+- mtime-based hot-reload of a single setting
+- Full reload rebuilds providers with new credentials (key rotation)
+- Session expires after gateway cache TTL
+- Concurrent `flush_all_gateway_config_cache()` does not corrupt the registry
+
+---
+
 ## 🔒 Security Features
 
 ### **1. Authentication**
@@ -1035,29 +1146,35 @@ with tracer.start_as_current_span("operation_name") as span:
 
 **Endpoint**: Metrics served on Prometheus-compatible endpoint
 
-### **4. Infrastructure** ([infra/](infra/))
+### **4. Infrastructure** ([observability/](observability/))
 
-**Docker Compose Stack**:
-- **Gateway**: Main service
+The gateway emits OTLP to a single collector. Two self-contained backend
+stacks ship in [`observability/`](observability/); **you run one, not
+both**. Each is invoked with explicit `-f`/`--env-file` (no auto-loaded
+`docker-compose.yml`/`.env`):
 
-- **OpenTelemetry Collector**: Receives OTLP, exports to backends
+**OpenSearch stack (PRIMARY)** -- [`docker-compose.opensearch.yml`](observability/docker-compose.opensearch.yml), `--env-file .env.opensearch`:
 
-- **Prometheus**: Metrics storage
+- OTel Collector (host OTLP `:4317`/`:4318` -- the gateway default, so no config change)
 
-- **Grafana**: Dashboards
+- Data Prepper (OTLP -> SS4O data streams; writes as least-privilege `mcp_gateway_telemetry_plugin`)
 
-- **Jaeger**: Trace visualization
+- OpenSearch single-node + OpenSearch Dashboards (3 dashboards, 9 alerting monitors, Slack channel)
 
-- **Loki**: Log aggregation
+- See [README.opensearch.md](observability/README.opensearch.md)
 
-- **Redis/KeyDB**: External cache
+**Grafana stack (legacy)** -- [`docker-compose.grafana.yml`](observability/docker-compose.grafana.yml), `--env-file .env.grafana`:
 
-**Grafana Dashboards**:
-- Gateway metrics (request rate, errors, latency)
+- OTel Collector (host OTLP `:4327`/`:4328` -- point the gateway here to use this stack)
 
-- OpenTelemetry metrics
+- Prometheus (metrics) · Loki (logs) · Jaeger (traces) · Grafana (3 dashboards + 9 alert rules -> Slack)
 
-- Server-specific metrics
+- See [README.md](observability/README.md)
+
+Both stacks publish on non-overlapping host ports so they *can* co-run
+for comparison, but that is optional and not the normal path. Switching
+which collector the gateway targets requires a gateway process restart
+(the OTLP TracerProvider/MeterProvider is set once per process).
 
 ---
 

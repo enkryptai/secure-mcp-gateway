@@ -3,7 +3,7 @@
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import requests
 
@@ -39,13 +39,23 @@ class LocalApiKeyProvider(AuthProvider):
         timeout: int = 30,
     ):
         """
-        Initialize the Enkrypt auth provider.
+        Initialize the local-apikey auth provider.
 
         Args:
-            api_key: Enkrypt API key for remote authentication
-            base_url: Base URL for Enkrypt API
-            use_remote_config: Whether to fetch config from remote API
-            timeout: Request timeout in seconds
+            api_key: Enkrypt API key (only used by the deprecated
+                ``use_remote_config`` fallback below).
+            base_url: Base URL for the deprecated remote-fetch endpoint.
+            use_remote_config: DEPRECATED. When ``True``, falls back to
+                ``/mcp-gateway/get-gateway`` against Enkrypt cloud if the
+                gateway_key is not found in the local config. New
+                deployments should switch to
+                ``plugins.auth.provider = "enkrypt"`` instead, which uses
+                the dedicated ``EnkryptAuthProvider`` with cleaner cloud
+                semantics, proper caching, and a stable mapped shape.
+                The constructor arg is kept for backward-compat — anyone
+                with ``common_mcp_gateway_config.enkrypt_use_remote_mcp_config = true``
+                in their config continues to work.
+            timeout: Request timeout for the deprecated remote-fetch path.
         """
         self.api_key = api_key
         self.base_url = base_url
@@ -63,17 +73,15 @@ class LocalApiKeyProvider(AuthProvider):
         """Get provider version."""
         return "1.0.0"
 
-    def get_supported_methods(self) -> List[AuthMethod]:
+    def get_supported_methods(self) -> list[AuthMethod]:
         """Get supported authentication methods."""
         return [AuthMethod.API_KEY]
 
-    def validate_config(self, config: Dict[str, Any]) -> bool:
+    def validate_config(self, config: dict[str, Any]) -> bool:
         """Validate provider configuration."""
-        if self.use_remote_config and not self.api_key:
-            return False
-        return True
+        return not (self.use_remote_config and not self.api_key)
 
-    def get_required_config_keys(self) -> List[str]:
+    def get_required_config_keys(self) -> list[str]:
         """Get required configuration keys."""
         if self.use_remote_config:
             return ["api_key", "base_url"]
@@ -267,15 +275,31 @@ class LocalApiKeyProvider(AuthProvider):
             )
 
     async def _get_local_config(
-        self, gateway_key: str, project_id: str = None, user_id: str = None
-    ) -> Optional[Dict[str, Any]]:
+        self,
+        gateway_key: str,
+        project_id: str = None,
+        user_id: str = None,
+        gateway_name: str = None,
+    ) -> dict[str, Any] | None:
         """
         Get configuration from local config file.
+
+        ``gateway_name`` is accepted for signature parity with
+        :class:`EnkryptAuthProvider._get_local_config` — ``AuthConfigManager.
+        get_local_mcp_config`` forwards it unconditionally as a kwarg.
+        Without this parameter, every call from cloud-style call sites
+        (``build_log_extra``, discovery/listing services) raised
+        ``TypeError: unexpected keyword argument 'gateway_name'``, which
+        ``build_log_extra`` silently swallowed and left ``email`` /
+        ``project_name`` / etc. stuck at ``"not_provided"`` on logs, spans
+        and metrics. The local provider has no use for the value — gateway
+        identity lives in the local file's ``apikeys`` mapping.
 
         Args:
             gateway_key: Gateway API key
             project_id: Project ID
             user_id: User ID
+            gateway_name: Ignored. Kept for cloud-provider signature parity.
 
         Returns:
             Optional[Dict[str, Any]]: Configuration if found, None otherwise
@@ -343,6 +367,7 @@ class LocalApiKeyProvider(AuthProvider):
                 return None
 
             mcp_config_entry = mcp_configs[mcp_config_id]
+            servers = self._apply_common_overrides(mcp_config_entry)
 
             return {
                 "id": f"{user_id}_{project_id}_{mcp_config_id}",
@@ -350,13 +375,86 @@ class LocalApiKeyProvider(AuthProvider):
                 "project_id": project_id,
                 "user_id": user_id,
                 "email": user_config.get("email", "not_provided"),
-                "mcp_config": mcp_config_entry.get("mcp_config", []),
+                "mcp_config": servers,
                 "mcp_config_id": mcp_config_id,
             }
 
         except Exception as e:
             logger.error(f"[LocalApiKeyProvider] Error reading local config: {e}")
             return None
+
+    @staticmethod
+    def _apply_common_overrides(
+        mcp_config_entry: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Promote ``mcp_configs.<id>.common_overrides`` onto every server entry.
+
+        This makes the local config shape match the cloud-auth provider's
+        contract (see :class:`EnkryptAuthProvider` docstring): keys that are
+        documented as "common-only" are sourced from
+        ``mcp_config_entry["common_overrides"]`` and copied onto each server
+        before the list is returned to the rest of the gateway. Downstream
+        code (``discovery_service`` etc.) keeps reading
+        ``server_info["server_tools_guardrails_config"]`` exactly as it did
+        for the cloud path — no call-site changes needed.
+
+        Current scope (Flavor 1): only ``server_tools_guardrails_config`` is
+        promoted. ``input_guardrails_config`` and ``output_guardrails_config``
+        are intentionally NOT promoted; they remain legitimately per-server
+        because operators often want different input/output policies on
+        different servers.
+
+        Common-wins semantics: if a stale per-server
+        ``server_tools_guardrails_config`` exists alongside a common one,
+        the common value overwrites it. This matches what the cloud does
+        internally (per ``enkrypt_provider.py:27-43``). If common is absent
+        but a per-server value is present, we honor the per-server value
+        for backward compat and log a one-shot deprecation warning so the
+        operator knows to move it under ``common_overrides``.
+
+        The original mcp_config_entry is never mutated — each server dict
+        we modify is shallow-copied first, so re-reading the config file
+        produces the same in-memory representation every time.
+        """
+        original_servers = mcp_config_entry.get("mcp_config") or []
+        common_overrides = mcp_config_entry.get("common_overrides") or {}
+
+        common_keys: tuple[str, ...] = ("server_tools_guardrails_config",)
+
+        applied: dict[str, Any] = {
+            k: common_overrides[k] for k in common_keys if k in common_overrides
+        }
+
+        # Fast path: nothing to promote and no per-server values to warn about.
+        if not applied:
+            stale = [
+                s
+                for s in original_servers
+                if isinstance(s, dict) and any(k in s for k in common_keys)
+            ]
+            if stale:
+                stale_names = [s.get("server_name", "<unknown>") for s in stale]
+                logger.warning(
+                    "[LocalApiKeyProvider] Per-server server_tools_guardrails_config "
+                    "found on %s. This field is now COMMON-only. Move it under "
+                    "mcp_configs.<id>.common_overrides.server_tools_guardrails_config "
+                    "to match the cloud-auth contract. Per-server values are still "
+                    "honored for backward compatibility and will be dropped in a "
+                    "future release.",
+                    stale_names,
+                )
+            return original_servers
+
+        promoted: list[dict[str, Any]] = []
+        for srv in original_servers:
+            if not isinstance(srv, dict):
+                promoted.append(srv)
+                continue
+            srv_copy = dict(srv)
+            for key, value in applied.items():
+                srv_copy[key] = value  # common always wins
+            promoted.append(srv_copy)
+        return promoted
 
     async def validate_session(self, session_id: str) -> bool:
         """

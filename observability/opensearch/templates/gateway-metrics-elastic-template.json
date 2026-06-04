@@ -1,0 +1,264 @@
+{
+    "index_patterns": ["ss4o_metrics-gateway*"],
+    "data_stream": { "timestamp_field": { "name": "time" } },
+    "priority": 1000,
+    "_meta": {
+      "description": "SS4O metrics for Secure MCP Gateway — admin-grade coverage. dynamic:false (unmapped fields stay in _source but are not indexed). FIELD GROUPS: OTel core (timestamps, instrument metadata, numeric/histogram values, nested buckets/exemplars); resource attrs; identity tuple (snake_case: user_id/user_email/project_id/project_name/project_registry/org_id/gateway_name/gateway_version/server_name/tool_name); operational ids (mcp_config_id/custom_id/request_id/correlation_id/session_id — request_id/correlation_id/session_id enable trace-metric correlation via exemplars and per-request slicing; expect medium-to-high cardinality so use carefully in aggregations); existing categoricals (outcome/direction/status_code/provider/check_kind/violation_type/block_reason/failure_reason/cache/result); health & registry; guardrail labels (guardrail_name/server_tools_guardrail_name/validation_mode/kind/operation_type); per-call detector signal (detector/detector_subtype/detector_enabled/detector_blocked/compliance_framework/compliance_label/pii_category/pii_entity_type/topic_detected/policy_blocked/bias_detected); cloud gateway_id; sandbox; request-type discriminators (request_type/source_event/source_name/mcp_method); I/O mode flags; OAuth (oauth_version/grant_type/use_mtls/is_remote); timeout (escalation_level/cancelled); session pool (session_reused/session_pool_enabled/tools_source); MCP protocol (mcp_protocol_version/mcp_capability/capability_outcome/mcp_notification_method); tool annotations (destructive/read_only/idempotent/open_world_hint); admin/audit (admin_action/action/actor/source/auth_via/authorized_via/surface/resource_type/resource_id/command/subcommand/exit_code/confirmed/operation); HTTP RED (http.route/method/status_code/status_class/service/error.type/error_class/reason); connection lifecycle (event/transport_type/server_health_state/eviction_reason/error_kind); reliability (subsystem/failed_step/component/retry_attempt/degradation_mode/circuit_breaker_state/recovery_strategy/error_code/severity/failure_reason_class); outbound HTTP (host/upstream/cloud_endpoint/cache_result); telemetry pipeline (signal/exporter); process (process_role/process/generation/version); lifecycle (trigger/shutdown_reason/include_tool_cache/plugin_type/plugin_name); config (entity/path_hash); cache backend (cache_backend/redis_operation/redis_host/connection_state); security (window_minutes/checkpoint/pattern/pattern_hash); flat numeric attrs (duration_ms/duration_seconds/latency_ms/elapsed_ms/elapsed_seconds/size_bytes/bytes_sent/bytes_received — these are NON-OTel-native shape, useful when a dashboard or downstream tool expects latency/size as a flat metric.attributes.* field rather than the canonical OTel histogram instrument shape where the value lives in the standard `value`/`sum`/`count`/`bucketCounts` fields and the metric NAME differentiates the operation; emit only when explicitly required by an external dashboard contract, otherwise prefer the OTel-native histogram instruments listed below). EXPECTED METRIC INSTRUMENT NAMES (all ride on the `name` keyword field — the metric NAME *is* how latencies/sizes/counts are differentiated, attributes only label the data points): LATENCY HISTOGRAMS (the gateway emits a dedicated histogram per operation type — value = duration, unit = `s` or `ms` as declared per instrument): enkrypt.tool.duration, enkrypt.guardrail.duration, enkrypt.guardrail.detector_score, enkrypt.health.duration, enkrypt.discovery.per_server.duration, enkrypt.playground.registry_lookup.duration, enkrypt.playground.consumer_info_lookup.duration, enkrypt.mcp.connection.handshake.duration, enkrypt.mcp.initialize.duration, enkrypt.mcp.http.duration, enkrypt.api.duration, enkrypt.session.pool.idle_seconds, enkrypt.timeout.duration, enkrypt.config.reload.duration, enkrypt.oauth.token.latency, enkrypt.cli.duration, enkrypt.system.backup.duration, enkrypt.system.restore.duration, enkrypt.http.client.duration, enkrypt.admin.cache_flush.duration, enkrypt.config.validation.duration, python.gc.duration, enkrypt.asyncio.event_loop.lag. SIZE HISTOGRAMS: enkrypt.cloud.api.bytes_sent, enkrypt.cloud.api.bytes_received, enkrypt.api.request_body_size, enkrypt.api.response_body_size, enkrypt.mcp.http.request_size, enkrypt.mcp.http.response_size, enkrypt.tool.calls_per_request, enkrypt.telemetry.export.batch_size. COUNTERS / GAUGES below. MCP data plane — enkrypt.tool.{calls,duration,success,errors,blocked,failures}, enkrypt.cache.{hits,misses}, enkrypt.discovery.{list_servers,servers_found,per_server.duration,server_failures,tools_blocked_registration}, enkrypt.pii.redactions, enkrypt.auth.{success,failure,cloud_fetch.failures,unauthorized_http}, enkrypt.timeout.{operations,success,timed_out,cancelled,escalation.warn,escalation.timeout,escalation.fail,duration,active}, enkrypt.session.pool.{acquire,evictions,active,queue_depth,worker_crashes,idle_seconds,reset}, enkrypt.mcp.{connection.events,connection.handshake.duration,initialize.duration,method.calls,protocol.errors,http.requests,http.duration,http.requests_in_flight,gateway.requests,tool_not_found,invalid_args}, enkrypt.server.health.state, enkrypt.transport.errors. Guardrail subsystem — enkrypt.guardrail.{checks,blocks,duration,input_blocks,output_blocks,relevancy_blocks,adherence_blocks,hallucination_blocks,detection,detector_score,pii_entity,compliance_hit,unauthorized}, plus per-detector block counters: enkrypt.guardrail.nsfw_blocks, enkrypt.guardrail.toxicity_blocks, enkrypt.guardrail.pii_blocks, enkrypt.guardrail.injection_attack_blocks, enkrypt.guardrail.keyword_detector_blocks, enkrypt.guardrail.policy_violation_blocks, enkrypt.guardrail.bias_blocks, enkrypt.guardrail.sponge_attack_blocks, enkrypt.guardrail.copyright_ip_blocks, enkrypt.guardrail.system_prompt_blocks, enkrypt.guardrail.topic_detector_blocks. Sandbox — enkrypt.sandbox.{availability,wrap.invocations}. OAuth — enkrypt.oauth.{token.operations,token.latency,active_tokens,token.cache.hits,token.cache.misses}. Cloud — enkrypt.cloud.api.{requests,bytes_sent,bytes_received,errors}, enkrypt.cloud.auth.config_cache, enkrypt.playground.{registry_lookup.duration,consumer_info_lookup.duration}. Health — enkrypt.health.{requests,duration,success,failures}. Outbound HTTP — enkrypt.http.client.{requests,duration,connections.active,connections.reused,errors,dns_failures,ssl_failures,timeouts}. Redis — enkrypt.redis.{operations,connection.state}. Cache local — enkrypt.cache.{local.entries,backend}. Telemetry — enkrypt.telemetry.{export.failures,export.batch_size,enabled,provider.reload}. REST API (port 8001) — enkrypt.api.{requests,duration,errors,auth_failures,auth_success,requests_in_flight,request_body_size,response_body_size,client_errors,server_errors}. Admin/audit — enkrypt.admin.{actions,cache_flush,cache_flush.duration}, enkrypt.audit.{apikey.created,apikey.rotated,apikey.disabled,apikey.deleted,config.modified,user.created,user.deleted,system.reset,system.restored,settings.telemetry_changed,settings.enkrypt_api_key_set}, enkrypt.privileged.operations. Config — enkrypt.config.{reload.total,reload.duration,reload.component_failures,reload.skipped_busy,reload.seconds_since_last,size_bytes,entries,provider_load_failures,validation,validation.errors,validation.duration,schema_failures,watcher.errors,guardrails.async_enabled,oauth.config.invalid,session_pool.enabled}. CLI — enkrypt.cli.{invocations,errors,duration,docker_runs}. System ops — enkrypt.system.{backup.started,backup.completed,backup.duration,restore,restore.duration,reset,health_check,health_check.issues,api_server.start,api_server.stop,version_checks}. Reliability — enkrypt.retry.attempts, enkrypt.degradation.{fail_open,fail_closed,fallback}, enkrypt.circuit_breaker.state. Security — enkrypt.security.{repeat_offender,bypass_attempts,injection.detections,deny_wildcard.blocks,bypass_keyword_hits}, enkrypt.guardrail.blocks.by_project, enkrypt.errors.by_code, enkrypt.tool.{permission_denied,deny_list.blocks}. Business — enkrypt.users.{distinct_daily,distinct_monthly,requests}, enkrypt.tool.{rank.calls,calls_per_request}, enkrypt.project.tools.unique_count, enkrypt.server.adoptions, enkrypt.projects.{created,active_daily}, enkrypt.apikey.{rotations,lifecycle}, enkrypt.servers.configured, enkrypt.gateway.mcp_tool.requests, enkrypt.discovery.servers_needing_discovery, enkrypt.discovery.guardrail_validations. Lifecycle — enkrypt.gateway.{uptime_seconds,boot,shutdown}, enkrypt.plugin.reload, enkrypt.config_watcher.triggers, enkrypt.sandbox.provider.registered. Standard OTel runtime (no `enkrypt.` prefix) — process.runtime.memory.{rss,vms}, process.runtime.cpu.utilization, process.open_fds, process.threads, python.gc.{collections,duration}, enkrypt.asyncio.event_loop.lag."
+    },
+    "template": {
+      "settings": {
+        "number_of_shards": 1,
+        "number_of_replicas": 0,
+        "opendistro.index_state_management.policy_id": "gateway_telemetry_policy",
+        "plugins.index_state_management.rollover_alias": "ss4o_metrics-gateway",
+        "mapping.total_fields.limit": "1000",
+        "refresh_interval": "5s"
+      },
+      "aliases": { "gateway-metrics": {} },
+      "mappings": {
+        "dynamic": "false",
+        "_source": { "enabled": true },
+        "properties": {
+          "@timestamp":             { "type": "date" },
+          "time":                   { "type": "date_nanos" },
+          "startTime":              { "type": "date_nanos" },
+          "observedTimestamp":      { "type": "date" },
+  
+          "name":                   { "type": "keyword", "ignore_above": 256 },
+          "description":            { "type": "text" },
+          "unit":                   { "type": "keyword", "ignore_above": 64 },
+          "kind":                   { "type": "keyword", "ignore_above": 32 },
+          "aggregationTemporality": { "type": "keyword", "ignore_above": 64 },
+          "isMonotonic":            { "type": "boolean" },
+          "flags":                  { "type": "integer" },
+          "schemaUrl":              { "type": "keyword", "ignore_above": 256 },
+          "serviceName":            { "type": "keyword", "ignore_above": 256 },
+  
+          "value":               { "type": "double" },
+          "count":               { "type": "long" },
+          "sum":                 { "type": "double" },
+          "min":                 { "type": "double" },
+          "max":                 { "type": "double" },
+          "bucketCounts":        { "type": "long" },
+          "bucketCountsList":    { "type": "long" },
+          "explicitBounds":      { "type": "double" },
+          "explicitBoundsCount": { "type": "integer" },
+  
+          "buckets": {
+            "type": "nested",
+            "properties": {
+              "count":      { "type": "long" },
+              "sum":        { "type": "double" },
+              "max":        { "type": "double" },
+              "min":        { "type": "double" },
+              "upperBound": { "type": "double" }
+            }
+          },
+          "exemplars": {
+            "type": "nested",
+            "properties": {
+              "time":    { "type": "date_nanos" },
+              "traceId": { "type": "keyword", "ignore_above": 256 },
+              "spanId":  { "type": "keyword", "ignore_above": 256 },
+              "value":   { "type": "double" }
+            }
+          },
+  
+          "instrumentationScope.name":        { "type": "keyword", "ignore_above": 256 },
+          "instrumentationScope.version":     { "type": "keyword", "ignore_above": 64 },
+  
+          "resource.attributes.job":          { "type": "keyword", "ignore_above": 64 },
+          "resource.attributes.service@name": { "type": "keyword", "ignore_above": 256 },
+          "resource.attributes.host@name":    { "type": "keyword", "ignore_above": 256 },
+  
+          "metric.attributes.user_id":          { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+          "metric.attributes.user_email":       { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+          "metric.attributes.project_id":       { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+          "metric.attributes.project_name":     { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+          "metric.attributes.project_registry": { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+          "metric.attributes.org_id":           { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+          "metric.attributes.gateway_name":     { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+          "metric.attributes.gateway_version":  { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+          "metric.attributes.server_name":      { "type": "keyword", "ignore_above": 256 },
+          "metric.attributes.tool_name":        { "type": "keyword", "ignore_above": 256 },
+  
+        "metric.attributes.mcp_config_id":    { "type": "keyword", "ignore_above": 256, "null_value": "not_provided" },
+        "metric.attributes.custom_id":        { "type": "keyword", "ignore_above": 256 },
+        "metric.attributes.request_id":       { "type": "keyword", "ignore_above": 256 },
+        "metric.attributes.correlation_id":   { "type": "keyword", "ignore_above": 256 },
+        "metric.attributes.session_id":       { "type": "keyword", "ignore_above": 256 },
+        "metric.attributes.error":            { "type": "keyword", "ignore_above": 1024 },
+  
+          "metric.attributes.outcome":          { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.direction":        { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.status_code":      { "type": "keyword", "ignore_above": 16 },
+          "metric.attributes.provider":         { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.check_kind":       { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.violation_type":   { "type": "keyword", "ignore_above": 128 },
+          "metric.attributes.block_reason":     { "type": "keyword", "ignore_above": 128 },
+          "metric.attributes.failure_reason":   { "type": "keyword", "ignore_above": 128 },
+          "metric.attributes.cache":            { "type": "keyword", "ignore_above": 16 },
+          "metric.attributes.result":           { "type": "keyword", "ignore_above": 32 },
+  
+          "metric.attributes.endpoint":         { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.status":           { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.is_internal_req":  { "type": "keyword", "ignore_above": 8 },
+          "metric.attributes.saved_name":       { "type": "keyword", "ignore_above": 256 },
+          "metric.attributes.server_version":   { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.registry_name":    { "type": "keyword", "ignore_above": 256 },
+  
+          "metric.attributes.guardrail_name":              { "type": "keyword", "ignore_above": 128 },
+          "metric.attributes.server_tools_guardrail_name": { "type": "keyword", "ignore_above": 128 },
+          "metric.attributes.validation_mode":             { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.kind":                        { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.operation_type":              { "type": "keyword", "ignore_above": 32 },
+  
+          "metric.attributes.detector":             { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.detector_subtype":     { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.detector_enabled":     { "type": "boolean" },
+          "metric.attributes.detector_blocked":     { "type": "boolean" },
+          "metric.attributes.compliance_framework": { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.compliance_label":     { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.pii_category":         { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.pii_entity_type":      { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.entity_type":          { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.subtype":              { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.score_bucket":         { "type": "keyword", "ignore_above": 16 },
+          "metric.attributes.topic_detected":       { "type": "boolean" },
+          "metric.attributes.policy_blocked":       { "type": "boolean" },
+          "metric.attributes.bias_detected":        { "type": "boolean" },
+  
+          "metric.attributes.gateway_id":     { "type": "keyword", "ignore_above": 64 },
+  
+          "metric.attributes.sandbox_enabled":  { "type": "boolean" },
+          "metric.attributes.sandbox_runtime":  { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.sandbox_provider": { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.sandbox_scope":    { "type": "keyword", "ignore_above": 16 },
+  
+          "metric.attributes.request_type":     { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.source_event":     { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.source_name":      { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.mcp_method":       { "type": "keyword", "ignore_above": 64 },
+  
+          "metric.attributes.async_mode":                       { "type": "boolean" },
+          "metric.attributes.input_truncated":                  { "type": "boolean" },
+          "metric.attributes.output_truncated":                 { "type": "boolean" },
+          "metric.attributes.async_input_guardrails_enabled":   { "type": "boolean" },
+          "metric.attributes.async_output_guardrails_enabled":  { "type": "boolean" },
+  
+          "metric.attributes.oauth_version":  { "type": "keyword", "ignore_above": 8 },
+          "metric.attributes.grant_type":     { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.use_mtls":       { "type": "boolean" },
+          "metric.attributes.is_remote":      { "type": "boolean" },
+  
+          "metric.attributes.escalation_level":  { "type": "keyword", "ignore_above": 16 },
+          "metric.attributes.cancelled":         { "type": "boolean" },
+  
+          "metric.attributes.session_reused":         { "type": "boolean" },
+          "metric.attributes.session_pool_enabled":   { "type": "boolean" },
+          "metric.attributes.tools_source":           { "type": "keyword", "ignore_above": 32 },
+  
+          "metric.attributes.mcp_protocol_version":      { "type": "keyword", "ignore_above": 16 },
+          "metric.attributes.mcp_capability":            { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.capability_outcome":        { "type": "keyword", "ignore_above": 16 },
+          "metric.attributes.mcp_notification_method":   { "type": "keyword", "ignore_above": 64 },
+  
+          "metric.attributes.destructive_hint": { "type": "boolean" },
+          "metric.attributes.read_only_hint":   { "type": "boolean" },
+          "metric.attributes.idempotent_hint":  { "type": "boolean" },
+          "metric.attributes.open_world_hint":  { "type": "boolean" },
+  
+          "metric.attributes.admin_action":   { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.action":         { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.actor":          { "type": "keyword", "ignore_above": 256 },
+          "metric.attributes.actor_id":       { "type": "keyword", "ignore_above": 256 },
+          "metric.attributes.source":         { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.auth_via":       { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.authorized_via": { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.authorization_path": { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.surface":        { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.resource_type":  { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.resource_id":    { "type": "keyword", "ignore_above": 256 },
+          "metric.attributes.target_id":      { "type": "keyword", "ignore_above": 256 },
+          "metric.attributes.scope":          { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.success":        { "type": "keyword", "ignore_above": 8 },
+          "metric.attributes.command":        { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.subcommand":     { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.exit_code":      { "type": "integer" },
+          "metric.attributes.confirmed":      { "type": "boolean" },
+          "metric.attributes.operation":      { "type": "keyword", "ignore_above": 128 },
+  
+        "metric.attributes.http@route":         { "type": "keyword", "ignore_above": 256 },
+        "metric.attributes.http@method":        { "type": "keyword", "ignore_above": 8 },
+        "metric.attributes.http@status_code":   { "type": "long" },
+        "metric.attributes.http@status_class":  { "type": "keyword", "ignore_above": 4 },
+        "metric.attributes.service":            { "type": "keyword", "ignore_above": 32 },
+        "metric.attributes.error@type":         { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.error_class":        { "type": "keyword", "ignore_above": 16 },
+          "metric.attributes.reason":             { "type": "keyword", "ignore_above": 64 },
+  
+          "metric.attributes.event":               { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.transport_type":      { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.server_health_state": { "type": "keyword", "ignore_above": 16 },
+          "metric.attributes.eviction_reason":     { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.error_kind":          { "type": "keyword", "ignore_above": 64 },
+  
+          "metric.attributes.subsystem":              { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.failed_step":            { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.component":              { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.retry_attempt":          { "type": "long" },
+          "metric.attributes.degradation_mode":       { "type": "keyword", "ignore_above": 16 },
+          "metric.attributes.circuit_breaker_state":  { "type": "keyword", "ignore_above": 16 },
+          "metric.attributes.recovery_strategy":      { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.error_code":             { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.severity":               { "type": "keyword", "ignore_above": 16 },
+          "metric.attributes.failure_reason_class":   { "type": "keyword", "ignore_above": 32 },
+  
+          "metric.attributes.host":             { "type": "keyword", "ignore_above": 256 },
+          "metric.attributes.upstream":         { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.cloud_endpoint":   { "type": "keyword", "ignore_above": 64 },
+          "metric.attributes.cache_result":     { "type": "keyword", "ignore_above": 16 },
+  
+          "metric.attributes.signal":           { "type": "keyword", "ignore_above": 16 },
+          "metric.attributes.exporter":         { "type": "keyword", "ignore_above": 32 },
+  
+          "metric.attributes.process_role":     { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.process":          { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.generation":       { "type": "keyword", "ignore_above": 8 },
+          "metric.attributes.version":          { "type": "keyword", "ignore_above": 64 },
+  
+          "metric.attributes.trigger":             { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.shutdown_reason":     { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.include_tool_cache":  { "type": "boolean" },
+          "metric.attributes.plugin_type":         { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.plugin_name":         { "type": "keyword", "ignore_above": 64 },
+  
+          "metric.attributes.entity":           { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.path_hash":        { "type": "keyword", "ignore_above": 32 },
+  
+          "metric.attributes.cache_backend":    { "type": "keyword", "ignore_above": 16 },
+        "metric.attributes.cache_type":       { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.redis_operation":  { "type": "keyword", "ignore_above": 16 },
+          "metric.attributes.redis_host":       { "type": "keyword", "ignore_above": 256 },
+          "metric.attributes.connection_state": { "type": "keyword", "ignore_above": 16 },
+  
+          "metric.attributes.window_minutes":  { "type": "long" },
+          "metric.attributes.checkpoint":      { "type": "keyword", "ignore_above": 32 },
+          "metric.attributes.pattern":         { "type": "keyword", "ignore_above": 256 },
+          "metric.attributes.pattern_hash":    { "type": "keyword", "ignore_above": 32 },
+  
+        "metric.attributes.duration_ms":       { "type": "double" },
+        "metric.attributes.duration_seconds":  { "type": "double" },
+        "metric.attributes.latency_ms":        { "type": "double" },
+        "metric.attributes.size_bytes":        { "type": "long" },
+        "metric.attributes.bytes_sent":        { "type": "long" },
+        "metric.attributes.bytes_received":    { "type": "long" },
+        "metric.attributes.elapsed_ms":        { "type": "double" },
+        "metric.attributes.elapsed_seconds":   { "type": "double" },
+
+        "metric.attributes.otel@span@parent@origin":   { "type": "keyword", "ignore_above": 64 },
+        "metric.attributes.otel@span@sampling_result": { "type": "keyword", "ignore_above": 64 }
+        }
+      }
+    }
+  }

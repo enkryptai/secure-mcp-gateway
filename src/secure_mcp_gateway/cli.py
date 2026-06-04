@@ -84,18 +84,82 @@ if not _delegating_to_docker:
     print("--------------------------------\n\nOUTPUT:\n\n", file=sys.stderr)
 
 DOCKER_COMMAND = "docker"
-DOCKER_ARGS = [
-    "run",
-    "--rm",
-    "-i",
-    "-e",
-    "MCP_TRANSPORT=stdio",
-    "-v",
-    f"{HOST_ENKRYPT_HOME}/docker:/app/.enkrypt/docker",
-    "-e",
-    "ENKRYPT_GATEWAY_KEY",
-    "secure-mcp-gateway",
-]
+
+
+def _default_telemetry_url() -> str:
+    """Pick the right OTLP endpoint for the config we're about to emit.
+
+    ``generate-config`` writes a JSON config that the gateway later reads.
+    If we're being invoked via the ``--docker`` wrapper the resulting
+    config is consumed by the gateway running INSIDE a container -- and
+    ``localhost`` from inside the container is the container itself, not
+    the host where the OTel collector is reachable. We need
+    ``host.docker.internal``, which Docker Desktop (Win/Mac) resolves to
+    the host automatically and Linux Docker resolves via the
+    ``--add-host=host.docker.internal:host-gateway`` flag that
+    ``build_docker_args`` now also emits.
+
+    Detection signal: the ``--docker`` wrapper sets ``HOST_OS`` /
+    ``HOST_ENKRYPT_HOME`` env vars before exec'ing the in-container
+    binary; if either is set we're generating for the Docker flow.
+
+    Returns the literal default url. Operators who run their collector
+    elsewhere should override ``plugins.telemetry.config.url`` directly
+    after generation; this helper only chooses the safe default.
+    """
+    if HOST_OS or os.environ.get("HOST_OS"):
+        return "http://host.docker.internal:4317"
+    return "http://localhost:4317"
+
+
+def build_docker_args(env_var_names):
+    """Build the ``docker run`` args list for an MCP-stdio install.
+
+    ``env_var_names`` is the iterable of env-var KEYS (not values) that the
+    MCP client (Cursor / Claude Desktop) will set when it spawns the
+    ``docker`` process. Each one needs a matching ``-e <NAME>`` flag here so
+    Docker forwards it across the container boundary -- otherwise the
+    variable is set in the docker process's parent env but never reaches the
+    gateway inside the container.
+
+    Provider-aware: ``local_apikey`` installs pass three keys
+    (``ENKRYPT_GATEWAY_KEY`` + ``ENKRYPT_PROJECT_ID`` + ``ENKRYPT_USER_ID``)
+    while ``enkrypt`` cloud installs pass one (``ENKRYPT_APIKEY``). Driving
+    the flag list off the env dict keeps the two in lockstep so cloud-mode
+    Docker installs actually authenticate (previously the hard-coded
+    ``-e ENKRYPT_GATEWAY_KEY`` flag dropped ``ENKRYPT_APIKEY`` on the
+    floor and the container saw no credential at all).
+    """
+    args = [
+        "run",
+        "--rm",
+        "-i",
+        "-e",
+        "MCP_TRANSPORT=stdio",
+        "-v",
+        f"{HOST_ENKRYPT_HOME}/docker:/app/.enkrypt/docker",
+        # Make `host.docker.internal` resolve to the host from inside the
+        # container. Docker Desktop (Win/Mac) wires this up automatically
+        # so the flag is a no-op there; on Linux Docker Engine 20.10+ the
+        # flag is required for the same hostname to resolve. The gateway's
+        # default telemetry endpoint is `http://host.docker.internal:4317`
+        # for the Docker-generated config (see _default_telemetry_url),
+        # so without this flag a Linux operator's gateway can't reach the
+        # OTel collector running on the host (e.g. the OpenSearch stack's
+        # otel-collector-os).
+        "--add-host=host.docker.internal:host-gateway",
+    ]
+    for name in env_var_names:
+        args.extend(["-e", name])
+    args.append("secure-mcp-gateway")
+    return args
+
+
+# Backwards-compat: legacy shape that always forwarded the local_apikey
+# gateway key. Kept so external callers importing ``DOCKER_ARGS`` keep
+# working; new code should use ``build_docker_args(env.keys())`` so the
+# args list mirrors the provider's env shape.
+DOCKER_ARGS = build_docker_args(["ENKRYPT_GATEWAY_KEY"])
 
 # =============================================================================
 # UTILITY FUNCTIONS
@@ -285,12 +349,24 @@ def generate_default_config():
     mcp_config_id = str(uuid.uuid4())
 
     config = {
+        # Root-level admin credential for the local REST API server.
+        # Lives at root (not inside enkrypt_config) because it has no
+        # relationship with Enkrypt cloud — the cloud never sees it.
+        # See auth_policy.resolve_admin_keys for the resolution policy
+        # (also accepts the legacy enkrypt_config.admin_apikey location).
         "admin_apikey": admin_apikey,
+        "enkrypt_config": {
+            "api_key": "YOUR_ENKRYPT_API_KEY",
+            "base_url": "https://api.enkryptai.com",
+        },
         "common_mcp_gateway_config": {
             "enkrypt_log_level": "INFO",
-            "enkrypt_use_remote_mcp_config": False,
-            "enkrypt_remote_mcp_gateway_name": "enkrypt-secure-mcp-gateway-1",
-            "enkrypt_remote_mcp_gateway_version": "v1",
+            # Legacy LocalApiKeyProvider "remote-fetch" knobs
+            # (enkrypt_use_remote_mcp_config /
+            # enkrypt_remote_mcp_gateway_{name,version}) are NOT emitted
+            # here. New gateways should switch to the cloud-backed
+            # plugins.auth.provider="enkrypt" flow, which has its own
+            # cleaner cloud-config plumbing in EnkryptAuthProvider.
             "enkrypt_mcp_use_external_cache": False,
             "enkrypt_cache_host": "localhost",
             "enkrypt_cache_port": 6379,
@@ -298,17 +374,19 @@ def generate_default_config():
             "enkrypt_cache_password": None,
             "enkrypt_tool_cache_expiration": 4,
             "enkrypt_gateway_cache_expiration": 24,
+            "enkrypt_gateway_cache_expiration_minutes": 5,
+            "enkrypt_config_watcher_poll_seconds": 2.0,
             "enkrypt_async_input_guardrails_enabled": False,
             "enkrypt_async_output_guardrails_enabled": False,
             # Timeout Management Configuration
             "timeout_settings": {
-                "default_timeout": 30,
-                "guardrail_timeout": 15,
-                "auth_timeout": 10,
-                "tool_execution_timeout": 60,
-                "discovery_timeout": 20,
-                "cache_timeout": 5,
-                "connectivity_timeout": 2,
+                "default_timeout": 90,
+                "guardrail_timeout": 390,
+                "auth_timeout": 30,
+                "tool_execution_timeout": 360,
+                "discovery_timeout": 540,
+                "cache_timeout": 15,
+                "connectivity_timeout": 6,
                 "escalation_policies": {
                     "warn_threshold": 0.8,
                     "timeout_threshold": 1.0,
@@ -320,16 +398,16 @@ def generate_default_config():
             "auth": {"provider": "local_apikey", "config": {}},
             "guardrails": {
                 "provider": "enkrypt",
-                "config": {
-                    "api_key": "YOUR_ENKRYPT_API_KEY",
-                    "base_url": "https://api.enkryptai.com",
-                },
+                "config": {},
             },
             "telemetry": {
                 "provider": "opentelemetry",
                 "config": {
                     "enabled": True,
-                    "url": "http://localhost:4317",
+                    # host.docker.internal:4317 when generated via the
+                    # --docker wrapper; localhost:4317 on host installs.
+                    # See _default_telemetry_url() for the why.
+                    "url": _default_telemetry_url(),
                     "insecure": True,
                 },
             },
@@ -337,6 +415,23 @@ def generate_default_config():
         "mcp_configs": {
             mcp_config_id: {
                 "mcp_config_name": "default_config",
+                "common_overrides": {
+                    "server_tools_guardrails_config": {
+                        "enabled": False,
+                        "guardrail_name": "Sample Airline Guardrail",
+                        "block": [
+                            "policy_violation",
+                            "injection_attack",
+                            "topic_detector",
+                            "nsfw",
+                            "toxicity",
+                            "pii",
+                            "keyword_detector",
+                            "bias",
+                            "sponge_attack",
+                        ],
+                    }
+                },
                 "mcp_config": [
                     {
                         "server_name": "echo_server",
@@ -369,22 +464,6 @@ def generate_default_config():
                         },
                         "tools": {},
                         "denied_tools": [],
-                        "enable_server_info_validation": False,
-                        "tool_guardrails_config": {
-                            "enabled": False,
-                            "guardrail_name": "Sample Airline Guardrail",
-                            "block": [
-                                "policy_violation",
-                                "injection_attack",
-                                "topic_detector",
-                                "nsfw",
-                                "toxicity",
-                                "pii",
-                                "keyword_detector",
-                                "bias",
-                                "sponge_attack",
-                            ],
-                        },
                         "input_guardrails_config": {
                             "enabled": False,
                             "guardrail_name": "Sample Airline Guardrail",
@@ -451,6 +530,85 @@ def generate_default_config():
     return config
 
 
+def generate_enkrypt_cloud_config():
+    """Generate a minimal config for the ``enkrypt`` cloud-auth provider.
+
+    Mirrors ``example_enkrypt_cloud_config.json``. Returns the bare minimum
+    needed to boot the gateway against Enkrypt cloud:
+
+    * ``enkrypt_config`` - cloud api_key and base_url (gateway uses these
+      for both auth lookup and guardrail calls).
+    * ``plugins.auth`` - provider ``"enkrypt"`` with the mandatory
+      ``gateway_name`` (the ``saved_name`` of the gateway you created in
+      the Enkrypt console) plus a couple of commonly tweaked optional
+      knobs (``gateway_version``, ``cache_ttl_seconds``).
+    * ``plugins.guardrails`` - provider ``"enkrypt"``.
+    * ``plugins.telemetry`` - defaults to ``"opentelemetry"`` (OTLP gRPC
+      with ``insecure=true``) so the gateway feeds the bundled OTel
+      collector out of the box. The endpoint defaults to
+      ``localhost:4317`` for host installs and
+      ``host.docker.internal:4317`` when the config is generated via the
+      ``--docker`` wrapper (see ``_default_telemetry_url``). Operators
+      without an OTLP collector running can set ``config.enabled: false``
+      in the plugin config. (The plugin loader currently only ships an
+      OpenTelemetry implementation; unknown provider names fall back to
+      OpenTelemetry anyway.)
+    * ``common_mcp_gateway_config`` - just the two knobs operators
+      reach for most (``enkrypt_log_level``,
+      ``enkrypt_gateway_cache_expiration_minutes``). All other fields
+      take their defaults from ``consts.DEFAULT_COMMON_CONFIG``.
+
+    Intentionally NOT emitted (cloud owns these):
+
+    * ``admin_apikey`` - with ``provider=enkrypt`` the cloud ``api_key``
+      doubles as an admin credential (see
+      ``auth_policy.resolve_admin_keys``). Operators who want a separate
+      admin secret can add ``admin_apikey`` at the root.
+    * ``mcp_configs`` / ``projects`` / ``users`` / ``apikeys`` - the
+      cloud manages these. The gateway resolves them through
+      ``/mcp-gateway/get-gateway-config``.
+    * Legacy ``enkrypt_use_remote_mcp_config`` /
+      ``enkrypt_remote_mcp_gateway_{name,version}`` - these only drive
+      the LocalApiKeyProvider's deprecated remote-fetch path.
+    """
+    return {
+        "enkrypt_config": {
+            "api_key": "YOUR_ENKRYPT_API_KEY",
+            "base_url": "https://api.enkryptai.com",
+            "org_id": "YOUR_ENKRYPT_ORG_ID",
+        },
+        "plugins": {
+            "auth": {
+                "provider": "enkrypt",
+                "config": {
+                    "gateway_name": "your-gateway-saved-name",
+                    "gateway_version": "v1",
+                    "cache_ttl_seconds": 300,
+                },
+            },
+            "guardrails": {
+                "provider": "enkrypt",
+                "config": {},
+            },
+            "telemetry": {
+                "provider": "opentelemetry",
+                "config": {
+                    "enabled": True,
+                    # host.docker.internal:4317 when generated via the
+                    # --docker wrapper; localhost:4317 on host installs.
+                    # See _default_telemetry_url() for the why.
+                    "url": _default_telemetry_url(),
+                    "insecure": True,
+                },
+            },
+        },
+        "common_mcp_gateway_config": {
+            "enkrypt_log_level": "INFO",
+            "enkrypt_gateway_cache_expiration_minutes": 5,
+        },
+    }
+
+
 def _detect_auth_provider(config: dict) -> str:
     """Return the configured auth provider name.
 
@@ -499,12 +657,15 @@ def get_install_credentials(config_path: str, override_apikey: str | None = None
 
     if provider == "enkrypt":
         cloud_cfg = (config.get("plugins") or {}).get("auth", {}).get("config") or {}
-        apikey = override_apikey or cloud_cfg.get("apikey")
+        enkrypt_cfg = config.get("enkrypt_config") or {}
+        apikey = (
+            override_apikey or cloud_cfg.get("apikey") or enkrypt_cfg.get("api_key")
+        )
         if not apikey:
             raise ValueError(
                 "auth.provider is 'enkrypt' but no apikey was supplied. "
                 "Pass it via 'secure-mcp-gateway install ... --apikey <key>' "
-                "or set 'plugins.auth.config.apikey' in the local config file."
+                "or set it in enkrypt_config.api_key in the local config file."
             )
         return {
             "provider": "enkrypt",
@@ -840,8 +1001,6 @@ def update_config_server(
     description=None,
     input_guardrails=None,
     output_guardrails=None,
-    tool_guardrails=None,
-    enable_server_info_validation=None,
 ):
     """Update server configuration."""
     config = load_config(config_path)
@@ -886,12 +1045,6 @@ def update_config_server(
         server_data["output_guardrails_config"] = validate_json_input(
             output_guardrails, "output guardrails config"
         )
-    if tool_guardrails:
-        server_data["tool_guardrails_config"] = validate_json_input(
-            tool_guardrails, "tool guardrails config"
-        )
-    if enable_server_info_validation is not None:
-        server_data["enable_server_info_validation"] = enable_server_info_validation
 
     server_data["updated_at"] = datetime.now().isoformat()
 
@@ -911,8 +1064,6 @@ def add_server_to_config(
     input_guardrails=None,
     output_guardrails=None,
     denied_tools=None,
-    tool_guardrails=None,
-    enable_server_info_validation=None,
     server_url=None,
     transport=None,
     headers=None,
@@ -951,12 +1102,6 @@ def add_server_to_config(
         if output_guardrails
         else None
     )
-    tool_guardrails_data = (
-        validate_json_input(tool_guardrails, "tool guardrails policy")
-        if tool_guardrails
-        else None
-    )
-
     # Build the inner "config" block depending on transport type
     if server_url:
         inner_config = {"url": server_url}
@@ -980,27 +1125,6 @@ def add_server_to_config(
         "config": inner_config,
         "tools": tools_data or {},
         "denied_tools": denied_tools_data or [],
-        "enable_server_info_validation": (
-            enable_server_info_validation
-            if enable_server_info_validation is not None
-            else False
-        ),
-        "tool_guardrails_config": tool_guardrails_data
-        or {
-            "enabled": False,
-            "guardrail_name": "Sample Airline Guardrail",
-            "block": [
-                "policy_violation",
-                "injection_attack",
-                "topic_detector",
-                "nsfw",
-                "toxicity",
-                "pii",
-                "keyword_detector",
-                "bias",
-                "sponge_attack",
-            ],
-        },
         "input_guardrails_config": input_guardrails_data
         or {
             "enabled": False,
@@ -1152,7 +1276,10 @@ def validate_config(config_path, config_identifier):
                 server_issues.append("Missing 'config' section")
             else:
                 has_url = "url" in server["config"]
-                has_type_http = server["config"].get("type", "").lower() in ("http", "sse")
+                has_type_http = server["config"].get("type", "").lower() in (
+                    "http",
+                    "sse",
+                )
                 has_command = "command" in server["config"]
                 if not has_url and not has_type_http and not has_command:
                     server_issues.append(
@@ -1434,46 +1561,25 @@ def update_server_guardrails(
 
 
 def set_enkrypt_api_key(config_path, api_key):
-    """Set the Enkrypt API key in the guardrails plugin configuration."""
+    """Set the Enkrypt API key in the centralized enkrypt_config."""
     config = load_config(config_path)
 
-    # Ensure plugins section exists
-    if "plugins" not in config:
-        print("ERROR: 'plugins' section not found in config")
-        sys.exit(1)
+    if "enkrypt_config" not in config:
+        config["enkrypt_config"] = {}
 
-    # Ensure guardrails plugin exists
-    if "guardrails" not in config["plugins"]:
-        print("ERROR: 'guardrails' plugin not configured")
-        sys.exit(1)
-
-    # Ensure config sub-section exists
-    if "config" not in config["plugins"]["guardrails"]:
-        config["plugins"]["guardrails"]["config"] = {}
-
-    # Set the API key
-    config["plugins"]["guardrails"]["config"]["api_key"] = api_key
+    config["enkrypt_config"]["api_key"] = api_key
 
     save_config(config_path, config)
     print("INFO: Enkrypt API key updated successfully")
 
 
 def get_enkrypt_api_key(config_path):
-    """Get the Enkrypt API key from the guardrails plugin configuration."""
+    """Get the Enkrypt API key from enkrypt_config (with backward-compat fallback)."""
     config = load_config(config_path)
 
-    # Check plugins section
-    if "plugins" not in config:
-        print("ERROR: 'plugins' section not found in config")
-        sys.exit(1)
-
-    # Check guardrails plugin
-    if "guardrails" not in config["plugins"]:
-        print("ERROR: 'guardrails' plugin not configured")
-        sys.exit(1)
-
-    # Get the API key
-    api_key = config["plugins"]["guardrails"].get("config", {}).get("api_key")
+    api_key = config.get("enkrypt_config", {}).get("api_key") or config.get(
+        "plugins", {}
+    ).get("guardrails", {}).get("config", {}).get("api_key")
 
     if not api_key:
         print("ERROR: Enkrypt API key not set")
@@ -2987,7 +3093,24 @@ def run_via_docker(args, original_argv):
     # Ensure volume source directory exists so Docker doesn't create it as root
     os.makedirs(docker_volume_src, exist_ok=True)
 
-    image = args.docker_image or "enkryptai/secure-mcp-gateway"
+    # Default to the image tag matching this CLI's package version so the
+    # in-container CLI always understands the same flags as the host CLI
+    # (e.g. `generate-config --provider enkrypt` was added in 2.2.0).
+    # Users can override with --docker-image to pin a different tag, use
+    # a locally-built image, or follow :latest.
+    image = args.docker_image or f"enkryptai/secure-mcp-gateway:{__version__}"
+
+    # If the caller pinned a tag explicitly via --docker-image, warn (but do
+    # not block) when it doesn't include the host CLI version, because
+    # version-skew between host and container is the most common cause of
+    # "unrecognized arguments" errors inside the container.
+    if args.docker_image and __version__ not in args.docker_image:
+        print(
+            f"WARN: --docker-image={args.docker_image!r} does not contain the "
+            f"host CLI version v{__version__}. If the in-container CLI is "
+            f"older, newer flags (e.g. 'generate-config --provider enkrypt' "
+            f"added in v2.2.0) will fail with 'unrecognized arguments'."
+        )
 
     # Strip --docker and --docker-image from original args so the command
     # inside the container receives only the actual CLI arguments.
@@ -3028,9 +3151,7 @@ def run_via_docker(args, original_argv):
 
         # Claude Desktop config directory varies by OS
         if host_os == "macos":
-            claude_dir = os.path.join(
-                home, "Library", "Application Support", "Claude"
-            )
+            claude_dir = os.path.join(home, "Library", "Application Support", "Claude")
         elif host_os == "windows":
             claude_dir = os.path.join(
                 os.environ.get("APPDATA", os.path.join(home, "AppData", "Roaming")),
@@ -3042,12 +3163,14 @@ def run_via_docker(args, original_argv):
         if os.path.isdir(claude_dir):
             docker_cmd.extend(["-v", f"{claude_dir}:/app/.claude"])
 
-    docker_cmd.extend([
-        "--entrypoint",
-        "secure-mcp-gateway",
-        image,
-        *pass_through,
-    ])
+    docker_cmd.extend(
+        [
+            "--entrypoint",
+            "secure-mcp-gateway",
+            image,
+            *pass_through,
+        ]
+    )
 
     print(f"INFO: Running inside Docker ({image})...")
     print(f"INFO: > {' '.join(docker_cmd)}")
@@ -3077,7 +3200,13 @@ def main():
         "--docker-image",
         type=str,
         default=None,
-        help="Docker image to use with --docker (default: enkryptai/secure-mcp-gateway)",
+        help=(
+            "Docker image to use with --docker. "
+            f"Default: enkryptai/secure-mcp-gateway:{__version__} "
+            "(pinned to the host CLI's package version so flags stay in sync). "
+            "Override to use a locally-built image (e.g. 'secure-mcp-gateway') "
+            "or a different published tag (e.g. 'enkryptai/secure-mcp-gateway:latest')."
+        ),
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -3090,6 +3219,21 @@ def main():
         "--overwrite",
         action="store_true",
         help="Overwrite existing config file if it exists",
+    )
+    gen_config_parser.add_argument(
+        "--provider",
+        type=str,
+        choices=("local_apikey", "enkrypt"),
+        default="local_apikey",
+        help=(
+            "Auth provider to bake into the generated config. "
+            "'local_apikey' (default) emits the full local schema "
+            "(mcp_configs/projects/users/apikeys + sample echo_server). "
+            "'enkrypt' emits the minimal cloud-backed schema "
+            "(enkrypt_config + plugins.auth.provider=enkrypt with "
+            "gateway_name) and lets the Enkrypt cloud own the "
+            "servers/projects/users data."
+        ),
     )
 
     # install subcommand
@@ -3258,7 +3402,7 @@ def main():
     config_add_server_parser.add_argument("--env", help="Environment variables (JSON)")
     config_add_server_parser.add_argument(
         "--headers",
-        help="HTTP headers for URL servers (JSON, e.g., '{\"Authorization\": \"Bearer ...\"}')",
+        help='HTTP headers for URL servers (JSON, e.g., \'{"Authorization": "Bearer ..."}\')',
     )
     config_add_server_parser.add_argument("--tools", help="Tools configuration (JSON)")
     config_add_server_parser.add_argument(
@@ -3929,14 +4073,10 @@ def main():
             server_command = getattr(args, "server_command", None)
             server_type = getattr(args, "server_type", None)
             if not server_url and not server_command:
-                print(
-                    "ERROR: Either --server-command or --server-url is required"
-                )
+                print("ERROR: Either --server-command or --server-url is required")
                 sys.exit(1)
             if server_url and server_command:
-                print(
-                    "ERROR: --server-command and --server-url are mutually exclusive"
-                )
+                print("ERROR: --server-command and --server-url are mutually exclusive")
                 sys.exit(1)
             add_server_to_config(
                 config_path,
@@ -4283,13 +4423,37 @@ def main():
         if os.name == "posix":
             os.chmod(os.path.dirname(config_path), 0o700)
 
-        print("INFO: Generating default configuration...")
-        config = generate_default_config()
+        provider_choice = getattr(args, "provider", "local_apikey")
+        if provider_choice == "enkrypt":
+            print(
+                "INFO: Generating minimal Enkrypt-cloud configuration "
+                "(plugins.auth.provider=enkrypt)..."
+            )
+            config = generate_enkrypt_cloud_config()
+        else:
+            print("INFO: Generating default local_apikey configuration...")
+            config = generate_default_config()
+
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
 
-        print(f"SUCCESS: Generated default config at {config_path}")
-        print("INFO: Configuration file created successfully!")
+        print(f"SUCCESS: Generated config at {config_path}")
+        if provider_choice == "enkrypt":
+            # Cloud config ships with two operator-must-set placeholders.
+            # Flag them prominently so first-time users don't get a
+            # cryptic 401 from Enkrypt cloud on first boot.
+            print("INFO: Before starting the gateway, edit the file and set:")
+            print(
+                "  * enkrypt_config.api_key            (replace "
+                "'YOUR_ENKRYPT_API_KEY' with your Enkrypt cloud apikey)"
+            )
+            print(
+                "  * plugins.auth.config.gateway_name  (replace "
+                "'your-gateway-saved-name' with the saved_name of the "
+                "gateway you created in Enkrypt cloud)"
+            )
+        else:
+            print("INFO: Configuration file created successfully!")
         sys.exit(0)
 
     elif args.command == "install":
@@ -4489,7 +4653,7 @@ def main():
 
                 claude_desktop_config["mcpServers"]["Enkrypt Secure MCP Gateway"] = {
                     "command": DOCKER_COMMAND,
-                    "args": DOCKER_ARGS,
+                    "args": build_docker_args(env.keys()),
                     "env": env,
                 }
                 with open(claude_desktop_config_path, "w") as f:
@@ -4580,7 +4744,7 @@ def main():
             cursor_config_path = os.path.join(base_path, ".cursor", "mcp.json")
 
             if is_docker_running:
-                args_list = DOCKER_ARGS
+                args_list = build_docker_args(env.keys())
                 command = DOCKER_COMMAND
             else:
                 command = "mcp"

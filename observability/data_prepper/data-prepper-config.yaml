@@ -1,0 +1,11 @@
+# =========================================================================
+#  Data Prepper top-level config (local docker-compose mode).
+#
+#  Single-node, no peer forwarding. SSL disabled on the management API
+#  (port 4900) for local; in cluster the Helm chart enables TLS here.
+# =========================================================================
+ssl: false
+peer_forwarder:
+  ssl: false
+authentication:
+  unauthenticated:

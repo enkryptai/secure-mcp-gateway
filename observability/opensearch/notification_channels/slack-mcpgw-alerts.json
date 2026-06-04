@@ -1,0 +1,13 @@
+{
+  "config_id": "slack-mcpgw-alerts",
+  "name": "slack-mcpgw-alerts",
+  "config": {
+    "name": "slack-mcpgw-alerts",
+    "description": "Posts MCP Gateway alert notifications to Slack via incoming webhook.",
+    "config_type": "slack",
+    "is_enabled": true,
+    "slack": {
+      "url": "${SLACK_WEBHOOK_URL}"
+    }
+  }
+}

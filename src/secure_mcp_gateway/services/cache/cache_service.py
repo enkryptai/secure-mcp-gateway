@@ -9,16 +9,12 @@ from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
 telemetry_manager = get_telemetry_config_manager()
 # Telemetry metrics will be obtained lazily when needed
 from secure_mcp_gateway.utils import (
+    build_log_extra,
     get_common_config,
+    is_debug_log_level,
     logger,
     mask_key,
 )
-
-# Get debug log level
-common_config = get_common_config()
-ENKRYPT_LOG_LEVEL = common_config.get("enkrypt_log_level", "INFO").lower()
-IS_DEBUG_LOG_LEVEL = ENKRYPT_LOG_LEVEL == "debug"
-
 
 class CacheService:
     """
@@ -33,11 +29,12 @@ class CacheService:
         # Get configuration
         self.common_config = get_common_config()
 
-        # Cache configuration
-        self.tool_cache_expiration = int(
+        # Cache configuration - use float() so fractional values (e.g. 5min
+        # = 0.083h) are not silently truncated to 0 by int().
+        self.tool_cache_expiration = float(
             self.common_config.get("enkrypt_tool_cache_expiration", 4)
         )
-        self.gateway_cache_expiration = int(
+        self.gateway_cache_expiration = float(
             self.common_config.get("enkrypt_gateway_cache_expiration", 24)
         )
         self.use_external_cache = self.common_config.get(
@@ -475,7 +472,7 @@ class CacheService:
         Returns:
             dict: Updated server info with latest tools from config or cache
         """
-        if IS_DEBUG_LOG_LEVEL:
+        if is_debug_log_level():
             logger.debug(
                 f"[get_latest_server_info] Getting latest server info for {id}"
             )
@@ -490,14 +487,22 @@ class CacheService:
                 f"[get_latest_server_info] No config tools found for {server_name}"
             )
             cached_tools = self.get_cached_tools(id, server_name)
+            # Identity attrs come from the request-scoped ContextVar set by
+            # secure_tool_execution_service.execute_secure_tools (no MCP
+            # ``ctx`` is available here; build_log_extra(None) falls back
+            # to the ContextVar) so dashboards filtered by user/project
+            # can pivot on cache hit/miss rates too.
+            cache_attrs = build_log_extra(
+                None, server_name=server_name
+            )
             if cached_tools:
                 # Update metrics lazily
                 if (
                     hasattr(telemetry_manager, "cache_hit_counter")
                     and telemetry_manager.cache_hit_counter
                 ):
-                    telemetry_manager.cache_hit_counter.add(1)
-                if IS_DEBUG_LOG_LEVEL:
+                    telemetry_manager.cache_hit_counter.add(1, attributes=cache_attrs)
+                if is_debug_log_level():
                     logger.debug(
                         f"[get_latest_server_info] Found cached tools for {server_name}"
                     )
@@ -510,8 +515,8 @@ class CacheService:
                     hasattr(telemetry_manager, "cache_miss_counter")
                     and telemetry_manager.cache_miss_counter
                 ):
-                    telemetry_manager.cache_miss_counter.add(1)
-                if IS_DEBUG_LOG_LEVEL:
+                    telemetry_manager.cache_miss_counter.add(1, attributes=cache_attrs)
+                if is_debug_log_level():
                     logger.debug(
                         f"[get_latest_server_info] No cached tools found for {server_name}. Need to discover them"
                     )
@@ -519,7 +524,7 @@ class CacheService:
                 server_info_copy["has_cached_tools"] = False
                 server_info_copy["tools_source"] = "needs_discovery"
         else:
-            if IS_DEBUG_LOG_LEVEL:
+            if is_debug_log_level():
                 logger.debug(
                     f"[get_latest_server_info] Tools defined in config for {server_name}, checking cache first"
                 )
@@ -528,7 +533,7 @@ class CacheService:
             cached_tools = self.get_cached_tools(id, server_name)
             if cached_tools:
                 # Use cached tools (faster than reading config)
-                if IS_DEBUG_LOG_LEVEL:
+                if is_debug_log_level():
                     logger.debug(
                         f"[get_latest_server_info] Found cached tools for {server_name}, using cache"
                     )
@@ -537,7 +542,7 @@ class CacheService:
                 server_info_copy["tools_source"] = "cache"
             else:
                 # Cache the config tools for future use
-                if IS_DEBUG_LOG_LEVEL:
+                if is_debug_log_level():
                     logger.debug(
                         f"[get_latest_server_info] Caching config tools for {server_name}"
                     )
@@ -558,3 +563,18 @@ cache_client = cache_service.cache_client
 ENKRYPT_TOOL_CACHE_EXPIRATION = cache_service.tool_cache_expiration
 ENKRYPT_GATEWAY_CACHE_EXPIRATION = cache_service.gateway_cache_expiration
 ENKRYPT_MCP_USE_EXTERNAL_CACHE = cache_service.use_external_cache
+
+
+def flush_all_gateway_config_cache(include_tool_cache: bool = False) -> dict:
+    """Clear every gateway-config cache entry in local + external backends.
+
+    Thin wrapper around the canonical implementation in
+    ``secure_mcp_gateway.client.flush_all_gateway_config_cache`` so callers
+    on the service layer do not need to know about the underlying cache
+    client.
+    """
+    from secure_mcp_gateway.client import (
+        flush_all_gateway_config_cache as _flush,
+    )
+
+    return _flush(cache_service.cache_client, include_tool_cache=include_tool_cache)

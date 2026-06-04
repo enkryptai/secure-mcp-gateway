@@ -1,0 +1,66 @@
+{
+  "type": "monitor",
+  "name": "MCPGW: Injection Attack Burst",
+  "monitor_type": "bucket_level_monitor",
+  "enabled": true,
+  "schedule": {
+    "period": { "interval": 1, "unit": "MINUTES" }
+  },
+  "inputs": [
+    {
+      "search": {
+        "indices": ["ss4o_metrics-gateway*"],
+        "query": {
+          "size": 0,
+          "query": {
+            "bool": {
+              "filter": [
+                { "term": { "name": "enkrypt.guardrail.blocks" } },
+                { "term": { "metric.attributes.violation_type": "injection_attack" } },
+                { "term": { "aggregationTemporality": "AGGREGATION_TEMPORALITY_DELTA" } },
+                { "range": { "time": { "from": "now-5m", "to": "now" } } }
+              ]
+            }
+          },
+          "aggregations": {
+            "composite_agg": {
+              "composite": {
+                "size": 50,
+                "sources": [
+                  { "server": { "terms": { "field": "metric.attributes.server_name" } } },
+                  { "tool":   { "terms": { "field": "metric.attributes.tool_name" } } }
+                ]
+              },
+              "aggregations": { "sum_value": { "sum": { "field": "value" } } }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "bucket_level_trigger": {
+        "name": "burst",
+        "severity": "1",
+        "condition": {
+          "buckets_path": { "sum_value": "sum_value" },
+          "parent_bucket_path": "composite_agg",
+          "script": { "source": "params.sum_value > 3", "lang": "painless" }
+        },
+        "actions": [
+          {
+            "name": "slack",
+            "destination_id": "${SLACK_CHANNEL_ID}",
+            "throttle_enabled": false,
+            "subject_template": { "source": "MCP Gateway: Injection Attack Burst", "lang": "mustache" },
+            "message_template": {
+              "source": ":rotating_light: *MCP Gateway -- Injection Attack Burst*\nMore than 3 injection_attack input blocks observed against a single (server, tool) in the last 5 minutes.\n{{#ctx.alerts}}\n  Bucket: {{bucket_keys}}\n{{/ctx.alerts}}",
+              "lang": "mustache"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -38,6 +38,7 @@ from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
 from secure_mcp_gateway.plugins.telemetry.conventions import (
     SpanAttributes,
     SpanNames,
+    set_span_attr_with_legacy,
 )
 from secure_mcp_gateway.utils import logger
 
@@ -105,7 +106,7 @@ def _set_span_basics(span, *, endpoint: str, server_name: str) -> None:
         return
     try:
         span.set_attribute(SpanAttributes.HEALTH_ENDPOINT, endpoint)
-        span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+        set_span_attr_with_legacy(span, SpanAttributes.SERVER_NAME, server_name)
     except Exception:  # pragma: no cover
         pass
 
@@ -439,7 +440,7 @@ class MCPHealthService:
             _set_span_basics(span, endpoint=endpoint, server_name=server_name)
             if span is not None:
                 try:
-                    span.set_attribute(SpanAttributes.TOOL_NAME, tool_name)
+                    set_span_attr_with_legacy(span, SpanAttributes.TOOL_NAME, tool_name)
                 except Exception:  # pragma: no cover
                     pass
             logger.info(

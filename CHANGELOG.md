@@ -10,7 +10,7 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 
 - New `enkrypt` auth provider that fetches gateway config from the Enkrypt cloud (`/mcp-gateway/get-gateway-config`) instead of the local config file
 - Per-request multi-tenancy — each MCP client passes its own apikey via the `apikey` header, so a single gateway process can serve many tenants
-- `request_context` from the cloud is mapped onto identity / metric labels (`forwarded_user_id`, `forwarded_user_email`, `project_name`) for accurate attribution in dashboards and alerts
+- `request_context` from the cloud is mapped onto identity / metric labels (`user_id`, `user_email`, `project_name`) for accurate attribution in dashboards and alerts
 - `gateway_overrides` from the cloud replace per-server input/output guardrail policies on the merged config
 - New top-level `local_server_overrides` block lets operators layer local-only fields (`sandbox`, `denied_tools`, `oauth_config`) onto cloud-fetched servers; cloud values always win on conflict
 - In-process cache keyed on a SHA-256 hash of the apikey, with a 10-minute TTL (`cache_ttl_seconds` configurable)

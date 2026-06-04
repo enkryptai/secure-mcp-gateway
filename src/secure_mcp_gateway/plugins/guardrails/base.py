@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 # ============================================================================
 # Domain Models (Shared Data Structures)
@@ -51,9 +51,9 @@ class GuardrailViolation:
     severity: float  # 0.0 (low) to 1.0 (high)
     message: str
     action: GuardrailAction
-    metadata: Dict[str, Any]  # Additional context
-    suggested_action: Optional[str] = None
-    redacted_content: Optional[str] = None  # For PII redaction
+    metadata: dict[str, Any]  # Additional context
+    suggested_action: str | None = None
+    redacted_content: str | None = None  # For PII redaction
 
 
 @dataclass
@@ -61,10 +61,10 @@ class GuardrailRequest:
     """Input data for guardrail evaluation."""
 
     content: str  # The content to evaluate
-    tool_name: Optional[str] = None
-    tool_args: Optional[Dict[str, Any]] = None
-    server_name: Optional[str] = None
-    context: Optional[Dict[str, Any]] = None  # Additional context
+    tool_name: str | None = None
+    tool_args: dict[str, Any] | None = None
+    server_name: str | None = None
+    context: dict[str, Any] | None = None  # Additional context
 
 
 @dataclass
@@ -72,23 +72,37 @@ class ServerRegistrationRequest:
     """Request for server registration validation."""
 
     server_name: str
-    server_config: Dict[str, Any]
-    server_description: Optional[str] = None
-    server_command: Optional[str] = None
-    server_metadata: Optional[Dict[str, Any]] = None
-    context: Optional[Dict[str, Any]] = None
-    tool_guardrails_config: Optional[Dict[str, Any]] = None
+    server_config: dict[str, Any]
+    server_description: str | None = None
+    server_command: str | None = None
+    server_metadata: dict[str, Any] | None = None
+    context: dict[str, Any] | None = None
+    server_tools_guardrails_config: dict[str, Any] | None = None
 
 
 @dataclass
 class ToolRegistrationRequest:
-    """Request for tool registration validation."""
+    """Request for tool registration validation.
+
+    ``kind`` selects which protocol the Enkrypt batch endpoint is invoked with:
+
+    - ``"tool_list"`` (default) — validating an MCP server's discovered/declared
+      tool list. Uses the *policy-driven* batch endpoint
+      (``X-Enkrypt-Guardrail`` + ``X-Enkrypt-Mode: prompt`` headers, no inline
+      detectors in the payload). The guardrail policy name is read from
+      ``server_tools_guardrails_config.guardrail_name``.
+    - ``"server_description"`` — validating a server's static/dynamic
+      description text (wrapped as a single fake tool by the caller). Also
+      uses the policy-driven batch endpoint with the same guardrail name
+      from ``server_tools_guardrails_config.guardrail_name``.
+    """
 
     server_name: str
-    tools: List[Dict[str, Any]]  # List of tool schemas with name, description, etc.
+    tools: list[dict[str, Any]]  # List of tool schemas with name, description, etc.
     validation_mode: str = "filter"  # "filter" or "block_all"
-    context: Optional[Dict[str, Any]] = None
-    tool_guardrails_config: Optional[Dict[str, Any]] = None
+    context: dict[str, Any] | None = None
+    server_tools_guardrails_config: dict[str, Any] | None = None
+    kind: str = "tool_list"  # "tool_list" | "server_description"
 
 
 @dataclass
@@ -97,10 +111,10 @@ class GuardrailResponse:
 
     is_safe: bool
     action: GuardrailAction
-    violations: List[GuardrailViolation]
-    modified_content: Optional[str] = None  # If content was modified
-    metadata: Dict[str, Any] = None  # Provider-specific metadata
-    processing_time_ms: Optional[float] = None
+    violations: list[GuardrailViolation]
+    modified_content: str | None = None  # If content was modified
+    metadata: dict[str, Any] = None  # Provider-specific metadata
+    processing_time_ms: float | None = None
 
     def __post_init__(self):
         if self.metadata is None:
@@ -132,7 +146,7 @@ class InputGuardrail(Protocol):
         """
         ...
 
-    def get_supported_detectors(self) -> List[ViolationType]:
+    def get_supported_detectors(self) -> list[ViolationType]:
         """
         Get list of violation types this guardrail can detect.
 
@@ -165,7 +179,7 @@ class OutputGuardrail(Protocol):
         """
         ...
 
-    def get_supported_detectors(self) -> List[ViolationType]:
+    def get_supported_detectors(self) -> list[ViolationType]:
         """
         Get list of violation types this guardrail can detect.
 
@@ -183,11 +197,11 @@ class PIIHandler(Protocol):
     Separate interface following Interface Segregation Principle.
     """
 
-    async def detect_pii(self, content: str) -> List[GuardrailViolation]:
+    async def detect_pii(self, content: str) -> list[GuardrailViolation]:
         """Detect PII in content."""
         ...
 
-    async def redact_pii(self, content: str) -> tuple[str, Dict[str, Any]]:
+    async def redact_pii(self, content: str) -> tuple[str, dict[str, Any]]:
         """
         Redact PII from content and return mapping for restoration.
 
@@ -196,7 +210,7 @@ class PIIHandler(Protocol):
         """
         ...
 
-    async def restore_pii(self, content: str, pii_mapping: Dict[str, Any]) -> str:
+    async def restore_pii(self, content: str, pii_mapping: dict[str, Any]) -> str:
         """Restore PII using the mapping from redaction."""
         ...
 
@@ -238,9 +252,7 @@ class GuardrailProvider(ABC):
         pass
 
     @abstractmethod
-    def create_input_guardrail(
-        self, config: Dict[str, Any]
-    ) -> Optional[InputGuardrail]:
+    def create_input_guardrail(self, config: dict[str, Any]) -> InputGuardrail | None:
         """
         Create an input guardrail instance.
 
@@ -253,9 +265,7 @@ class GuardrailProvider(ABC):
         pass
 
     @abstractmethod
-    def create_output_guardrail(
-        self, config: Dict[str, Any]
-    ) -> Optional[OutputGuardrail]:
+    def create_output_guardrail(self, config: dict[str, Any]) -> OutputGuardrail | None:
         """
         Create an output guardrail instance.
 
@@ -267,7 +277,7 @@ class GuardrailProvider(ABC):
         """
         pass
 
-    def create_pii_handler(self, config: Dict[str, Any]) -> Optional[PIIHandler]:
+    def create_pii_handler(self, config: dict[str, Any]) -> PIIHandler | None:
         """
         Create a PII handler instance (optional).
 
@@ -279,7 +289,7 @@ class GuardrailProvider(ABC):
         """
         return None
 
-    def validate_config(self, config: Dict[str, Any]) -> bool:
+    def validate_config(self, config: dict[str, Any]) -> bool:
         """
         Validate provider-specific configuration.
 
@@ -291,7 +301,7 @@ class GuardrailProvider(ABC):
         """
         return True
 
-    def get_required_config_keys(self) -> List[str]:
+    def get_required_config_keys(self) -> list[str]:
         """
         Get list of required configuration keys.
 
@@ -302,7 +312,7 @@ class GuardrailProvider(ABC):
 
     def validate_server_registration(
         self, request: ServerRegistrationRequest
-    ) -> Optional[GuardrailResponse]:
+    ) -> GuardrailResponse | None:
         """
         Validate a server during registration/discovery (optional).
 
@@ -316,7 +326,7 @@ class GuardrailProvider(ABC):
 
     def validate_tool_registration(
         self, request: ToolRegistrationRequest
-    ) -> Optional[GuardrailResponse]:
+    ) -> GuardrailResponse | None:
         """
         Validate tools during discovery (optional).
 
@@ -328,7 +338,7 @@ class GuardrailProvider(ABC):
         """
         return None
 
-    def get_metadata(self) -> Dict[str, Any]:
+    def get_metadata(self) -> dict[str, Any]:
         """
         Get provider metadata (capabilities, limits, etc.).
 
@@ -359,7 +369,7 @@ class GuardrailRegistry:
     """
 
     def __init__(self):
-        self._provider: Optional[GuardrailProvider] = None
+        self._provider: GuardrailProvider | None = None
 
     def register(self, provider: GuardrailProvider) -> None:
         """
@@ -379,7 +389,7 @@ class GuardrailRegistry:
         """
         self._provider = None
 
-    def get_provider(self, name: str = None) -> Optional[GuardrailProvider]:
+    def get_provider(self, name: str = None) -> GuardrailProvider | None:
         """
         Get the registered provider.
 
@@ -391,7 +401,7 @@ class GuardrailRegistry:
         """
         return self._provider
 
-    def list_providers(self) -> List[str]:
+    def list_providers(self) -> list[str]:
         """
         Get list of registered provider names.
 
@@ -420,8 +430,8 @@ class GuardrailFactory:
         self._registry = registry
 
     def create_input_guardrail(
-        self, provider_name: str, config: Dict[str, Any]
-    ) -> Optional[InputGuardrail]:
+        self, provider_name: str, config: dict[str, Any]
+    ) -> InputGuardrail | None:
         """
         Create an input guardrail.
 
@@ -451,8 +461,8 @@ class GuardrailFactory:
         return guardrail
 
     def create_output_guardrail(
-        self, provider_name: str, config: Dict[str, Any]
-    ) -> Optional[OutputGuardrail]:
+        self, provider_name: str, config: dict[str, Any]
+    ) -> OutputGuardrail | None:
         """
         Create an output guardrail.
 
@@ -482,8 +492,8 @@ class GuardrailFactory:
         return guardrail
 
     def create_pii_handler(
-        self, provider_name: str, config: Dict[str, Any]
-    ) -> Optional[PIIHandler]:
+        self, provider_name: str, config: dict[str, Any]
+    ) -> PIIHandler | None:
         """
         Create a PII handler.
 

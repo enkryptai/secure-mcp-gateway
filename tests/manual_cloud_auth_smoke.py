@@ -183,7 +183,8 @@ def _print_server_info(payload: Dict[str, Any]) -> None:
     print(f"  description           : {info.get('description')}")
     print(f"  config.command        : {(config or {}).get('command')}")
     print(f"  config.args           : {(config or {}).get('args')}")
-    print(f"  enable_tool_guardrails: {info.get('enable_tool_guardrails')}")
+    stg = info.get("server_tools_guardrails_config") if isinstance(info, dict) else {}
+    print(f"  server_tools_guardrails_config.enabled: {(stg or {}).get('enabled')}")
     print(f"  input_guardrails_config:")
     print(f"      enabled        : {(igp or {}).get('enabled')}")
     print(f"      guardrail_name : {(igp or {}).get('guardrail_name')!r}")

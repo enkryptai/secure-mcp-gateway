@@ -58,12 +58,11 @@ The cloud returns an `ExpandedGatewayConfig` (see
 provider maps it to the internal gateway-config dict every other service
 expects. The interesting bits:
 
-- `request_context.forwarded_user_id` (if the calling app forwards an
-  end-user) wins over `request_context.user_id` (the apikey owner) for
-  the metric `user_id` label, so dashboards / alerts attribute to the
-  real end-user.
-- `request_context.forwarded_user_email` populates the dashboard
-  `var-email` template variable.
+- `request_context.user_id` populates the metric `user_id` label
+  (apikey owner today; an end-user UUID once the calling app forwards
+  one through the cloud).
+- `request_context.user_email` populates the dashboard `var-email`
+  template variable.
 - `project_id` is mirrored from `project_name` until the cloud surfaces
   a stable UUID.
 - Unmapped `request_context` fields (`org_id`, `actioner`,
@@ -91,17 +90,16 @@ shipped yet (May 2026):
   don't pollute OTel attributes.
 - `actioner` — pending on the cloud side. Same null-filter treatment will
   apply automatically once returned.
-- `forwarded_user_id` / `forwarded_user_email` — pending; until they land,
-  the metric `user_id` label is the apikey owner's UUID and `email`
-  defaults to `not_provided`.
+- `user_email` — shipped on dev as of 2026-05-20; when the calling app
+  doesn't forward an end-user, `email` is `not_provided`.
 - `project_id` (UUID) — pending; until the cloud returns it, `project_id`
   in the gateway equals `project_name`.
 
 ### Nullable fields
 
 The cloud may return `null` (not just absent) for any of:
-`org_id`, `actioner`, `project_name`, `project_id`, `forwarded_user_id`,
-`forwarded_user_email`. The mapper treats `null` and "absent" identically:
+`org_id`, `actioner`, `project_name`, `project_id`, `user_id`,
+`user_email`. The mapper treats `null` and "absent" identically:
 
 - For promoted fields (`project_name`, `project_id`, `user_id`, `email`),
   null falls through the normal fallback chain
@@ -117,10 +115,11 @@ update them if the cloud team changes the contract.
 
 ## Override resolution
 
-For each of the four guardrail-style fields — `input_guardrails_config`,
-`output_guardrails_config`, `tool_guardrails_config`,
-`enable_server_info_validation` — the mapper picks the effective value
-per server using this precedence (first match wins):
+For each of the three guardrail-style fields — `input_guardrails_config`,
+`output_guardrails_config`, `server_tools_guardrails_config` — the mapper
+picks the effective value per server using this precedence (first match
+wins). `server_tools_guardrails_config` is **common-only** (never read
+from per-server overrides or base config):
 
 1. **`response.common_overrides.<key>`** — gateway-wide override. **Always
    wins** when set. The cloud already strips the same key from each
