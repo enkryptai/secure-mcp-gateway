@@ -2,6 +2,77 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [v2.2.1]
+
+Consolidated release bundling everything that shipped to dev as patch-image
+overlays since v2.2.0.  Single image, no overlay tool required.
+
+### Added (telemetry instrumentation)
+
+- **Tier-1 metrics** (7 new counters): `enkrypt.errors.by_code` auto-emitted
+  from every `MCPGatewayError`, plus `enkrypt.guardrail.compliance_hit`,
+  `enkrypt.tool.permission_denied`, `enkrypt.degradation.fail_open` /
+  `.fail_closed`, `enkrypt.transport.errors`,
+  `enkrypt.discovery.server_failures`.
+- **Audit / compliance** (18 new counters): full coverage of admin REST
+  mutations via `audit.py` + `audit_middleware.py`.  Powers the new
+  "Audit Trail" dashboard.
+- **Guardrail per-detector detail**: `enkrypt.guardrail.pii_entity` +
+  `enkrypt.guardrail.toxicity_subtype` extracted from
+  `violation.metadata.details` at the 3 STES violation sites; powers the
+  Guardrails Deep Dive "PII Entities" and "Toxicity Subtypes" panels.
+- **Per-request phase timing** (8 log fields) on every blocked/successful
+  tool call: `preprocess_duration_ms`, `execution_duration_ms`,
+  `postprocess_duration_ms`, `guardrail_duration_ms`,
+  `tool_call_duration_ms`, `total_request_duration_ms`,
+  `cache_lookup_duration_ms`, `mcp_handshake_duration_ms`.  Powers the
+  Cache & Performance "Latency Breakdown" section.
+- **Session pool gauge**: `enkrypt.session.active` wired in pool
+  acquire/evict/close_all/_reap so "Active Sessions" populates.
+- **Identity labels** on `record_tool_call_outcome` /
+  `record_guardrail_violations` / `record_pii_redaction`:
+  `user_email`, `project_name`, `project_registry`, `org_id`,
+  `gateway_name`, `gateway_version` (all optional kwargs).
+
+### Added (gateway features)
+
+- **Playground routes mounted on FastMCP** (port 8000): new
+  `gateway_playground_routes.py` exposes `/mcp-playground/test-server` (POST),
+  `/mcp-playground/get-tools` (GET), `/mcp-playground/call-tool` (POST) via
+  `FastMCP.custom_route`.  No separate `api_server.py` process needed for
+  the playground UI to work in production.
+- **Playground registry-mode** + **consumer-info** metrics:
+  `record_registry_lookup`, `record_consumer_info_lookup` helpers.
+
+### Fixed
+
+- **Session-pool hang protection** (PR #40): `asyncio.wait_for` guards
+  around `acquire()` and the `_worker` connect path so a dead upstream
+  MCP server cannot indefinitely stall the gateway.
+- **OSD dashboard query corrections** across Overview / Per-Tenant /
+  Sandbox & MCP Protocol / SLO / Tools & MCP Servers / Audit Trail /
+  Guardrails Deep Dive / Cache & Performance: repointed panels to the
+  metric names + log fields the gateway actually emits.
+- **OpenSearch index templates**: declared all new attribute /
+  log-field shapes (`metric.attributes.{entity_type, subtype,
+  score_bucket, authorization_path, ...}` + `log.attributes.{actor,
+  target_id, surface, success, authorization_path, *_duration_ms,
+  pii_entity_types, toxicity_subtypes, ...}`) so `dynamic: false`
+  doesn't silently drop them at index time.
+
+### Operational tools
+
+- `tools/guardrail_coverage_smoke.py` (22-prompt detector probe)
+- `tools/guardrail_detail_smoke.py` (PII + toxicity smoke)
+- `tools/osd_force_field_declare.py` (workaround OSD missing-field-cache
+  banner when emission preconditions aren't met yet)
+- `tools/local_benign_smoke.py` (3 benign tool calls)
+
+The patch-image overlay tooling (`tools/build_tier1_overlay.py`,
+`tools/verify_patch_tier1.py`, `Dockerfile.patch-tier1metrics`) is no
+longer needed for v2.2.1 builds but remains in the repo so future
+emergency patches can reuse the pattern without re-inventing it.
+
 ## [v2.2.0]
 
 ### New Features in v2.2.0
