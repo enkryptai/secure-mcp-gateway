@@ -551,7 +551,13 @@ def record_compliance_hits(
     tool_name: str = "",
     guardrail_name: Optional[str] = None,
     user_id: Optional[str] = None,
+    user_email: Optional[str] = None,
     project_id: Optional[str] = None,
+    project_name: Optional[str] = None,
+    project_registry: Optional[str] = None,
+    org_id: Optional[str] = None,
+    gateway_name: Optional[str] = None,
+    gateway_version: Optional[str] = None,
 ) -> None:
     """Walk each violation's ``metadata.details.compliance_mapping`` and
     increment :data:`MetricNames.GUARDRAIL_COMPLIANCE_HIT` once per
@@ -620,7 +626,13 @@ def record_compliance_hits(
                     "tool_name": tool_name,
                     "guardrail_name": guardrail_name,
                     "user_id": user_id,
+                    "user_email": user_email,
                     "project_id": project_id,
+                    "project_name": project_name,
+                    "project_registry": project_registry,
+                    "org_id": org_id,
+                    "gateway_name": gateway_name,
+                    "gateway_version": gateway_version,
                 }
                 _add(counter, 1, attrs)
 
@@ -803,7 +815,13 @@ def record_pii_entities(
     tool_name: str = "",
     guardrail_name: Optional[str] = None,
     user_id: Optional[str] = None,
+    user_email: Optional[str] = None,
     project_id: Optional[str] = None,
+    project_name: Optional[str] = None,
+    project_registry: Optional[str] = None,
+    org_id: Optional[str] = None,
+    gateway_name: Optional[str] = None,
+    gateway_version: Optional[str] = None,
 ) -> dict[str, Any]:
     """Walk violations of type ``pii``, extract per-entity detail and emit
     ``enkrypt.guardrail.pii_entity`` (one increment per entity, attribute
@@ -849,13 +867,19 @@ def record_pii_entities(
         if counter is not None:
             for t in types:
                 _add(counter, 1, {
-                    "entity_type":    t,
-                    "direction":      direction,
-                    "server_name":    server_name,
-                    "tool_name":      tool_name,
-                    "guardrail_name": guardrail_name,
-                    "user_id":        user_id,
-                    "project_id":     project_id,
+                    "entity_type":      t,
+                    "direction":        direction,
+                    "server_name":      server_name,
+                    "tool_name":        tool_name,
+                    "guardrail_name":   guardrail_name,
+                    "user_id":          user_id,
+                    "user_email":       user_email,
+                    "project_id":       project_id,
+                    "project_name":     project_name,
+                    "project_registry": project_registry,
+                    "org_id":           org_id,
+                    "gateway_name":     gateway_name,
+                    "gateway_version":  gateway_version,
                 })
 
     return {
@@ -872,7 +896,13 @@ def record_toxicity_subtypes(
     tool_name: str = "",
     guardrail_name: Optional[str] = None,
     user_id: Optional[str] = None,
+    user_email: Optional[str] = None,
     project_id: Optional[str] = None,
+    project_name: Optional[str] = None,
+    project_registry: Optional[str] = None,
+    org_id: Optional[str] = None,
+    gateway_name: Optional[str] = None,
+    gateway_version: Optional[str] = None,
     threshold: float = 0.5,
 ) -> dict[str, Any]:
     """Walk violations of type ``toxicity`` (or ``toxic_content``), extract
@@ -918,14 +948,20 @@ def record_toxicity_subtypes(
         if counter is not None:
             for subtype, score in triggered:
                 _add(counter, 1, {
-                    "subtype":        subtype,
-                    "score_bucket":   _score_bucket(score),
-                    "direction":      direction,
-                    "server_name":    server_name,
-                    "tool_name":      tool_name,
-                    "guardrail_name": guardrail_name,
-                    "user_id":        user_id,
-                    "project_id":     project_id,
+                    "subtype":          subtype,
+                    "score_bucket":     _score_bucket(score),
+                    "direction":        direction,
+                    "server_name":      server_name,
+                    "tool_name":        tool_name,
+                    "guardrail_name":   guardrail_name,
+                    "user_id":          user_id,
+                    "user_email":       user_email,
+                    "project_id":       project_id,
+                    "project_name":     project_name,
+                    "project_registry": project_registry,
+                    "org_id":           org_id,
+                    "gateway_name":     gateway_name,
+                    "gateway_version":  gateway_version,
                 })
 
     subtypes_unique = sorted({s for s, _ in triggered_all})
