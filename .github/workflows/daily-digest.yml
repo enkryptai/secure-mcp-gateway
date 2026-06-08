@@ -1,4 +1,4 @@
-name: Daily Signups Digest
+name: Daily Digest
 
 on:
   schedule:
@@ -32,14 +32,19 @@ jobs:
       - name: Install deps
         run: pip install --no-cache-dir 'httpx>=0.27,<1'
 
-      - name: Run daily signups digest
+      - name: Run daily digest
         env:
+          # Signups section (Supabase)
           SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Top users section (OpenSearch via Dashboards console proxy)
+          OPENSEARCH_URL:            ${{ secrets.OPENSEARCH_URL }}
+          OPENSEARCH_AUTH:           ${{ secrets.OPENSEARCH_AUTH }}
+          # Output
           SLACK_WEBHOOK_URL:         ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           ARGS="--hours ${{ inputs.hours || '24' }}"
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             ARGS="$ARGS --dry-run"
           fi
-          python scripts/daily_signups/daily_signups.py $ARGS
+          python scripts/daily_digest/daily_digest.py $ARGS
