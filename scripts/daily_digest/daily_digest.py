@@ -2,8 +2,11 @@
 
 Posts a single Block Kit message to Slack with multiple sections:
 
-  1. Signups   (Supabase, via PostgREST view public.recent_signups)
-  2. Top users (OpenSearch ss4o_metrics-gateway*, top 10 by enkrypt.tool.calls)
+  1. Signups          (Supabase, via PostgREST view public.recent_signups)
+  2. Top users        (OpenSearch ss4o_metrics-gateway*, top 10 by
+                       enkrypt.tool.calls)
+  3. Errors & blocks  (OpenSearch ss4o_metrics-gateway*, enkrypt.guardrail.blocks
+                       broken down by violation_type, with top-blocked user)
 
 Each section is independent. If one section's backend is unreachable or
 misconfigured, that section is rendered as an error block and the rest of
@@ -177,6 +180,91 @@ def render_top_users_blocks(users: list[dict[str, Any]], hours: int) -> list[dic
 
 
 # ---------------------------------------------------------------------------
+# Section 3: Errors & blocks (OpenSearch enkrypt.guardrail.blocks)
+# ---------------------------------------------------------------------------
+
+# enkrypt.guardrail.blocks is the canonical metric for "something the gateway
+# refused to let through". Breakdown by violation_type plus a top-1 nested
+# sub-aggregation gives "what kinds of blocks + who hit them most" in one
+# request -- the actionable view for an on-call eyeball.
+
+def fetch_errors(hours: int) -> dict[str, Any]:
+    query = {
+        "size": 0,
+        "query": {
+            "bool": {
+                "filter": [
+                    {"term": {"name": "enkrypt.guardrail.blocks"}},
+                    {"term": {"aggregationTemporality": "AGGREGATION_TEMPORALITY_DELTA"}},
+                    {"range": {"time": {"gte": f"now-{hours}h"}}},
+                ]
+            }
+        },
+        "aggs": {
+            "total": {"sum": {"field": "value"}},
+            "by_violation": {
+                "terms": {
+                    "field": "metric.attributes.violation_type",
+                    "size": 10,
+                    "missing": "(unknown)",
+                    "order": {"count": "desc"},
+                },
+                "aggs": {
+                    "count": {"sum": {"field": "value"}},
+                    "top_user": {
+                        "terms": {
+                            "field": "metric.attributes.user_email",
+                            "size": 1,
+                            "missing": "(no user)",
+                            "order": {"n": "desc"},
+                        },
+                        "aggs": {"n": {"sum": {"field": "value"}}},
+                    },
+                },
+            },
+        },
+    }
+    resp = _opensearch_search("ss4o_metrics-gateway*/_search", query)
+    aggs = resp.get("aggregations") or {}
+    total = int((aggs.get("total") or {}).get("value", 0) or 0)
+    rows: list[dict[str, Any]] = []
+    for b in (aggs.get("by_violation") or {}).get("buckets", []):
+        top_user_buckets = (b.get("top_user") or {}).get("buckets", []) or [{}]
+        top = top_user_buckets[0]
+        rows.append(
+            {
+                "violation": b["key"],
+                "count": int(b["count"]["value"]),
+                "top_user_email": top.get("key", "(no user)"),
+                "top_user_count": int((top.get("n") or {}).get("value", 0) or 0),
+            }
+        )
+    return {"total": total, "by_violation": rows}
+
+
+def render_errors_blocks(errors: dict[str, Any], hours: int) -> list[dict[str, Any]]:
+    total = errors.get("total", 0)
+    rows = errors.get("by_violation") or []
+    header = f"*:warning: Errors & blocks (last {hours}h)*"
+    if total == 0:
+        return [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"{header}\n_No guardrail blocks in the window._"},
+            }
+        ]
+    summary = f"{header} — *{total}* total"
+    lines = []
+    for r in rows:
+        line = f"  • `{r['violation']}`  *{r['count']}*"
+        if r["top_user_count"] > 0:
+            line += f"   (top: `{r['top_user_email']}` ×{r['top_user_count']})"
+        lines.append(line)
+    body = "\n".join(lines)
+    return [{"type": "section", "text": {"type": "mrkdwn", "text": f"{summary}\n{body}"}}]
+
+
+# ---------------------------------------------------------------------------
 # Section error block (used when a section's backend fails)
 # ---------------------------------------------------------------------------
 
@@ -218,6 +306,14 @@ def build_payload(hours: int) -> dict[str, Any]:
         blocks += render_top_users_blocks(users, hours)
     except Exception as e:
         blocks += render_error_block("Top users", e)
+
+    blocks.append({"type": "divider"})
+
+    try:
+        errors = fetch_errors(hours)
+        blocks += render_errors_blocks(errors, hours)
+    except Exception as e:
+        blocks += render_error_block("Errors & blocks", e)
 
     return {"text": header_text, "blocks": blocks}
 
