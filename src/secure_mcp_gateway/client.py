@@ -14,11 +14,18 @@ from mcp import ClientSession, StdioServerParameters
 # https://github.com/modelcontextprotocol/python-sdk/blob/main/src/mcp/client/stdio/__init__.py
 from mcp.client.stdio import stdio_client
 
-from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params, is_url_config
+from secure_mcp_gateway.plugins.sandbox.server_params import (
+    build_server_params,
+    is_url_config,
+)
 from secure_mcp_gateway.services.oauth.integration import (
     inject_oauth_into_args,
     inject_oauth_into_env,
     prepare_oauth_for_server,
+)
+from secure_mcp_gateway.services.oauth.local_credentials import (
+    ensure_google_credentials_fresh,
+    is_local_credentials_file_mode,
 )
 from secure_mcp_gateway.utils import (
     get_cache_db,
@@ -209,28 +216,45 @@ async def get_server_metadata_only(server_name, gateway_config=None):
     project_id = gateway_config.get("project_id")
     mcp_config_id = gateway_config.get("mcp_config_id")
 
-    oauth_data, oauth_error = await prepare_oauth_for_server(
-        server_name=server_name,
-        server_entry=server_entry,
-        config_id=mcp_config_id,
-        project_id=project_id,
-    )
-
-    if oauth_error:
-        logger.error(
-            f"[get_server_metadata_only] OAuth preparation failed for {server_name}: {oauth_error}"
-        )
-    elif oauth_data:
+    if is_local_credentials_file_mode(server_entry):
+        # File-delivery OAuth server (see forward_tool_call): skip the
+        # env-injection / browser path; ensure the materialized credentials are
+        # present and fresh (gateway-owned refresh) before spawning.
+        ok, cred_err = await ensure_google_credentials_fresh(server_entry)
+        if not ok:
+            raise ValueError(
+                f"OAuth not ready for server '{server_name}': {cred_err}. Run the one-time "
+                f"authorization -> call the enkrypt_oauth_authorize tool (or POST "
+                f'/api/v1/oauth/authorize with {{"server_name": "{server_name}"}} and the '
+                f"apikey header), open the returned auth_url, approve, then retry."
+            )
         logger.info(
-            f"[get_server_metadata_only] OAuth configured for {server_name}, injecting credentials"
+            f"[get_server_metadata_only] {server_name} uses google_credentials_file OAuth; "
+            f"credentials ready, skipping token injection"
         )
-        if is_url_server:
-            headers = config.setdefault("headers", {})
-            if oauth_data.get("access_token"):
-                headers["Authorization"] = f"Bearer {oauth_data['access_token']}"
-        else:
-            env = inject_oauth_into_env(env, oauth_data)
-            command_args = inject_oauth_into_args(command_args, oauth_data)
+    else:
+        oauth_data, oauth_error = await prepare_oauth_for_server(
+            server_name=server_name,
+            server_entry=server_entry,
+            config_id=mcp_config_id,
+            project_id=project_id,
+        )
+
+        if oauth_error:
+            logger.error(
+                f"[get_server_metadata_only] OAuth preparation failed for {server_name}: {oauth_error}"
+            )
+        elif oauth_data:
+            logger.info(
+                f"[get_server_metadata_only] OAuth configured for {server_name}, injecting credentials"
+            )
+            if is_url_server:
+                headers = config.setdefault("headers", {})
+                if oauth_data.get("access_token"):
+                    headers["Authorization"] = f"Bearer {oauth_data['access_token']}"
+            else:
+                env = inject_oauth_into_env(env, oauth_data)
+                command_args = inject_oauth_into_args(command_args, oauth_data)
 
     if is_debug_log_level():
         if is_url_server:
@@ -243,9 +267,10 @@ async def get_server_metadata_only(server_name, gateway_config=None):
         masked_env = mask_sensitive_data(env or {}) if env else None
         logger.debug(f"[get_server_metadata_only] Env: {masked_env}")
 
-    async with build_server_params(
-        server_entry, command, command_args, env
-    ) as (read, write):
+    async with build_server_params(server_entry, command, command_args, env) as (
+        read,
+        write,
+    ):
         async with ClientSession(read, write) as session:
             # Initialize and capture server metadata ONLY
             init_result = await session.initialize()
@@ -335,28 +360,50 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
     project_id = gateway_config.get("project_id")
     mcp_config_id = gateway_config.get("mcp_config_id")
 
-    oauth_data, oauth_error = await prepare_oauth_for_server(
-        server_name=server_name,
-        server_entry=server_entry,
-        config_id=mcp_config_id,
-        project_id=project_id,
-    )
-
-    if oauth_error:
-        logger.error(
-            f"[forward_tool_call] OAuth preparation failed for {server_name}: {oauth_error}"
-        )
-    elif oauth_data:
+    if is_local_credentials_file_mode(server_entry):
+        # This server (e.g. google-sheets-mcp) consumes a credentials FILE that
+        # it loads on startup; it ignores injected env tokens and would try to
+        # open its own browser flow if the file is missing -- which hangs inside
+        # Docker. The gateway materializes that file out-of-band (authorize +
+        # /oauth2callback) and proactively refreshes the access token here (the
+        # server can't self-refresh on reload). So we do NOT run the
+        # env-injection / browser path; we ensure the credentials are fresh and
+        # fail fast with actionable guidance if not yet authorized.
+        ok, cred_err = await ensure_google_credentials_fresh(server_entry)
+        if not ok:
+            raise ValueError(
+                f"OAuth not ready for server '{server_name}': {cred_err}. Run the one-time "
+                f"authorization -> call the enkrypt_oauth_authorize tool (or POST "
+                f'/api/v1/oauth/authorize with {{"server_name": "{server_name}"}} and the '
+                f"apikey header), open the returned auth_url, approve, then retry."
+            )
         logger.info(
-            f"[forward_tool_call] OAuth configured for {server_name}, injecting credentials"
+            f"[forward_tool_call] {server_name} uses google_credentials_file OAuth; "
+            f"credentials ready, skipping token injection"
         )
-        if is_url_server:
-            headers = config.setdefault("headers", {})
-            if oauth_data.get("access_token"):
-                headers["Authorization"] = f"Bearer {oauth_data['access_token']}"
-        else:
-            env = inject_oauth_into_env(env, oauth_data)
-            command_args = inject_oauth_into_args(command_args, oauth_data)
+    else:
+        oauth_data, oauth_error = await prepare_oauth_for_server(
+            server_name=server_name,
+            server_entry=server_entry,
+            config_id=mcp_config_id,
+            project_id=project_id,
+        )
+
+        if oauth_error:
+            logger.error(
+                f"[forward_tool_call] OAuth preparation failed for {server_name}: {oauth_error}"
+            )
+        elif oauth_data:
+            logger.info(
+                f"[forward_tool_call] OAuth configured for {server_name}, injecting credentials"
+            )
+            if is_url_server:
+                headers = config.setdefault("headers", {})
+                if oauth_data.get("access_token"):
+                    headers["Authorization"] = f"Bearer {oauth_data['access_token']}"
+            else:
+                env = inject_oauth_into_env(env, oauth_data)
+                command_args = inject_oauth_into_args(command_args, oauth_data)
 
     if is_debug_log_level():
         if is_url_server:
@@ -369,9 +416,10 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
         masked_env = mask_sensitive_data(env or {}) if env else None
         logger.debug(f"[forward_tool_call] Env: {masked_env}")
 
-    async with build_server_params(
-        server_entry, command, command_args, env
-    ) as (read, write):
+    async with build_server_params(server_entry, command, command_args, env) as (
+        read,
+        write,
+    ):
         async with ClientSession(read, write) as session:
             # Initialize and capture server metadata
             init_result = await session.initialize()
@@ -899,8 +947,7 @@ def clear_gateway_config_cache(cache_client, id, gateway_key):
         gateway_key_hash = get_hashed_key(gateway_key)
         if cache_client and cache_client.exists(gateway_key_hash):
             cache_client.delete(gateway_key_hash)
-        if gateway_key_hash in local_key_map:
-            del local_key_map[gateway_key_hash]
+        local_key_map.pop(gateway_key_hash, None)
 
     # 4. Remove gateway/user from gateway/user registry (local and external cache)
     if cache_client:
@@ -965,7 +1012,9 @@ def get_cache_statistics(cache_client):
     }
 
 
-def flush_all_gateway_config_cache(cache_client, include_tool_cache: bool = False) -> dict:
+def flush_all_gateway_config_cache(
+    cache_client, include_tool_cache: bool = False
+) -> dict:
     """Clear every gateway-config cache entry across local + Redis backends.
 
     Acquires ``local_cache_lock`` while mutating ``local_gateway_config_registry``

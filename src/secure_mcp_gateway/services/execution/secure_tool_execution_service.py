@@ -26,9 +26,9 @@ from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
     record_guardrail_violations,
     record_pii_entities,
     record_pii_redaction,
-    record_toxicity_subtypes,
     record_tool_call_outcome,
     record_tool_permission_denied,
+    record_toxicity_subtypes,
     start_request_timings,
 )
 from secure_mcp_gateway.services.cache.cache_service import cache_service
@@ -38,7 +38,6 @@ from secure_mcp_gateway.services.execution.execution_utils import (
 from secure_mcp_gateway.services.execution.tool_execution_service import (
     ToolExecutionService,
 )
-from secure_mcp_gateway.plugins.sandbox.server_params import is_url_config
 from secure_mcp_gateway.services.session.session_pool import get_session_pool
 
 # Get tracer from telemetry manager
@@ -128,7 +127,9 @@ class SecureToolExecutionService:
 
         with tracer.start_as_current_span(SpanNames.TOOL_EXECUTE) as main_span:
             # Set main span attributes
-            set_span_attr_with_legacy(main_span, SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.SERVER_NAME, server_name
+            )
             main_span.set_attribute(SpanAttributes.NUM_TOOL_CALLS, num_tool_calls)
             main_span.set_attribute(SpanAttributes.REQUEST_ID, ctx.request_id)
             main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
@@ -270,7 +271,9 @@ class SecureToolExecutionService:
         if not gateway_config:
             return
         set_span_attr_with_legacy(
-            span, SpanAttributes.USER_ID, gateway_config.get("user_id") or "not_provided"
+            span,
+            SpanAttributes.USER_ID,
+            gateway_config.get("user_id") or "not_provided",
         )
         span.set_attribute(
             SpanAttributes.USER_EMAIL, gateway_config.get("email") or "not_provided"
@@ -739,28 +742,54 @@ class SecureToolExecutionService:
         }
         set_request_identity_context(auth_context)
 
-        oauth_data, oauth_error = await prepare_oauth_for_server(
-            server_name=server_name,
-            server_entry=server_info,
-            config_id=mcp_config_id,
-            project_id=project_id,
+        from secure_mcp_gateway.services.oauth.local_credentials import (
+            ensure_google_credentials_fresh,
+            is_local_credentials_file_mode,
         )
 
-        if oauth_error:
-            logger.error(
-                f"[_execute_tools_with_guardrails] OAuth preparation failed for {server_name}: {oauth_error}"
-            )
-        elif oauth_data:
+        if is_local_credentials_file_mode(server_info):
+            # File-delivery OAuth (e.g. google-sheets-mcp): the gateway
+            # materialized the credentials file via the authorize flow and owns
+            # the token lifecycle. The server reads that file on startup, ignores
+            # injected env tokens, and can't self-refresh -- so skip the
+            # env-injection / browser path and proactively refresh the file here.
+            ok, cred_err = await ensure_google_credentials_fresh(server_info)
+            if not ok:
+                raise ValueError(
+                    f"OAuth not ready for server '{server_name}': {cred_err}. Run the one-time "
+                    f"authorization -> call the enkrypt_oauth_authorize tool (or POST "
+                    f'/api/v1/oauth/authorize with {{"server_name": "{server_name}"}} and the '
+                    f"apikey header), open the returned auth_url, approve, then retry."
+                )
             logger.info(
-                f"[_execute_tools_with_guardrails] OAuth configured for {server_name}, injecting credentials"
+                f"[_execute_tools_with_guardrails] {server_name} uses google_credentials_file "
+                f"OAuth; credentials ready, skipping token injection"
             )
-            if is_url_server:
-                headers = server_config.setdefault("headers", {})
-                if oauth_data.get("access_token"):
-                    headers["Authorization"] = f"Bearer {oauth_data['access_token']}"
-            else:
-                server_env = inject_oauth_into_env(server_env, oauth_data)
-                server_args = inject_oauth_into_args(server_args, oauth_data)
+        else:
+            oauth_data, oauth_error = await prepare_oauth_for_server(
+                server_name=server_name,
+                server_entry=server_info,
+                config_id=mcp_config_id,
+                project_id=project_id,
+            )
+
+            if oauth_error:
+                logger.error(
+                    f"[_execute_tools_with_guardrails] OAuth preparation failed for {server_name}: {oauth_error}"
+                )
+            elif oauth_data:
+                logger.info(
+                    f"[_execute_tools_with_guardrails] OAuth configured for {server_name}, injecting credentials"
+                )
+                if is_url_server:
+                    headers = server_config.setdefault("headers", {})
+                    if oauth_data.get("access_token"):
+                        headers["Authorization"] = (
+                            f"Bearer {oauth_data['access_token']}"
+                        )
+                else:
+                    server_env = inject_oauth_into_env(server_env, oauth_data)
+                    server_args = inject_oauth_into_args(server_args, oauth_data)
 
         logger.info(
             f"[secure_call_tools] Starting secure batch call for {len(tool_calls)} tools for server: {server_name}"
@@ -903,7 +932,9 @@ class SecureToolExecutionService:
                 tool_span, SpanAttributes.TOOL_NAME, tool_name or "unknown"
             )
             tool_span.set_attribute(SpanAttributes.TOOL_CALL_INDEX, i)
-            set_span_attr_with_legacy(tool_span, SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(
+                tool_span, SpanAttributes.SERVER_NAME, server_name
+            )
 
             # Push per-tool overlay so guardrail / cache / PII metric helpers
             # emitted under this tool call also tag with ``server_name`` and
@@ -1254,7 +1285,9 @@ class SecureToolExecutionService:
     def _validate_tool(self, tool_name, server_config_tools, tool_span):
         """Validate that the tool exists and is available."""
         with tracer.start_as_current_span(SpanNames.TOOL_VALIDATE) as validate_span:
-            set_span_attr_with_legacy(validate_span, SpanAttributes.TOOL_NAME, tool_name)
+            set_span_attr_with_legacy(
+                validate_span, SpanAttributes.TOOL_NAME, tool_name
+            )
 
             # Normalize possible formats and check membership
             if isinstance(server_config_tools, tuple) and len(server_config_tools) == 2:
@@ -1366,7 +1399,9 @@ class SecureToolExecutionService:
 
             if input_guardrail is None:
                 # Guardrails not enabled, proceed directly
-                async with phase_timer("execution_duration_ms", "tool_call_duration_ms"):
+                async with phase_timer(
+                    "execution_duration_ms", "tool_call_duration_ms"
+                ):
                     result = await self.tool_execution_service.call_tool(
                         session, tool_name, args
                     )
@@ -1402,11 +1437,16 @@ class SecureToolExecutionService:
                 # leg is masked by the overlap.  preprocess /
                 # execution_duration_ms remain 0 for this code path --
                 # they're not meaningful when phases overlap.
-                async with phase_timer("tool_call_duration_ms", "guardrail_duration_ms"):
+                async with phase_timer(
+                    "tool_call_duration_ms", "guardrail_duration_ms"
+                ):
                     # Start both guardrail and tool call tasks concurrently with timeouts
                     guardrail_task = asyncio.create_task(
                         timeout_manager.execute_with_timeout(
-                            input_guardrail.validate, "guardrail", f"guardrail_{i}", request
+                            input_guardrail.validate,
+                            "guardrail",
+                            f"guardrail_{i}",
+                            request,
                         )
                     )
                     tool_call_task = asyncio.create_task(
@@ -1432,11 +1472,15 @@ class SecureToolExecutionService:
                 # Sync path: input guardrail runs strictly BEFORE the
                 # tool call.  Time each separately; guardrail leg also
                 # contributes to guardrail_duration_ms.
-                async with phase_timer("preprocess_duration_ms", "guardrail_duration_ms"):
+                async with phase_timer(
+                    "preprocess_duration_ms", "guardrail_duration_ms"
+                ):
                     guardrail_response = await timeout_manager.execute_with_timeout(
                         input_guardrail.validate, "guardrail", f"guardrail_{i}", request
                     )
-                async with phase_timer("execution_duration_ms", "tool_call_duration_ms"):
+                async with phase_timer(
+                    "execution_duration_ms", "tool_call_duration_ms"
+                ):
                     result = await timeout_manager.execute_with_timeout(
                         self.tool_execution_service.call_tool,
                         "tool_execution",
@@ -1555,7 +1599,9 @@ class SecureToolExecutionService:
                     tool_name=tool_name,
                     **auth_context,
                 )
-                if pii_detail.get("pii_entities_count") or tox_detail.get("toxicity_subtypes"):
+                if pii_detail.get("pii_entities_count") or tox_detail.get(
+                    "toxicity_subtypes"
+                ):
                     logger.info(
                         "secure_tool_execution.guardrail.detector_detail",
                         extra=build_log_extra(
@@ -1863,7 +1909,9 @@ class SecureToolExecutionService:
                     tool_name=tool_name,
                     **auth_context,
                 )
-                if pii_detail.get("pii_entities_count") or tox_detail.get("toxicity_subtypes"):
+                if pii_detail.get("pii_entities_count") or tox_detail.get(
+                    "toxicity_subtypes"
+                ):
                     logger.info(
                         "secure_tool_execution.guardrail.detector_detail",
                         extra=build_log_extra(
@@ -2041,7 +2089,9 @@ class SecureToolExecutionService:
                     tool_name=tool_name,
                     **auth_context,
                 )
-                if pii_detail.get("pii_entities_count") or tox_detail.get("toxicity_subtypes"):
+                if pii_detail.get("pii_entities_count") or tox_detail.get(
+                    "toxicity_subtypes"
+                ):
                     logger.info(
                         "secure_tool_execution.guardrail.detector_detail",
                         extra=build_log_extra(
@@ -2197,7 +2247,11 @@ class SecureToolExecutionService:
         logger.info(
             "secure_tool_execution.execute_secure_tools.completed_successfully",
             extra=build_log_extra(
-                ctx, custom_id, server_name, tool_name=tool_name, **_timings,
+                ctx,
+                custom_id,
+                server_name,
+                tool_name=tool_name,
+                **_timings,
             ),
         )
         record_tool_call_outcome(server_name, tool_name, "success", **auth_context)

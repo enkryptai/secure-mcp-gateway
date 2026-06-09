@@ -211,14 +211,10 @@ logger.info(f"guardrail_url: {get_guardrail_base_url()}")
 logger.info(f"enkrypt_use_remote_mcp_config: {use_remote_mcp_config()}")
 if use_remote_mcp_config():
     logger.info(f"enkrypt_remote_mcp_gateway_name: {get_remote_gateway_name()}")
-    logger.info(
-        f"enkrypt_remote_mcp_gateway_version: {get_remote_gateway_version()}"
-    )
+    logger.info(f"enkrypt_remote_mcp_gateway_version: {get_remote_gateway_version()}")
 _gk = get_guardrail_api_key()
 logger.info(f"guardrail_api_key: {'****' + (_gk[-4:] if len(_gk) >= 4 else _gk)}")
-logger.info(
-    f"enkrypt_tool_cache_expiration: {cache_service.tool_cache_expiration}"
-)
+logger.info(f"enkrypt_tool_cache_expiration: {cache_service.tool_cache_expiration}")
 logger.info(
     f"enkrypt_gateway_cache_expiration: {cache_service.gateway_cache_expiration}"
 )
@@ -240,6 +236,7 @@ logger.info("--------------------------------")
 def get_auth_server_validate_url() -> str:
     """Return the upstream cloud auth validate URL using the latest config."""
     return f"{get_guardrail_base_url()}/mcp-gateway/get-gateway"
+
 
 # For Output Checks if they are enabled in output_guardrails_config['additional_config']
 RELEVANCY_THRESHOLD = 0.75
@@ -761,6 +758,52 @@ async def enkrypt_get_timeout_metrics(ctx: Context):
     }
 
 
+async def enkrypt_oauth_authorize(ctx: Context, server_name: str):
+    """Begin gateway-managed OAuth for a server that needs a one-time browser sign-in.
+
+    Use this for local servers whose OAuth is delivered via a credentials file
+    (e.g. a Google Sheets MCP) BEFORE calling their tools. The gateway builds a
+    Google/OAuth authorization URL (PKCE + offline access), reading the OAuth
+    client id/secret and the registered redirect from the server's mounted
+    gcp-oauth.keys.json when available, so no secrets need to be supplied.
+
+    Returns ``auth_url`` -- present it to the user to open and approve. If the
+    gateway runs on a host with a browser, it also auto-opens it. After approval
+    the gateway exchanges the code, writes the credentials file, and the
+    server's tools work normally. If a tool errors with "OAuth not completed",
+    call this first.
+    """
+    from secure_mcp_gateway.gateway_oauth_routes import begin_authorization
+    from secure_mcp_gateway.plugins.auth import get_auth_config_manager
+
+    manager = get_auth_config_manager()
+    auth_result = await manager.authenticate(ctx)
+    if not getattr(auth_result, "is_success", False):
+        return {
+            "status": "error",
+            "error": f"Authentication failed: {getattr(auth_result, 'message', 'unknown')}",
+        }
+
+    gateway_config = getattr(auth_result, "gateway_config", None) or {}
+    mcp_config = (
+        getattr(auth_result, "mcp_config", None)
+        or gateway_config.get("mcp_config", [])
+        or []
+    )
+    server_entry = next(
+        (s for s in mcp_config if s.get("server_name") == server_name), None
+    )
+    if not server_entry:
+        return {
+            "status": "error",
+            "error": f"Server '{server_name}' not found for this gateway",
+        }
+
+    result = await begin_authorization(server_name, server_entry, gateway_config)
+    result.pop("status_code", None)
+    return result
+
+
 # --- MCP Gateway Server ---
 
 GATEWAY_TOOLS = [
@@ -927,6 +970,24 @@ GATEWAY_TOOLS = [
             "openWorldHint": False,
         },
     ),
+    Tool.from_function(
+        fn=enkrypt_oauth_authorize,
+        name="enkrypt_oauth_authorize",
+        description=(
+            "Begin gateway-managed OAuth for a server that needs a one-time browser "
+            "sign-in (e.g. a Google Sheets MCP using a credentials file). Returns an "
+            "auth_url to present to the user; after they approve, the gateway stores the "
+            "credentials and the server's tools work. Call this first if a tool errors "
+            "with 'OAuth not completed'."
+        ),
+        annotations={
+            "title": "Authorize Server OAuth",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
+    ),
 ]
 
 
@@ -964,6 +1025,24 @@ try:
 except Exception as e:
     logger.error(
         "[gateway] failed to register gateway cache routes",
+        error=str(e),
+        exc_info=True,
+    )
+
+# Mount the gateway-owned OAuth authorization-code routes so the gateway can
+# drive a user browser sign-in for downstream servers and deliver the token
+# (e.g. materialize the credentials file for google-sheets-mcp). The callback
+# rides on this same port (already published, already bound 0.0.0.0), so no
+# extra ports are needed. See gateway_oauth_routes.py for the full rationale.
+try:
+    from secure_mcp_gateway.gateway_oauth_routes import (
+        register_gateway_oauth_routes,
+    )
+
+    register_gateway_oauth_routes(mcp)
+except Exception as e:
+    logger.error(
+        "[gateway] failed to register gateway oauth routes",
         error=str(e),
         exc_info=True,
     )
@@ -1006,11 +1085,10 @@ if __name__ == "__main__":
             from secure_mcp_gateway.gateway_playground_routes import (
                 register_gateway_playground_routes,
             )
+
             register_gateway_playground_routes(mcp)
         except Exception as _exc:
-            logger.warning(
-                f"[gateway] failed to register playground routes: {_exc}"
-            )
+            logger.warning(f"[gateway] failed to register playground routes: {_exc}")
         # --------------------------------------------
         # Transport mode: "streamable-http" (default) or "stdio"
         # Use MCP_TRANSPORT=stdio env var for stdio mode

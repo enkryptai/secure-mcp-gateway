@@ -13,7 +13,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
-from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params, is_url_config
+from secure_mcp_gateway.plugins.sandbox.server_params import (
+    build_server_params,
+    is_url_config,
+)
 from secure_mcp_gateway.utils import logger
 
 _SENTINEL = object()
@@ -22,7 +25,7 @@ _SENTINEL = object()
 @dataclass
 class _CallRequest:
     tool_name: str
-    args: Dict[str, Any]
+    args: dict[str, Any]
     future: asyncio.Future
 
 
@@ -45,7 +48,7 @@ class PooledSession:
         self._server_info: Any = None
 
         self._queue: asyncio.Queue = asyncio.Queue()
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         self._ready = asyncio.Event()
         self._closed = False
         self._use_lock = asyncio.Lock()
@@ -59,8 +62,8 @@ class PooledSession:
 
     async def start(
         self,
-        server_config: Dict[str, Any],
-        server_entry: Dict[str, Any],
+        server_config: dict[str, Any],
+        server_entry: dict[str, Any],
     ) -> None:
         """Launch the background worker and wait until the session is ready."""
         self._task = asyncio.create_task(
@@ -69,11 +72,9 @@ class PooledSession:
         )
         await self._ready.wait()
         if self._closed:
-            raise RuntimeError(
-                f"Session for {self.server_name} failed to start"
-            )
+            raise RuntimeError(f"Session for {self.server_name} failed to start")
 
-    async def call_tool(self, tool_name: str, *, arguments: Dict[str, Any]) -> Any:
+    async def call_tool(self, tool_name: str, *, arguments: dict[str, Any]) -> Any:
         """Proxy a tool call to the background worker."""
         if self._closed:
             raise RuntimeError("Session is closed")
@@ -104,8 +105,8 @@ class PooledSession:
 
     async def _worker(
         self,
-        server_config: Dict[str, Any],
-        server_entry: Dict[str, Any],
+        server_config: dict[str, Any],
+        server_entry: dict[str, Any],
     ) -> None:
         """Background task that owns the ClientSession and its cancel scopes."""
         from mcp import ClientSession
@@ -116,7 +117,9 @@ class PooledSession:
         env: dict | None = server_config.get("env")
 
         effective_entry = server_entry
-        if is_url and server_entry.get("config", {}).get("url") != server_config.get("url"):
+        if is_url and server_entry.get("config", {}).get("url") != server_config.get(
+            "url"
+        ):
             effective_entry = {**server_entry, "config": server_config}
 
         try:
@@ -129,9 +132,11 @@ class PooledSession:
             from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
                 phase_timer,
             )
-            async with build_server_params(
-                effective_entry, command, args, env
-            ) as (read, write):
+
+            async with build_server_params(effective_entry, command, args, env) as (
+                read,
+                write,
+            ):
                 async with ClientSession(read, write) as session:
                     async with phase_timer("mcp_handshake_duration_ms"):
                         init_result = await session.initialize()
@@ -170,6 +175,7 @@ class PooledSession:
                                 from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
                                     record_transport_error,
                                 )
+
                                 record_transport_error(
                                     transport="http" if is_url else "stdio",
                                     error_kind=type(exc).__name__,
@@ -181,9 +187,7 @@ class PooledSession:
                             if not req.future.done():
                                 req.future.set_exception(exc)
         except Exception as exc:
-            logger.error(
-                f"[SessionPool] Worker for {self.server_name} crashed: {exc}"
-            )
+            logger.error(f"[SessionPool] Worker for {self.server_name} crashed: {exc}")
             # Tier-1 metric: enkrypt.transport.errors.  The outer except
             # catches failures from build_server_params / session.initialize
             # which are *only* transport-layer problems (the wire couldn't
@@ -192,6 +196,7 @@ class PooledSession:
                 from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
                     record_transport_error,
                 )
+
                 record_transport_error(
                     transport="http" if is_url else "stdio",
                     error_kind=type(exc).__name__,
@@ -240,22 +245,26 @@ class SessionPool:
         # return a useful error to the caller within their window than
         # silently hang.
         acquire_timeout: float = 30.0,
-        # Bound how long a FRESH MCP HTTP handshake can hang (no prior
+        # Bound how long establishing a FRESH session can hang (no prior
         # session in the pool, so PooledSession.start() runs from scratch).
-        # If the upstream is dead or NAT silently dropped the SYN/SYN-ACK
-        # exchange, this would otherwise wait on the kernel's TCP retransmit
-        # ceiling (~15 minutes). 15s is comfortable headroom for a healthy
-        # handshake (sub-second typically) but short enough that callers
-        # don't lose patience.
-        connect_timeout: float = 15.0,
+        # For URL servers this is the HTTP handshake; if the upstream is dead
+        # or NAT silently dropped the SYN/SYN-ACK exchange, this would
+        # otherwise wait on the kernel's TCP retransmit ceiling (~15 minutes).
+        # For STDIO servers this also covers process spawn + cold runtime
+        # startup + the MCP initialize handshake. Heavy local servers
+        # (e.g. a Node server that ``require``s the large ``googleapis`` lib,
+        # or cold ``uvx``/``npx`` first runs) can take 10-30s on first spawn,
+        # so the default is generous. Tune via
+        # ``common_mcp_gateway_config.session_pool_connect_timeout``.
+        connect_timeout: float = 60.0,
     ) -> None:
         self._ttl = ttl_seconds
         self._enabled = enabled
         self._acquire_timeout = acquire_timeout
         self._connect_timeout = connect_timeout
-        self._pool: Dict[Tuple[str, str], PooledSession] = {}
+        self._pool: dict[tuple[str, str], PooledSession] = {}
         self._pool_lock = asyncio.Lock()
-        self._reaper_task: Optional[asyncio.Task] = None
+        self._reaper_task: asyncio.Task | None = None
 
     @property
     def enabled(self) -> bool:
@@ -294,9 +303,9 @@ class SessionPool:
         self,
         pool_key: str,
         server_name: str,
-        server_config: Dict[str, Any],
-        server_entry: Dict[str, Any],
-    ) -> Tuple[PooledSession, bool]:
+        server_config: dict[str, Any],
+        server_entry: dict[str, Any],
+    ) -> tuple[PooledSession, bool]:
         """Return a ``(PooledSession, reused)`` tuple.
 
         If pooling is disabled or no cached session exists, a new session
@@ -385,6 +394,7 @@ class SessionPool:
                         from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
                             record_session_active,
                         )
+
                         record_session_active(-1, server_name=server_name)
                     except Exception:
                         pass
@@ -394,6 +404,7 @@ class SessionPool:
                     from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
                         record_session_active,
                     )
+
                     record_session_active(+1, server_name=server_name)
                 except Exception:
                     pass
@@ -430,6 +441,7 @@ class SessionPool:
                 from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
                     record_session_active,
                 )
+
                 record_session_active(-1, server_name=server_name)
             except Exception:
                 pass
@@ -452,12 +464,13 @@ class SessionPool:
                 from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
                     record_session_active,
                 )
+
                 record_session_active(-1, server_name=entry.server_name)
             except Exception:
                 pass
         logger.info(f"[SessionPool] Closed {len(entries)} pooled session(s)")
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         return {
             "enabled": self._enabled,
             "ttl_seconds": self._ttl,
@@ -485,7 +498,7 @@ class SessionPool:
 
     async def _reap(self) -> None:
         now = time.monotonic()
-        to_evict: list[Tuple[str, str]] = []
+        to_evict: list[tuple[str, str]] = []
         async with self._pool_lock:
             for key, entry in list(self._pool.items()):
                 if entry._use_lock.locked():
@@ -501,6 +514,7 @@ class SessionPool:
                     from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
                         record_session_active,
                     )
+
                     record_session_active(-1, server_name=entry.server_name)
                 except Exception:
                     pass
@@ -512,14 +526,19 @@ class SessionPool:
 
 # -- singleton ---------------------------------------------------------------
 
-_pool: Optional[SessionPool] = None
+_pool: SessionPool | None = None
 
 
-def initialize_session_pool(common_config: Dict[str, Any]) -> SessionPool:
+def initialize_session_pool(common_config: dict[str, Any]) -> SessionPool:
     global _pool
     ttl = common_config.get("session_pool_ttl", 300)
     enabled = common_config.get("session_pool_enabled", True)
-    _pool = SessionPool(ttl_seconds=float(ttl), enabled=enabled)
+    connect_timeout = common_config.get("session_pool_connect_timeout", 60.0)
+    _pool = SessionPool(
+        ttl_seconds=float(ttl),
+        enabled=enabled,
+        connect_timeout=float(connect_timeout),
+    )
     _pool.start_reaper()
     return _pool
 
@@ -532,7 +551,7 @@ def get_session_pool() -> SessionPool:
     return _pool
 
 
-def reset_session_pool(common_config: Optional[Dict[str, Any]] = None) -> SessionPool:
+def reset_session_pool(common_config: dict[str, Any] | None = None) -> SessionPool:
     """Replace the singleton session pool with a freshly built one.
 
     Safe to call from any thread (including the config watcher daemon
@@ -552,7 +571,12 @@ def reset_session_pool(common_config: Optional[Dict[str, Any]] = None) -> Sessio
 
     ttl = common_config.get("session_pool_ttl", 300)
     enabled = common_config.get("session_pool_enabled", True)
-    _pool = SessionPool(ttl_seconds=float(ttl), enabled=enabled)
+    connect_timeout = common_config.get("session_pool_connect_timeout", 60.0)
+    _pool = SessionPool(
+        ttl_seconds=float(ttl),
+        enabled=enabled,
+        connect_timeout=float(connect_timeout),
+    )
     _pool.start_reaper()
 
     if old_pool is not None:
