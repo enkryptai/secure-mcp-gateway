@@ -182,10 +182,7 @@ def is_docker():
 
     # cgroups v2 unified hierarchy: container PID 1 shows "0::/" with empty
     # path; host PID 1 shows a non-empty scope/slice path.
-    if cgroup_text.strip() == "0::/":
-        return True
-
-    return False
+    return cgroup_text.strip() == "0::/"
 
 
 # Config cache with file modification time tracking for hot-reload support
@@ -418,6 +415,61 @@ def async_output_guardrails_enabled() -> bool:
     return bool(
         get_common_config().get("enkrypt_async_output_guardrails_enabled", False)
     )
+
+
+# Path the gateway serves the OAuth authorization-code redirect on (see
+# gateway_oauth_routes.py). Single source of truth for both the route
+# registration and the redirect_uri the gateway advertises to the IdP.
+GATEWAY_OAUTH_CALLBACK_PATH = "/oauth2callback"
+
+
+def get_gateway_base_url() -> str | None:
+    """Public, externally-reachable base URL of THIS gateway (``scheme://host[:port]``).
+
+    Used to build the OAuth redirect_uri for the gateway-managed authorization-code
+    flow so a *remotely deployed* gateway (e.g. ``https://mcp.dev.enkryptai.com``)
+    advertises its own public callback to the IdP instead of
+    ``http://localhost:8000/...``.
+
+    Priority: env ``ENKRYPT_GATEWAY_BASE_URL`` >
+    ``common_mcp_gateway_config.enkrypt_gateway_base_url``. Any path/trailing
+    slash is stripped (only scheme+host[:port] is kept). Returns ``None`` when
+    unset, in which case callers fall back to the keyfile / request-derived
+    redirect (preserving the local-loopback behavior).
+    """
+    raw = (
+        os.environ.get("ENKRYPT_GATEWAY_BASE_URL")
+        or get_common_config().get("enkrypt_gateway_base_url")
+        or ""
+    ).strip()
+    return raw.rstrip("/") or None
+
+
+def get_gateway_oauth_redirect_uri() -> str | None:
+    """Resolve the OAuth ``redirect_uri`` this gateway should advertise to the IdP.
+
+    Priority:
+      1. an explicit full redirect URI -- env
+         ``ENKRYPT_GATEWAY_OAUTH_REDIRECT_URI`` /
+         ``common_mcp_gateway_config.enkrypt_oauth_redirect_uri`` (use this when
+         the callback path differs from the default)
+      2. ``<get_gateway_base_url()>`` + ``/oauth2callback``
+
+    Returns ``None`` when neither an explicit redirect nor a base URL is
+    configured. Whatever this returns MUST be registered with the IdP (e.g. as
+    an Authorized redirect URI in Google Cloud Console).
+    """
+    explicit = (
+        os.environ.get("ENKRYPT_GATEWAY_OAUTH_REDIRECT_URI")
+        or get_common_config().get("enkrypt_oauth_redirect_uri")
+        or ""
+    ).strip()
+    if explicit:
+        return explicit.rstrip("/") if explicit.endswith("/") else explicit
+    base = get_gateway_base_url()
+    if base:
+        return f"{base}{GATEWAY_OAUTH_CALLBACK_PATH}"
+    return None
 
 
 def get_telemetry_endpoint() -> str:
@@ -673,9 +725,7 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
         user_id = request_identity.get("user_id") or user_id
         project_name = request_identity.get("project_name") or project_name
         email = (
-            request_identity.get("user_email")
-            or request_identity.get("email")
-            or email
+            request_identity.get("user_email") or request_identity.get("email") or email
         )
         mcp_config_id = request_identity.get("mcp_config_id") or mcp_config_id
         org_id = request_identity.get("org_id") or org_id
@@ -695,18 +745,18 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
     )
 
     enriched = {
-        CANONICAL_ATTR_KEYS["custom_id"]:       custom_id or "",
-        CANONICAL_ATTR_KEYS["server_name"]:     server_name or "",
-        CANONICAL_ATTR_KEYS["org_id"]:          org_id or "",
-        CANONICAL_ATTR_KEYS["project_id"]:      project_id or "",
-        CANONICAL_ATTR_KEYS["project_name"]:    project_name or "",
-        CANONICAL_ATTR_KEYS["registry_name"]:   registry_name or "",
-        CANONICAL_ATTR_KEYS["user_id"]:         user_id or "",
-        CANONICAL_ATTR_KEYS["email"]:           email or "",
-        CANONICAL_ATTR_KEYS["mcp_config_id"]:   mcp_config_id or "",
-        CANONICAL_ATTR_KEYS["gateway_name"]:    gateway_name or "",
+        CANONICAL_ATTR_KEYS["custom_id"]: custom_id or "",
+        CANONICAL_ATTR_KEYS["server_name"]: server_name or "",
+        CANONICAL_ATTR_KEYS["org_id"]: org_id or "",
+        CANONICAL_ATTR_KEYS["project_id"]: project_id or "",
+        CANONICAL_ATTR_KEYS["project_name"]: project_name or "",
+        CANONICAL_ATTR_KEYS["registry_name"]: registry_name or "",
+        CANONICAL_ATTR_KEYS["user_id"]: user_id or "",
+        CANONICAL_ATTR_KEYS["email"]: email or "",
+        CANONICAL_ATTR_KEYS["mcp_config_id"]: mcp_config_id or "",
+        CANONICAL_ATTR_KEYS["gateway_name"]: gateway_name or "",
         CANONICAL_ATTR_KEYS["gateway_version"]: gateway_version or "",
-        CANONICAL_ATTR_KEYS["error"]:           error or "",
+        CANONICAL_ATTR_KEYS["error"]: error or "",
         **canonical_kwargs,
     }
     return add_legacy_filter_aliases(enriched)

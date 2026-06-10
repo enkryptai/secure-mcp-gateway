@@ -31,6 +31,7 @@ from __future__ import annotations
 import threading
 import time
 from typing import TYPE_CHECKING, Any, Optional
+from urllib.parse import urlparse
 
 from starlette.responses import HTMLResponse, JSONResponse
 
@@ -41,7 +42,12 @@ from secure_mcp_gateway.services.oauth.local_credentials import (
 )
 from secure_mcp_gateway.services.oauth.models import OAuthConfig
 from secure_mcp_gateway.services.oauth.oauth_service import get_oauth_service
-from secure_mcp_gateway.utils import logger, mask_key
+from secure_mcp_gateway.utils import (
+    GATEWAY_OAUTH_CALLBACK_PATH,
+    get_gateway_base_url,
+    get_gateway_oauth_redirect_uri,
+    logger,
+)
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -49,6 +55,45 @@ if TYPE_CHECKING:
 
 # State TTL for a pending authorization flow (seconds).
 _STATE_TTL_SECONDS = 600
+
+# Well-known OAuth redirect/callback paths the gateway serves (all -> the same
+# _callback_handler). OAuth 2.0/2.1 do NOT standardize a callback path -- the
+# redirect_uri is opaque to the spec and the only rule is exact-match
+# registration at the IdP -- so we serve the common conventions as aliases so
+# whichever path an operator registers "just works". The default the gateway
+# *advertises* stays GATEWAY_OAUTH_CALLBACK_PATH ("/oauth2callback", matching
+# Google's @google-cloud/local-auth convention); the others are accept-only
+# aliases. Serving the handler on multiple paths is safe: it is idempotent and
+# protected by one-time state + PKCE, not by the path. The gateway ROOT ("/") is
+# registered separately (it doubles as the loopback redirect + a landing page).
+_CALLBACK_PATHS = (
+    GATEWAY_OAUTH_CALLBACK_PATH,  # "/oauth2callback" -- canonical / advertised default
+    "/oauth/callback",
+    "/oauth2/callback",
+    "/callback",
+    "/auth/callback",
+)
+
+
+def _resolve_callback_paths(configured_redirect: str | None) -> list[str]:
+    """GET paths to serve the callback handler on.
+
+    The well-known aliases (``_CALLBACK_PATHS``) PLUS the path of the configured
+    redirect, so that whatever the gateway *advertises*
+    (``ENKRYPT_GATEWAY_OAUTH_REDIRECT_URI`` / a custom path) is guaranteed to be
+    *served* -- closing the gap where a custom redirect path would otherwise 404.
+    Order-preserving and de-duplicated. ``/`` is handled by the caller.
+    """
+    paths = list(_CALLBACK_PATHS)
+    if configured_redirect:
+        try:
+            configured_path = urlparse(configured_redirect).path or "/"
+        except Exception:
+            configured_path = ""
+        if configured_path and configured_path != "/" and configured_path not in paths:
+            paths.append(configured_path)
+    return paths
+
 
 # In-memory store of pending flows, keyed by OAuth `state`.
 #   state -> { server_name, oauth_dict, redirect_uri, code_verifier, scope,
@@ -143,12 +188,15 @@ async def begin_authorization(
 
     Resolves the OAuth client config from (in priority order) the server's
     ``oauth_config``, caller-supplied ``body_overrides``, and the mounted
-    ``gcp-oauth.keys.json`` (so client_id/secret/endpoints/redirect can come
-    straight from the keyfile the downstream server already uses -- no secrets
-    need to be passed in, and the redirect is guaranteed to match Google's
-    registration). Generates the PKCE auth URL, stashes the pending flow, and
-    (optionally) opens the browser when the gateway runs on a host with a
-    display. Returns a JSON-able dict; on error it carries ``status_code``.
+    ``gcp-oauth.keys.json`` (so client_id/secret/endpoints can come straight
+    from the keyfile the downstream server already uses -- no secrets need to be
+    passed in). The redirect_uri is resolved separately so a remotely deployed
+    gateway can advertise its own public callback: explicit override >
+    configured public URL (ENKRYPT_GATEWAY_BASE_URL) > keyfile loopback >
+    request-derived (see the resolution block below). Generates the PKCE auth
+    URL, stashes the pending flow, and (optionally) opens the browser when the
+    gateway runs on a host with a display. Returns a JSON-able dict; on error it
+    carries ``status_code``.
     """
     _purge_expired()
     gateway_config = gateway_config or {}
@@ -156,9 +204,17 @@ async def begin_authorization(
     oauth_dict: dict[str, Any] = dict((server_entry or {}).get("oauth_config") or {})
     oauth_dict.update(body_overrides or {})
 
-    # Fill client_id / client_secret / endpoints / redirect from the mounted
-    # keyfile when absent (the cloud registry never stores secrets, and the
-    # keyfile carries the registered redirect_uri).
+    # An explicit redirect from oauth_config / body override outranks everything
+    # else. Capture it before the keyfile fill so it stays distinguishable from
+    # the keyfile's registered (loopback) redirect.
+    explicit_redirect = oauth_dict.get("OAUTH_REDIRECT_URI")
+
+    # Fill client_id / client_secret / endpoints from the mounted keyfile when
+    # absent (the cloud registry never stores secrets). The keyfile also carries
+    # the redirect registered with the IdP -- kept separately as the local
+    # loopback default (see redirect resolution below), NOT force-applied here,
+    # so a configured public gateway URL can take precedence on remote deploys.
+    keyfile_redirect: str | None = None
     if server_entry:
         keys = load_oauth_client_from_keys_file(server_entry)
         if keys:
@@ -170,8 +226,7 @@ async def begin_authorization(
                 oauth_dict["OAUTH_AUTHORIZATION_URL"] = keys["auth_uri"]
             if not oauth_dict.get("OAUTH_TOKEN_URL") and keys.get("token_uri"):
                 oauth_dict["OAUTH_TOKEN_URL"] = keys["token_uri"]
-            if not oauth_dict.get("OAUTH_REDIRECT_URI") and keys.get("redirect_uri"):
-                oauth_dict["OAUTH_REDIRECT_URI"] = keys["redirect_uri"]
+            keyfile_redirect = keys.get("redirect_uri")
 
     if not oauth_dict.get("OAUTH_CLIENT_ID"):
         return {
@@ -192,15 +247,30 @@ async def begin_authorization(
     )
     oauth_dict.setdefault("OAUTH_TOKEN_URL", "https://oauth2.googleapis.com/token")
 
-    # Redirect: prefer the keyfile/oauth_config value (must match the IdP's
-    # registration); fall back to default_redirect (e.g. the gateway base URL).
-    redirect_uri = oauth_dict.get("OAUTH_REDIRECT_URI") or default_redirect
+    # Redirect-URI resolution (highest priority first). Whatever is chosen MUST
+    # be registered with the IdP (e.g. as an Authorized redirect URI in Google
+    # Cloud Console):
+    #   1. explicit OAUTH_REDIRECT_URI from oauth_config / body override
+    #   2. the gateway's configured PUBLIC callback -- set ENKRYPT_GATEWAY_BASE_URL
+    #      (or enkrypt_gateway_base_url) on remotely deployed gateways so the IdP
+    #      redirects back to the public host
+    #      (e.g. https://mcp.dev.enkryptai.com/oauth2callback) rather than localhost
+    #   3. the loopback redirect registered in the mounted gcp-oauth.keys.json
+    #      (the local-install default -- unchanged behavior when no public URL is set)
+    #   4. default_redirect -- request-derived; last resort
+    redirect_uri = (
+        explicit_redirect
+        or get_gateway_oauth_redirect_uri()
+        or keyfile_redirect
+        or default_redirect
+    )
     if not redirect_uri:
         return {
             "status": "error",
             "status_code": 400,
-            "error": "Could not determine OAUTH_REDIRECT_URI (set it in oauth_config or "
-            "register it in gcp-oauth.keys.json).",
+            "error": "Could not determine OAUTH_REDIRECT_URI. Set ENKRYPT_GATEWAY_BASE_URL "
+            "(remote deploy), register a redirect in gcp-oauth.keys.json (local), or pass "
+            "oauth_config.OAUTH_REDIRECT_URI.",
         }
     oauth_dict["OAUTH_REDIRECT_URI"] = redirect_uri
 
@@ -260,7 +330,11 @@ async def begin_authorization(
         try:
             from secure_mcp_gateway.utils import is_docker
 
-            do_open = not is_docker()
+            # Never auto-open on a server deployment: inside Docker/K8s there is
+            # no display, and when a public gateway URL is configured the user
+            # opens auth_url on THEIR machine (the IdP redirect comes back to the
+            # gateway's public host, not to a browser on the server).
+            do_open = not is_docker() and not get_gateway_base_url()
         except Exception:
             do_open = False
     browser_opened = False
@@ -302,6 +376,32 @@ async def begin_authorization(
     }
 
 
+def _request_derived_redirect(request: Request) -> str:
+    """Best-effort public callback URL derived from the inbound request.
+
+    Honors ``X-Forwarded-Proto`` / ``X-Forwarded-Host`` (set by most ingresses
+    and load balancers that terminate TLS) so a proxied request still yields an
+    ``https://`` callback on the public host rather than the internal
+    ``http://<pod-ip>:8000`` uvicorn sees. This is only a LAST-RESORT fallback
+    behind the explicit OAUTH_REDIRECT_URI and ENKRYPT_GATEWAY_BASE_URL paths --
+    prefer those, since they don't depend on proxy header hygiene.
+    """
+    headers = request.headers
+    proto = (
+        (headers.get("x-forwarded-proto") or request.url.scheme or "http")
+        .split(",")[0]
+        .strip()
+    )
+    host = (
+        (headers.get("x-forwarded-host") or headers.get("host") or request.url.netloc)
+        .split(",")[0]
+        .strip()
+    )
+    if not host:
+        return str(request.base_url).rstrip("/") + GATEWAY_OAUTH_CALLBACK_PATH
+    return f"{proto}://{host}{GATEWAY_OAUTH_CALLBACK_PATH}"
+
+
 # ---------------------------------------------------------------------------
 # POST /api/v1/oauth/authorize
 # ---------------------------------------------------------------------------
@@ -336,7 +436,7 @@ async def _authorize_handler(request: Request) -> JSONResponse:
         server_entry,
         getattr(auth_result, "gateway_config", None) or {},
         body_overrides=overrides,
-        default_redirect=str(request.base_url),
+        default_redirect=_request_derived_redirect(request),
         open_browser=body.get("open_browser"),
     )
     status_code = result.pop(
@@ -562,21 +662,32 @@ def register_gateway_oauth_routes(mcp: FastMCP) -> None:
         include_in_schema=False,
     )(_authorize_handler)
     mcp.custom_route(
-        "/oauth2callback",
-        methods=["GET"],
-        name="gateway_oauth_callback",
-        include_in_schema=False,
-    )(_callback_handler)
-    mcp.custom_route(
         "/api/v1/oauth/status",
         methods=["GET"],
         name="gateway_oauth_status",
         include_in_schema=False,
     )(_status_handler)
-    # The default loopback redirect lands on the gateway ROOT ("/") to satisfy
-    # Google Desktop-client path matching (see _authorize_handler). Register it
-    # separately so a failure here (e.g. a future "/" route conflict) can't stop
-    # the primary endpoints above from registering.
+
+    # Serve the callback handler on every well-known alias path plus the path of
+    # the configured redirect (so what we advertise is always what we serve).
+    # Each route is registered defensively so one failure can't stop the rest.
+    registered: list[str] = []
+    for i, path in enumerate(_resolve_callback_paths(get_gateway_oauth_redirect_uri())):
+        try:
+            mcp.custom_route(
+                path,
+                methods=["GET"],
+                name=f"gateway_oauth_callback_{i}",
+                include_in_schema=False,
+            )(_callback_handler)
+            registered.append(path)
+        except Exception as e:
+            logger.warning(
+                f"[gateway_oauth_routes] could not register callback route {path}: {e}"
+            )
+    # The gateway ROOT ("/") doubles as the loopback redirect (Google Desktop
+    # clients match on "/") and a neutral landing page. Register it separately so
+    # a "/" route conflict can't stop the primary endpoints above.
     try:
         mcp.custom_route(
             "/",
@@ -584,13 +695,15 @@ def register_gateway_oauth_routes(mcp: FastMCP) -> None:
             name="gateway_oauth_callback_root",
             include_in_schema=False,
         )(_callback_handler)
+        registered.append("/")
     except Exception as e:
         logger.warning(
             f"[gateway_oauth_routes] could not register root callback route: {e}"
         )
     logger.info(
         "[gateway_oauth_routes] registered OAuth endpoints "
-        "(POST /api/v1/oauth/authorize, GET / and /oauth2callback, GET /api/v1/oauth/status)"
+        "(POST /api/v1/oauth/authorize, GET /api/v1/oauth/status, "
+        f"GET callbacks on {registered})"
     )
 
 

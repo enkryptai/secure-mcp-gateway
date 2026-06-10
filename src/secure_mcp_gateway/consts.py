@@ -73,6 +73,18 @@ DEFAULT_COMMON_CONFIG = {
     "enkrypt_gateway_cache_expiration": 24,
     "enkrypt_gateway_cache_expiration_minutes": 5,
     "enkrypt_config_watcher_poll_seconds": 2.0,
+    # Public, externally-reachable base URL of THIS gateway. Set this on
+    # remotely deployed gateways (e.g. "https://mcp.dev.enkryptai.com") so the
+    # gateway-managed OAuth authorization-code flow advertises its own public
+    # callback (<base>/oauth2callback) to the IdP instead of localhost. Leave
+    # None for local installs (the loopback redirect from gcp-oauth.keys.json is
+    # used). Overridable via the ENKRYPT_GATEWAY_BASE_URL env var. See
+    # docs/CENTRALIZED_OAUTH_CALLBACK.md.
+    "enkrypt_gateway_base_url": None,
+    # Optional: pin the full OAuth redirect URI when the callback path differs
+    # from the default <base>/oauth2callback. Overridable via the
+    # ENKRYPT_GATEWAY_OAUTH_REDIRECT_URI env var.
+    "enkrypt_oauth_redirect_uri": None,
     "enkrypt_async_input_guardrails_enabled": False,
     "enkrypt_async_output_guardrails_enabled": False,
     # Session Pool Configuration
