@@ -142,6 +142,10 @@ secure-mcp-gateway/
 │   sync by scripts/install/opensearch/sync-check.sh (see apiaas repo).
 │
 ├── docs/                              # Documentation
+│   ├── claude/
+│   │   └── k8s-deployment-runbook.md  # ⭐ EKS dev/prod deploy runbook (manual today)
+│   ├── secure-mcp-gateway-manifest.yaml          # LIVE dev manifest (gitignored -- holds creds)
+│   └── secure-mcp-gateway-manifest-example.yaml  # tracked template for the above
 ├── pyproject.toml                     # Python project config (PEP 621)
 ├── requirements.txt                   # Pinned runtime deps
 ├── Dockerfile / Dockerfile-Base       # Container build
@@ -1250,6 +1254,27 @@ docker-compose up -d
 
 - Clients connect via HTTP instead of stdio
 
+### **4. Kubernetes (EKS) — dev today, prod pending**
+
+Full runbook: **[docs/claude/k8s-deployment-runbook.md](docs/claude/k8s-deployment-runbook.md)**
+
+- **Dev**: `eks-dev` (acct `188451452903`, `us-east-1`), namespace `dev`, exposed
+  at `https://mcp.dev.enkryptai.com` via the pre-existing `mcp-server` Ingress
+  (not part of the manifest). Deploy is manual: `docker build`/`push` a
+  `v<version>-<build>` tag → bump `image:` in the gitignored
+  [docs/secure-mcp-gateway-manifest.yaml](docs/secure-mcp-gateway-manifest.yaml)
+  → `kubectl apply -f … -n dev`.
+
+- Config is **not** in the image: an init container pulls
+  `enkrypt_mcp_config.json` from S3 into an `emptyDir` at pod start, so a config
+  change needs `kubectl rollout restart` (the hot-reload paths only re-read that
+  local copy).
+
+- **Prod** (`eks-prod`, namespace `production`) is **not deployed yet**; the
+  runbook lists the gaps — Ingress/hostname, per-env S3 key, ExternalSecrets or
+  IRSA instead of static AWS keys, the OTel env block (currently cluster-only
+  drift), resource limits, and probes.
+
 ---
 
 ## 🎯 Key Design Patterns
@@ -1496,6 +1521,8 @@ Set `enkrypt_log_level: "DEBUG"` in config for verbose logging.
 - **CLI Reference**: [CLI-Commands-Reference.md](CLI-Commands-Reference.md)
 
 - **API Reference**: [API-Reference.md](API-Reference.md)
+
+- **K8s Deployment Runbook**: [docs/claude/k8s-deployment-runbook.md](docs/claude/k8s-deployment-runbook.md) — the manual dev deploy (build → push → bump tag → `kubectl apply -n dev`), verification/rollback, known cluster drift, and the prod gap-analysis for `eks-prod`
 
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 
