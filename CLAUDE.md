@@ -1268,12 +1268,21 @@ Full runbook: **[docs/claude/k8s-deployment-runbook.md](docs/claude/k8s-deployme
 - Config is **not** in the image: an init container pulls
   `enkrypt_mcp_config.json` from S3 into an `emptyDir` at pod start, so a config
   change needs `kubectl rollout restart` (the hot-reload paths only re-read that
-  local copy).
+  local copy). That S3 object — not the pod env — is where telemetry, auth and
+  guardrails are configured; the `OTEL_*` env vars on the live Deployment are
+  inert (explicit `endpoint=`/`service_name` args and a bare `Resource(...)`
+  constructor mean the SDK never consults them).
+
+- The dev object is the cloud-backed minimal schema (`provider: enkrypt` for
+  auth + guardrails) with **no `common_mcp_gateway_config` block**, so timeouts,
+  cache TTLs and `enkrypt_gateway_base_url` all run on [consts.py](src/secure_mcp_gateway/consts.py)
+  defaults. The unset `enkrypt_gateway_base_url` leaves OAuth redirects on the
+  request-derived `X-Forwarded-*` fallback.
 
 - **Prod** (`eks-prod`, namespace `production`) is **not deployed yet**; the
   runbook lists the gaps — Ingress/hostname, per-env S3 key, ExternalSecrets or
-  IRSA instead of static AWS keys, the OTel env block (currently cluster-only
-  drift), resource limits, and probes.
+  IRSA instead of static AWS keys, `enkrypt_gateway_base_url`, resource limits,
+  and probes.
 
 ---
 

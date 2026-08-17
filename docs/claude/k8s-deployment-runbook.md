@@ -45,8 +45,8 @@ Deployment secure-mcp-gateway   replicas: 1
 | `Deployment/secure-mcp-gateway` | ✅ yes | The only thing a version bump actually changes. |
 | `Service/secure-mcp-gateway-service` | ✅ yes | ClusterIP, port 80 → 8000. |
 | `Ingress/mcp-server` | ❌ **no** | Created 2025-07-18, lives only in the cluster. A version bump never touches it. |
-| OTel env vars on the container | ❌ **no** | Cluster-only drift. See [§6.1](#61-otel-env-vars-exist-only-in-the-cluster). |
-| `enkrypt_mcp_config.json` | ❌ no | Lives in S3, pulled at pod start. See [§5](#5-config-change-with-no-image-rebuild). |
+| OTel env vars on the container | ❌ **no** | Cluster-only drift — and inert; the gateway ignores them. See [§6.1](#61-the-otel-env-vars-on-the-deployment-are-inert). |
+| `enkrypt_mcp_config.json` | ❌ no | Lives in S3, pulled at pod start. **This is where telemetry, auth and guardrails are actually configured.** See [§5](#5-config-change-with-no-image-rebuild). |
 
 The manifest has **no `namespace:` in any `metadata:` block** — the `-n dev` on
 the `kubectl apply` is what puts it in the right place. Omit it and you deploy
@@ -145,8 +145,10 @@ Recommended: dry-run the diff first.
 kubectl diff -f docs/secure-mcp-gateway-manifest.yaml -n dev
 ```
 
-The only lines in that diff should be the image tag. If you see the OTel env
-vars being removed, **stop** and read [§6.1](#61-otel-env-vars-exist-only-in-the-cluster).
+The only lines in that diff should be the image tag. A diff that also drops the
+OTel env vars is harmless — they are inert
+([§6.1](#61-the-otel-env-vars-on-the-deployment-are-inert)) — but anything else
+unexpected is worth stopping for.
 
 ### 4.5 Verify
 
@@ -216,11 +218,44 @@ container runs again. Updating S3 alone changes nothing in a running pod.
 Same applies after editing the `s3-credentials` Secret: `kubectl apply` updates
 the Secret but does not restart pods that consumed it via `env.valueFrom`.
 
+### 5.1 What the dev config actually contains
+
+The dev object is the **cloud-backed minimal schema** (what
+`generate-config --provider enkrypt` produces) — no `mcp_configs`, `projects`,
+`users` or `apikeys` blocks, because the Enkrypt cloud owns those. It carries
+exactly three things:
+
+- `enkrypt_config` — cloud `base_url` (`http://gateway-kong`, the in-cluster
+  Service, not the public `api.dev.enkryptai.com`), `api_key`, `org_id`
+- `plugins.auth` / `plugins.guardrails` — both `provider: enkrypt`
+- `plugins.telemetry` — `opentelemetry`, pointed at the in-cluster collector
+  Service (this is the real telemetry config — see
+  [§6.1](#61-the-otel-env-vars-on-the-deployment-are-inert))
+
+There is **no `common_mcp_gateway_config` block**, so every setting in it —
+log level, cache TTLs, `timeout_settings`, `enkrypt_gateway_base_url` — is
+running on the [consts.py](../../src/secure_mcp_gateway/consts.py) defaults.
+That's fine for most of them, but see [§6.7](#67-oauth-public-redirect-is-not-configured-in-dev)
+for the one that isn't.
+
+### 5.2 Do not `mv` the object
+
+The init container hardcodes the key `enkrypt_mcp_config.json`. Renaming or
+moving the object in S3 breaks the **next** pod start — the init container exits
+1 and the pod never becomes ready (the running pod keeps serving from its
+`emptyDir` copy, so the breakage stays invisible until something restarts it).
+
+If you adopt the per-environment prefix layout that prod needs
+([§7.2](#72-what-must-be-decided-or-created)), sequence it as
+**copy → change the manifest → deploy → verify → delete the old key**, never a
+bare move. The bucket has versioning enabled, so a mistaken delete is
+recoverable, but a failed init container is still an outage on the next restart.
+
 ---
 
 ## 6. Known drift and gotchas
 
-### 6.1 OTel env vars exist only in the cluster
+### 6.1 The OTel env vars on the Deployment are inert
 
 The live Deployment carries 10 environment variables that are **not** in the
 manifest and not in its `last-applied-configuration`:
@@ -238,20 +273,38 @@ OTEL_LOGS_EXPORTER=otlp
 OTEL_PYTHON_LOG_CORRELATION=true
 ```
 
-They point at the `otel-collector-opentelemetry-collector-agent` DaemonSet in
-namespace `opentelemetry` via the node's host IP (Data Prepper → OpenSearch is
-also in that namespace).
+They look load-bearing. **They are not — the gateway reads none of them.**
+Telemetry is configured entirely from `plugins.telemetry.config` in the S3
+config file:
 
-- **Today's `kubectl apply` preserves them.** Client-side apply does a three-way
-  merge; fields present in the live object but absent from *both* the
-  last-applied annotation and the incoming file are left alone.
-- **These lose telemetry silently**: `kubectl delete` + `apply`, `kubectl replace`,
-  `kubectl apply --server-side --force-conflicts`, or a first deploy into a new
-  cluster (prod) from this manifest.
+| Env var | Why it has no effect |
+| --- | --- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `..._PROTOCOL` | [opentelemetry_provider.py](../../src/secure_mcp_gateway/plugins/telemetry/opentelemetry_provider.py) passes `endpoint=config["url"]` explicitly to `OTLPSpanExporter`/`OTLPLogExporter`/the metric exporter, and an explicit argument overrides the env var. |
+| `OTEL_SERVICE_NAME` | Resolved as `config.get("service_name", "secure-mcp-gateway")`; the env var is never read. |
+| `OTEL_RESOURCE_ATTRIBUTES` | The resource is built with the `Resource(attributes=…)` **constructor**, not `Resource.create()`, so the SDK's env-var resource detector never runs. `deployment.environment=dev` is **not** on the emitted telemetry. |
+| `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER`, `OTEL_PYTHON_LOG_CORRELATION` | Only consulted under `opentelemetry-instrument` auto-instrumentation. This image wires the SDK by hand and has no `LoggingInstrumentor`. |
+| `SKIP_DEPENDENCY_INSTALL` | Redundant. `is_docker()` returns True on `KUBERNETES_SERVICE_HOST`, which kubelet sets in every pod, so [gateway.py:94](../../src/secure_mcp_gateway/gateway.py) skips the pip install regardless. |
+| `HOST_IP` | Exists only to interpolate into the inert endpoint above. |
 
-**Action for DevOps**: fold this `env:` block into the manifest so it is
-declarative, using `deployment.environment=prod,k8s.namespace.name=production`
-for the prod variant. Until then, treat it as a fragile out-of-band patch.
+The practical consequence: the env block names the node-local
+`otel-collector-opentelemetry-collector-agent` DaemonSet, but the gateway
+actually exports to the **ClusterIP Service**
+`otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317`
+from the S3 config. Two different collectors — the config wins.
+
+- **`kubectl apply` preserves the block anyway** (three-way merge: fields in the
+  live object but absent from both the last-applied annotation and the incoming
+  file are left alone), so nothing changes today either way.
+- **Losing it costs nothing**, including on a first prod deploy from this
+  manifest — contrary to what the drift suggests.
+
+**Action for DevOps**: delete the env block, or make it real. As it stands it
+advertises an OTLP endpoint the gateway never contacts, which will send the next
+person debugging missing telemetry to the wrong collector. And note that
+`deployment.environment` / `k8s.namespace.name` are **not** reaching the backend
+today — if you want them once prod also reports, they have to come from
+`plugins.telemetry.config` or the provider has to switch to `Resource.create()`.
+Setting them as env vars will not work.
 
 ### 6.2 Static AWS keys in a gitignored file
 
@@ -314,6 +367,44 @@ The endpoints reachable through the ingress are the ones FastMCP mounts on 8000
 (`/mcp/`, `/oauth2callback`, `/api/v1/cache/*`, `/mcp-playground/*`). Use
 `kubectl port-forward` if you need the 8001 API against a live pod.
 
+### 6.7 OAuth public redirect is not configured in dev
+
+`v2.2.1` shipped the public-URL redirect for remote gateway OAuth callbacks, but
+the dev deployment sets **neither** `ENKRYPT_GATEWAY_BASE_URL` (no env on the
+pod) **nor** `common_mcp_gateway_config.enkrypt_gateway_base_url` (no such block
+in the S3 config, [§5.1](#51-what-the-dev-config-actually-contains)).
+
+The gateway therefore falls back to `_request_derived_redirect()` in
+[gateway_oauth_routes.py](../../src/secure_mcp_gateway/gateway_oauth_routes.py),
+which reconstructs the callback from `X-Forwarded-Proto` / `X-Forwarded-Host`.
+Traefik sets both by default, so this *probably* yields the correct
+`https://mcp.dev.enkryptai.com/oauth2callback` today — but the code calls it a
+"LAST-RESORT fallback ... don't depend on proxy header hygiene", and it has not
+been verified end-to-end on this deployment.
+
+Fix is one key in the S3 config:
+
+```jsonc
+{
+  "common_mcp_gateway_config": {
+    "enkrypt_gateway_base_url": "https://mcp.dev.enkryptai.com"
+  },
+  "enkrypt_config": { /* … unchanged … */ }
+}
+```
+
+then `kubectl rollout restart deploy/secure-mcp-gateway -n dev`. Confirm the
+advertised value before relying on it:
+
+```bash
+curl -sX POST https://mcp.dev.enkryptai.com/api/v1/oauth/authorize \
+  -H "apikey: <GATEWAY_KEY>" -H "content-type: application/json" \
+  -d '{"server_name": "<server>"}' | jq .redirect_uri
+```
+
+Whatever it returns must be registered verbatim with the IdP. **This becomes
+mandatory in prod** — see [§7.2](#72-what-must-be-decided-or-created) item 5.
+
 ---
 
 ## 7. Prod deployment (not yet deployed)
@@ -350,10 +441,13 @@ that has been executed.
    first prod deploy** — otherwise prod boots on the dev config.
 3. **Credentials.** Do not copy the dev static-key Secret. Use ExternalSecrets or
    IRSA per [§6.2](#62-static-aws-keys-in-a-gitignored-file), scoped to the prod key only.
-4. **OTel env block.** Add it to the manifest with
-   `OTEL_RESOURCE_ATTRIBUTES=deployment.environment=prod,k8s.namespace.name=production`.
-   Skipping this means a prod gateway with zero telemetry
-   ([§6.1](#61-otel-env-vars-exist-only-in-the-cluster)).
+4. **Telemetry.** Comes from `plugins.telemetry.config.url` in the prod S3
+   config, **not** from env vars ([§6.1](#61-the-otel-env-vars-on-the-deployment-are-inert)).
+   The dev value works as-is: the Service
+   `otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317`
+   exists in `eks-prod` too. Don't copy the inert env block forward. If dev and
+   prod telemetry need to be distinguishable at the backend, that needs a code
+   or config change, not an env var.
 5. **`ENKRYPT_GATEWAY_BASE_URL`.** Set to the public prod HTTPS URL, and register
    `<base>/oauth2callback` with every IdP in use (Google Cloud Console, etc.).
    Without it the gateway advertises a pod-IP redirect and OAuth fails.
@@ -408,8 +502,10 @@ Three things to fix as part of automating, because they block a clean pipeline:
 - **The manifest is gitignored.** A pipeline can't apply a file that isn't in the
   repo. Removing the credentials from it (ExternalSecrets/IRSA,
   [§6.2](#62-static-aws-keys-in-a-gitignored-file)) is what unblocks this.
-- **The OTel env is out-of-band** ([§6.1](#61-otel-env-vars-exist-only-in-the-cluster)).
-  Any pipeline that recreates the Deployment will silently drop telemetry.
+- **The OTel env block is out-of-band and misleading**
+  ([§6.1](#61-the-otel-env-vars-on-the-deployment-are-inert)). It costs nothing to
+  drop, but leaving it in place means the deployed spec disagrees with where
+  telemetry actually goes. Resolve it before it becomes pipeline-managed.
 - **Dev and prod need to differ by overlay, not by hand-editing one file.** A
   Kustomize base + `dev`/`production` overlays matches what the apiaas repo
   already does for `guardrails` and `litellm`
