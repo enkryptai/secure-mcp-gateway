@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Cosign
-        uses: sigstore/cosign-installer@main
+        uses: sigstore/cosign-installerv@3.7.0
 
       - name: Login to AWS
         uses: aws-actions/configure-aws-credentials@v4
@@ -121,7 +121,7 @@ jobs:
         run: |
           IMAGE_REF="$ECR_REGISTRY/enkryptai-prod/secure-mcp-gateway@${IMAGE_DIGEST}"
           echo "Signing image: $IMAGE_REF"
-          cosign sign --key env://COSIGN_KEY $IMAGE_REF
+          cosign sign --key env://COSIGN_KEY --yes $IMAGE_REF
 
       - name: Verify signed image
         if: github.event_name == 'push'
