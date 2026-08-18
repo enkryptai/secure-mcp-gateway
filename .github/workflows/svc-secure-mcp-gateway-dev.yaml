@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Cosign
-        uses: sigstore/cosign-installer@main
+        uses: sigstore/cosign-installer@v3.7.0
 
       - name: Login to AWS
         uses: aws-actions/configure-aws-credentials@v4
