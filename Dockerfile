@@ -15,7 +15,9 @@ WORKDIR /app
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install system dependencies, Python 3.11, Node.js LTS, and Docker
-RUN apt-get update && apt-get install -y \
+# The ubuntu:24.04 tag is refreshed on Canonical's release cadence, not Ubuntu's
+# security cadence, so `upgrade` is required to get patched OS packages.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     # Core utilities
     curl \
     wget \
@@ -62,7 +64,10 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
     && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
 
 # Install uv (fast Python package installer) - required for MCP servers
-RUN pip3 install --break-system-packages uv
+# Pinned so the version is visible: unpinned, this layer never rebuilds and the
+# image keeps whatever uv the first build resolved, along with the Rust crates
+# statically linked into that binary. Bump on uv releases.
+RUN pip3 install --break-system-packages uv==0.12.5
 
 # Install pipx (for isolated Python app installations)
 RUN pip3 install --break-system-packages --upgrade pipx \
@@ -123,6 +128,21 @@ ENV FASTAPI_HOST=0.0.0.0
 
 # Install the package (PEP 517 build via setuptools.build_meta)
 RUN pip3 install --break-system-packages .
+
+# Sits after the COPY steps, which any source change invalidates, so releases
+# pick up OS patches published since the cached upgrade layer above was built.
+#
+# The apt copies of pip and wheel are dropped here: their fixes ship only in
+# Ubuntu Pro (ESM), and nothing uses them, since the pip installs above put
+# newer ones in /usr/local. python3-pip-whl stays - it is not just a duplicate,
+# it supplies the wheels `python3 -m venv` needs to bootstrap pip, which MCP
+# servers rely on. Do not add `apt-get autoremove` here; it would take
+# python3-pip-whl with it now that nothing depends on it.
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get purge -y python3-pip python3-wheel \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 EXPOSE 8000
 
 # Set the entrypoint to the script

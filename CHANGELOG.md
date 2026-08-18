@@ -2,6 +2,66 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [v2.2.1-2] - container security rebuild
+
+Image-only release.  No application code changed, so the Python package stays at
+`2.2.1`; the `-2` suffix is the container build number, continuing from the
+`v2.2.1-1` image.  Amazon Inspector reported 10 criticals, 331 highs and 621
+mediums against `v2.2.1-1`; every one of those had a published fix.
+
+### Security
+
+- **`apt-get upgrade` added to the image build.**  The `ubuntu:24.04` tag is
+  refreshed on Canonical's release cadence rather than Ubuntu's security cadence,
+  so the build inherited the unpatched snapshot of every OS package.  This single
+  change accounts for the bulk of the findings, across `linux-libc-dev`
+  (kernel headers, 3C/288H/558M on their own), `curl` / `libcurl4t64` /
+  `libcurl3t64-gnutls` (4C each), `openssl` / `libssl3t64`, `glibc` / `libc6`,
+  `openssh-client`, `python3.12`, `libheif`, `krb5`, `libnss3`, `python3-httplib2`,
+  `wget`, `sqlite3`, `systemd`, `tar`, `gzip`, `nghttp2`, `libxpm`, `libxml2`
+  and `pam`.  A second upgrade runs after the `COPY` steps so that source
+  changes, not just base-image moves, pull in newly published patches.
+- **Dependency ceilings raised where `~=` was pinning the vulnerable minor.**
+  The compatible-release operator caps the minor version, so these fixes were
+  unreachable without editing the pin: `aiohttp` 3.13.5 -> 3.14.3 (11H/3M),
+  `cryptography` 46.0.7 -> 50.0.0 (3H/1M, incl. CVE-2026-69249),
+  `pyjwt` 2.12.1 -> 2.13.0 (1H/3M, CVE-2026-48526), `mcp[cli]` 1.27.0 -> 1.28.1
+  (CVE-2026-59950).  Applied to `requirements.txt`, `pyproject.toml` and
+  `dependencies.py` together, per the sync note in those files.
+- **`uv` pinned to 0.12.5.**  It was installed unpinned, and because that layer
+  only rebuilds when the line changes, the image kept shipping the version the
+  first build resolved - old enough for Inspector to flag the Rust crates
+  statically linked into the binary (`quick-xml` RUSTSEC-2026-0195, `quinn-proto`
+  CVE-2026-25800).
+- Rebuilding also refreshed transitive packages that had fixes waiting and no
+  pin blocking them: `starlette` 1.2.1 -> 1.6.0 (1H/1M),
+  `pydantic-settings` 2.14.1 -> 2.15.0, `setuptools` 82.0.1 -> 84.0.0.
+
+- **apt `python3-pip` and `python3-wheel` purged** (1H, 3M).  Their fixes ship
+  only in Ubuntu Pro (ESM), and nothing used them: the pip installs in this
+  Dockerfile put newer copies in `/usr/local`.  Verified after purging that
+  `pip3`, `python3 -m pip`, `python3 -m wheel`, `python3 -m venv` + pip
+  bootstrap, `pipx install`, `uv venv`, `uv pip install`, sdist builds and `npx`
+  all still work.
+
+### Known remaining
+
+Down to 0 criticals, 0 highs, 5 mediums, none of which have a fix available:
+
+- `python3-pip-whl` (3M) is deliberately kept.  It is not a duplicate of the
+  purged packages - it supplies the wheels `python3 -m venv` uses to bootstrap
+  pip, which MCP servers rely on.  Ubuntu's `ensurepip` hardcodes the bundled pip
+  version, so dropping a current wheel into `/usr/share/python-wheels` does not
+  work; verified that this breaks venv creation outright.  Fix is ESM-only.
+- `rsa` (2M, RUSTSEC-2023-0071, a Marvin-attack timing sidechannel) is vendored
+  into the `uv` binary and has no upstream fix.  Not reachable from the gateway:
+  it is in a build tool, not the request path.
+- `linux-libc-dev` will re-accumulate kernel CVEs between rebuilds.  It is pulled
+  in by `build-essential` -> `libc6-dev`, which the image keeps deliberately so
+  MCP servers can compile native dependencies at runtime.  Dropping the
+  toolchain would remove that finding class permanently, at the cost of that
+  capability.
+
 ## [v2.2.1]
 
 Consolidated release bundling everything that shipped to dev as patch-image
