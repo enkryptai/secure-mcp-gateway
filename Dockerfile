@@ -128,3 +128,4 @@ EXPOSE 8000
 # Set the entrypoint to the script
 ENTRYPOINT ["python3", "src/secure_mcp_gateway/gateway.py"]
 # Alternative: ENTRYPOINT ["mcp", "run", "src/secure_mcp_gateway/gateway.py"]
+
