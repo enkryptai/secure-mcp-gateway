@@ -1,10 +1,12 @@
 {
   "admin_apikey": "EXAMPLE_256_CHAR_ADMIN_API_KEY_FOR_ADMINISTRATIVE_OPERATIONS_GENERATED_DURING_CONFIG_GENERATION",
+  "enkrypt_config": {
+    "api_key": "YOUR_ENKRYPT_API_KEY",
+    "base_url": "https://api.enkryptai.com"
+  },
+  "_doc_legacy_local_apikey_remote_fetch": "DEPRECATED. The fields enkrypt_use_remote_mcp_config, enkrypt_remote_mcp_gateway_name and enkrypt_remote_mcp_gateway_version used to live inside common_mcp_gateway_config. They only drive the legacy LocalApiKeyProvider's 'fall back to Enkrypt cloud' code path. They are intentionally NOT included here. To use cloud-managed gateway config, switch plugins.auth.provider to 'enkrypt' (see example_enkrypt_cloud_config.json).",
   "common_mcp_gateway_config": {
     "enkrypt_log_level": "INFO",
-    "enkrypt_use_remote_mcp_config": false,
-    "enkrypt_remote_mcp_gateway_name": "enkrypt-secure-mcp-gateway-1",
-    "enkrypt_remote_mcp_gateway_version": "v1",
     "enkrypt_mcp_use_external_cache": false,
     "enkrypt_cache_host": "localhost",
     "enkrypt_cache_port": 6379,
@@ -12,16 +14,18 @@
     "enkrypt_cache_password": null,
     "enkrypt_tool_cache_expiration": 4,
     "enkrypt_gateway_cache_expiration": 24,
+    "enkrypt_gateway_cache_expiration_minutes": 5,
+    "enkrypt_config_watcher_poll_seconds": 2.0,
     "enkrypt_async_input_guardrails_enabled": false,
     "enkrypt_async_output_guardrails_enabled": false,
     "timeout_settings": {
-      "default_timeout": 30,
-      "guardrail_timeout": 15,
-      "auth_timeout": 10,
-      "tool_execution_timeout": 60,
-      "discovery_timeout": 20,
-      "cache_timeout": 5,
-      "connectivity_timeout": 2,
+      "default_timeout": 90,
+      "guardrail_timeout": 390,
+      "auth_timeout": 30,
+      "tool_execution_timeout": 360,
+      "discovery_timeout": 540,
+      "cache_timeout": 15,
+      "connectivity_timeout": 6,
       "escalation_policies": {
         "warn_threshold": 0.8,
         "timeout_threshold": 1.0,
@@ -48,10 +52,7 @@
     },
     "guardrails": {
       "provider": "enkrypt",
-      "config": {
-        "api_key": "YOUR_ENKRYPT_API_KEY",
-        "base_url": "https://api.enkryptai.com"
-      }
+      "config": {}
     },
     "telemetry": {
       "provider": "opentelemetry",
@@ -65,6 +66,24 @@
   "mcp_configs": {
     "UNIQUE_MCP_CONFIG_ID": {
       "mcp_config_name": "default_config",
+      "_doc_common_overrides": "Gateway-wide policies that apply to every server in this mcp_config. Mirrors the Enkrypt cloud's servers_config.common_overrides shape. server_tools_guardrails_config is COMMON-only: its single 'enabled' flag drives both (a) batch guardrail checks on tool name/description/schema at registration time AND (b) validation of server name/description at discovery time. Setting server_tools_guardrails_config on individual entries below is deprecated and triggers a warning on load. input_guardrails_config and output_guardrails_config remain per-server (different servers often need different input/output policies), so they are NOT promoted from common_overrides.",
+      "common_overrides": {
+        "server_tools_guardrails_config": {
+          "enabled": false,
+          "guardrail_name": "Sample Airline Guardrail",
+          "block": [
+            "policy_violation",
+            "injection_attack",
+            "topic_detector",
+            "nsfw",
+            "toxicity",
+            "pii",
+            "keyword_detector",
+            "bias",
+            "sponge_attack"
+          ]
+        }
+      },
       "mcp_config": [
         {
           "server_name": "echo_server",
@@ -113,22 +132,6 @@
             "network": "none",
             "read_only": true,
             "allowed_env": null
-          },
-          "enable_server_info_validation": false,
-          "tool_guardrails_config": {
-            "enabled": false,
-            "guardrail_name": "Sample Airline Guardrail",
-            "block": [
-              "policy_violation",
-              "injection_attack",
-              "topic_detector",
-              "nsfw",
-              "toxicity",
-              "pii",
-              "keyword_detector",
-              "bias",
-              "sponge_attack"
-            ]
           },
           "input_guardrails_config": {
             "enabled": false,
@@ -180,12 +183,6 @@
           },
           "tools": {},
           "denied_tools": [],
-          "enable_server_info_validation": false,
-          "tool_guardrails_config": {
-            "enabled": false,
-            "guardrail_name": "Sample Airline Guardrail",
-            "block": ["policy_violation", "injection_attack"]
-          },
           "input_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
@@ -212,12 +209,6 @@
           },
           "tools": {},
           "denied_tools": [],
-          "enable_server_info_validation": false,
-          "tool_guardrails_config": {
-            "enabled": false,
-            "guardrail_name": "Sample Airline Guardrail",
-            "block": ["policy_violation", "injection_attack"]
-          },
           "input_guardrails_config": {
             "enabled": false,
             "guardrail_name": "Sample Airline Guardrail",
@@ -270,5 +261,5 @@
       ]
     }
   },
-  "_doc_auth_enkrypt_cloud": "Switch plugins.auth to the cloud-backed provider by replacing the block with: { 'provider': 'enkrypt', 'config': { 'apikey': '<fallback enkrypt apikey - clients can override per request via the apikey header>', 'gateway_name': '<saved_name from /mcp-gateway/add-gateway>', 'gateway_version': 'v1', 'project_name': 'default', 'base_url': 'https://api.enkryptai.com', 'cache_ttl_seconds': 600 } }. When in cloud mode, the projects/users/apikeys/mcp_configs blocks above are ignored - only local_server_overrides is read."
+  "_doc_auth_enkrypt_cloud": "Switch plugins.auth to the cloud-backed provider by replacing the block with: { 'provider': 'enkrypt', 'config': { 'gateway_name': '<saved_name from /mcp-gateway/add-gateway>', 'gateway_version': 'v1', 'project_name': 'default', 'cache_ttl_seconds': 600 } }. Set api_key and base_url in the root-level enkrypt_config block. When in cloud mode, the projects/users/apikeys/mcp_configs blocks above are ignored - only local_server_overrides is read."
 }

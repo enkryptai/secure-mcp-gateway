@@ -94,12 +94,19 @@ async def test_baseline():
     return entry
 
 
-async def test_provider(
+async def _run_provider_benchmark(
     name: str,
     runtime: str,
     extra_sandbox_config: Optional[Dict[str, Any]] = None,
 ):
-    """Test a sandbox provider end-to-end."""
+    """Benchmark a sandbox provider end-to-end.
+
+    Renamed from ``test_provider`` to a non-``test_*`` name so pytest's
+    auto-discovery no longer attempts to collect this helper as a test
+    case (it takes positional args, not fixtures, and is intended to be
+    called from ``main()`` below — see module docstring for the manual
+    invocation pattern).
+    """
     print("\n" + "=" * 60)
     print(f"PROVIDER: {name} (runtime={runtime})")
     print("=" * 60)
@@ -276,21 +283,21 @@ async def main():
     await test_baseline()
 
     # 2. Docker (use sandbox-test-mcp image which has mcp pre-installed)
-    await test_provider(
+    await _run_provider_benchmark(
         "Docker",
         "docker",
         extra_sandbox_config={"image": "sandbox-test-mcp"},
     )
 
     # 3. NovaVM
-    await test_provider(
+    await _run_provider_benchmark(
         "NovaVM",
         "novavm",
         extra_sandbox_config={"image": "python:3.11-slim"},
     )
 
     # 4. Microsandbox (requires pip install microsandbox)
-    await test_provider("Microsandbox", "microsandbox")
+    await _run_provider_benchmark("Microsandbox", "microsandbox")
 
     print_comparison_table()
 

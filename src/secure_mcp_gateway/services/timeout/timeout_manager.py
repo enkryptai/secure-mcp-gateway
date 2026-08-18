@@ -28,13 +28,42 @@ class TimeoutEscalationLevel(Enum):
 class TimeoutConfig:
     """Configuration for timeout settings."""
 
-    default_timeout: int = 30
-    guardrail_timeout: int = 1
-    auth_timeout: int = 10
-    tool_execution_timeout: int = 60
-    discovery_timeout: int = 120  # Increased to 120s to accommodate OAuth flows
-    cache_timeout: int = 5
-    connectivity_timeout: int = 2
+    default_timeout: int = 90
+    # Bumped 1s -> 15s -> 130s -> 390s. Each bump absorbs another tier of
+    # observed Enkrypt cloud guardrail-API misbehaviour:
+    #   - 15s tripped on healthy calls because cloud's own ~120s request
+    #     ceiling could fire first.
+    #   - 130s gave ~10s of slack over that ceiling (so the cloud's HTTP
+    #     error reached us before our wrapper).
+    #   - 390s (3x of 130s) absorbs the intermittent multi-minute hangs
+    #     seen in direct ``api.dev.enkryptai.com/guardrails/*`` probes
+    #     (identical 84-byte payload returned 0.89s vs 180s+ on
+    #     back-to-back calls; the slow ones reliably tripped DISC_001 /
+    #     DISC_003 with ``recovery_strategy: fallback`` for all callers).
+    # Healthy guardrail calls return in 100-400ms and never come close
+    # to any of these limits; the headroom is purely a tail-latency
+    # buffer for upstream degradation.
+    guardrail_timeout: int = 390
+    auth_timeout: int = 30
+    # Bumped 60s -> 120s -> 360s. ``tool_execution_timeout`` wraps the
+    # full input-guardrail + forward + output-guardrail end-to-end path,
+    # so any single guardrail hang can consume up to ``guardrail_timeout``
+    # *twice* (input + output) before the tool call itself completes.
+    # 360s == ~2x of two back-to-back guardrail calls at the previous
+    # tighter ceiling; with ``guardrail_timeout: 390`` we keep room for
+    # the tool's own work even when guardrails take their full budget.
+    tool_execution_timeout: int = 360
+    # NOTE: ``discovery_timeout`` is enforced *per server* by
+    # ``ServerListingService._discover_and_return_servers`` (one
+    # ``asyncio.wait_for`` per ``enkrypt_discover_all_tools`` call) rather
+    # than as a single budget for the whole parallel batch. Discovery
+    # runs description validation + tool-list batch validation back-to-
+    # back, each subject to ``guardrail_timeout``, so the per-server cap
+    # must accommodate at least 2x guardrail budget plus the actual
+    # ``uvx``/``npx`` cold-start work. 540s = 3x of 180s.
+    discovery_timeout: int = 540
+    cache_timeout: int = 15
+    connectivity_timeout: int = 6
     escalation_policies: Dict[str, float] = None
 
     def __post_init__(self):
@@ -93,16 +122,16 @@ class TimeoutManager:
         """Load timeout configuration from dictionary."""
         timeout_settings = config.get("timeout_settings", {})
 
-        self.config.default_timeout = timeout_settings.get("default_timeout", 30)
-        self.config.guardrail_timeout = timeout_settings.get("guardrail_timeout", 15)
-        self.config.auth_timeout = timeout_settings.get("auth_timeout", 10)
+        self.config.default_timeout = timeout_settings.get("default_timeout", 90)
+        self.config.guardrail_timeout = timeout_settings.get("guardrail_timeout", 390)
+        self.config.auth_timeout = timeout_settings.get("auth_timeout", 30)
         self.config.tool_execution_timeout = timeout_settings.get(
-            "tool_execution_timeout", 60
+            "tool_execution_timeout", 360
         )
-        self.config.discovery_timeout = timeout_settings.get("discovery_timeout", 120)
-        self.config.cache_timeout = timeout_settings.get("cache_timeout", 5)
+        self.config.discovery_timeout = timeout_settings.get("discovery_timeout", 540)
+        self.config.cache_timeout = timeout_settings.get("cache_timeout", 15)
         self.config.connectivity_timeout = timeout_settings.get(
-            "connectivity_timeout", 2
+            "connectivity_timeout", 6
         )
 
         escalation_policies = timeout_settings.get("escalation_policies", {})
@@ -481,6 +510,19 @@ def get_timeout_manager() -> TimeoutManager:
 
 def initialize_timeout_manager(config: Dict[str, Any]) -> TimeoutManager:
     """Initialize the global timeout manager with configuration."""
+    global _timeout_manager
+    _timeout_manager = TimeoutManager(config)
+    return _timeout_manager
+
+
+def reset_timeout_manager(config: Dict[str, Any]) -> TimeoutManager:
+    """Replace the singleton with a freshly constructed manager.
+
+    Used by the hot-reload orchestrator so timeout/escalation settings take
+    effect without restarting the process. Callers that still hold an
+    old reference (e.g. mid-flight requests) will continue to operate on
+    the prior instance until their call completes -- this is intentional.
+    """
     global _timeout_manager
     _timeout_manager = TimeoutManager(config)
     return _timeout_manager

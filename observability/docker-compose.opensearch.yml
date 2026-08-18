@@ -1,0 +1,258 @@
+# =========================================================================
+#  Secure MCP Gateway -- OpenSearch observability stack (primary backend).
+#
+#  Run alongside (NOT instead of) the legacy Grafana stack via:
+#      docker compose -f docker-compose.opensearch.yml \
+#                     --env-file .env.opensearch up -d
+#
+#  Or stop the legacy Grafana stack first if you want to free its ports.
+#  The two stacks publish on DIFFERENT host ports by default so they can
+#  co-exist. OpenSearch is the primary backend and now claims the OTel
+#  default ports; the Grafana stack moved to 4327/4328.
+#
+#      OpenSearch stack (this file)              Grafana stack (legacy)
+#      ------------------------------------      ------------------------
+#      OTel Collector gRPC : 4317  (host)        OTel Collector gRPC : 4327
+#      OTel Collector HTTP : 4318  (host)        OTel Collector HTTP : 4328
+#      OS Dashboards       : 5601  (host)        Grafana             : 3001
+#      OpenSearch HTTP     : 9200  (host)
+#
+#  Gateway: leave ${plugins.telemetry.config.url} on its default
+#  http://localhost:4317 -- telemetry lands in OpenSearch automatically.
+#  Endpoint changes require a gateway process restart; see ../CLAUDE.md
+#  "Settings still requiring restart".
+# =========================================================================
+name: secure-mcp-gateway-observability-opensearch
+
+services:
+
+  # ---------------------------------------------------------------------
+  # OpenSearch single-node
+  # ---------------------------------------------------------------------
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    environment:
+      - cluster.name=secure-mcp-gateway-os
+      - node.name=os-node-1
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms${OS_HEAP_SIZE:-2g} -Xmx${OS_HEAP_SIZE:-2g}"
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile:  { soft: 65536, hard: 65536 }
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "${OS_HTTP_HOST_PORT:-9200}:9200"
+      - "${OS_PERF_HOST_PORT:-9600}:9600"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -kfsu admin:${OPENSEARCH_INITIAL_ADMIN_PASSWORD} https://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=2s >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # ---------------------------------------------------------------------
+  # One-shot bootstrap: applies gateway_telemetry_policy + 3 templates +
+  # creates the mcp_gateway_telemetry_plugin user (least-privilege writer).
+  # Reuses the OpenSearch image (has bash + curl) so we don't pull
+  # another base layer.
+  # ---------------------------------------------------------------------
+  opensearch-bootstrap:
+    image: opensearchproject/opensearch:2.19.1
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    environment:
+      - OPENSEARCH_ENDPOINT=https://opensearch:9200
+      - OPENSEARCH_USERNAME=admin
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
+      # depends_on waits for the basic cluster healthcheck, but on a COLD
+      # first boot (fresh opensearch-data volume) the security plugin's
+      # REST API (/_plugins/_security/api/*) lags the cluster-health probe
+      # by tens of seconds while the .opendistro_security index initialises.
+      # 30s was too tight and flaked on cold starts. 120 matches
+      # bootstrap.sh's own default and is a safe buffer -- the wait loop
+      # exits the instant the endpoint is reachable, so warm starts are
+      # unaffected.
+      - OS_WAIT_SECONDS=120
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/REPLACE/WITH/YOUR_WEBHOOK}
+      - SKIP_MONITORS=${SKIP_MONITORS:-0}
+      # Create the least-privilege mcp_gateway_telemetry_plugin user via the
+      # Security plugin REST API. K8s gets the same user from
+      # apps/opensearch/dev/security-config.yaml + securityadmin.sh;
+      # local docker has no equivalent, so bootstrap.sh handles it.
+      - BOOTSTRAP_MCP_GATEWAY_TELEMETRY_USER=1
+      - MCP_GATEWAY_TELEMETRY_PLUGIN_PASSWORD=${MCP_GATEWAY_TELEMETRY_PLUGIN_PASSWORD}
+    volumes:
+      - ./opensearch:/bootstrap:ro
+    entrypoint: ["/bin/bash", "/bootstrap/bootstrap.sh"]
+    restart: "no"
+
+  # ---------------------------------------------------------------------
+  # Render Data Prepper's pipelines.yaml.
+  #
+  # Data Prepper 2.11 does NOT natively interpolate ${VAR} placeholders
+  # in pipelines.yaml. We render via render_pipelines.py (pure Python,
+  # no deps) before the data-prepper container boots, so credentials
+  # containing any character (|, &, $, quotes, newline) land verbatim.
+  # See data_prepper/render_pipelines.py + its unit tests.
+  #
+  # python:3.12-alpine: 50 MB, has python3 + sh; used only for this
+  # one-shot render and torn down on completion.
+  # ---------------------------------------------------------------------
+  data-prepper-render:
+    image: python:3.12-alpine
+    depends_on:
+      opensearch-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      - OPENSEARCH_HOSTS=https://opensearch:9200
+      - OPENSEARCH_USERNAME=mcp_gateway_telemetry_plugin
+      - OPENSEARCH_PASSWORD=${MCP_GATEWAY_TELEMETRY_PLUGIN_PASSWORD}
+    volumes:
+      - ./data_prepper:/render:ro
+      - data-prepper-pipelines:/rendered
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        python3 /render/render_pipelines.py \
+          /render/pipelines.yaml \
+          /rendered/pipelines.yaml \
+          OPENSEARCH_HOSTS OPENSEARCH_USERNAME OPENSEARCH_PASSWORD
+    restart: "no"
+
+  # ---------------------------------------------------------------------
+  # Data Prepper: OTLP -> OpenSearch.
+  #
+  # Writes as the least-privilege mcp_gateway_telemetry_plugin user (NOT
+  # admin), matching the k8s deployment's auth path. Reads the rendered
+  # pipelines.yaml from the named volume populated by data-prepper-render.
+  # ---------------------------------------------------------------------
+  data-prepper:
+    image: opensearchproject/data-prepper:2.11.0
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      data-prepper-render:
+        condition: service_completed_successfully
+    volumes:
+      - data-prepper-pipelines:/usr/share/data-prepper/pipelines:ro
+      - ./data_prepper/data-prepper-config.yaml:/usr/share/data-prepper/config/data-prepper-config.yaml:ro
+    expose:
+      - "21890"  # OTLP traces  (gRPC)
+      - "21891"  # OTLP metrics (gRPC)
+      - "21892"  # OTLP logs    (gRPC)
+      - "4900"   # management API
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:4900/list >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  # ---------------------------------------------------------------------
+  # OTel Collector -- gateway-facing OTLP receiver, Data Prepper sink
+  # ---------------------------------------------------------------------
+  otel-collector-os:
+    image: otel/opentelemetry-collector-contrib:0.134.1
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    depends_on:
+      data-prepper:
+        condition: service_healthy
+    volumes:
+      - ./otel_collector/otel-collector-config.opensearch.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "${OS_OTLP_HOST_PORT_GRPC:-4317}:4317"
+      - "${OS_OTLP_HOST_PORT_HTTP:-4318}:4318"
+
+  # ---------------------------------------------------------------------
+  # One-shot dashboards bootstrap: imports the saved-objects NDJSON
+  # (index patterns + default config). Runs AFTER opensearch-dashboards
+  # is healthy because the import endpoint is on :5601, not :9200.
+  # Idempotent via overwrite=true.
+  # ---------------------------------------------------------------------
+  opensearch-dashboards-bootstrap:
+    image: curlimages/curl:8.10.1
+    depends_on:
+      opensearch-dashboards:
+        condition: service_healthy
+    environment:
+      - OSD_ENDPOINT=http://opensearch-dashboards:5601
+      - OPENSEARCH_USERNAME=admin
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
+    volumes:
+      - ./opensearch_dashboards:/dashboards:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        echo "=== importing saved-objects NDJSONs into OpenSearch Dashboards ==="
+        # OSD 2.19.1's _import DOES enforce reference resolution at import
+        # time. If we iterate files in lexical order, gateway-dashboards.ndjson
+        # ('g' < 's') gets imported before saved-objects.ndjson, and every
+        # visualization fails with missing_references on the gateway-* index
+        # patterns. Fix: concatenate all *.ndjson under /dashboards into one
+        # payload and submit a single _import call -- OSD's internal
+        # dependency resolution handles ordering within a single payload by
+        # saved-object type, so the whole set lands atomically.
+        # mktemp gives a random extension; OSD's _import insists on the
+        # uploaded filename ending in .ndjson, so build a fixed-name tempfile.
+        combined=/tmp/dashboards-combined.ndjson
+        : > "$$combined"
+        for f in $$(ls /dashboards/*.ndjson 2>/dev/null | LC_ALL=C sort); do
+          cat "$$f" >> "$$combined"
+          # Ensure a trailing newline so the next file's first line doesn't
+          # glue onto the previous file's last line.
+          echo >> "$$combined"
+        done
+        echo "--- importing $$(wc -l < "$$combined") lines from concatenated payload ---"
+        # Drop -f so curl returns the JSON error body on 4xx; pass it to
+        # the grep below for accurate success/failure detection.
+        resp=$$(curl -s -u "$$OPENSEARCH_USERNAME:$$OPENSEARCH_PASSWORD" \
+          -H 'osd-xsrf: true' \
+          -X POST "$$OSD_ENDPOINT/api/saved_objects/_import?overwrite=true" \
+          --form file=@"$$combined" || true)
+        echo "$$resp"
+        rm -f "$$combined"
+        if echo "$$resp" | grep -q '"success":true'; then
+          exit 0
+        else
+          echo "ERROR: combined dashboards import failed"
+          exit 1
+        fi
+    restart: "no"
+
+  # ---------------------------------------------------------------------
+  # OpenSearch Dashboards
+  # ---------------------------------------------------------------------
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.19.1
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    environment:
+      - OPENSEARCH_HOSTS=["https://opensearch:9200"]
+      - OPENSEARCH_USERNAME=admin
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
+      - OPENSEARCH_SSL_VERIFICATIONMODE=none
+    ports:
+      - "${OS_DASHBOARDS_HOST_PORT:-5601}:5601"
+    healthcheck:
+      # /api/status requires auth; `/` returns 302 to login and is enough to
+      # confirm the Node process is listening. Accept any 2xx/3xx via -f flag.
+      test: ["CMD-SHELL", "curl -fs -o /dev/null http://localhost:5601/"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+volumes:
+  opensearch-data:
+    driver: local
+  data-prepper-pipelines:
+    driver: local

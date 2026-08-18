@@ -252,7 +252,14 @@ class ErrorMonitor:
         }
 
     def track_error(self, error: MCPGatewayError):
-        """Track error occurrence."""
+        """Track error occurrence.
+
+        Note: the ``enkrypt.errors.by_code`` metric is emitted in
+        :class:`MCPGatewayError.__init__` so every constructed error counts
+        even when callers raise without going through
+        :func:`error_handling_context`.  We do not emit it here to avoid
+        double-counting.
+        """
         error_key = f"{error.code.value}_{error.severity.value}"
 
         if error_key not in self.error_counts:

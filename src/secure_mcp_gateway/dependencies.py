@@ -11,7 +11,7 @@ __dependencies__ = [
     "flask-cors~=6.0.2",
     "redis~=7.4.0",
     "requests~=2.33.1",
-    "aiohttp~=3.13.5",
+    "aiohttp~=3.14.3",
     # FastAPI and REST API dependencies
     "fastapi~=0.135.3",
     "uvicorn[standard]~=0.44.0",
@@ -22,12 +22,12 @@ __dependencies__ = [
     "python-dateutil~=2.9.0.post0",
     "psutil~=7.2.2",
     # Security and encryption
-    "cryptography~=46.0.7",
-    "pyjwt~=2.12.1",
+    "cryptography~=50.0.0",
+    "pyjwt~=2.13.0",
     # Retry logic
     "tenacity~=9.1.4",
     # MCP
-    "mcp[cli]~=1.27.0",
+    "mcp[cli]~=1.28.1",
     # OpenTelemetry
     "opentelemetry-sdk~=1.40.0",
     "opentelemetry-exporter-otlp~=1.40.0",

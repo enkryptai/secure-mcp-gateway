@@ -8,8 +8,15 @@ services:
     volumes:
       - ./otel_collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml
     ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
+      # NOTE: host ports moved from 4317/4318 to 4327/4328 so the
+      # OpenSearch stack (docker-compose.opensearch.yml) can claim the
+      # OTel defaults. The OpenSearch backend is now the primary; this
+      # Grafana stack is the legacy/co-existence path. Container ports
+      # stay 4317/4318 -- only the host mapping moved.
+      # Point the gateway at http://localhost:4327 if you want to send
+      # telemetry to this stack.
+      - "${OTEL_OTLP_HOST_PORT_GRPC:-4327}:4317"   # OTLP gRPC
+      - "${OTEL_OTLP_HOST_PORT_HTTP:-4328}:4318"   # OTLP HTTP
       - "8889:8889"   # Prometheus metrics
     depends_on:
       - jaeger

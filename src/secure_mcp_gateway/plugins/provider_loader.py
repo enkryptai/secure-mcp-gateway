@@ -95,18 +95,50 @@ def create_provider_from_config(
         # Load the provider class
         provider_class = load_provider_class(class_path)
 
-        # Create instance with config
-        # Try different initialization patterns
+        # Construction strategy: prefer kwargs (Pattern 1). Only fall back to
+        # other shapes for *expected* errors that clearly indicate the provider
+        # uses a non-kwarg init contract.
+        #
+        # We deliberately do NOT silently fall through to ``provider_class(config)``
+        # on a generic ``TypeError``: that pattern silently binds the whole
+        # config dict to the first positional argument, which produced the
+        # ``api_key={'base_url': ...}`` bug in EnkryptGuardrailProvider where
+        # a missing ``api_key`` kwarg caused the entire config dict to be
+        # mistaken for the api_key value. Surfacing the real error is much
+        # cheaper than tracking down "the gateway blocks every request" later.
         try:
-            # Pattern 1: Pass entire config dict
             provider = provider_class(**config)
-        except TypeError:
-            try:
-                # Pattern 2: Pass config as single argument
-                provider = provider_class(config)
-            except TypeError:
-                # Pattern 3: No config needed
-                provider = provider_class()
+        except TypeError as kwargs_exc:
+            msg = str(kwargs_exc)
+            if "unexpected keyword argument" in msg:
+                # Pattern 2: legacy provider that takes a single dict argument.
+                logger.warning(
+                    "Provider %s rejected kwargs (%s); falling back to single-dict init. "
+                    "Migrating to explicit kwargs with defaults is recommended.",
+                    provider_class.__name__,
+                    msg,
+                )
+                try:
+                    provider = provider_class(config)
+                except TypeError as positional_exc:
+                    # Pattern 3: zero-arg provider.
+                    if "positional argument" in str(positional_exc):
+                        provider = provider_class()
+                    else:
+                        raise
+            elif "missing" in msg and ("positional argument" in msg or "required argument" in msg):
+                # Provider has required positional args that config doesn't
+                # supply. Refuse to fall through — the next pattern would
+                # silently jam ``config`` into the missing positional slot.
+                raise TypeError(
+                    f"Provider {provider_class.__name__} requires "
+                    f"argument(s) not present in plugin config: {msg}. "
+                    "Make all __init__ args keyword-only with defaults, or "
+                    "add the missing key to plugins.<type>.config."
+                ) from kwargs_exc
+            else:
+                # Unknown TypeError — re-raise rather than risk a wrong fallback.
+                raise
 
         logger.info(
             f"✓ Loaded {plugin_type} provider: {provider_name} ({provider_class.__name__})"

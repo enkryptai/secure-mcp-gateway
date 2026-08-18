@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import random
 import sys
 import threading
 import time
@@ -13,38 +14,34 @@ from mcp import ClientSession, StdioServerParameters
 # https://github.com/modelcontextprotocol/python-sdk/blob/main/src/mcp/client/stdio/__init__.py
 from mcp.client.stdio import stdio_client
 
-from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params, is_url_config
+from secure_mcp_gateway.plugins.sandbox.server_params import (
+    build_server_params,
+    is_url_config,
+)
 from secure_mcp_gateway.services.oauth.integration import (
     inject_oauth_into_args,
     inject_oauth_into_env,
     prepare_oauth_for_server,
 )
-from secure_mcp_gateway.utils import get_common_config, logger
+from secure_mcp_gateway.services.oauth.local_credentials import (
+    ensure_google_credentials_fresh,
+    is_local_credentials_file_mode,
+)
+from secure_mcp_gateway.utils import (
+    get_cache_db,
+    get_cache_host,
+    get_cache_password,
+    get_cache_port,
+    get_common_config,
+    get_gateway_cache_ttl_seconds,
+    get_tool_cache_ttl_hours,
+    is_debug_log_level,
+    logger,
+    use_external_cache,
+)
 from secure_mcp_gateway.version import __version__
 
 # logger.info(f"Initializing Enkrypt Secure MCP Gateway Client Module v{__version__}")
-
-common_config = get_common_config()
-
-ENKRYPT_LOG_LEVEL = common_config.get("enkrypt_log_level", "INFO").lower()
-IS_DEBUG_LOG_LEVEL = ENKRYPT_LOG_LEVEL == "debug"
-
-# --- Cache Configuration ---
-ENKRYPT_MCP_USE_EXTERNAL_CACHE = common_config.get(
-    "enkrypt_mcp_use_external_cache", False
-)
-ENKRYPT_CACHE_HOST = common_config.get("enkrypt_cache_host", "localhost")
-ENKRYPT_CACHE_PORT = int(common_config.get("enkrypt_cache_port", "6379"))
-ENKRYPT_CACHE_DB = int(common_config.get("enkrypt_cache_db", "0"))
-ENKRYPT_CACHE_PASSWORD = common_config.get("enkrypt_cache_password", None)
-
-# Cache expiration times (in hours)
-ENKRYPT_TOOL_CACHE_EXPIRATION = int(
-    common_config.get("enkrypt_tool_cache_expiration", 4)
-)  # 4 hours
-ENKRYPT_GATEWAY_CACHE_EXPIRATION = int(
-    common_config.get("enkrypt_gateway_cache_expiration", 24)
-)  # 24 hours (1 day)
 
 local_cache = {}
 local_cache_lock = threading.Lock()
@@ -70,20 +67,21 @@ def initialize_cache():
     Raises:
         ConnectionError: If unable to connect to the Redis server when external cache is enabled
     """
-    # Initialize Cache client
+    cache_host = get_cache_host()
+    cache_port = get_cache_port()
     cache_client = external_cache_server.Redis(
-        host=ENKRYPT_CACHE_HOST,
-        port=ENKRYPT_CACHE_PORT,
-        db=ENKRYPT_CACHE_DB,
-        password=ENKRYPT_CACHE_PASSWORD,
-        decode_responses=True,  # Automatically decode responses to strings
+        host=cache_host,
+        port=cache_port,
+        db=get_cache_db(),
+        password=get_cache_password(),
+        decode_responses=True,
     )
 
     # Test Cache connection
     try:
         cache_client.ping()
         logger.info(
-            f"[external_cache] Successfully connected to External Cache at {ENKRYPT_CACHE_HOST}:{ENKRYPT_CACHE_PORT}"
+            f"[external_cache] Successfully connected to External Cache at {cache_host}:{cache_port}"
         )
     except external_cache_server.ConnectionError as e:
         logger.error(f"[external_cache] Failed to connect to External Cache: {e}")
@@ -218,30 +216,47 @@ async def get_server_metadata_only(server_name, gateway_config=None):
     project_id = gateway_config.get("project_id")
     mcp_config_id = gateway_config.get("mcp_config_id")
 
-    oauth_data, oauth_error = await prepare_oauth_for_server(
-        server_name=server_name,
-        server_entry=server_entry,
-        config_id=mcp_config_id,
-        project_id=project_id,
-    )
-
-    if oauth_error:
-        logger.error(
-            f"[get_server_metadata_only] OAuth preparation failed for {server_name}: {oauth_error}"
-        )
-    elif oauth_data:
+    if is_local_credentials_file_mode(server_entry):
+        # File-delivery OAuth server (see forward_tool_call): skip the
+        # env-injection / browser path; ensure the materialized credentials are
+        # present and fresh (gateway-owned refresh) before spawning.
+        ok, cred_err = await ensure_google_credentials_fresh(server_entry)
+        if not ok:
+            raise ValueError(
+                f"OAuth not ready for server '{server_name}': {cred_err}. Run the one-time "
+                f"authorization -> call the enkrypt_oauth_authorize tool (or POST "
+                f'/api/v1/oauth/authorize with {{"server_name": "{server_name}"}} and the '
+                f"apikey header), open the returned auth_url, approve, then retry."
+            )
         logger.info(
-            f"[get_server_metadata_only] OAuth configured for {server_name}, injecting credentials"
+            f"[get_server_metadata_only] {server_name} uses google_credentials_file OAuth; "
+            f"credentials ready, skipping token injection"
         )
-        if is_url_server:
-            headers = config.setdefault("headers", {})
-            if oauth_data.get("access_token"):
-                headers["Authorization"] = f"Bearer {oauth_data['access_token']}"
-        else:
-            env = inject_oauth_into_env(env, oauth_data)
-            command_args = inject_oauth_into_args(command_args, oauth_data)
+    else:
+        oauth_data, oauth_error = await prepare_oauth_for_server(
+            server_name=server_name,
+            server_entry=server_entry,
+            config_id=mcp_config_id,
+            project_id=project_id,
+        )
 
-    if IS_DEBUG_LOG_LEVEL:
+        if oauth_error:
+            logger.error(
+                f"[get_server_metadata_only] OAuth preparation failed for {server_name}: {oauth_error}"
+            )
+        elif oauth_data:
+            logger.info(
+                f"[get_server_metadata_only] OAuth configured for {server_name}, injecting credentials"
+            )
+            if is_url_server:
+                headers = config.setdefault("headers", {})
+                if oauth_data.get("access_token"):
+                    headers["Authorization"] = f"Bearer {oauth_data['access_token']}"
+            else:
+                env = inject_oauth_into_env(env, oauth_data)
+                command_args = inject_oauth_into_args(command_args, oauth_data)
+
+    if is_debug_log_level():
         if is_url_server:
             logger.debug(f"[get_server_metadata_only] URL: {config['url']}")
         else:
@@ -252,9 +267,10 @@ async def get_server_metadata_only(server_name, gateway_config=None):
         masked_env = mask_sensitive_data(env or {}) if env else None
         logger.debug(f"[get_server_metadata_only] Env: {masked_env}")
 
-    async with build_server_params(
-        server_entry, command, command_args, env
-    ) as (read, write):
+    async with build_server_params(server_entry, command, command_args, env) as (
+        read,
+        write,
+    ):
         async with ClientSession(read, write) as session:
             # Initialize and capture server metadata ONLY
             init_result = await session.initialize()
@@ -344,30 +360,52 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
     project_id = gateway_config.get("project_id")
     mcp_config_id = gateway_config.get("mcp_config_id")
 
-    oauth_data, oauth_error = await prepare_oauth_for_server(
-        server_name=server_name,
-        server_entry=server_entry,
-        config_id=mcp_config_id,
-        project_id=project_id,
-    )
-
-    if oauth_error:
-        logger.error(
-            f"[forward_tool_call] OAuth preparation failed for {server_name}: {oauth_error}"
-        )
-    elif oauth_data:
+    if is_local_credentials_file_mode(server_entry):
+        # This server (e.g. google-sheets-mcp) consumes a credentials FILE that
+        # it loads on startup; it ignores injected env tokens and would try to
+        # open its own browser flow if the file is missing -- which hangs inside
+        # Docker. The gateway materializes that file out-of-band (authorize +
+        # /oauth2callback) and proactively refreshes the access token here (the
+        # server can't self-refresh on reload). So we do NOT run the
+        # env-injection / browser path; we ensure the credentials are fresh and
+        # fail fast with actionable guidance if not yet authorized.
+        ok, cred_err = await ensure_google_credentials_fresh(server_entry)
+        if not ok:
+            raise ValueError(
+                f"OAuth not ready for server '{server_name}': {cred_err}. Run the one-time "
+                f"authorization -> call the enkrypt_oauth_authorize tool (or POST "
+                f'/api/v1/oauth/authorize with {{"server_name": "{server_name}"}} and the '
+                f"apikey header), open the returned auth_url, approve, then retry."
+            )
         logger.info(
-            f"[forward_tool_call] OAuth configured for {server_name}, injecting credentials"
+            f"[forward_tool_call] {server_name} uses google_credentials_file OAuth; "
+            f"credentials ready, skipping token injection"
         )
-        if is_url_server:
-            headers = config.setdefault("headers", {})
-            if oauth_data.get("access_token"):
-                headers["Authorization"] = f"Bearer {oauth_data['access_token']}"
-        else:
-            env = inject_oauth_into_env(env, oauth_data)
-            command_args = inject_oauth_into_args(command_args, oauth_data)
+    else:
+        oauth_data, oauth_error = await prepare_oauth_for_server(
+            server_name=server_name,
+            server_entry=server_entry,
+            config_id=mcp_config_id,
+            project_id=project_id,
+        )
 
-    if IS_DEBUG_LOG_LEVEL:
+        if oauth_error:
+            logger.error(
+                f"[forward_tool_call] OAuth preparation failed for {server_name}: {oauth_error}"
+            )
+        elif oauth_data:
+            logger.info(
+                f"[forward_tool_call] OAuth configured for {server_name}, injecting credentials"
+            )
+            if is_url_server:
+                headers = config.setdefault("headers", {})
+                if oauth_data.get("access_token"):
+                    headers["Authorization"] = f"Bearer {oauth_data['access_token']}"
+            else:
+                env = inject_oauth_into_env(env, oauth_data)
+                command_args = inject_oauth_into_args(command_args, oauth_data)
+
+    if is_debug_log_level():
         if is_url_server:
             logger.debug(f"[forward_tool_call] URL: {config['url']}")
         else:
@@ -378,9 +416,10 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
         masked_env = mask_sensitive_data(env or {}) if env else None
         logger.debug(f"[forward_tool_call] Env: {masked_env}")
 
-    async with build_server_params(
-        server_entry, command, command_args, env
-    ) as (read, write):
+    async with build_server_params(server_entry, command, command_args, env) as (
+        read,
+        write,
+    ):
         async with ClientSession(read, write) as session:
             # Initialize and capture server metadata
             init_result = await session.initialize()
@@ -426,7 +465,7 @@ async def forward_tool_call(server_name, tool_name, args=None, gateway_config=No
                     # Safely print the tools result to avoid async context issues
                     tools_summary = f"[forward_tool_call] Discovered {len(getattr(tools_result or {}, 'tools', []))} tools for {server_name}"
                     logger.info(tools_summary)
-                    if IS_DEBUG_LOG_LEVEL and tools_result is not None:
+                    if is_debug_log_level() and tools_result is not None:
                         logger.debug(
                             f"[forward_tool_call] Tool details for {server_name}: {tools_result}"
                         )
@@ -502,7 +541,7 @@ def get_cached_tools(cache_client, id, server_name):
         tuple: (tools_data, expiration_time) if found and not expired, None otherwise
     """
     key = get_server_hashed_key(id, server_name)
-    if not ENKRYPT_MCP_USE_EXTERNAL_CACHE:
+    if not use_external_cache():
         return get_local_cache(key)
 
     if cache_client is None:
@@ -513,7 +552,7 @@ def get_cached_tools(cache_client, id, server_name):
         return None
     try:
         tool_data = json.loads(cached_data)
-        if IS_DEBUG_LOG_LEVEL:
+        if is_debug_log_level():
             logger.debug(
                 f"[external_cache] Using cached tools for id '{id}', server '{server_name}' with key hash: {key}"
             )
@@ -535,9 +574,9 @@ def cache_tools(cache_client, id, server_name, tools):
         server_name (str): Name of the server
         tools: The tools data to cache
     """
-    expires_in_seconds = int(ENKRYPT_TOOL_CACHE_EXPIRATION * 3600)
+    expires_in_seconds = int(get_tool_cache_ttl_hours() * 3600)
     key = get_server_hashed_key(id, server_name)
-    if not ENKRYPT_MCP_USE_EXTERNAL_CACHE:
+    if not use_external_cache():
         set_local_cache(key, tools, expires_in_seconds)
         # Also set the server name in the local_server_registry as set of server in id
         if id not in local_server_registry:
@@ -624,7 +663,7 @@ def cache_tools(cache_client, id, server_name, tools):
     # Store in External Cache with expiration
     cache_client.setex(key, expires_in_seconds, serialized_data)
 
-    if IS_DEBUG_LOG_LEVEL:
+    if is_debug_log_level():
         expiration_time = datetime.fromtimestamp(
             time.time() + expires_in_seconds
         ).strftime("%Y-%m-%d %H:%M:%S")
@@ -654,7 +693,7 @@ def get_cached_gateway_config(cache_client, id):
         tuple: (config_data, expiration_time) if found and not expired, None otherwise
     """
     config_key = get_gateway_config_hashed_key(id)
-    if not ENKRYPT_MCP_USE_EXTERNAL_CACHE:
+    if not use_external_cache():
         return get_local_cache(config_key)
 
     if cache_client is None:
@@ -665,7 +704,7 @@ def get_cached_gateway_config(cache_client, id):
         return None
     try:
         config_data = json.loads(cached_data)
-        if IS_DEBUG_LOG_LEVEL:
+        if is_debug_log_level():
             logger.debug(
                 f"[external_cache] Using cached config for id '{id}' with key hash: {config_key}"
             )
@@ -686,9 +725,14 @@ def cache_gateway_config(cache_client, id, config):
         id (str): ID of the Gateway or User
         config (dict): The gateway configuration to cache
     """
-    expires_in_seconds = int(ENKRYPT_GATEWAY_CACHE_EXPIRATION * 3600)
+    # Lazy TTL read so config edits to the TTL take effect without restart.
+    # Add up-to-10% positive jitter to prevent synchronized stampede when many
+    # entries expire at the same wall-clock time in multi-user deployments.
+    ttl_seconds = get_gateway_cache_ttl_seconds()
+    jitter = random.uniform(0.0, ttl_seconds * 0.1)
+    expires_in_seconds = int(ttl_seconds + jitter)
     config_key = get_gateway_config_hashed_key(id)
-    if not ENKRYPT_MCP_USE_EXTERNAL_CACHE:
+    if not use_external_cache():
         set_local_cache(config_key, config, expires_in_seconds)
         local_gateway_config_registry.add(id)
         return
@@ -697,7 +741,7 @@ def cache_gateway_config(cache_client, id, config):
         return
     serialized_data = json.dumps(config)
     cache_client.setex(config_key, expires_in_seconds, serialized_data)
-    if IS_DEBUG_LOG_LEVEL:
+    if is_debug_log_level():
         expiration_time = datetime.fromtimestamp(
             time.time() + expires_in_seconds
         ).strftime("%Y-%m-%d %H:%M:%S")
@@ -717,9 +761,9 @@ def cache_key_to_id(cache_client, gateway_key, id):
         gateway_key (str): The key for gateway/user
         id (str): ID of the Gateway or User
     """
-    expires_in_seconds = int(ENKRYPT_GATEWAY_CACHE_EXPIRATION * 3600)
+    expires_in_seconds = int(get_gateway_cache_ttl_seconds())
     key = get_hashed_key(gateway_key)
-    if not ENKRYPT_MCP_USE_EXTERNAL_CACHE:
+    if not use_external_cache():
         local_key_map[key] = id
         return
 
@@ -727,7 +771,7 @@ def cache_key_to_id(cache_client, gateway_key, id):
         return
 
     cache_client.setex(key, expires_in_seconds, id)
-    if IS_DEBUG_LOG_LEVEL:
+    if is_debug_log_level():
         logger.debug(
             f"[external_cache] Cached key mapping with key 'gateway_key-****{gateway_key[-4:]}' (hash: {key})"
         )
@@ -745,7 +789,7 @@ def get_id_from_key(cache_client, gateway_key):
         str: The associated gateway/user ID if found, None otherwise
     """
     key = get_hashed_key(gateway_key)
-    if not ENKRYPT_MCP_USE_EXTERNAL_CACHE:
+    if not use_external_cache():
         return local_key_map.get(key)
 
     if cache_client is None:
@@ -753,7 +797,7 @@ def get_id_from_key(cache_client, gateway_key):
 
     id = cache_client.get(key)
     if id:
-        if IS_DEBUG_LOG_LEVEL:
+        if is_debug_log_level():
             logger.debug(f"[external_cache] Found id for key with hash: {key}")
     return id
 
@@ -770,7 +814,7 @@ def clear_cache_for_servers(cache_client, id, server_name=None):
     Returns:
         int: Number of cache entries cleared
     """
-    if IS_DEBUG_LOG_LEVEL:
+    if is_debug_log_level():
         logger.debug(
             f"[clear_cache_for_servers] Clearing cache for servers for gateway/user: {id} with current local_server_registry: {local_server_registry}"
         )
@@ -778,7 +822,7 @@ def clear_cache_for_servers(cache_client, id, server_name=None):
     count = 0
     # Local cache clear
     if server_name:
-        if IS_DEBUG_LOG_LEVEL:
+        if is_debug_log_level():
             logger.info(
                 f"[clear_cache_for_servers] Clearing cache for server: {server_name}"
             )
@@ -789,24 +833,24 @@ def clear_cache_for_servers(cache_client, id, server_name=None):
             if id in local_server_registry:
                 local_server_registry[id].discard(server_name)
     else:
-        if IS_DEBUG_LOG_LEVEL:
+        if is_debug_log_level():
             logger.debug(
                 "[clear_cache_for_servers] Clearing cache for all servers for gateway/user"
             )
         # Clear all servers for a gateway/user
         if id in local_server_registry:
-            if IS_DEBUG_LOG_LEVEL:
+            if is_debug_log_level():
                 logger.debug(
                     f"[clear_cache_for_servers] Clearing cache for all servers for gateway/user found in local_server_registry: {id}"
                 )
             for server_name in list(local_server_registry[id]):
-                if IS_DEBUG_LOG_LEVEL:
+                if is_debug_log_level():
                     logger.debug(
                         f"[clear_cache_for_servers] Clearing cache for server: {server_name}"
                     )
                 key = get_server_hashed_key(id, server_name)
                 if key in local_cache:
-                    if IS_DEBUG_LOG_LEVEL:
+                    if is_debug_log_level():
                         logger.debug(
                             f"[clear_cache_for_servers] Clearing cache for server: {server_name} found in local_cache"
                         )
@@ -814,7 +858,7 @@ def clear_cache_for_servers(cache_client, id, server_name=None):
                     count += 1
             local_server_registry[id].clear()
         else:
-            if IS_DEBUG_LOG_LEVEL:
+            if is_debug_log_level():
                 logger.debug(
                     f"[clear_cache_for_servers] Clearing cache for all servers for gateway/user not found in local_server_registry: {id}"
                 )
@@ -860,13 +904,13 @@ def clear_gateway_config_cache(cache_client, id, gateway_key):
     Returns:
         bool: True if any cache entries were cleared
     """
-    if IS_DEBUG_LOG_LEVEL:
+    if is_debug_log_level():
         logger.debug(
             "[clear_gateway_config_cache] Clearing all cache entries for gateway/user"
         )
     # 1. Clear all tool caches for the gateway/user
     registry_key = get_gateway_servers_registry_hashed_key(id)
-    if IS_DEBUG_LOG_LEVEL:
+    if is_debug_log_level():
         logger.debug(
             f"[clear_gateway_config_cache] Clearing all tool caches for gateway/user: {id} with registry key: {registry_key}"
         )
@@ -875,13 +919,13 @@ def clear_gateway_config_cache(cache_client, id, gateway_key):
         if cache_client and cache_client.exists(registry_key)
         else []
     )
-    if IS_DEBUG_LOG_LEVEL:
+    if is_debug_log_level():
         logger.debug(
             f"[clear_gateway_config_cache] Clearing all tool caches for gateway/user: {id} with servers: {servers}"
         )
     for server_name in servers:
         tool_key = get_server_hashed_key(id, server_name)
-        if IS_DEBUG_LOG_LEVEL:
+        if is_debug_log_level():
             logger.debug(
                 f"[clear_gateway_config_cache] Clearing tool cache for server: {server_name} with tool_key: {tool_key}"
             )
@@ -903,8 +947,7 @@ def clear_gateway_config_cache(cache_client, id, gateway_key):
         gateway_key_hash = get_hashed_key(gateway_key)
         if cache_client and cache_client.exists(gateway_key_hash):
             cache_client.delete(gateway_key_hash)
-        if gateway_key_hash in local_key_map:
-            del local_key_map[gateway_key_hash]
+        local_key_map.pop(gateway_key_hash, None)
 
     # 4. Remove gateway/user from gateway/user registry (local and external cache)
     if cache_client:
@@ -929,7 +972,7 @@ def get_cache_statistics(cache_client):
             - total_config_caches: Number of config caches
             - cache_type: Type of cache being used
     """
-    if not ENKRYPT_MCP_USE_EXTERNAL_CACHE:
+    if not use_external_cache():
         total_gateways = len(local_gateway_config_registry)
         total_tool_caches = sum(len(s) for s in local_server_registry.values())
         total_config_caches = len(local_gateway_config_registry)
@@ -967,3 +1010,71 @@ def get_cache_statistics(cache_client):
         "total_config_caches": total_config_caches,
         "cache_type": "external_cache",
     }
+
+
+def flush_all_gateway_config_cache(
+    cache_client, include_tool_cache: bool = False
+) -> dict:
+    """Clear every gateway-config cache entry across local + Redis backends.
+
+    Acquires ``local_cache_lock`` while mutating ``local_gateway_config_registry``
+    to avoid ``RuntimeError: Set changed size during iteration`` when another
+    thread is concurrently writing.
+
+    Returns counts of what was cleared.
+    """
+    cleared = {
+        "local_configs": 0,
+        "local_key_mappings": 0,
+        "local_tool_servers_cleared": 0,
+        "redis_configs": 0,
+        "redis_servers": 0,
+    }
+
+    with local_cache_lock:
+        for id in list(local_gateway_config_registry):
+            config_key = get_gateway_config_hashed_key(id)
+            if config_key in local_cache:
+                del local_cache[config_key]
+                cleared["local_configs"] += 1
+        local_gateway_config_registry.clear()
+
+        cleared["local_key_mappings"] = len(local_key_map)
+        local_key_map.clear()
+
+        if include_tool_cache:
+            for id, servers in list(local_server_registry.items()):
+                for server_name in list(servers):
+                    tool_key = get_server_hashed_key(id, server_name)
+                    if tool_key in local_cache:
+                        del local_cache[tool_key]
+                        cleared["local_tool_servers_cleared"] += 1
+            local_server_registry.clear()
+
+    if cache_client is not None:
+        try:
+            gateway_registry = get_gateway_registry_hashed_key()
+            ids = list(cache_client.smembers(gateway_registry) or [])
+            for id in ids:
+                config_key = get_gateway_config_hashed_key(id)
+                if cache_client.exists(config_key):
+                    cache_client.delete(config_key)
+                    cleared["redis_configs"] += 1
+                if include_tool_cache:
+                    servers_registry = get_gateway_servers_registry_hashed_key(id)
+                    servers = list(cache_client.smembers(servers_registry) or [])
+                    for server_name in servers:
+                        tool_key = get_server_hashed_key(id, server_name)
+                        if cache_client.exists(tool_key):
+                            cache_client.delete(tool_key)
+                            cleared["redis_servers"] += 1
+                    if cache_client.exists(servers_registry):
+                        cache_client.delete(servers_registry)
+            if cache_client.exists(gateway_registry):
+                cache_client.delete(gateway_registry)
+        except Exception as e:
+            logger.warning(f"[external_cache] flush_all error: {e}")
+
+    if is_debug_log_level():
+        logger.debug(f"[flush_all_gateway_config_cache] cleared={cleared}")
+    return cleared

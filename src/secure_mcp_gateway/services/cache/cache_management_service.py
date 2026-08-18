@@ -5,6 +5,10 @@ from typing import Any
 import requests
 
 from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    SpanAttributes,
+    set_span_attr_with_legacy,
+)
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 
 # Get tracer from telemetry manager
@@ -21,8 +25,14 @@ from secure_mcp_gateway.utils import (
     build_log_extra,
     generate_custom_id,
     get_common_config,
+    get_guardrail_api_key,
+    get_guardrail_base_url,
+    get_remote_gateway_name,
+    get_remote_gateway_version,
+    is_debug_log_level,
     logger,
     mask_key,
+    use_remote_mcp_config,
 )
 
 
@@ -41,32 +51,35 @@ class CacheManagementService:
         self.auth_manager = get_auth_config_manager()
         self.cache_service = cache_service
 
-        # Load configuration
-        common_config = get_common_config()
-        # Get API key and base URL from plugin configurations
-        plugins_config = common_config.get("plugins", {})
-        guardrails_config = plugins_config.get("guardrails", {}).get("config", {})
-        auth_config = plugins_config.get("auth", {}).get("config", {})
+    # All settings below resolve from the current common_config on every
+    # access so config edits take effect without restart.
+    @property
+    def GUARDRAIL_API_KEY(self) -> str:
+        return get_guardrail_api_key()
 
-        self.GUARDRAIL_API_KEY = guardrails_config.get(
-            "api_key", auth_config.get("api_key", "null")
-        )
-        self.GUARDRAIL_URL = guardrails_config.get(
-            "base_url", auth_config.get("base_url", "https://api.enkryptai.com")
-        )
-        self.ENKRYPT_USE_REMOTE_MCP_CONFIG = common_config.get(
-            "enkrypt_use_remote_mcp_config", False
-        )
-        self.ENKRYPT_REMOTE_MCP_GATEWAY_NAME = common_config.get(
-            "enkrypt_remote_mcp_gateway_name", "Test MCP Gateway"
-        )
-        self.ENKRYPT_REMOTE_MCP_GATEWAY_VERSION = common_config.get(
-            "enkrypt_remote_mcp_gateway_version", "v1"
-        )
-        self.AUTH_SERVER_VALIDATE_URL = f"{self.GUARDRAIL_URL}/mcp-gateway/get-gateway"
-        self.IS_DEBUG_LOG_LEVEL = (
-            common_config.get("enkrypt_log_level", "INFO").lower() == "debug"
-        )
+    @property
+    def GUARDRAIL_URL(self) -> str:
+        return get_guardrail_base_url()
+
+    @property
+    def ENKRYPT_USE_REMOTE_MCP_CONFIG(self) -> bool:
+        return use_remote_mcp_config()
+
+    @property
+    def ENKRYPT_REMOTE_MCP_GATEWAY_NAME(self) -> str:
+        return get_remote_gateway_name()
+
+    @property
+    def ENKRYPT_REMOTE_MCP_GATEWAY_VERSION(self) -> str:
+        return get_remote_gateway_version()
+
+    @property
+    def AUTH_SERVER_VALIDATE_URL(self) -> str:
+        return f"{self.GUARDRAIL_URL}/mcp-gateway/get-gateway"
+
+    @property
+    def IS_DEBUG_LOG_LEVEL(self) -> bool:
+        return is_debug_log_level()
 
     async def clear_cache(
         self,
@@ -97,8 +110,16 @@ class CacheManagementService:
                 custom_id = generate_custom_id()
 
                 # Set main span attributes
-                main_span.set_attribute("request_id", ctx.request_id)
-                main_span.set_attribute("custom_id", custom_id)
+                # request_id / custom_id were previously emitted as snake_case
+                # alongside the dotted SpanAttributes.* forms set elsewhere on
+                # the same span. Use the canonical constants only.
+                main_span.set_attribute(SpanAttributes.REQUEST_ID, ctx.request_id)
+                main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
+                # ``id`` here is the cache-context gateway-config ID
+                # (gateway_key + project_id + user_id + mcp_config_id), not a
+                # standard SpanAttribute. Keep as snake_case for cache
+                # debugging; gets dropped under dynamic:false unless added to
+                # the trace template.
                 main_span.set_attribute("id", id or "not_provided")
                 main_span.set_attribute("server_name", server_name or "not_provided")
                 main_span.set_attribute("cache_type", cache_type or "not_provided")
@@ -180,7 +201,10 @@ class CacheManagementService:
             enkrypt_user_id = credentials.get("user_id") or "not_provided"
 
             gateway_config = await self.auth_manager.get_local_mcp_config(
-                enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
+                enkrypt_gateway_key,
+                enkrypt_project_id,
+                enkrypt_user_id,
+                gateway_name=credentials.get("gateway_name"),
             )
 
             if not gateway_config:
@@ -201,14 +225,42 @@ class CacheManagementService:
             enkrypt_project_name = gateway_config.get("project_name", "not_provided")
             enkrypt_email = gateway_config.get("email", "not_provided")
             enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
+            # Full request_context identity tuple from the cloud auth provider
+            # (or "not_provided" for local-apikey / free-tier gateways).
+            enkrypt_org_id = gateway_config.get("org_id") or "not_provided"
+            enkrypt_project_registry = (
+                gateway_config.get("registry_name") or "not_provided"
+            )
+            enkrypt_gateway_name = gateway_config.get("gateway_name") or "not_provided"
+            enkrypt_gateway_version = (
+                gateway_config.get("gateway_version") or "not_provided"
+            )
 
             # Set span attributes
-            auth_span.set_attribute("gateway_key", mask_key(enkrypt_gateway_key))
-            auth_span.set_attribute("enkrypt_user_id", enkrypt_user_id)
-            auth_span.set_attribute("enkrypt_mcp_config_id", enkrypt_mcp_config_id)
-            auth_span.set_attribute("enkrypt_project_id", enkrypt_project_id)
-            auth_span.set_attribute("enkrypt_project_name", enkrypt_project_name)
-            auth_span.set_attribute("enkrypt_email", enkrypt_email)
+            auth_span.set_attribute(
+                SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
+            )
+            set_span_attr_with_legacy(auth_span, SpanAttributes.ORG_ID, enkrypt_org_id)
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.PROJECT_ID, enkrypt_project_id
+            )
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
+            )
+            auth_span.set_attribute(
+                SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
+            )
+            set_span_attr_with_legacy(auth_span, SpanAttributes.USER_ID, enkrypt_user_id)
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.USER_EMAIL, enkrypt_email
+            )
+            auth_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name
+            )
+            auth_span.set_attribute(
+                SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version
+            )
 
             # Build session key via the canonical helper so ``None``
             # credential components (cloud-auth requests don't send
@@ -236,9 +288,7 @@ class CacheManagementService:
                     logger.error(f"[clear_cache] {detail}")
                     logger.error(
                         "cache_management.clear_cache.not_authenticated",
-                        extra=build_log_extra(
-                            ctx, custom_id, error=detail
-                        ),
+                        extra=build_log_extra(ctx, custom_id, error=detail),
                     )
                     context = ErrorContext(
                         operation="cache_management.auth",

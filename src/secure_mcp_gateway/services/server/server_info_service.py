@@ -9,13 +9,19 @@ from secure_mcp_gateway.exceptions import (
     create_discovery_error,
 )
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
-from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes, SpanNames
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    SpanAttributes,
+    SpanNames,
+    set_span_attr_with_legacy,
+)
 from secure_mcp_gateway.utils import (
     build_log_extra,
+    clear_request_identity_context,
     get_server_info_by_name,
     logger,
     mask_key,
     mask_server_config_sensitive_data,
+    set_request_identity_context,
 )
 
 
@@ -71,7 +77,10 @@ class ServerInfoService:
         enkrypt_project_id = credentials.get("project_id") or "not_provided"
         enkrypt_user_id = credentials.get("user_id") or "not_provided"
         gateway_config = await self.auth_manager.get_local_mcp_config(
-            enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
+            enkrypt_gateway_key,
+            enkrypt_project_id,
+            enkrypt_user_id,
+            gateway_name=credentials.get("gateway_name"),
         )
 
         if not gateway_config:
@@ -92,21 +101,74 @@ class ServerInfoService:
         enkrypt_project_name = gateway_config.get("project_name", "not_provided")
         enkrypt_email = gateway_config.get("email", "not_provided")
         enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
+        # Cloud auth may return ``None`` for any identity field (free-tier
+        # or personal-account gateways, apikeys not bound to a registry,
+        # local-apikey provider). Coerce to the placeholder so OTel
+        # doesn't reject the attribute and so dashboards filtering by
+        # ``enkrypt.org.id`` etc. see a stable token. (Note: cloud does
+        # NOT return org_name -- only org_id.)
+        enkrypt_org_id = gateway_config.get("org_id") or "not_provided"
+        enkrypt_project_registry = gateway_config.get("registry_name") or "not_provided"
+        # Mirrors the ``X-Enkrypt-MCP-Gateway`` /
+        # ``X-Enkrypt-MCP-Gateway-Version`` headers we send to the cloud
+        # when fetching this config -- same coercion rationale.
+        enkrypt_gateway_name = gateway_config.get("gateway_name") or "not_provided"
+        enkrypt_gateway_version = (
+            gateway_config.get("gateway_version") or "not_provided"
+        )
         session_key = f"{enkrypt_gateway_key}_{enkrypt_project_id}_{enkrypt_user_id}_{enkrypt_mcp_config_id}"
 
         with tracer.start_as_current_span(SpanNames.SERVER_INFO) as main_span:
-            main_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(main_span, SpanAttributes.SERVER_NAME, server_name)
             main_span.set_attribute(SpanAttributes.JOB, "enkrypt")
             main_span.set_attribute(SpanAttributes.ENV, "dev")
             main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             main_span.set_attribute(
-                "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
+                SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
-            main_span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
-            main_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
+            set_span_attr_with_legacy(main_span, SpanAttributes.ORG_ID, enkrypt_org_id)
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name
+            )
+            main_span.set_attribute(
+                SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version
+            )
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.PROJECT_ID, enkrypt_project_id
+            )
+            set_span_attr_with_legacy(main_span, SpanAttributes.USER_ID, enkrypt_user_id)
             main_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
-            main_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
-            main_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
+            )
+            main_span.set_attribute(
+                SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
+            )
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.USER_EMAIL, enkrypt_email
+            )
+
+            # Publish identity on the request-scoped ContextVar so every
+            # downstream metric / log emitted under this request inherits
+            # the rich identity tags (cache.hits/misses, etc.).
+            #
+            # Cloud-auth MCP clients only send ``apikey`` (no project_id /
+            # user_id headers), so prefer the values resolved from the cloud
+            # response (``gateway_config``) over the raw header credentials.
+            set_request_identity_context(
+                {
+                    "user_id": gateway_config.get("user_id") or enkrypt_user_id,
+                    "user_email": enkrypt_email,
+                    "project_id": gateway_config.get("project_id")
+                    or enkrypt_project_id,
+                    "project_name": enkrypt_project_name,
+                    "project_registry": enkrypt_project_registry,
+                    "org_id": enkrypt_org_id,
+                    "gateway_name": enkrypt_gateway_name,
+                    "gateway_version": enkrypt_gateway_version,
+                    "mcp_config_id": enkrypt_mcp_config_id,
+                }
+            )
 
             try:
                 # Authentication check
@@ -199,6 +261,8 @@ class ServerInfoService:
                     cause=e,
                 )
                 return create_error_response(err)
+            finally:
+                clear_request_identity_context()
 
     def _generate_custom_id(self) -> str:
         """Generate a custom ID for tracking."""
@@ -249,7 +313,7 @@ class ServerInfoService:
         with tracer.start_as_current_span(SpanNames.SERVER_INFO_AUTH) as auth_span:
             auth_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             auth_span.set_attribute(
-                "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
+                SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
 
             # Add authentication status tracking
@@ -261,7 +325,9 @@ class ServerInfoService:
                 from secure_mcp_gateway.gateway import enkrypt_authenticate
 
                 result = await enkrypt_authenticate(ctx)
-                auth_span.set_attribute(SpanAttributes.AUTH_RESULT, result.get("status"))
+                auth_span.set_attribute(
+                    SpanAttributes.AUTH_RESULT, result.get("status")
+                )
                 if result.get("status") != "success":
                     auth_msg = result.get("message", "Unknown auth error")
                     auth_err = result.get("error", "")
@@ -296,15 +362,20 @@ class ServerInfoService:
     ):
         """Get server info and check if server exists."""
         with tracer.start_as_current_span(SpanNames.SERVER_INFO_CHECK) as server_span:
-            server_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(
+                server_span, SpanAttributes.SERVER_NAME, server_name
+            )
             server_info = get_server_info_by_name(
                 self.auth_manager.get_session_gateway_config(session_key), server_name
             )
-            server_span.set_attribute(SpanAttributes.TOOL_FOUND, server_info is not None)
+            server_span.set_attribute(
+                SpanAttributes.TOOL_FOUND, server_info is not None
+            )
 
             if not server_info:
                 server_span.set_attribute(
-                    SpanAttributes.ERROR_MESSAGE, f"Server '{server_name}' not available"
+                    SpanAttributes.ERROR_MESSAGE,
+                    f"Server '{server_name}' not available",
                 )
                 logger.warning(
                     f"[get_server_info] Server '{server_name}' not available"
@@ -334,19 +405,27 @@ class ServerInfoService:
     ):
         """Get latest server info with all attributes."""
         with tracer.start_as_current_span(SpanNames.SERVER_INFO_LATEST) as info_span:
-            info_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(info_span, SpanAttributes.SERVER_NAME, server_name)
             info_span.set_attribute(
-                "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
+                SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
             info_span.set_attribute(
                 "gateway_id",
                 self.auth_manager.get_session_gateway_config(session_key)["id"],
             )
-            info_span.set_attribute("project_id", enkrypt_project_id)
-            info_span.set_attribute("user_id", enkrypt_user_id)
-            info_span.set_attribute("mcp_config_id", enkrypt_mcp_config_id)
-            info_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
-            info_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
+            set_span_attr_with_legacy(
+                info_span, SpanAttributes.PROJECT_ID, enkrypt_project_id
+            )
+            set_span_attr_with_legacy(
+                info_span, SpanAttributes.USER_ID, enkrypt_user_id
+            )
+            info_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
+            set_span_attr_with_legacy(
+                info_span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
+            )
+            set_span_attr_with_legacy(
+                info_span, SpanAttributes.USER_EMAIL, enkrypt_email
+            )
 
             from secure_mcp_gateway.services.cache.cache_service import CacheService
 

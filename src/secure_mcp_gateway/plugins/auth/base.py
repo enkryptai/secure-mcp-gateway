@@ -49,6 +49,7 @@ class AuthCredentials:
     # Primary credentials
     api_key: Optional[str] = None
     gateway_key: Optional[str] = None
+    gateway_name: Optional[str] = None
     project_id: Optional[str] = None
     user_id: Optional[str] = None
 
