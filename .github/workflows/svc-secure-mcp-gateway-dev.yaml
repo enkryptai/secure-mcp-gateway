@@ -121,7 +121,7 @@ jobs:
         run: |
           IMAGE_REF="$ECR_REGISTRY/enkryptai-dev/secure-mcp-gateway@${IMAGE_DIGEST}"
           echo "Signing image: $IMAGE_REF"
-          cosign sign --key env://COSIGN_KEY $IMAGE_REF
+          cosign sign --key env://COSIGN_KEY --yes $IMAGE_REF
 
       - name: Verify signed image
         if: github.event_name == 'push'
