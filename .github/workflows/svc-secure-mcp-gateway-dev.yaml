@@ -1,0 +1,134 @@
+name: "Service: secure-mcp-gateway Dev"
+run-name: "Service: secure-mcp-gateway updated by ${{ github.actor }} and run by ${{ github.triggering_actor }}"
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/svc-secure-mcp-gateway-dev.yaml
+      - src/**
+      - Dockerfile
+      - requirements.txt
+      - pyproject.toml
+      - MANIFEST.in
+    branches:
+      - "dev"
+  push:
+    paths:
+      - .github/workflows/svc-secure-mcp-gateway-dev.yaml
+      - src/**
+      - Dockerfile
+      - requirements.txt
+      - pyproject.toml
+      - MANIFEST.in
+    branches:
+      - "dev"
+
+permissions: write-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      SHORT_SHA: ${{ steps.setup.outputs.SHORT_SHA }}
+      EPOCH_TIMESTAMP: ${{ steps.setup.outputs.EPOCH_TIMESTAMP }}
+      MONTH: ${{ steps.setup.outputs.MONTH }}
+      YEAR: ${{ steps.setup.outputs.YEAR }}
+      CLEAN_BRANCH_NAME: ${{ steps.setup.outputs.CLEAN_BRANCH_NAME }}
+      AWS_REGION: ${{ steps.setup.outputs.AWS_REGION }}
+    steps:
+      - name: Set variables
+        id: setup
+        run: |
+          echo "SHORT_SHA=${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+          echo "EPOCH_TIMESTAMP=$(date +%s)" >> $GITHUB_OUTPUT
+          echo "MONTH=$(date +%m)" >> $GITHUB_OUTPUT
+          echo "YEAR=$(date +%Y)" >> $GITHUB_OUTPUT
+          echo "AWS_REGION=us-east-1" >> $GITHUB_OUTPUT
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BRANCH_NAME="${{ github.base_ref }}"
+          else
+            BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          fi
+
+          echo "CLEAN_BRANCH_NAME=$(echo ${BRANCH_NAME} | tr '/' '-')" >> $GITHUB_OUTPUT
+
+  build:
+    needs: [setup]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Cosign
+        uses: sigstore/cosign-installer@main
+
+      - name: Login to AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ needs.setup.outputs.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and Tag
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG_SHA: ${{ needs.setup.outputs.SHORT_SHA }}
+          IMAGE_TAG_BRANCH: ${{ needs.setup.outputs.CLEAN_BRANCH_NAME }}-${{ needs.setup.outputs.EPOCH_TIMESTAMP }}
+          IMAGE_TAG_BRANCH_ORIG: ${{ needs.setup.outputs.CLEAN_BRANCH_NAME }}
+          IMAGE_TAG_EPOCH_TIMESTAMP: ${{ needs.setup.outputs.EPOCH_TIMESTAMP }}
+        run: |
+          REPO_NAME="enkryptai-dev/secure-mcp-gateway"
+          echo "Building for repository: ${REPO_NAME}"
+
+          DOCKER_BUILDKIT=1 docker build -f Dockerfile \
+          --build-arg BUILDKIT_INLINE_CACHE=1 \
+          --cache-from $ECR_REGISTRY/${REPO_NAME}:$IMAGE_TAG_BRANCH \
+          --tag $ECR_REGISTRY/${REPO_NAME}:$IMAGE_TAG_SHA \
+          --tag $ECR_REGISTRY/${REPO_NAME}:$IMAGE_TAG_EPOCH_TIMESTAMP \
+          --tag $ECR_REGISTRY/${REPO_NAME}:$IMAGE_TAG_BRANCH_ORIG \
+          --tag $ECR_REGISTRY/${REPO_NAME}:$IMAGE_TAG_BRANCH .
+
+      - name: Push to ECR
+        if: github.event_name == 'push'
+        id: push
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG_SHA: ${{ needs.setup.outputs.SHORT_SHA }}
+        run: |
+          REPO_NAME="enkryptai-dev/secure-mcp-gateway"
+          echo "Pushing to repository: ${REPO_NAME}"
+          docker push $ECR_REGISTRY/${REPO_NAME} --all-tags
+
+          IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $ECR_REGISTRY/${REPO_NAME}:${IMAGE_TAG_SHA} | cut -d'@' -f2)
+          echo "IMAGE_DIGEST=${IMAGE_DIGEST}" >> $GITHUB_OUTPUT
+          echo "Pushed image with digest: ${IMAGE_DIGEST}"
+
+      - name: Sign container image with Cosign
+        if: github.event_name == 'push'
+        env:
+          COSIGN_KEY: ${{ secrets.COSIGN_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_DIGEST: ${{ steps.push.outputs.IMAGE_DIGEST }}
+        run: |
+          IMAGE_REF="$ECR_REGISTRY/enkryptai-dev/secure-mcp-gateway@${IMAGE_DIGEST}"
+          echo "Signing image: $IMAGE_REF"
+          cosign sign --key env://COSIGN_KEY $IMAGE_REF
+
+      - name: Verify signed image
+        if: github.event_name == 'push'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_DIGEST: ${{ steps.push.outputs.IMAGE_DIGEST }}
+          COSIGN_PUB: ${{ secrets.COSIGN_PUB }}
+        run: |
+          IMAGE_REF="$ECR_REGISTRY/enkryptai-dev/secure-mcp-gateway@${IMAGE_DIGEST}"
+          cosign verify --key env://COSIGN_PUB $IMAGE_REF
