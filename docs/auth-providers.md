@@ -36,7 +36,7 @@ clients that don't supply their own.
 
 | Key | Required | Default | Notes |
 | --- | --- | --- | --- |
-| `gateway_name` | yes | — | Matches the `saved_name` field on the cloud's `add-gateway` response. Sent as the `X-Enkrypt-MCP-Gateway` request header. |
+| `gateway_name` | yes, unless clients send the header | — | Matches the `saved_name` field on the cloud's `add-gateway` response. Sent as the `X-Enkrypt-MCP-Gateway` request header on the outbound cloud call. May be omitted here and supplied per request by the MCP client's own `X-Enkrypt-MCP-Gateway` header; when both are present this config value wins and the header is ignored (logged at INFO). |
 | `gateway_version` | no | `"v1"` | Sent as `X-Enkrypt-MCP-Gateway-Version`. |
 | `project_name` | no | inferred from apikey ownership; defaults to `"default"` if the apikey isn't a project apikey | Sent as `X-Enkrypt-Project`. |
 | `apikey` | no | — | Boot-time fallback used when an MCP client connects without its own apikey header. |
@@ -181,7 +181,7 @@ cloud and get a 401 back.
 | Provider | Required headers | Optional headers |
 | --- | --- | --- |
 | `local_apikey` | `ENKRYPT_GATEWAY_KEY` | `project_id`, `user_id` |
-| `enkrypt` | `apikey` | _(none)_ |
+| `enkrypt` | `apikey` | `X-Enkrypt-MCP-Gateway` — required only when `auth.config.gateway_name` is unset; ignored when it is set |
 
 When a request arrives, `AuthConfigManager.extract_credentials()` reads
 both shapes (this is for backwards compatibility); the active provider

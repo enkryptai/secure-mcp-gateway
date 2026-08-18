@@ -314,6 +314,8 @@ No local `mcp_configs` / `projects` / `users` / `apikeys` blocks — the cloud o
 1. `enkrypt_config.api_key` → your Enkrypt cloud apikey
 2. `plugins.auth.config.gateway_name` → the `saved_name` of the gateway you created in the Enkrypt console
 
+> `gateway_name` is the one value that can also arrive per request, as the `X-Enkrypt-MCP-Gateway` header from the MCP client, so that a single gateway process can serve several cloud gateways. When it is set in the config the config wins. Full config-key and header reference: [§7.1 Enkrypt cloud auth provider and gateway headers](#71-enkrypt-cloud-auth-provider-and-gateway-headers).
+
 The shipped reference file is `src/secure_mcp_gateway/example_enkrypt_cloud_config.json` — same shape the CLI generates. Use it as a template for hand-written configs.
 
 Supported flag values:
@@ -762,7 +764,8 @@ INFO: Before starting the gateway, edit the file and set:
 {
   "enkrypt_config": {
     "api_key": "YOUR_ENKRYPT_API_KEY",
-    "base_url": "https://api.enkryptai.com"
+    "base_url": "https://api.enkryptai.com",
+    "org_id": "YOUR_ENKRYPT_ORG_ID"
   },
   "plugins": {
     "auth": {
@@ -1776,7 +1779,8 @@ Run the appropriate `--provider enkrypt` command from the **"Verbose Docker run 
 {
   "enkrypt_config": {
     "api_key": "YOUR_ENKRYPT_API_KEY",
-    "base_url": "https://api.enkryptai.com"
+    "base_url": "https://api.enkryptai.com",
+    "org_id": "YOUR_ENKRYPT_ORG_ID"
   },
   "plugins": {
     "auth": {
@@ -2361,7 +2365,7 @@ python gateway.py
 
 - Replace the credentials with values from your `enkrypt_mcp_config.json`. The credential shape depends on your gateway's `plugins.auth.provider`:
   - **`local_apikey`** (default) — `apikey` + `project_id` + `user_id` headers, sourced from `apikeys.<key>` and the matching project/user IDs
-  - **`enkrypt` cloud** — single `apikey` header, sourced from `enkrypt_config.api_key`
+  - **`enkrypt` cloud** — single `apikey` header, sourced from `enkrypt_config.api_key`. Add an `X-Enkrypt-MCP-Gateway` header **only** if the gateway config leaves `plugins.auth.config.gateway_name` unset — see [§7.1](#71-enkrypt-cloud-auth-provider-and-gateway-headers)
 
 - Replace the `http://0.0.0.0:8000/mcp/` with the `http(s)://<remote_server_ip>:<port>/mcp/`
 
@@ -2430,6 +2434,33 @@ python gateway.py
 
 ```
 
+> **Optional — routing one gateway process to several cloud gateways.** If the gateway is running **without** `plugins.auth.config.gateway_name`, each client must also send `X-Enkrypt-MCP-Gateway` naming the cloud gateway's `saved_name`; the gateway forwards it to Enkrypt cloud to pick the config. When `gateway_name` *is* set in the gateway config, that value wins and this header is ignored — see [§7.1](#71-enkrypt-cloud-auth-provider-and-gateway-headers).
+>
+> ```json
+> {
+>   "mcpServers": {
+>     "Enkrypt Secure MCP Gateway": {
+>       "command": "npx",
+>       "args": [
+>         "mcp-remote",
+>         "http://0.0.0.0:8000/mcp/",
+>         "--allow-http",
+>         "--header",
+>         "apikey:${ENKRYPT_APIKEY}",
+>         "--header",
+>         "X-Enkrypt-MCP-Gateway:${ENKRYPT_MCP_GATEWAY}"
+>       ],
+>       "env": {
+>         "ENKRYPT_APIKEY": "your-enkrypt-cloud-apikey",
+>         "ENKRYPT_MCP_GATEWAY": "your-gateway-saved-name"
+>       }
+>     }
+>   }
+> }
+> ```
+>
+> The env-var names here are arbitrary — `mcp-remote` just substitutes them into the header values. The gateway itself reads no env var for the gateway name, so this routing works on the streamable-HTTP transport only.
+
 **For Claude Code** — use the `claude mcp add` command:
 
 ```bash
@@ -2438,6 +2469,9 @@ claude mcp add --transport http --header "apikey:YOUR_GATEWAY_KEY" --header "pro
 
 # enkrypt cloud provider (generated with --provider enkrypt)
 claude mcp add --transport http --header "apikey:YOUR_ENKRYPT_CLOUD_APIKEY" --scope user Enkrypt-Secure-MCP-Gateway https://mcp.your-domain.com/mcp/
+
+# enkrypt cloud provider, gateway chosen per-request (only when the gateway config leaves plugins.auth.config.gateway_name unset)
+claude mcp add --transport http --header "apikey:YOUR_ENKRYPT_CLOUD_APIKEY" --header "X-Enkrypt-MCP-Gateway:your-gateway-saved-name" --scope user Enkrypt-Secure-MCP-Gateway https://mcp.your-domain.com/mcp/
 ```
 
 > **Note:** For local testing with HTTP (not HTTPS), add `--allow-http` if required, or use `http://0.0.0.0:8000/mcp/` as the URL.
@@ -3264,6 +3298,95 @@ Response field `authorized_via` tells you which path matched: `"org_match"` (clo
       - This is similar to our AI Proxy deployments config. [Refer to our docs](https://docs.enkryptai.com/deployments-api-reference/endpoint/add-deployment#body-output-guardrails-policy-block)
 
 </details>
+
+</details>
+
+### 7.1 Enkrypt cloud auth provider and gateway headers
+
+Setting `plugins.auth.provider` to `"enkrypt"` switches the gateway from local `apikeys` / `projects` / `users` / `mcp_configs` lookups to Enkrypt cloud: on every authenticated request the gateway calls `GET {base_url}/mcp-gateway/get-gateway-config` and maps the response into the internal config shape. **Which** cloud gateway config comes back is decided by the apikey plus the gateway headers described below.
+
+<details>
+<summary><strong>🔑 Config block, header contract and multi-gateway routing</strong></summary>
+<br>
+
+#### 7.1.1 `plugins.auth.config` keys
+
+```json
+{
+  "plugins": {
+    "auth": {
+      "provider": "enkrypt",
+      "config": {
+        "apikey": "<boot-time fallback enkrypt apikey>",
+        "gateway_name": "your-gateway-saved-name",
+        "gateway_version": "v1",
+        "project_name": "default",
+        "base_url": "https://api.enkryptai.com",
+        "cache_ttl_seconds": 600
+      }
+    }
+  }
+}
+```
+
+| Key | Required | Default | What it does |
+|---|---|---|---|
+| `gateway_name` | yes, unless clients send the `X-Enkrypt-MCP-Gateway` header | — | The `saved_name` of the gateway you created in the Enkrypt console (the `saved_name` field returned by `/mcp-gateway/add-gateway`). Sent to the cloud as `X-Enkrypt-MCP-Gateway`. |
+| `gateway_version` | no | `"v1"` | Sent as `X-Enkrypt-MCP-Gateway-Version`. Config-only — there is no per-request header for it. |
+| `project_name` | no | inferred by the cloud from the apikey; `"default"` when the apikey isn't a project apikey | Sent as `X-Enkrypt-Project`, and **only when set** — leave it out to let the cloud infer. Config-only. |
+| `apikey` | no | `enkrypt_config.api_key` | Boot-time fallback used only when an MCP client connects without its own `apikey` header. Note the spelling: under `plugins.auth.config` the key is `apikey`, not `api_key`. |
+| `base_url` | no | `enkrypt_config.base_url`, else `https://api.enkryptai.com` | Trailing slash is stripped. |
+| `cache_ttl_seconds` | no | `600` | TTL of the provider's in-process cloud-response cache (the shipped `--provider enkrypt` template sets `300`). |
+
+`apikey` and `base_url` are filled in from the centralized root-level `enkrypt_config` block when absent here, so most configs only set `gateway_name` (and optionally `gateway_version` / `cache_ttl_seconds`) under `plugins.auth.config`.
+
+> **⚠️ Removed keys fail at boot.** The pre-2.2 provider accepted `api_key`, `use_remote_config` and `timeout` under `plugins.auth.config`. Those now raise a `ValueError` on startup instead of being silently ignored — use `apikey` / `gateway_name` / `gateway_version` / `project_name` / `base_url` instead, and set the auth timeout via `common_mcp_gateway_config.timeout_settings.auth_timeout`.
+
+#### 7.1.2 Headers your MCP client sends to the gateway
+
+| Header | Required | Notes |
+|---|---|---|
+| `apikey` | yes | Your Enkrypt cloud apikey. It is read per request and forwarded as the outbound `apikey` to Enkrypt cloud, so each connected client can carry its own key and get its own config. |
+| `X-Enkrypt-MCP-Gateway` | only when `plugins.auth.config.gateway_name` is **not** set | Selects which cloud gateway config to fetch, per request. If `gateway_name` **is** set in the config, the config value wins and a differing header is ignored (an `INFO` line records the override). |
+
+If neither the config nor the header supplies a gateway name, authentication fails with `Missing X-Enkrypt-MCP-Gateway header and no gateway_name in auth.config`.
+
+There are no per-request equivalents of `gateway_version` / `project_name` — both come from the config only.
+
+> **⚠️ Don't send `ENKRYPT_GATEWAY_KEY` in cloud mode.** For backward compatibility the gateway prefers an `ENKRYPT_GATEWAY_KEY` header over `apikey` when both are present, then forwards it to the cloud. A leftover `ENKRYPT_GATEWAY_KEY` from an old `local_apikey` client config will therefore shadow your correct cloud apikey and produce 401s. Send only the headers your active provider needs (see the per-provider header table in [docs/auth-providers.md](./docs/auth-providers.md#header-contract-per-provider)).
+
+> **Note on stdio installs.** Headers only exist on the streamable-HTTP transport. When the MCP client spawns the gateway over stdio, credentials come from env vars (`ENKRYPT_APIKEY` for the cloud provider) and there is **no** env-var equivalent for the gateway name — so stdio deployments must set `plugins.auth.config.gateway_name` in the config file.
+
+#### 7.1.3 Headers the gateway sends to Enkrypt cloud
+
+`GET {base_url}/mcp-gateway/get-gateway-config` is called with:
+
+| Header | Value |
+|---|---|
+| `apikey` | The calling client's apikey, falling back to `plugins.auth.config.apikey` / `enkrypt_config.api_key` |
+| `X-Enkrypt-MCP-Gateway` | `plugins.auth.config.gateway_name`, falling back to the inbound `X-Enkrypt-MCP-Gateway` header |
+| `X-Enkrypt-MCP-Gateway-Version` | `plugins.auth.config.gateway_version` (default `v1`) |
+| `X-Enkrypt-Project` | `plugins.auth.config.project_name` — omitted entirely when unset |
+
+Every call is logged with the apikey masked, so you can confirm which gateway/project/key a request actually used:
+
+```text
+[EnkryptAuthProvider] fetching gateway config: gateway=my-dev-gateway/v1 project=test apikey=****05yg
+```
+
+Match the last 4 characters against the key you expect — a mismatch means the client is sending the wrong header.
+
+#### 7.1.4 One gateway process, several cloud gateways
+
+Because `gateway_name` may arrive per request, a single gateway deployment can front more than one cloud gateway config: leave `plugins.auth.config.gateway_name` **unset** and have each MCP client send its own `X-Enkrypt-MCP-Gateway` header alongside its `apikey`. Cloud responses are cached in-process under a SHA-256 hash of `apikey | gateway_name | gateway_version | project_name`, so tenants never cross-contaminate each other's config. See [§4.4.2](#442-modify-your-mcp-client-config-to-use-the-gateway) for the client-side JSON.
+
+Note the trade-off: `gateway_version` and `project_name` stay process-wide, so all clients on that process share them. Pin `gateway_name` in the config instead whenever one deployment serves exactly one cloud gateway — it is the safer default, since the effective gateway is then fixed server-side and client-supplied headers can no longer steer it. (Enkrypt cloud still authorizes every apikey against the gateway it names, so the header is not an authorization bypass either way.)
+
+#### 7.1.5 Failure handling
+
+Cloud transport errors, 5xx responses and non-JSON bodies hard-fail the request (`AuthStatus.ERROR` with the upstream message attached) — there is no local-file fallback and no stale-cache serving. Watch the `enkrypt.auth.failure` counter (attributes `provider` / `failure_reason`) and the `[EnkryptAuthProvider] fetching gateway config: ...` log lines to alert on upstream outages.
+
+Full provider reference — cloud response mapping, override precedence, `local_server_overrides`, and cache invalidation — lives in [docs/auth-providers.md](./docs/auth-providers.md).
 
 </details>
 
