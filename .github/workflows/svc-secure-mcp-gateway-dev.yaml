@@ -132,3 +132,4 @@ jobs:
         run: |
           IMAGE_REF="$ECR_REGISTRY/enkryptai-dev/secure-mcp-gateway@${IMAGE_DIGEST}"
           cosign verify --key env://COSIGN_PUB $IMAGE_REF
+
