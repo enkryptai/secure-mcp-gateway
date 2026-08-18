@@ -2,6 +2,38 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- **Replaced the pip wheel that `python3 -m venv` bootstraps from.**  Ubuntu
+  stages a pip wheel in `/usr/share/python-wheels` for `ensurepip`, and on 24.04
+  that is pip 24.0, carrying vendored copies of urllib3 1.26.17 and requests
+  2.31.0.  Those vendored copies, not pip itself, are the subjects of the three
+  mediums left after `v2.2.1-2`: CVE-2025-66471 and CVE-2025-66418 (urllib3,
+  fixed in 2.6.0) and CVE-2024-35195 (requests, fixed in 2.32.0).  The build now
+  stages current pip instead, which vendors urllib3 2.7.0 and requests 2.34.2, so
+  no copy of the vulnerable code remains anywhere in the image and new virtualenvs
+  bootstrap a current pip rather than a two-year-old one.
+
+  Inspector reads dpkg metadata rather than file contents, so it will keep
+  reporting all three against `python3-pip-whl 24.0`.  This closes the
+  vulnerability, not the finding; only Ubuntu Pro (ESM) closes the finding.
+
+  Two approaches were rejected first.  Removing the package breaks apt outright,
+  because `python3.12-venv` depends on it and `dpkg --force-depends` leaves
+  unmet dependencies that make any later `apt-get install` fail, with apt's own
+  suggested `--fix-broken` restoring the vulnerable wheel.  An earlier note in the
+  `v2.2.1-2` entry claimed `ensurepip` hardcodes the bundled pip version and that
+  a drop-in wheel could not work; that was wrong.  `ensurepip._find_packages`
+  resolves the directory by scanning it, so the version in the filename is picked
+  up automatically.  The original failure was the purge taking `python3.12-venv`,
+  and with it `ensurepip`, along with the package.
+
+  A `python3 -m venv` probe now runs in the same build step and fails the build if
+  a future pip layout stops satisfying `ensurepip`, rather than shipping an image
+  where MCP servers cannot create virtualenvs.
+
 ## [v2.2.1-2] - container security rebuild
 
 Image-only release.  No application code changed, so the Python package stays at
@@ -50,9 +82,9 @@ Down to 0 criticals, 0 highs, 5 mediums, none of which have a fix available:
 
 - `python3-pip-whl` (3M) is deliberately kept.  It is not a duplicate of the
   purged packages - it supplies the wheels `python3 -m venv` uses to bootstrap
-  pip, which MCP servers rely on.  Ubuntu's `ensurepip` hardcodes the bundled pip
-  version, so dropping a current wheel into `/usr/share/python-wheels` does not
-  work; verified that this breaks venv creation outright.  Fix is ESM-only.
+  pip, which MCP servers rely on, and `python3.12-venv` depends on it.  Fix is
+  ESM-only.  See the entry above for how the underlying vulnerable code was
+  since removed without touching the package.
 - `rsa` (2M, RUSTSEC-2023-0071, a Marvin-attack timing sidechannel) is vendored
   into the `uv` binary and has no upstream fix.  Not reachable from the gateway:
   it is in a build tool, not the request path.
