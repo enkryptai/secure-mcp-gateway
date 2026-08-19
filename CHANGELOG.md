@@ -17,7 +17,20 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
   otherwise the request header, otherwise `"v1"`.  Configs that set it are
   unaffected; configs that omit it gain per-request routing.
 
+- **A missing guardrail policy now says so.**  When a server's configured
+  guardrail doesn't exist for the gateway's apikey, tool discovery failed
+  closed with a raw upstream `404 Guardrail not found`, which read like the
+  tools had been blocked by a policy. It now raises `GUARD_010` naming the
+  policy and what to do about it. Behaviour is unchanged — still fail-closed.
+
 ### Security
+
+- **Remote server credentials were returned to MCP clients in cleartext.**
+  `enkrypt_list_all_servers` / `enkrypt_get_server_info` masked `config.env`
+  but not `config.headers`, so a `url`-based server's `Authorization` header
+  (e.g. a GitHub PAT) was echoed verbatim to any client that listed servers.
+  Headers are now masked the same way. Rotate any credential configured this
+  way on a gateway running an earlier build.
 
 - **Replaced the pip wheel that `python3 -m venv` bootstraps from.**  Ubuntu
   stages a pip wheel in `/usr/share/python-wheels` for `ensurepip`, and on 24.04

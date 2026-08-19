@@ -1518,11 +1518,29 @@ class EnkryptServerRegistrationGuardrail:
             is_real_timeout = isinstance(underlying, asyncio.TimeoutError) or (
                 "timed out" in str(underlying).lower()
             )
+            # 404 here means the named policy doesn't exist for this apikey --
+            # a config mistake, not a detection. Say so instead of surfacing a
+            # raw upstream 404 that reads like the tools were blocked.
+            is_missing_policy = "guardrail not found" in str(underlying).lower()
 
             # Handle different error types with proper error codes
             if unauthorized_marker:
                 # Propagate unauthorized marker via exception so upper layers can block
                 raise
+            elif is_missing_policy:
+                error = create_guardrail_error(
+                    code=ErrorCode.GUARDRAIL_POLICY_NOT_FOUND,
+                    message=(
+                        f"Guardrail policy '{guardrail_name}' does not exist for "
+                        "the gateway's Enkrypt apikey. Create it in the Enkrypt "
+                        "console, point the server's guardrails_config at an "
+                        "existing policy, or disable the check."
+                    ),
+                    context=context,
+                    cause=e,
+                )
+                error_logger.log_error(error)
+                raise error
             elif is_real_timeout:
                 # Create standardized timeout error
                 error = create_guardrail_error(

@@ -782,11 +782,13 @@ def mask_server_config_sensitive_data(server_info):
 
     masked_server_info = copy.deepcopy(server_info)
 
-    # Mask environment variables in config
-    if "config" in masked_server_info and "env" in masked_server_info["config"]:
-        masked_server_info["config"]["env"] = mask_sensitive_env_vars(
-            masked_server_info["config"]["env"]
-        )
+    config = masked_server_info.get("config")
+    if isinstance(config, dict):
+        if isinstance(config.get("env"), dict):
+            config["env"] = mask_sensitive_env_vars(config["env"])
+        # Remote (url) servers carry their credential here, not in env.
+        if isinstance(config.get("headers"), dict):
+            config["headers"] = mask_sensitive_headers(config["headers"])
 
     return masked_server_info
 
