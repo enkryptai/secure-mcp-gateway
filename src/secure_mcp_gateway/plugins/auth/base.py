@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Protocol
 
 # ============================================================================
 # Enums
@@ -47,24 +47,25 @@ class AuthCredentials:
     """
 
     # Primary credentials
-    api_key: Optional[str] = None
-    gateway_key: Optional[str] = None
-    gateway_name: Optional[str] = None
-    project_id: Optional[str] = None
-    user_id: Optional[str] = None
+    api_key: str | None = None
+    gateway_key: str | None = None
+    gateway_name: str | None = None
+    gateway_version: str | None = None
+    project_id: str | None = None
+    user_id: str | None = None
 
     # OAuth/JWT
-    access_token: Optional[str] = None
-    refresh_token: Optional[str] = None
-    id_token: Optional[str] = None
+    access_token: str | None = None
+    refresh_token: str | None = None
+    id_token: str | None = None
 
     # Basic auth
-    username: Optional[str] = None
-    password: Optional[str] = None
+    username: str | None = None
+    password: str | None = None
 
     # Additional metadata
-    headers: Dict[str, str] = field(default_factory=dict)
-    context: Dict[str, Any] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict)
+    context: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         """Mask sensitive data in string representation."""
@@ -100,21 +101,21 @@ class AuthResult:
     message: str
 
     # User/Session information
-    user_id: Optional[str] = None
-    project_id: Optional[str] = None
-    session_id: Optional[str] = None
+    user_id: str | None = None
+    project_id: str | None = None
+    session_id: str | None = None
 
     # Configuration
-    gateway_config: Optional[Dict[str, Any]] = None
-    mcp_config: Optional[List[Dict[str, Any]]] = None
+    gateway_config: dict[str, Any] | None = None
+    mcp_config: list[dict[str, Any]] | None = None
 
     # Permissions
-    permissions: List[str] = field(default_factory=list)
-    roles: List[str] = field(default_factory=list)
+    permissions: list[str] = field(default_factory=list)
+    roles: list[str] = field(default_factory=list)
 
     # Metadata
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    error: Optional[str] = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
 
     @property
     def is_success(self) -> bool:
@@ -130,15 +131,15 @@ class SessionData:
 
     session_id: str
     user_id: str
-    project_id: Optional[str] = None
+    project_id: str | None = None
 
     authenticated: bool = False
     created_at: float = 0.0
     last_accessed: float = 0.0
-    expires_at: Optional[float] = None
+    expires_at: float | None = None
 
-    gateway_config: Optional[Dict[str, Any]] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    gateway_config: dict[str, Any] | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 # ============================================================================
@@ -174,7 +175,7 @@ class AuthProvider(ABC):
         pass
 
     @abstractmethod
-    def get_supported_methods(self) -> List[AuthMethod]:
+    def get_supported_methods(self) -> list[AuthMethod]:
         """
         Get the authentication methods supported by this provider.
 
@@ -225,7 +226,7 @@ class AuthProvider(ABC):
         """
         pass
 
-    def validate_config(self, config: Dict[str, Any]) -> bool:
+    def validate_config(self, config: dict[str, Any]) -> bool:
         """
         Validate provider configuration.
 
@@ -237,7 +238,7 @@ class AuthProvider(ABC):
         """
         return True
 
-    def get_required_config_keys(self) -> List[str]:
+    def get_required_config_keys(self) -> list[str]:
         """
         Get list of required configuration keys.
 
@@ -282,7 +283,7 @@ class SessionManager(Protocol):
         """
         ...
 
-    def get_session(self, session_id: str) -> Optional[SessionData]:
+    def get_session(self, session_id: str) -> SessionData | None:
         """
         Get session data by ID.
 
@@ -294,7 +295,7 @@ class SessionManager(Protocol):
         """
         ...
 
-    def update_session(self, session_id: str, data: Dict[str, Any]) -> bool:
+    def update_session(self, session_id: str, data: dict[str, Any]) -> bool:
         """
         Update session data.
 
@@ -334,9 +335,7 @@ class ConfigurationProvider(Protocol):
     Protocol for providing gateway/user configuration.
     """
 
-    def get_config(
-        self, user_id: str, project_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+    def get_config(self, user_id: str, project_id: str | None = None) -> dict[str, Any]:
         """
         Get configuration for a user/project.
 
@@ -362,7 +361,7 @@ class AuthProviderRegistry:
 
     def __init__(self):
         """Initialize the registry."""
-        self._provider: Optional[AuthProvider] = None
+        self._provider: AuthProvider | None = None
 
     def register(self, provider: AuthProvider) -> None:
         """
@@ -382,7 +381,7 @@ class AuthProviderRegistry:
         """
         self._provider = None
 
-    def get_provider(self, name: str = None) -> Optional[AuthProvider]:
+    def get_provider(self, name: str = None) -> AuthProvider | None:
         """
         Get the registered provider.
 
@@ -394,7 +393,7 @@ class AuthProviderRegistry:
         """
         return self._provider
 
-    def list_providers(self) -> List[str]:
+    def list_providers(self) -> list[str]:
         """
         Get list of registered provider names.
 
@@ -405,7 +404,7 @@ class AuthProviderRegistry:
             return [self._provider.get_name()]
         return []
 
-    def get_all_providers(self) -> Dict[str, AuthProvider]:
+    def get_all_providers(self) -> dict[str, AuthProvider]:
         """
         Get all registered providers.
 
@@ -424,8 +423,8 @@ class AuthProviderFactory:
 
     @staticmethod
     def create_provider(
-        provider_type: str, config: Dict[str, Any]
-    ) -> Optional[AuthProvider]:
+        provider_type: str, config: dict[str, Any]
+    ) -> AuthProvider | None:
         """
         Create a provider instance.
 
@@ -453,7 +452,7 @@ class AuthProviderFactory:
 # ============================================================================
 
 
-def mask_sensitive_value(value: Optional[str], visible_chars: int = 4) -> str:
+def mask_sensitive_value(value: str | None, visible_chars: int = 4) -> str:
     """
     Mask a sensitive value, showing only last N characters.
 

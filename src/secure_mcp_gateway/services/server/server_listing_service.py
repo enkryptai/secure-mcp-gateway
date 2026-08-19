@@ -95,6 +95,7 @@ class ServerListingService:
                 enkrypt_project_id,
                 enkrypt_user_id,
                 gateway_name=credentials.get("gateway_name"),
+                gateway_version=credentials.get("gateway_version"),
             )
 
             if not gateway_config:

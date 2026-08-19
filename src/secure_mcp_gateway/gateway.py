@@ -273,12 +273,16 @@ def get_gateway_credentials(ctx: Context):
 
 # Read from local MCP config file
 async def get_local_mcp_config(
-    gateway_key, project_id=None, user_id=None, gateway_name=None
+    gateway_key, project_id=None, user_id=None, gateway_name=None, gateway_version=None
 ):
     """Wrapper for getting local MCP config using the auth manager."""
     auth_manager = get_auth_config_manager()
     return await auth_manager.get_local_mcp_config(
-        gateway_key, project_id, user_id, gateway_name=gateway_name
+        gateway_key,
+        project_id,
+        user_id,
+        gateway_name=gateway_name,
+        gateway_version=gateway_version,
     )
 
 
@@ -539,11 +543,16 @@ async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
     project_id = creds.get("project_id")
     user_id = creds.get("user_id")
     gateway_name = creds.get("gateway_name")
+    gateway_version = creds.get("gateway_version")
 
     # Get mcp_config_id from local config
     auth_manager = get_auth_config_manager()
     local_config = await auth_manager.get_local_mcp_config(
-        gateway_key, project_id, user_id, gateway_name=gateway_name
+        gateway_key,
+        project_id,
+        user_id,
+        gateway_name=gateway_name,
+        gateway_version=gateway_version,
     )
     mcp_config_id = (
         local_config.get("mcp_config_id", "not_provided")

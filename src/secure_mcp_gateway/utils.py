@@ -651,6 +651,7 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
             project_id = credentials.get("project_id", project_id)
             user_id = credentials.get("user_id", user_id)
             gateway_name = credentials.get("gateway_name")
+            header_gateway_version = credentials.get("gateway_version")
 
             if gateway_key:
                 try:
@@ -673,6 +674,7 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
                                         project_id,
                                         user_id,
                                         gateway_name=gateway_name,
+                                        gateway_version=header_gateway_version,
                                     )
                                 )
                                 or {}

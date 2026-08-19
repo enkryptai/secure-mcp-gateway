@@ -81,6 +81,7 @@ class ServerInfoService:
             enkrypt_project_id,
             enkrypt_user_id,
             gateway_name=credentials.get("gateway_name"),
+            gateway_version=credentials.get("gateway_version"),
         )
 
         if not gateway_config:
@@ -119,7 +120,9 @@ class ServerInfoService:
         session_key = f"{enkrypt_gateway_key}_{enkrypt_project_id}_{enkrypt_user_id}_{enkrypt_mcp_config_id}"
 
         with tracer.start_as_current_span(SpanNames.SERVER_INFO) as main_span:
-            set_span_attr_with_legacy(main_span, SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.SERVER_NAME, server_name
+            )
             main_span.set_attribute(SpanAttributes.JOB, "enkrypt")
             main_span.set_attribute(SpanAttributes.ENV, "dev")
             main_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
@@ -136,7 +139,9 @@ class ServerInfoService:
             set_span_attr_with_legacy(
                 main_span, SpanAttributes.PROJECT_ID, enkrypt_project_id
             )
-            set_span_attr_with_legacy(main_span, SpanAttributes.USER_ID, enkrypt_user_id)
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.USER_ID, enkrypt_user_id
+            )
             main_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
             set_span_attr_with_legacy(
                 main_span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
@@ -405,7 +410,9 @@ class ServerInfoService:
     ):
         """Get latest server info with all attributes."""
         with tracer.start_as_current_span(SpanNames.SERVER_INFO_LATEST) as info_span:
-            set_span_attr_with_legacy(info_span, SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(
+                info_span, SpanAttributes.SERVER_NAME, server_name
+            )
             info_span.set_attribute(
                 SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )

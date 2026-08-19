@@ -37,11 +37,39 @@ clients that don't supply their own.
 | Key | Required | Default | Notes |
 | --- | --- | --- | --- |
 | `gateway_name` | yes, unless clients send the header | — | Matches the `saved_name` field on the cloud's `add-gateway` response. Sent as the `X-Enkrypt-MCP-Gateway` request header on the outbound cloud call. May be omitted here and supplied per request by the MCP client's own `X-Enkrypt-MCP-Gateway` header; when both are present this config value wins and the header is ignored (logged at INFO). |
-| `gateway_version` | no | `"v1"` | Sent as `X-Enkrypt-MCP-Gateway-Version`. |
+| `gateway_version` | no | the request's `X-Enkrypt-MCP-Gateway-Version` header, else `"v1"` | Sent as `X-Enkrypt-MCP-Gateway-Version` on the outbound cloud call. Setting it here pins the version process-wide and overrides the client header (logged at INFO); omit it so header-routed deployments can serve gateways registered under different versions. |
 | `project_name` | no | inferred from apikey ownership; defaults to `"default"` if the apikey isn't a project apikey | Sent as `X-Enkrypt-Project`. |
 | `apikey` | no | — | Boot-time fallback used when an MCP client connects without its own apikey header. |
 | `base_url` | no | `https://api.enkryptai.com` | Trailing slash stripped. |
 | `cache_ttl_seconds` | no | 600 | In-process cache TTL for cloud responses. |
+
+### Gateway identity resolution (name + version)
+
+The cloud looks a gateway up by the pair `(gateway_saved_name,
+gateway_version)`. Both halves resolve with the same precedence, first
+match wins:
+
+1. `auth.config.<gateway_name|gateway_version>` — pinned by the operator,
+   always beats a client header (a differing header is logged at INFO and
+   dropped).
+2. The request header (`X-Enkrypt-MCP-Gateway` /
+   `X-Enkrypt-MCP-Gateway-Version`).
+3. Default — none for the name (auth fails with
+   `AuthStatus.INVALID_CREDENTIALS`), `"v1"` for the version.
+
+Pinning the version is only right when the process serves a single cloud
+gateway. A header-routed deployment (`gateway_name` unset, several tenants
+on one process) must leave `gateway_version` unset, because the version is
+part of the lookup key: with a pinned `v1`, any gateway registered as `1`
+or `v2` returns
+
+```json
+{"code": 404, "error": "Resource not found", "message": "MCP gateway not found"}
+```
+
+which surfaces to the MCP client as `AuthStatus.ERROR` on every call. The
+in-process cache keys on the resolved version too, so two versions of the
+same gateway never share an entry.
 
 ### Removed keys (hard fail)
 
@@ -181,7 +209,7 @@ cloud and get a 401 back.
 | Provider | Required headers | Optional headers |
 | --- | --- | --- |
 | `local_apikey` | `ENKRYPT_GATEWAY_KEY` | `project_id`, `user_id` |
-| `enkrypt` | `apikey` | `X-Enkrypt-MCP-Gateway` — required only when `auth.config.gateway_name` is unset; ignored when it is set |
+| `enkrypt` | `apikey` | `X-Enkrypt-MCP-Gateway` — required only when `auth.config.gateway_name` is unset; ignored when it is set. `X-Enkrypt-MCP-Gateway-Version` — used when `auth.config.gateway_version` is unset (defaults to `v1`); ignored when it is set |
 
 When a request arrives, `AuthConfigManager.extract_credentials()` reads
 both shapes (this is for backwards compatibility); the active provider

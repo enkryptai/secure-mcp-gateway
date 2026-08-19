@@ -997,3 +997,167 @@ def test_create_session_key_store_lookup_symmetry() -> None:
     )
 
     assert store_key == lookup_via_helper == lookup_via_inline_fstring
+
+
+# ---------------------------------------------------------------------------
+# gateway_version resolution: pinned auth.config wins, else request header
+# ---------------------------------------------------------------------------
+
+
+def test_constructor_leaves_version_unpinned_by_default() -> None:
+    p = EnkryptAuthProvider(apikey="x", gateway_name="g")
+    assert p.gateway_version == "v1"
+    assert p._gateway_version_pinned is False
+
+
+def test_constructor_marks_version_pinned_when_configured() -> None:
+    p = EnkryptAuthProvider(apikey="x", gateway_name="g", gateway_version="2")
+    assert p.gateway_version == "2"
+    assert p._gateway_version_pinned is True
+
+
+def test_resolve_gateway_version_precedence() -> None:
+    unpinned = EnkryptAuthProvider(apikey="x")
+    assert unpinned._resolve_gateway_version("1") == "1"
+    assert unpinned._resolve_gateway_version(None) == "v1"
+    assert unpinned._resolve_gateway_version("") == "v1"
+
+    pinned = EnkryptAuthProvider(apikey="x", gateway_version="v3")
+    assert pinned._resolve_gateway_version("1") == "v3"
+    assert pinned._resolve_gateway_version(None) == "v3"
+
+
+@pytest.mark.asyncio
+async def test_authenticate_uses_header_gateway_version(monkeypatch) -> None:
+    """Unpinned config: the request header decides the version."""
+    p = EnkryptAuthProvider(apikey="x", base_url="https://api.example.com")
+
+    seen: Dict[str, Any] = {}
+
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
+        seen.update(kw)
+        return sample_response()
+
+    async def empty_overrides(self: EnkryptAuthProvider):
+        return {}
+
+    monkeypatch.setattr(EnkryptAuthProvider, "_fetch_remote_gateway_config", fake_fetch)
+    monkeypatch.setattr(
+        EnkryptAuthProvider, "_load_local_server_overrides", empty_overrides
+    )
+
+    creds = AuthCredentials(
+        api_key="x",
+        gateway_key="x",
+        gateway_name="demo-mcp-gateway",
+        gateway_version="1",
+    )
+    result = await p.authenticate(creds)
+    assert result.authenticated is True
+    assert seen["gateway_name"] == "demo-mcp-gateway"
+    assert seen["gateway_version"] == "1"
+    assert result.metadata["gateway_version"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_authenticate_config_gateway_version_wins_over_header(
+    monkeypatch,
+) -> None:
+    """Pinned config beats the client header."""
+    p = make_provider()  # config pins gateway_version="v1"
+
+    seen: Dict[str, Any] = {}
+
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
+        seen.update(kw)
+        return sample_response()
+
+    async def empty_overrides(self: EnkryptAuthProvider):
+        return {}
+
+    monkeypatch.setattr(EnkryptAuthProvider, "_fetch_remote_gateway_config", fake_fetch)
+    monkeypatch.setattr(
+        EnkryptAuthProvider, "_load_local_server_overrides", empty_overrides
+    )
+
+    creds = AuthCredentials(api_key="x", gateway_key="x", gateway_version="9")
+    result = await p.authenticate(creds)
+    assert result.authenticated is True
+    assert seen["gateway_version"] == "v1"
+    assert result.metadata["gateway_version"] == "v1"
+
+
+@pytest.mark.asyncio
+async def test_fetch_sends_resolved_version_header(monkeypatch) -> None:
+    """Resolved version lands on the outbound request header."""
+    p = EnkryptAuthProvider(apikey="x", base_url="https://api.example.com")
+
+    captured: Dict[str, Any] = {}
+
+    class _FakeResponse:
+        status = 200
+
+        async def json(self):
+            return sample_response()
+
+        async def text(self):
+            return "{}"
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    class _FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        def get(self, url, headers=None, timeout=None):
+            captured["url"] = url
+            captured["headers"] = headers
+            return _FakeResponse()
+
+    monkeypatch.setattr(ep_mod.aiohttp, "ClientSession", lambda *a, **k: _FakeSession())
+
+    await p._fetch_remote_gateway_config(
+        "apikey-value", gateway_name="demo-mcp-gateway", gateway_version="1"
+    )
+    assert captured["headers"]["X-Enkrypt-MCP-Gateway"] == "demo-mcp-gateway"
+    assert captured["headers"]["X-Enkrypt-MCP-Gateway-Version"] == "1"
+
+
+def test_cache_key_separates_versions() -> None:
+    """Two versions of one gateway must not share a cache entry."""
+    p = EnkryptAuthProvider(apikey="x")
+    k1 = p._cache_key("apikey", "demo-mcp-gateway", "1")
+    k2 = p._cache_key("apikey", "demo-mcp-gateway", "v1")
+    assert k1 != k2
+
+
+@pytest.mark.asyncio
+async def test_get_local_config_caches_per_version(monkeypatch) -> None:
+    """Each version is fetched and cached independently."""
+    p = EnkryptAuthProvider(apikey="x", base_url="https://api.example.com")
+
+    calls = []
+
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
+        calls.append(kw.get("gateway_version"))
+        return sample_response()
+
+    async def empty_overrides(self: EnkryptAuthProvider):
+        return {}
+
+    monkeypatch.setattr(EnkryptAuthProvider, "_fetch_remote_gateway_config", fake_fetch)
+    monkeypatch.setattr(
+        EnkryptAuthProvider, "_load_local_server_overrides", empty_overrides
+    )
+
+    await p._get_local_config("k", gateway_name="gw", gateway_version="1")
+    await p._get_local_config("k", gateway_name="gw", gateway_version="1")
+    await p._get_local_config("k", gateway_name="gw", gateway_version="v2")
+    assert calls == ["1", "v2"]

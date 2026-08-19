@@ -365,6 +365,7 @@ class SecureToolExecutionService:
                     creds.get("project_id"),
                     creds.get("user_id"),
                     gateway_name=creds.get("gateway_name"),
+                    gateway_version=creds.get("gateway_version"),
                 )
 
                 if not local_config:

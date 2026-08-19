@@ -94,6 +94,7 @@ class AuthConfigManager:
                 "apikey"
             )
             credentials.gateway_name = headers.get("X-Enkrypt-MCP-Gateway")
+            credentials.gateway_version = headers.get("X-Enkrypt-MCP-Gateway-Version")
             credentials.project_id = headers.get("project_id")
             credentials.user_id = headers.get("user_id")
             credentials.access_token = headers.get("Authorization", "").replace(
@@ -162,7 +163,11 @@ class AuthConfigManager:
 
         # Get local config to find mcp_config_id
         local_config = await self.get_local_mcp_config(
-            gateway_key, project_id, user_id, gateway_name=credentials.gateway_name
+            gateway_key,
+            project_id,
+            user_id,
+            gateway_name=credentials.gateway_name,
+            gateway_version=credentials.gateway_version,
         )
         if not local_config:
             return AuthResult(
@@ -375,6 +380,7 @@ class AuthConfigManager:
             "project_id": creds.project_id,
             "user_id": creds.user_id,
             "gateway_name": creds.gateway_name,
+            "gateway_version": creds.gateway_version,
         }
 
     async def get_local_mcp_config(
@@ -383,6 +389,7 @@ class AuthConfigManager:
         project_id: str = None,
         user_id: str = None,
         gateway_name: str = None,
+        gateway_version: str = None,
     ) -> dict[str, Any]:
         """
         Backward-compatible method matching auth_service.get_local_mcp_config()
@@ -393,13 +400,20 @@ class AuthConfigManager:
         ``X-Enkrypt-MCP-Gateway`` header (extracted via
         ``get_gateway_credentials``). Without it, the cloud provider can't
         identify which gateway config to fetch and the call fails.
+
+        ``gateway_version`` is the request's ``X-Enkrypt-MCP-Gateway-Version``
+        header, used unless ``auth.config.gateway_version`` is pinned.
         """
         provider = self.get_provider("enkrypt")
         if not provider or not hasattr(provider, "_get_local_config"):
             return {}
 
         return await provider._get_local_config(
-            gateway_key, project_id, user_id, gateway_name=gateway_name
+            gateway_key,
+            project_id,
+            user_id,
+            gateway_name=gateway_name,
+            gateway_version=gateway_version,
         )
 
     def create_session_key(
@@ -485,7 +499,11 @@ class AuthConfigManager:
 
         # Get MCP config to get mcp_config_id
         local_config = await self.get_local_mcp_config(
-            gateway_key, project_id, user_id, gateway_name=credentials.gateway_name
+            gateway_key,
+            project_id,
+            user_id,
+            gateway_name=credentials.gateway_name,
+            gateway_version=credentials.gateway_version,
         )
         if not local_config:
             return False
@@ -533,7 +551,11 @@ class AuthConfigManager:
             return None
 
         local_config = await self.get_local_mcp_config(
-            gateway_key, project_id, user_id, gateway_name=credentials.gateway_name
+            gateway_key,
+            project_id,
+            user_id,
+            gateway_name=credentials.gateway_name,
+            gateway_version=credentials.gateway_version,
         )
         if not local_config:
             return None
@@ -560,7 +582,11 @@ class AuthConfigManager:
             return False
 
         local_config = await self.get_local_mcp_config(
-            gateway_key, project_id, user_id, gateway_name=credentials.gateway_name
+            gateway_key,
+            project_id,
+            user_id,
+            gateway_name=credentials.gateway_name,
+            gateway_version=credentials.gateway_version,
         )
         if not local_config:
             return False
@@ -585,9 +611,14 @@ class AuthConfigManager:
             project_id = credentials.get("project_id")
             user_id = credentials.get("user_id")
             gateway_name = credentials.get("gateway_name")
+            gateway_version = credentials.get("gateway_version")
 
             local_cfg = await self.get_local_mcp_config(
-                gateway_key, project_id, user_id, gateway_name=gateway_name
+                gateway_key,
+                project_id,
+                user_id,
+                gateway_name=gateway_name,
+                gateway_version=gateway_version,
             )
             if not local_cfg:
                 return "not_provided"
