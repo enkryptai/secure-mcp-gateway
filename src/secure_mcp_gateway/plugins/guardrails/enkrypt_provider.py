@@ -44,11 +44,11 @@ def _effective_apikey(static_key: str | None) -> str:
     config file (which is impossible when every end-user has a distinct
     Enkrypt apikey).
 
-    Falls back to the provider's static ``self.api_key`` for legacy
-    single-tenant local installs and for code paths that run outside a
-    request task (server registration at startup, batch tool validation
-    during discovery). Returns ``""`` when neither is set — caller will
-    then receive an honest 401 from Enkrypt cloud instead of a fatal
+    Populated on both the execution and discovery paths. Falls back to the
+    provider's static ``self.api_key`` for legacy single-tenant local
+    installs and for code that runs outside a request task (server
+    registration at startup). Returns ``""`` when neither is set — caller
+    will then receive an honest 401 from Enkrypt cloud instead of a fatal
     serialization crash from putting a dict into the header.
     """
     try:
@@ -1416,7 +1416,10 @@ class EnkryptServerRegistrationGuardrail:
             safe_texts = ["" if t is None else str(t) for t in (texts or [])]
 
             headers = {
-                "apikey": str(self.api_key or ""),
+                # Guardrails resolve per apikey/project, so registration and
+                # tool-batch checks must use the caller's key like every other
+                # guardrail call does -- not the gateway's boot-time key.
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "server-registration",
@@ -1538,11 +1541,11 @@ class EnkryptServerRegistrationGuardrail:
                     code=ErrorCode.GUARDRAIL_POLICY_NOT_FOUND,
                     message=(
                         f"Guardrail '{guardrail_name}' not found for the "
-                        "gateway's Enkrypt apikey. The name is matched exactly, "
-                        "including case, against that account's guardrails "
-                        "(GET /guardrails/list-guardrails). Fix the name in "
-                        "guardrails_config, create the guardrail, or disable "
-                        "the check."
+                        "apikey this call used. Guardrails resolve per "
+                        "apikey/project and the name is matched exactly, "
+                        "including case — check GET /guardrails/list-guardrails "
+                        "for that account. Fix the name in guardrails_config, "
+                        "create the guardrail, or disable the check."
                     ),
                     context=context,
                     cause=e,

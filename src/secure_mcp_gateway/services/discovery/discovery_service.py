@@ -21,6 +21,7 @@ from secure_mcp_gateway.plugins.telemetry.conventions import (
     SpanNames,
     set_span_attr_with_legacy,
 )
+from secure_mcp_gateway.request_context import request_apikey_var
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 from secure_mcp_gateway.utils import (
     build_log_extra,
@@ -214,6 +215,14 @@ class DiscoveryService:
             # Cloud-auth MCP clients only send ``apikey`` (no project_id /
             # user_id headers), so prefer the values resolved from the cloud
             # response (``gateway_config``) over the raw header credentials.
+            # Registration/tool-batch guardrail checks run on this path and
+            # resolve guardrails per apikey, so forward the caller's key the
+            # same way the execution path does.
+            request_apikey = credentials.get("api_key") or ""
+            apikey_token = (
+                request_apikey_var.set(request_apikey) if request_apikey else None
+            )
+
             set_request_identity_context(
                 {
                     "user_id": gateway_config.get("user_id") or enkrypt_user_id,
@@ -329,6 +338,8 @@ class DiscoveryService:
                 return create_error_response(error)
             finally:
                 clear_request_identity_context()
+                if apikey_token is not None:
+                    request_apikey_var.reset(apikey_token)
 
     def _generate_custom_id(self) -> str:
         """Generate a custom ID for tracking."""

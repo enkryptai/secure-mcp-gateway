@@ -74,7 +74,7 @@ async def test_missing_policy_raises_guard_010(batch_api) -> None:
 
     assert exc.value.code == ErrorCode.GUARDRAIL_POLICY_NOT_FOUND
     assert "demo guardrail" in str(exc.value)
-    assert "including case" in str(exc.value)
+    assert "per apikey/project" in str(exc.value)
 
 
 async def test_other_api_errors_stay_generic(batch_api, monkeypatch) -> None:

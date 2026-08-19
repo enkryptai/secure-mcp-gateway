@@ -17,6 +17,16 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
   otherwise the request header, otherwise `"v1"`.  Configs that set it are
   unaffected; configs that omit it gain per-request routing.
 
+- **Tool discovery used the wrong apikey for guardrail checks.**  Guardrails
+  resolve per apikey/project, and the nine detect/PII calls already forwarded
+  the caller's key — but the registration and tool-batch checks that gate
+  discovery used the gateway's boot-time key instead. In a multi-tenant
+  deployment those checks looked the guardrail up in the wrong account and
+  returned `404 Guardrail not found`, so discovery failed closed and every
+  server came back with no tools. The batch route now forwards the caller's
+  apikey like the rest, and discovery publishes it the way tool execution
+  already did.
+
 - **A missing guardrail now says so.**  When a server's configured guardrail
   doesn't exist for the gateway's apikey, tool discovery failed closed with a
   raw upstream `404 Guardrail not found`, which read like the tools had been
