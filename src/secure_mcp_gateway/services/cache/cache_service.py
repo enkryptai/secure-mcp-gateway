@@ -16,6 +16,7 @@ from secure_mcp_gateway.utils import (
     mask_key,
 )
 
+
 class CacheService:
     """
     Cache service for Enkrypt Secure MCP Gateway.
@@ -492,9 +493,7 @@ class CacheService:
             # ``ctx`` is available here; build_log_extra(None) falls back
             # to the ContextVar) so dashboards filtered by user/project
             # can pivot on cache hit/miss rates too.
-            cache_attrs = build_log_extra(
-                None, server_name=server_name
-            )
+            cache_attrs = build_log_extra(None, server_name=server_name)
             if cached_tools:
                 # Update metrics lazily
                 if (

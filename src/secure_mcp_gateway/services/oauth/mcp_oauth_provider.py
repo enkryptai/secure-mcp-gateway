@@ -153,7 +153,7 @@ class _OAuthCallbackHandler(BaseHTTPRequestHandler):
         self.wfile.write(body.encode())
         _callback_event.set()
 
-    def log_message(self, fmt: str, *args: Any) -> None:  # noqa: ARG002
+    def log_message(self, fmt: str, *args: Any) -> None:
         pass  # silence default stderr logging
 
 
@@ -182,10 +182,10 @@ async def _redirect_handler(authorize_url: str) -> None:
             f"to authorize:\n\n  {authorize_url}\n"
         )
         print(
-            f"\n{'='*60}\n"
+            f"\n{'=' * 60}\n"
             f"MCP OAuth: open this URL in your browser to authorize:\n\n"
             f"  {authorize_url}\n"
-            f"\n{'='*60}\n",
+            f"\n{'=' * 60}\n",
             flush=True,
         )
     else:
@@ -201,9 +201,7 @@ async def _callback_handler_factory(
     _callback_event.clear()
 
     ready = Event()
-    thread = Thread(
-        target=_run_callback_server, args=(port, ready), daemon=True
-    )
+    thread = Thread(target=_run_callback_server, args=(port, ready), daemon=True)
     thread.start()
     ready.wait(timeout=5)
 
@@ -211,9 +209,7 @@ async def _callback_handler_factory(
     got_it = await loop.run_in_executor(None, _callback_event.wait, timeout)
 
     if not got_it:
-        raise TimeoutError(
-            f"[MCPOAuth] OAuth callback not received within {timeout}s"
-        )
+        raise TimeoutError(f"[MCPOAuth] OAuth callback not received within {timeout}s")
 
     if _callback_result["error"]:
         raise RuntimeError(

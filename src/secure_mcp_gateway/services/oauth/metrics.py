@@ -120,7 +120,7 @@ class OAuthMetrics:
 
     def reset(self):
         """Reset all metrics."""
-        self._metrics = {k: 0 for k in self._metrics}
+        self._metrics = dict.fromkeys(self._metrics, 0)
         self._latencies = {"token_acquisition": []}
         logger.info("[OAuthMetrics] Metrics reset")
 

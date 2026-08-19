@@ -7,7 +7,7 @@ from typing import Any
 # the guardrail provider can import it without dragging the execution service
 # (and its telemetry-at-import-time side effects) into its dependency graph.
 # Re-exported here for convenience.
-from secure_mcp_gateway.request_context import request_apikey_var  # noqa: F401
+from secure_mcp_gateway.request_context import request_apikey_var
 
 
 def extract_input_text_from_args(args: Any) -> tuple[str, str]:

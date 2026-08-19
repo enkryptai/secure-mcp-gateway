@@ -120,10 +120,9 @@ def resolve_admin_keys(config: Dict[str, Any]) -> List[str]:
     membership checks are still safe.
     """
     enkrypt_cfg = config.get("enkrypt_config") or {}
-    provider = (
-        (config.get("plugins") or {}).get("auth", {}).get("provider")
-        or "local_apikey"
-    )
+    provider = (config.get("plugins") or {}).get("auth", {}).get(
+        "provider"
+    ) or "local_apikey"
 
     keys: List[str] = []
 
@@ -155,8 +154,7 @@ def describe_missing_admin_key_hint(provider: str) -> str:
     """
     if provider == "enkrypt":
         return (
-            "Set enkrypt_config.api_key (cloud apikey) or "
-            "enkrypt_config.admin_apikey."
+            "Set enkrypt_config.api_key (cloud apikey) or enkrypt_config.admin_apikey."
         )
     return (
         f"Auth provider is '{provider}'; "
@@ -245,10 +243,9 @@ async def authorize_apikey_for_cache_flush(
             "detail": "apikey header required",
         }
 
-    provider = (
-        (config.get("plugins") or {}).get("auth", {}).get("provider")
-        or "local_apikey"
-    )
+    provider = (config.get("plugins") or {}).get("auth", {}).get(
+        "provider"
+    ) or "local_apikey"
 
     # --- Non-enkrypt providers: static admin key is the only signal --------
     if provider != "enkrypt":
@@ -301,8 +298,8 @@ async def authorize_apikey_for_cache_flush(
             "detail": (
                 "'enkrypt_config.org_id' is not configured. Set it to your "
                 "Enkrypt cloud org_id -- a single string like "
-                "\"550e8400-...\" or a JSON list of strings like "
-                "[\"org-a-uuid\", \"org-b-uuid\"] to allow flushes from any "
+                '"550e8400-..." or a JSON list of strings like '
+                '["org-a-uuid", "org-b-uuid"] to allow flushes from any '
                 "of several orgs (see /consumer-info.org_id) to enable "
                 "cache-flush authorization."
             ),
@@ -321,7 +318,7 @@ async def authorize_apikey_for_cache_flush(
             ConsumerUpstreamError,
             fetch_consumer_info,
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return {
             "authorized": False,
             "reason": AUTHZ_CLOUD_UNAVAILABLE,
@@ -369,7 +366,7 @@ async def authorize_apikey_for_cache_flush(
             "status_code": 502,
             "detail": f"cloud /consumer-info error: {e}",
         }
-    except Exception as e:  # noqa: BLE001 -- defense-in-depth
+    except Exception as e:
         return {
             "authorized": False,
             "reason": AUTHZ_CLOUD_UNAVAILABLE,

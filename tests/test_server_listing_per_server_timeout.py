@@ -422,24 +422,22 @@ class TestNoServersToDiscover:
 # Section 6 — TimeoutConfig default sanity
 # ======================================================================
 class TestDiscoveryTimeoutDefault:
-    """Pin the default to the post-fix value so a future refactor that
-    re-introduces the old 20s/120s default trips this test."""
+    """Pin the default so a refactor re-introducing the old 20s/120s/180s
+    value trips this test."""
 
-    def test_default_discovery_timeout_is_180s(self) -> None:
+    def test_default_discovery_timeout(self) -> None:
         from secure_mcp_gateway.services.timeout.timeout_manager import (
             TimeoutConfig,
         )
 
         config = TimeoutConfig()
-        assert config.discovery_timeout == 180
+        assert config.discovery_timeout == 540
 
-    def test_load_config_default_discovery_timeout_is_180s(self) -> None:
-        """An empty ``timeout_settings`` block must also resolve to 180s --
-        not the historic 120s -- so users with minimal configs get the same
-        runtime budget as those who explicitly set the value."""
+    def test_load_config_default_discovery_timeout(self) -> None:
+        """An empty ``timeout_settings`` block resolves to the same default."""
         from secure_mcp_gateway.services.timeout.timeout_manager import (
             TimeoutManager,
         )
 
         manager = TimeoutManager(config={"timeout_settings": {}})
-        assert manager.get_timeout("discovery") == 180
+        assert manager.get_timeout("discovery") == 540

@@ -18,7 +18,7 @@ from secure_mcp_gateway.plugins.sandbox.base import SandboxProvider
 from secure_mcp_gateway.utils import logger
 
 try:
-    import novavm  # noqa: F401
+    import novavm
 
     HAS_NOVAVM_SDK = True
 except ImportError:
@@ -97,7 +97,10 @@ class NovaVMProvider(SandboxProvider):
             if HAS_NOVAVM_SDK:
                 msg += " (Python SDK also available)"
             return True, msg
-        return False, "nova CLI not found on PATH. Install with: sudo snap install novavm"
+        return (
+            False,
+            "nova CLI not found on PATH. Install with: sudo snap install novavm",
+        )
 
     async def cleanup(self, server_name: str) -> None:
         pass

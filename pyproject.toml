@@ -111,6 +111,11 @@ ignore = [
     "E501", "B008", "C901", "B904", "E402", "F403", "F401",
     "B007", "SIM102", "F841", "SIM117", "RUF013", "B006",
     "SIM114", "SIM210",
+    # Deferred: pre-existing debt across src/, tracked for a separate
+    # mechanical sweep. Re-enable one rule at a time as it is cleared.
+    "UP006", "UP007", "UP035", "UP037", "UP045",
+    "RUF005", "RUF006", "RUF022", "RUF059",
+    "SIM105", "SIM118", "TC002", "C408",
 ]
 fixable = ["ALL"]
 unfixable = []

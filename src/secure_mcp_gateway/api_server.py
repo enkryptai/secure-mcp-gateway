@@ -171,7 +171,7 @@ app.add_middleware(
 # Audit middleware -- auto-emits log_audit() events for every mutation
 # endpoint based on (method, path) inference, without per-endpoint
 # instrumentation.  See ``audit_middleware.py`` for the route table.
-from secure_mcp_gateway.audit_middleware import audit_http_middleware  # noqa: E402
+from secure_mcp_gateway.audit_middleware import audit_http_middleware
 
 app.middleware("http")(audit_http_middleware)
 
@@ -374,10 +374,9 @@ def get_api_key(apikey: str | None = Header(None)) -> str:
 
         acceptable = resolve_admin_keys(config)
         if not acceptable:
-            provider = (
-                (config.get("plugins") or {}).get("auth", {}).get("provider")
-                or "local_apikey"
-            )
+            provider = (config.get("plugins") or {}).get("auth", {}).get(
+                "provider"
+            ) or "local_apikey"
             error = create_auth_error(
                 code=ErrorCode.AUTH_INVALID_CREDENTIALS,
                 message=(
@@ -523,7 +522,8 @@ async def http_exception_handler(request, exc):
                 # use that directly).  Defensive about both shapes.
                 reason=(
                     exc.detail.get("error", {}).get("message")
-                    if isinstance(exc.detail, dict) else str(exc.detail)
+                    if isinstance(exc.detail, dict)
+                    else str(exc.detail)
                 ),
             )
         except Exception:  # pragma: no cover - metrics must never break responses

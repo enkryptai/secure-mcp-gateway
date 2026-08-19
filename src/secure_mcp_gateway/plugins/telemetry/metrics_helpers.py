@@ -150,7 +150,7 @@ class phase_timer:
             await input_guardrail.validate(...)   # adds to same accumulator
     """
 
-    __slots__ = ("field_name", "_start", "_also_into")
+    __slots__ = ("_also_into", "_start", "field_name")
 
     def __init__(self, field_name: str, *also_into: str) -> None:
         self.field_name = field_name
@@ -193,9 +193,13 @@ def record_session_active(delta: int, server_name: str = "") -> None:
     mgr = _get_manager()
     if mgr is None or delta == 0:
         return
-    _add(getattr(mgr, "active_sessions_gauge", None), delta, {
-        "server_name": server_name,
-    })
+    _add(
+        getattr(mgr, "active_sessions_gauge", None),
+        delta,
+        {
+            "server_name": server_name,
+        },
+    )
 
 
 def record_phase_ms(field_name: str, elapsed_ms: float, *also_into: str) -> None:
@@ -604,8 +608,12 @@ def record_compliance_hits(
         )
         if not metadata:
             continue
-        details = (metadata.get("details") or {}) if isinstance(metadata, Mapping) else {}
-        mapping = details.get("compliance_mapping") if isinstance(details, Mapping) else None
+        details = (
+            (metadata.get("details") or {}) if isinstance(metadata, Mapping) else {}
+        )
+        mapping = (
+            details.get("compliance_mapping") if isinstance(details, Mapping) else None
+        )
         if not isinstance(mapping, Mapping):
             continue
         vt = getattr(v, "violation_type", None)
@@ -672,16 +680,18 @@ def record_compliance_hits(
 # Toxicity subtypes Enkrypt is known to surface today.  Anything outside
 # this set still gets emitted as long as the value is numeric -- the set is
 # only used to tag the metric attribute when we want a stable enum value.
-_KNOWN_TOXICITY_SUBTYPES = frozenset({
-    "toxicity",
-    "severe_toxicity",
-    "obscene",
-    "threat",
-    "insult",
-    "identity_hate",
-    "identity_attack",
-    "hate",
-})
+_KNOWN_TOXICITY_SUBTYPES = frozenset(
+    {
+        "toxicity",
+        "severe_toxicity",
+        "obscene",
+        "threat",
+        "insult",
+        "identity_hate",
+        "identity_attack",
+        "hate",
+    }
+)
 
 
 def _score_bucket(score: float) -> str:
@@ -790,9 +800,7 @@ def _extract_toxicity_subtypes(
             if isinstance(item, Mapping):
                 name = item.get("name") or item.get("subtype") or item.get("type")
                 score_raw = (
-                    item.get("score")
-                    or item.get("value")
-                    or item.get("confidence")
+                    item.get("score") or item.get("value") or item.get("confidence")
                 )
                 if not name:
                     continue
@@ -866,26 +874,30 @@ def record_pii_entities(
 
         if counter is not None:
             for t in types:
-                _add(counter, 1, {
-                    "entity_type":      t,
-                    "direction":        direction,
-                    "server_name":      server_name,
-                    "tool_name":        tool_name,
-                    "guardrail_name":   guardrail_name,
-                    "user_id":          user_id,
-                    "user_email":       user_email,
-                    "project_id":       project_id,
-                    "project_name":     project_name,
-                    "project_registry": project_registry,
-                    "org_id":           org_id,
-                    "gateway_name":     gateway_name,
-                    "gateway_version":  gateway_version,
-                })
+                _add(
+                    counter,
+                    1,
+                    {
+                        "entity_type": t,
+                        "direction": direction,
+                        "server_name": server_name,
+                        "tool_name": tool_name,
+                        "guardrail_name": guardrail_name,
+                        "user_id": user_id,
+                        "user_email": user_email,
+                        "project_id": project_id,
+                        "project_name": project_name,
+                        "project_registry": project_registry,
+                        "org_id": org_id,
+                        "gateway_name": gateway_name,
+                        "gateway_version": gateway_version,
+                    },
+                )
 
     return {
         "pii_entities_count": total,
-        "pii_entity_types":   sorted(set(types_all)) if types_all else [],
-        "pii_details_keys":   sorted(details_keys) if details_keys else [],
+        "pii_entity_types": sorted(set(types_all)) if types_all else [],
+        "pii_details_keys": sorted(details_keys) if details_keys else [],
     }
 
 
@@ -947,22 +959,26 @@ def record_toxicity_subtypes(
 
         if counter is not None:
             for subtype, score in triggered:
-                _add(counter, 1, {
-                    "subtype":          subtype,
-                    "score_bucket":     _score_bucket(score),
-                    "direction":        direction,
-                    "server_name":      server_name,
-                    "tool_name":        tool_name,
-                    "guardrail_name":   guardrail_name,
-                    "user_id":          user_id,
-                    "user_email":       user_email,
-                    "project_id":       project_id,
-                    "project_name":     project_name,
-                    "project_registry": project_registry,
-                    "org_id":           org_id,
-                    "gateway_name":     gateway_name,
-                    "gateway_version":  gateway_version,
-                })
+                _add(
+                    counter,
+                    1,
+                    {
+                        "subtype": subtype,
+                        "score_bucket": _score_bucket(score),
+                        "direction": direction,
+                        "server_name": server_name,
+                        "tool_name": tool_name,
+                        "guardrail_name": guardrail_name,
+                        "user_id": user_id,
+                        "user_email": user_email,
+                        "project_id": project_id,
+                        "project_name": project_name,
+                        "project_registry": project_registry,
+                        "org_id": org_id,
+                        "gateway_name": gateway_name,
+                        "gateway_version": gateway_version,
+                    },
+                )
 
     subtypes_unique = sorted({s for s, _ in triggered_all})
     top_subtype, top_score = ("", 0.0)
@@ -970,9 +986,9 @@ def record_toxicity_subtypes(
         top_subtype, top_score = max(triggered_all, key=lambda t: t[1])
 
     return {
-        "toxicity_subtypes":     subtypes_unique,
-        "toxicity_top_subtype":  top_subtype,
-        "toxicity_top_score":    round(top_score, 4) if top_score else 0.0,
+        "toxicity_subtypes": subtypes_unique,
+        "toxicity_top_subtype": top_subtype,
+        "toxicity_top_score": round(top_score, 4) if top_score else 0.0,
         "toxicity_details_keys": sorted(details_keys) if details_keys else [],
     }
 
