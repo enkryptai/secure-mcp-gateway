@@ -280,11 +280,13 @@ class LocalApiKeyProvider(AuthProvider):
         project_id: str = None,
         user_id: str = None,
         gateway_name: str = None,
+        gateway_version: str = None,
     ) -> dict[str, Any] | None:
         """
         Get configuration from local config file.
 
-        ``gateway_name`` is accepted for signature parity with
+        ``gateway_name`` / ``gateway_version`` are accepted for signature
+        parity with
         :class:`EnkryptAuthProvider._get_local_config` — ``AuthConfigManager.
         get_local_mcp_config`` forwards it unconditionally as a kwarg.
         Without this parameter, every call from cloud-style call sites
@@ -292,8 +294,8 @@ class LocalApiKeyProvider(AuthProvider):
         ``TypeError: unexpected keyword argument 'gateway_name'``, which
         ``build_log_extra`` silently swallowed and left ``email`` /
         ``project_name`` / etc. stuck at ``"not_provided"`` on logs, spans
-        and metrics. The local provider has no use for the value — gateway
-        identity lives in the local file's ``apikeys`` mapping.
+        and metrics. The local provider has no use for either value —
+        gateway identity lives in the local file's ``apikeys`` mapping.
 
         Args:
             gateway_key: Gateway API key

@@ -1499,6 +1499,17 @@ Set `enkrypt_log_level: "DEBUG"` in config for verbose logging.
 
 ---
 
+## ✍️ Code & Docs Conventions
+
+- **Comments: minimal.** One line, only where the code genuinely isn't
+  self-explanatory. No multi-line comment blocks, no rationale essays, no
+  restating what the next line does. Same for docstrings — one line unless the
+  function's contract truly needs more.
+- **CHANGELOG: high-level only.** What broke / what changed and why it matters
+  to an operator. No file-by-file lists, no threading details, no test names.
+- These override the older verbose style still visible in parts of this repo;
+  don't take existing long comment blocks as a template for new code.
+
 ## 🏆 Best Practices
 
 1. **Always use API keys**: Don't bypass authentication

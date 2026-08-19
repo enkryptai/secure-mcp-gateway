@@ -138,6 +138,7 @@ class CacheStatusService:
                 enkrypt_project_id,
                 enkrypt_user_id,
                 gateway_name=credentials.get("gateway_name"),
+                gateway_version=credentials.get("gateway_version"),
             )
 
             if not gateway_config:
@@ -190,7 +191,9 @@ class CacheStatusService:
             set_span_attr_with_legacy(
                 auth_span, SpanAttributes.PROJECT_ID, enkrypt_project_id
             )
-            set_span_attr_with_legacy(auth_span, SpanAttributes.USER_ID, enkrypt_user_id)
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.USER_ID, enkrypt_user_id
+            )
             auth_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
             set_span_attr_with_legacy(
                 auth_span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
@@ -422,6 +425,7 @@ class CacheStatusService:
             local_gateway_config = await self.auth_manager.get_local_mcp_config(
                 enkrypt_gateway_key,
                 gateway_name=credentials.get("gateway_name"),
+                gateway_version=credentials.get("gateway_version"),
             )
             if not local_gateway_config:
                 logger.error(

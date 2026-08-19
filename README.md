@@ -3332,7 +3332,7 @@ Setting `plugins.auth.provider` to `"enkrypt"` switches the gateway from local `
 | Key | Required | Default | What it does |
 |---|---|---|---|
 | `gateway_name` | yes, unless clients send the `X-Enkrypt-MCP-Gateway` header | — | The `saved_name` of the gateway you created in the Enkrypt console (the `saved_name` field returned by `/mcp-gateway/add-gateway`). Sent to the cloud as `X-Enkrypt-MCP-Gateway`. |
-| `gateway_version` | no | `"v1"` | Sent as `X-Enkrypt-MCP-Gateway-Version`. Config-only — there is no per-request header for it. |
+| `gateway_version` | no | the `X-Enkrypt-MCP-Gateway-Version` header, else `"v1"` | Sent as `X-Enkrypt-MCP-Gateway-Version`. Setting it here **pins** the version for every request on this process and overrides the client header; leave it out to let each client pick its own. |
 | `project_name` | no | inferred by the cloud from the apikey; `"default"` when the apikey isn't a project apikey | Sent as `X-Enkrypt-Project`, and **only when set** — leave it out to let the cloud infer. Config-only. |
 | `apikey` | no | `enkrypt_config.api_key` | Boot-time fallback used only when an MCP client connects without its own `apikey` header. Note the spelling: under `plugins.auth.config` the key is `apikey`, not `api_key`. |
 | `base_url` | no | `enkrypt_config.base_url`, else `https://api.enkryptai.com` | Trailing slash is stripped. |
@@ -3348,14 +3348,15 @@ Setting `plugins.auth.provider` to `"enkrypt"` switches the gateway from local `
 |---|---|---|
 | `apikey` | yes | Your Enkrypt cloud apikey. It is read per request and forwarded as the outbound `apikey` to Enkrypt cloud, so each connected client can carry its own key and get its own config. |
 | `X-Enkrypt-MCP-Gateway` | only when `plugins.auth.config.gateway_name` is **not** set | Selects which cloud gateway config to fetch, per request. If `gateway_name` **is** set in the config, the config value wins and a differing header is ignored (an `INFO` line records the override). |
+| `X-Enkrypt-MCP-Gateway-Version` | no | The gateway's registered version. Cloud lookup is keyed on `(saved_name, version)`, so a gateway registered as e.g. `1` rather than `v1` is only reachable when the client sends this. Same precedence as above: a `gateway_version` pinned in `plugins.auth.config` wins and the header is ignored (logged); otherwise the header is used; otherwise `v1`. |
 
 If neither the config nor the header supplies a gateway name, authentication fails with `Missing X-Enkrypt-MCP-Gateway header and no gateway_name in auth.config`.
 
-There are no per-request equivalents of `gateway_version` / `project_name` — both come from the config only.
+`project_name` has no per-request equivalent — it comes from the config only.
 
 > **⚠️ Don't send `ENKRYPT_GATEWAY_KEY` in cloud mode.** For backward compatibility the gateway prefers an `ENKRYPT_GATEWAY_KEY` header over `apikey` when both are present, then forwards it to the cloud. A leftover `ENKRYPT_GATEWAY_KEY` from an old `local_apikey` client config will therefore shadow your correct cloud apikey and produce 401s. Send only the headers your active provider needs (see the per-provider header table in [docs/auth-providers.md](./docs/auth-providers.md#header-contract-per-provider)).
 
-> **Note on stdio installs.** Headers only exist on the streamable-HTTP transport. When the MCP client spawns the gateway over stdio, credentials come from env vars (`ENKRYPT_APIKEY` for the cloud provider) and there is **no** env-var equivalent for the gateway name — so stdio deployments must set `plugins.auth.config.gateway_name` in the config file.
+> **Note on stdio installs.** Headers only exist on the streamable-HTTP transport. When the MCP client spawns the gateway over stdio, credentials come from env vars (`ENKRYPT_APIKEY` for the cloud provider) and there is **no** env-var equivalent for the gateway name or version — so stdio deployments must set `plugins.auth.config.gateway_name` (and `gateway_version`, if the gateway isn't `v1`) in the config file.
 
 #### 7.1.3 Headers the gateway sends to Enkrypt cloud
 
@@ -3365,7 +3366,7 @@ There are no per-request equivalents of `gateway_version` / `project_name` — b
 |---|---|
 | `apikey` | The calling client's apikey, falling back to `plugins.auth.config.apikey` / `enkrypt_config.api_key` |
 | `X-Enkrypt-MCP-Gateway` | `plugins.auth.config.gateway_name`, falling back to the inbound `X-Enkrypt-MCP-Gateway` header |
-| `X-Enkrypt-MCP-Gateway-Version` | `plugins.auth.config.gateway_version` (default `v1`) |
+| `X-Enkrypt-MCP-Gateway-Version` | `plugins.auth.config.gateway_version` if pinned, else the inbound `X-Enkrypt-MCP-Gateway-Version` header, else `v1` |
 | `X-Enkrypt-Project` | `plugins.auth.config.project_name` — omitted entirely when unset |
 
 Every call is logged with the apikey masked, so you can confirm which gateway/project/key a request actually used:
@@ -3378,9 +3379,9 @@ Match the last 4 characters against the key you expect — a mismatch means the 
 
 #### 7.1.4 One gateway process, several cloud gateways
 
-Because `gateway_name` may arrive per request, a single gateway deployment can front more than one cloud gateway config: leave `plugins.auth.config.gateway_name` **unset** and have each MCP client send its own `X-Enkrypt-MCP-Gateway` header alongside its `apikey`. Cloud responses are cached in-process under a SHA-256 hash of `apikey | gateway_name | gateway_version | project_name`, so tenants never cross-contaminate each other's config. See [§4.4.2](#442-modify-your-mcp-client-config-to-use-the-gateway) for the client-side JSON.
+Because `gateway_name` may arrive per request, a single gateway deployment can front more than one cloud gateway config: leave `plugins.auth.config.gateway_name` **unset** and have each MCP client send its own `X-Enkrypt-MCP-Gateway` header alongside its `apikey`. Clients whose gateway is registered under a version other than `v1` send `X-Enkrypt-MCP-Gateway-Version` alongside it. Cloud responses are cached in-process under a SHA-256 hash of `apikey | gateway_name | gateway_version | project_name`, so tenants — and two versions of the same gateway — never cross-contaminate each other's config. See [§4.4.2](#442-modify-your-mcp-client-config-to-use-the-gateway) for the client-side JSON.
 
-Note the trade-off: `gateway_version` and `project_name` stay process-wide, so all clients on that process share them. Pin `gateway_name` in the config instead whenever one deployment serves exactly one cloud gateway — it is the safer default, since the effective gateway is then fixed server-side and client-supplied headers can no longer steer it. (Enkrypt cloud still authorizes every apikey against the gateway it names, so the header is not an authorization bypass either way.)
+Note the trade-off: `project_name` stays process-wide, so all clients on that process share it. Pin `gateway_name` (and `gateway_version`) in the config instead whenever one deployment serves exactly one cloud gateway — it is the safer default, since the effective gateway is then fixed server-side and client-supplied headers can no longer steer it. (Enkrypt cloud still authorizes every apikey against the gateway it names, so the header is not an authorization bypass either way.)
 
 #### 7.1.5 Failure handling
 

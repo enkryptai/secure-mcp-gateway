@@ -151,7 +151,7 @@ class EnkryptAuthProvider(AuthProvider):
         self,
         apikey: str | None = None,
         gateway_name: str | None = None,
-        gateway_version: str = DEFAULT_GATEWAY_VERSION,
+        gateway_version: str | None = None,
         project_name: str | None = None,
         base_url: str = DEFAULT_BASE_URL,
         cache_ttl_seconds: int = DEFAULT_CACHE_TTL_SECONDS,
@@ -176,6 +176,8 @@ class EnkryptAuthProvider(AuthProvider):
 
         self.apikey = apikey or ""
         self.gateway_name = gateway_name or None
+        # Pinned only when auth.config sets it; otherwise the request header wins.
+        self._gateway_version_pinned = bool(gateway_version)
         self.gateway_version = gateway_version or DEFAULT_GATEWAY_VERSION
         self.project_name = project_name or None  # treat empty string as absent
         self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
@@ -188,7 +190,10 @@ class EnkryptAuthProvider(AuthProvider):
             "[EnkryptAuthProvider] initialised: gateway_name=%s gateway_version=%s "
             "project_name=%s base_url=%s ttl=%ss",
             self.gateway_name or "(from request header X-Enkrypt-MCP-Gateway)",
-            self.gateway_version,
+            self.gateway_version
+            if self._gateway_version_pinned
+            else f"{self.gateway_version} (default; overridable per request via "
+            "X-Enkrypt-MCP-Gateway-Version)",
             self.project_name or "(inferred from apikey)",
             self.base_url,
             self.cache_ttl_seconds,
@@ -228,6 +233,19 @@ class EnkryptAuthProvider(AuthProvider):
         )
         return result
 
+    def _resolve_gateway_version(self, header_version: str | None) -> str:
+        """Version to send upstream: pinned config, else header, else v1."""
+        if self._gateway_version_pinned:
+            if header_version and header_version != self.gateway_version:
+                logger.info(
+                    "[EnkryptAuthProvider] ignoring X-Enkrypt-MCP-Gateway-Version "
+                    "header (%s); auth.config.gateway_version wins (%s)",
+                    header_version,
+                    self.gateway_version,
+                )
+            return self.gateway_version
+        return header_version or DEFAULT_GATEWAY_VERSION
+
     async def _authenticate_impl(self, credentials: AuthCredentials) -> AuthResult:
         gateway_key = credentials.gateway_key or credentials.api_key or self.apikey
         if not gateway_key:
@@ -266,12 +284,15 @@ class EnkryptAuthProvider(AuthProvider):
                 self.gateway_name,
             )
 
+        effective_version = self._resolve_gateway_version(credentials.gateway_version)
+
         try:
             mapped = await self._get_local_config(
                 gateway_key,
                 credentials.project_id,
                 credentials.user_id,
                 gateway_name=effective_gateway,
+                gateway_version=effective_version,
             )
         except _CloudFetchError as exc:
             return AuthResult(
@@ -310,7 +331,7 @@ class EnkryptAuthProvider(AuthProvider):
                 "source": "enkrypt-cloud",
                 "config_id": mapped.get("mcp_config_id"),
                 "gateway_name": effective_gateway,
-                "gateway_version": self.gateway_version,
+                "gateway_version": effective_version,
                 # Cloud `request_context` identity fields are promoted to
                 # top-level keys on `mapped` (so telemetry can read them
                 # straight off the gateway_config), but we also surface them
@@ -348,6 +369,7 @@ class EnkryptAuthProvider(AuthProvider):
         user_id: str | None = None,
         *,
         gateway_name: str | None = None,
+        gateway_version: str | None = None,
     ) -> dict[str, Any] | None:
         """Return the internal ``gateway_config`` dict for a given apikey.
 
@@ -360,9 +382,13 @@ class EnkryptAuthProvider(AuthProvider):
         ``gateway_name`` is the per-request header (``X-Enkrypt-MCP-Gateway``)
         the caller extracted. ``self.gateway_name`` (from ``auth.config``) wins
         when set — the header is only consulted as a fallback.
+
+        ``gateway_version`` is the per-request header; see
+        ``_resolve_gateway_version``.
         """
         effective_gateway = self.gateway_name or gateway_name
-        cache_key = self._cache_key(gateway_key, effective_gateway)
+        effective_version = self._resolve_gateway_version(gateway_version)
+        cache_key = self._cache_key(gateway_key, effective_gateway, effective_version)
         cached = self._cache_get(cache_key)
         if cached is not None:
             return cached
@@ -370,6 +396,7 @@ class EnkryptAuthProvider(AuthProvider):
         response = await self._fetch_remote_gateway_config(
             gateway_key,
             gateway_name=effective_gateway,
+            gateway_version=effective_version,
         )
         if response is None:
             return None
@@ -392,6 +419,7 @@ class EnkryptAuthProvider(AuthProvider):
         gateway_key: str,
         *,
         gateway_name: str | None = None,
+        gateway_version: str | None = None,
     ) -> dict[str, Any] | None:
         """Call ``GET /mcp-gateway/get-gateway-config`` and return the body.
 
@@ -403,6 +431,7 @@ class EnkryptAuthProvider(AuthProvider):
         fallback used only when the gateway is configured without one.
         """
         effective_gateway = self.gateway_name or gateway_name
+        effective_version = self._resolve_gateway_version(gateway_version)
         if not effective_gateway:
             # Fail clearly *before* the aiohttp call: a ``None`` header value
             # makes multidict raise ``TypeError: Cannot serialize non-str key
@@ -419,7 +448,7 @@ class EnkryptAuthProvider(AuthProvider):
         headers = {
             "apikey": gateway_key,
             "X-Enkrypt-MCP-Gateway": effective_gateway,
-            "X-Enkrypt-MCP-Gateway-Version": self.gateway_version,
+            "X-Enkrypt-MCP-Gateway-Version": effective_version,
         }
         if self.project_name:
             headers["X-Enkrypt-Project"] = self.project_name
@@ -430,7 +459,7 @@ class EnkryptAuthProvider(AuthProvider):
             "[EnkryptAuthProvider] fetching gateway config: gateway=%s/%s "
             "project=%s apikey=%s",
             effective_gateway,
-            self.gateway_version,
+            effective_version,
             self.project_name or "(inferred)",
             mask_key(gateway_key),
         )
@@ -450,7 +479,7 @@ class EnkryptAuthProvider(AuthProvider):
                 span, SpanAttributes.GATEWAY_NAME, effective_gateway
             )
             set_span_attr_with_legacy(
-                span, SpanAttributes.GATEWAY_VERSION, self.gateway_version
+                span, SpanAttributes.GATEWAY_VERSION, effective_version
             )
             # Mirror the masked ``apikey`` request header so trace consumers
             # can pivot per-tenant without ever seeing the raw secret.
@@ -806,14 +835,16 @@ class EnkryptAuthProvider(AuthProvider):
         self,
         gateway_key: str,
         effective_gateway: str | None = None,
+        effective_version: str | None = None,
     ) -> str:
         # Hash the apikey so even an in-memory dump doesn't leak it. The
         # gateway_name+version+project_name are part of the key so a single
         # process that handles multiple gateways/projects (uncommon, but
         # supported) doesn't cross-contaminate.
         gw = effective_gateway or self.gateway_name or ""
+        ver = effective_version or self.gateway_version
         h = hashlib.sha256(
-            f"{gateway_key}|{gw}|{self.gateway_version}|{self.project_name or ''}".encode()
+            f"{gateway_key}|{gw}|{ver}|{self.project_name or ''}".encode()
         ).hexdigest()
         return h[:16]
 

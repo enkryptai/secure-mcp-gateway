@@ -2,7 +2,20 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
-## [Unreleased]
+## [v2.2.2]
+
+### Fixed
+
+- **`X-Enkrypt-MCP-Gateway-Version` is now honored on the request.**  Enkrypt
+  cloud looks a gateway up by `(gateway_saved_name, gateway_version)`, but the
+  gateway only read the name from the client and always sent the version from
+  `plugins.auth.config.gateway_version` (default `"v1"`).  Gateways registered
+  under any other version were unreachable from a header-routed deployment —
+  `get-gateway-config` returned `404 MCP gateway not found` on every request.
+
+  The version now resolves like the name: pinned `auth.config` value wins,
+  otherwise the request header, otherwise `"v1"`.  Configs that set it are
+  unaffected; configs that omit it gain per-request routing.
 
 ### Security
 

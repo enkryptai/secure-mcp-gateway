@@ -205,6 +205,7 @@ class CacheManagementService:
                 enkrypt_project_id,
                 enkrypt_user_id,
                 gateway_name=credentials.get("gateway_name"),
+                gateway_version=credentials.get("gateway_version"),
             )
 
             if not gateway_config:
@@ -250,7 +251,9 @@ class CacheManagementService:
             auth_span.set_attribute(
                 SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
             )
-            set_span_attr_with_legacy(auth_span, SpanAttributes.USER_ID, enkrypt_user_id)
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.USER_ID, enkrypt_user_id
+            )
             set_span_attr_with_legacy(
                 auth_span, SpanAttributes.USER_EMAIL, enkrypt_email
             )

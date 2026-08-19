@@ -120,6 +120,7 @@ class DiscoveryService:
                 enkrypt_project_id,
                 enkrypt_user_id,
                 gateway_name=credentials.get("gateway_name"),
+                gateway_version=credentials.get("gateway_version"),
             )
 
             # Generate session key if not provided (for backward compatibility)
@@ -181,7 +182,9 @@ class DiscoveryService:
             set_span_attr_with_legacy(
                 main_span, SpanAttributes.PROJECT_ID, enkrypt_project_id
             )
-            set_span_attr_with_legacy(main_span, SpanAttributes.USER_ID, enkrypt_user_id)
+            set_span_attr_with_legacy(
+                main_span, SpanAttributes.USER_ID, enkrypt_user_id
+            )
             main_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
             set_span_attr_with_legacy(
                 main_span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
@@ -281,6 +284,7 @@ class DiscoveryService:
                     from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
                         record_discovery_failure,
                     )
+
                     record_discovery_failure(
                         server_name=server_name,
                         reason=type(e).__name__,
@@ -1087,7 +1091,9 @@ class DiscoveryService:
         """Discover tools for a single server."""
         # Server info check
         with tracer_obj.start_as_current_span("get_server_info") as info_span:
-            set_span_attr_with_legacy(info_span, SpanAttributes.SERVER_NAME, server_name)
+            set_span_attr_with_legacy(
+                info_span, SpanAttributes.SERVER_NAME, server_name
+            )
 
             server_info = get_server_info_by_name(
                 self.auth_manager.get_session_gateway_config(session_key), server_name
@@ -2057,9 +2063,7 @@ class DiscoveryService:
                     ):
                         telemetry_manager.cache_hit_counter.add(
                             1,
-                            attributes=build_log_extra(
-                                ctx, server_name=server_name
-                            ),
+                            attributes=build_log_extra(ctx, server_name=server_name),
                         )
                     logger.info(
                         f"[discover_server_tools] Tools already cached for {server_name}"
@@ -2088,9 +2092,7 @@ class DiscoveryService:
                     ):
                         telemetry_manager.cache_miss_counter.add(
                             1,
-                            attributes=build_log_extra(
-                                ctx, server_name=server_name
-                            ),
+                            attributes=build_log_extra(ctx, server_name=server_name),
                         )
                     logger.info(
                         f"[discover_server_tools] No cached tools found for {server_name}"
