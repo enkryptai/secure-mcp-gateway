@@ -859,6 +859,8 @@ class EnkryptServerRegistrationGuardrail:
         self.base_url = base_url
         self.config = config or {}
         self.batch_url = f"{base_url}/guardrails/guardrail/batch/detect"
+        # Saved-guardrail route vs inline-detectors route; not interchangeable.
+        self.inline_batch_url = f"{base_url}/guardrails/batch/detect"
         # Check both "debug" field and "enkrypt_log_level" for DEBUG
         self.debug = (
             self.config.get("debug", False)
@@ -1426,10 +1428,14 @@ class EnkryptServerRegistrationGuardrail:
                 payload = {"texts": safe_texts}
                 headers["X-Enkrypt-Guardrail"] = str(guardrail_name)
                 headers["X-Enkrypt-Mode"] = "prompt"
+                url = self.batch_url
             else:
-                # Inline-detectors mode — current server-description path.
+                # Inline-detectors mode — the guardrail-scoped route rejects a
+                # ``detectors`` body ("Unexpected key"); it only runs saved
+                # guardrails by name.
                 safe_detectors = _sanitize_for_json(detectors or {})
                 payload = {"texts": safe_texts, "detectors": safe_detectors}
+                url = self.inline_batch_url
 
             if self.debug:
                 logger.debug(
@@ -1446,7 +1452,7 @@ class EnkryptServerRegistrationGuardrail:
             async def _make_api_call():
                 async with aiohttp.ClientSession() as session:
                     async with session.post(
-                        self.batch_url,
+                        url,
                         json=payload,
                         headers=headers,
                         # Remove aiohttp.ClientTimeout - let TimeoutManager handle timeout
@@ -1531,10 +1537,12 @@ class EnkryptServerRegistrationGuardrail:
                 error = create_guardrail_error(
                     code=ErrorCode.GUARDRAIL_POLICY_NOT_FOUND,
                     message=(
-                        f"Guardrail policy '{guardrail_name}' does not exist for "
-                        "the gateway's Enkrypt apikey. Create it in the Enkrypt "
-                        "console, point the server's guardrails_config at an "
-                        "existing policy, or disable the check."
+                        f"Guardrail '{guardrail_name}' not found for the "
+                        "gateway's Enkrypt apikey. The name is matched exactly, "
+                        "including case, against that account's guardrails "
+                        "(GET /guardrails/list-guardrails). Fix the name in "
+                        "guardrails_config, create the guardrail, or disable "
+                        "the check."
                     ),
                     context=context,
                     cause=e,

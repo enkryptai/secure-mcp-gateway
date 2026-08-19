@@ -17,11 +17,19 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
   otherwise the request header, otherwise `"v1"`.  Configs that set it are
   unaffected; configs that omit it gain per-request routing.
 
-- **A missing guardrail policy now says so.**  When a server's configured
-  guardrail doesn't exist for the gateway's apikey, tool discovery failed
-  closed with a raw upstream `404 Guardrail not found`, which read like the
-  tools had been blocked by a policy. It now raises `GUARD_010` naming the
-  policy and what to do about it. Behaviour is unchanged — still fail-closed.
+- **A missing guardrail now says so.**  When a server's configured guardrail
+  doesn't exist for the gateway's apikey, tool discovery failed closed with a
+  raw upstream `404 Guardrail not found`, which read like the tools had been
+  blocked by a policy. It now raises `GUARD_010` naming the guardrail and
+  noting that the name is matched exactly, including case — the usual cause.
+  Behaviour is unchanged — still fail-closed.
+
+- **Inline guardrail detectors were posted to the wrong route.**  The
+  saved-guardrail route (`/guardrails/guardrail/batch/detect`) rejects a
+  `detectors` body with `400 Unexpected key`; inline detectors belong on
+  `/guardrails/batch/detect`. The batch client now picks the route by mode.
+  No behaviour change for saved-guardrail checks, which is every configured
+  path today.
 
 ### Security
 

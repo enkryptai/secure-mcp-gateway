@@ -41,6 +41,25 @@ class _Session:
         return _Resp()
 
 
+def _capture(monkeypatch) -> dict:
+    """Record the url/headers/payload of the next batch POST."""
+    seen: dict = {}
+
+    class _OK(_Resp):
+        status = 200
+
+        async def json(self):
+            return [{"text": "t", "summary": {}, "details": {}}]
+
+    class _S(_Session):
+        def post(self, url, json=None, headers=None, **kw):
+            seen.update(url=url, payload=json, headers=headers)
+            return _OK()
+
+    monkeypatch.setattr(ep.aiohttp, "ClientSession", lambda *a, **k: _S())
+    return seen
+
+
 @pytest.fixture()
 def batch_api(monkeypatch):
     monkeypatch.setattr(ep.aiohttp, "ClientSession", lambda *a, **k: _Session())
@@ -55,7 +74,7 @@ async def test_missing_policy_raises_guard_010(batch_api) -> None:
 
     assert exc.value.code == ErrorCode.GUARDRAIL_POLICY_NOT_FOUND
     assert "demo guardrail" in str(exc.value)
-    assert "does not exist" in str(exc.value)
+    assert "including case" in str(exc.value)
 
 
 async def test_other_api_errors_stay_generic(batch_api, monkeypatch) -> None:
@@ -75,3 +94,30 @@ async def test_other_api_errors_stay_generic(batch_api, monkeypatch) -> None:
         await batch_api._call_batch_api(["x"], guardrail_name="demo guardrail")
 
     assert exc.value.code == ErrorCode.GUARDRAIL_API_ERROR
+
+
+async def test_policy_mode_uses_the_guardrail_scoped_route(monkeypatch) -> None:
+    """Saved-guardrail calls go to /guardrails/guardrail/batch/detect."""
+    seen = _capture(monkeypatch)
+    api = ep.EnkryptServerRegistrationGuardrail(
+        api_key="k", base_url="https://api.example.com"
+    )
+    await api._call_batch_api(["t"], guardrail_name="Demo Guardrail")
+
+    assert seen["url"] == "https://api.example.com/guardrails/guardrail/batch/detect"
+    assert seen["headers"]["X-Enkrypt-Guardrail"] == "Demo Guardrail"
+    assert "detectors" not in seen["payload"]
+
+
+async def test_inline_detectors_use_the_unscoped_route(monkeypatch) -> None:
+    """The guardrail-scoped route rejects a detectors body, so inline
+    detectors must go to /guardrails/batch/detect."""
+    seen = _capture(monkeypatch)
+    api = ep.EnkryptServerRegistrationGuardrail(
+        api_key="k", base_url="https://api.example.com"
+    )
+    await api._call_batch_api(["t"], detectors={"injection_attack": {"enabled": True}})
+
+    assert seen["url"] == "https://api.example.com/guardrails/batch/detect"
+    assert "X-Enkrypt-Guardrail" not in seen["headers"]
+    assert seen["payload"]["detectors"] == {"injection_attack": {"enabled": True}}
