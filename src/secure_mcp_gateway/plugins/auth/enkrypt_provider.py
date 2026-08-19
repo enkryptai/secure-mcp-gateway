@@ -19,10 +19,10 @@ Design decisions
    the caller. Operational decision recorded in CHANGELOG and observability
    docs.
 
-3. **Override resolution (common-wins).** For each of the four override
+3. **Override resolution (common-wins).** For each of the three override
    keys (``input_guardrails_config``, ``output_guardrails_config``,
-   ``tool_guardrails_config``, ``enable_server_info_validation``), the
-   effective value per server is picked in this order — first match wins:
+   ``server_tools_guardrails_config``), the effective value per server is
+   picked in this order — first match wins:
 
    a. ``response.common_overrides.<key>`` — gateway-wide override. **Always
       wins** when set. The cloud already strips the same key from every
@@ -33,6 +33,11 @@ Design decisions
    b. ``expanded_servers[].gateway_overrides.<key>`` — per-server override,
       effective only when ``common_overrides`` does not also set this key.
    c. ``expanded_servers[].mcp_config.<key>`` — registry server base value.
+
+   ``server_tools_guardrails_config`` is **common-only**: it is never read
+   from per-server ``gateway_overrides`` or ``mcp_config``. It controls
+   both tool registration batch checks and server info/description
+   validation via a single ``enabled`` flag and ``guardrail_name``.
 
    The merge is shallow (whole-policy replacement at the key level),
    matching what the cloud does internally.
@@ -51,11 +56,14 @@ Design decisions
    ``auth.config.cache_ttl_seconds``.
 
 6. **Identity propagation.** The cloud's ``request_context`` block (added
-   in the dev cloud image, May 2026) supplies ``user_id``, ``project_name``,
-   ``forwarded_user_id``, ``forwarded_user_email`` and friends. The mapper
-   prefers ``forwarded_user_id`` over ``user_id`` for the metric ``user_id``
-   label so that alerts attribute to the actual end-user of the calling
-   app, not the gateway-owner principal. Until the cloud surfaces a stable
+   in the dev cloud image, May 2026) supplies ``user_id``, ``user_email``,
+   ``project_name``, ``org_id``, ``registry_name``, and the echoed
+   ``gateway_saved_name`` / ``gateway_version``. When the cloud doesn't
+   surface ``user_id`` (older cloud build, missing ``request_context``),
+   the field is left empty -- ``_safe_attrs`` / ``build_log_extra`` then
+   strip it so dashboards don't see a synthetic value that doesn't exist
+   in the customer's user table. Same ``None``-tolerant treatment as
+   ``org_id`` and ``registry_name``. Until the cloud surfaces a stable
    ``project_id`` UUID we mirror ``project_name`` into the ``project_id``
    slot for the existing label set.
 
@@ -88,6 +96,11 @@ from secure_mcp_gateway.plugins.auth.base import (
     AuthResult,
     AuthStatus,
 )
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    SpanAttributes,
+    SpanNames,
+    set_span_attr_with_legacy,
+)
 from secure_mcp_gateway.plugins.telemetry.metrics_helpers import record_auth_outcome
 from secure_mcp_gateway.utils import (
     CONFIG_PATH,
@@ -104,7 +117,7 @@ from secure_mcp_gateway.utils import (
 DEFAULT_BASE_URL = "https://api.enkryptai.com"
 DEFAULT_GATEWAY_VERSION = "v1"
 DEFAULT_CACHE_TTL_SECONDS = ENKRYPT_REMOTE_CONFIG_TTL_SECONDS
-DEFAULT_FETCH_TIMEOUT_SECONDS = 10
+DEFAULT_FETCH_TIMEOUT_SECONDS = 30  # fallback only; normal path reads `auth_timeout` from TimeoutManager. Aligned with auth_timeout=30 default.
 
 # These auth.config keys belonged to the v1 ("local fallback") provider.
 # We hard-fail at boot when they are still set, so configs surface the
@@ -161,13 +174,8 @@ class EnkryptAuthProvider(AuthProvider):
                 list(legacy_kwargs.keys()),
             )
 
-        if not gateway_name:
-            raise ValueError(
-                "EnkryptAuthProvider: 'gateway_name' is required in auth.config"
-            )
-
         self.apikey = apikey or ""
-        self.gateway_name = gateway_name
+        self.gateway_name = gateway_name or None
         self.gateway_version = gateway_version or DEFAULT_GATEWAY_VERSION
         self.project_name = project_name or None  # treat empty string as absent
         self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
@@ -179,7 +187,7 @@ class EnkryptAuthProvider(AuthProvider):
         logger.info(
             "[EnkryptAuthProvider] initialised: gateway_name=%s gateway_version=%s "
             "project_name=%s base_url=%s ttl=%ss",
-            self.gateway_name,
+            self.gateway_name or "(from request header X-Enkrypt-MCP-Gateway)",
             self.gateway_version,
             self.project_name or "(inferred from apikey)",
             self.base_url,
@@ -200,10 +208,10 @@ class EnkryptAuthProvider(AuthProvider):
         return [AuthMethod.API_KEY]
 
     def validate_config(self, config: dict[str, Any]) -> bool:
-        return bool(self.gateway_name)
+        return True
 
     def get_required_config_keys(self) -> list[str]:
-        return ["gateway_name"]
+        return []
 
     # ------------------------------------------------------------------
     # Public auth surface
@@ -230,11 +238,40 @@ class EnkryptAuthProvider(AuthProvider):
                 error="Missing apikey on request and no boot-time fallback configured",
             )
 
+        # Config wins; header is the fallback. If ``auth.config.gateway_name``
+        # is set we use it and ignore the X-Enkrypt-MCP-Gateway request header.
+        # Only when the gateway is configured without a fixed gateway_name do
+        # we look at the per-request header.
+        effective_gateway = self.gateway_name or credentials.gateway_name
+        if not effective_gateway:
+            return AuthResult(
+                status=AuthStatus.INVALID_CREDENTIALS,
+                authenticated=False,
+                message="No gateway name provided",
+                error=(
+                    "Missing X-Enkrypt-MCP-Gateway header and no "
+                    "gateway_name in auth.config"
+                ),
+            )
+
+        if (
+            credentials.gateway_name
+            and self.gateway_name
+            and credentials.gateway_name != self.gateway_name
+        ):
+            logger.info(
+                "[EnkryptAuthProvider] ignoring X-Enkrypt-MCP-Gateway header "
+                "(%s); auth.config.gateway_name wins (%s)",
+                credentials.gateway_name,
+                self.gateway_name,
+            )
+
         try:
             mapped = await self._get_local_config(
                 gateway_key,
                 credentials.project_id,
                 credentials.user_id,
+                gateway_name=effective_gateway,
             )
         except _CloudFetchError as exc:
             return AuthResult(
@@ -272,8 +309,20 @@ class EnkryptAuthProvider(AuthProvider):
             metadata={
                 "source": "enkrypt-cloud",
                 "config_id": mapped.get("mcp_config_id"),
-                "gateway_name": self.gateway_name,
+                "gateway_name": effective_gateway,
                 "gateway_version": self.gateway_version,
+                # Cloud `request_context` identity fields are promoted to
+                # top-level keys on `mapped` (so telemetry can read them
+                # straight off the gateway_config), but we also surface them
+                # here so existing callers that read e.g.
+                # ``AuthResult.metadata["org_id"]`` keep working. Filter out
+                # ``None`` so missing keys are absent rather than holding a
+                # sentinel -- matches the rc_extra filter.
+                **{
+                    k: mapped[k]
+                    for k in ("org_id", "registry_name")
+                    if mapped.get(k) is not None
+                },
                 **mapped.get("_request_context_extra", {}),
             },
         )
@@ -297,6 +346,8 @@ class EnkryptAuthProvider(AuthProvider):
         gateway_key: str,
         project_id: str | None = None,
         user_id: str | None = None,
+        *,
+        gateway_name: str | None = None,
     ) -> dict[str, Any] | None:
         """Return the internal ``gateway_config`` dict for a given apikey.
 
@@ -305,18 +356,30 @@ class EnkryptAuthProvider(AuthProvider):
         discovery_service, etc.) work unchanged. ``project_id`` / ``user_id``
         are accepted but ignored: cloud auth derives them from the apikey
         and the response's ``request_context`` block.
+
+        ``gateway_name`` is the per-request header (``X-Enkrypt-MCP-Gateway``)
+        the caller extracted. ``self.gateway_name`` (from ``auth.config``) wins
+        when set — the header is only consulted as a fallback.
         """
-        cache_key = self._cache_key(gateway_key)
+        effective_gateway = self.gateway_name or gateway_name
+        cache_key = self._cache_key(gateway_key, effective_gateway)
         cached = self._cache_get(cache_key)
         if cached is not None:
             return cached
 
-        response = await self._fetch_remote_gateway_config(gateway_key)
+        response = await self._fetch_remote_gateway_config(
+            gateway_key,
+            gateway_name=effective_gateway,
+        )
         if response is None:
             return None
 
         local_overrides = await self._load_local_server_overrides()
-        mapped = self._map_response(response, local_overrides=local_overrides)
+        mapped = self._map_response(
+            response,
+            local_overrides=local_overrides,
+            effective_gateway_name=effective_gateway,
+        )
         self._cache_put(cache_key, mapped)
         return mapped
 
@@ -325,17 +388,37 @@ class EnkryptAuthProvider(AuthProvider):
     # ------------------------------------------------------------------
 
     async def _fetch_remote_gateway_config(
-        self, gateway_key: str
+        self,
+        gateway_key: str,
+        *,
+        gateway_name: str | None = None,
     ) -> dict[str, Any] | None:
         """Call ``GET /mcp-gateway/get-gateway-config`` and return the body.
 
         Raises ``_CloudFetchError`` on transport / HTTP failures so the
         caller can surface a clear AuthResult.ERROR.
+
+        ``self.gateway_name`` (from ``auth.config``) wins when set; the
+        per-request ``gateway_name`` (X-Enkrypt-MCP-Gateway header) is the
+        fallback used only when the gateway is configured without one.
         """
+        effective_gateway = self.gateway_name or gateway_name
+        if not effective_gateway:
+            # Fail clearly *before* the aiohttp call: a ``None`` header value
+            # makes multidict raise ``TypeError: Cannot serialize non-str key
+            # None`` which is uncaught (not an ``aiohttp.ClientError``) and
+            # surfaces to the MCP client as a cryptic, misleading
+            # serialization error.
+            raise _CloudFetchError(
+                "Missing X-Enkrypt-MCP-Gateway header and no gateway_name in "
+                "auth.config — cannot fetch gateway config without a gateway "
+                "name. Set auth.config.gateway_name in the gateway config, or "
+                "have the MCP client send the X-Enkrypt-MCP-Gateway header."
+            )
         url = f"{self.base_url}/mcp-gateway/get-gateway-config"
         headers = {
             "apikey": gateway_key,
-            "X-Enkrypt-MCP-Gateway": self.gateway_name,
+            "X-Enkrypt-MCP-Gateway": effective_gateway,
             "X-Enkrypt-MCP-Gateway-Version": self.gateway_version,
         }
         if self.project_name:
@@ -346,38 +429,81 @@ class EnkryptAuthProvider(AuthProvider):
         logger.info(
             "[EnkryptAuthProvider] fetching gateway config: gateway=%s/%s "
             "project=%s apikey=%s",
-            self.gateway_name,
+            effective_gateway,
             self.gateway_version,
             self.project_name or "(inferred)",
             mask_key(gateway_key),
         )
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=timeout_seconds),
-                ) as resp:
-                    body_text = await resp.text()
-                    if resp.status == 200:
-                        try:
-                            return json.loads(body_text)
-                        except json.JSONDecodeError as e:
-                            raise _CloudFetchError(
-                                f"Cloud returned 200 with non-JSON body: {e}"
-                            ) from e
+        # Wrap the HTTP call in a child span so OpenSearch / Jaeger traces
+        # record the exact headers the gateway sends to the cloud (apikey
+        # masked) plus the response status. Uses the global OTel tracer so
+        # the span is a no-op when telemetry isn't initialised (unit tests,
+        # CLI commands) — no extra plumbing required.
+        from opentelemetry import trace  # local import: optional dependency
 
-                    # Hard-fail on every non-200 with the cloud's error body.
-                    raise _CloudFetchError(
-                        f"HTTP {resp.status} from {url}: {_truncate(body_text)}"
-                    )
-        except aiohttp.ClientError as e:
-            raise _CloudFetchError(f"Transport error contacting {url}: {e}") from e
-        except asyncio.TimeoutError as e:
-            raise _CloudFetchError(
-                f"Timeout after {timeout_seconds}s contacting {url}"
-            ) from e
+        tracer = trace.get_tracer("secure_mcp_gateway.auth.enkrypt")
+        with tracer.start_as_current_span(SpanNames.AUTH_FETCH_CONFIG) as span:
+            span.set_attribute(SpanAttributes.AUTH_BASE_URL, self.base_url)
+            span.set_attribute(SpanAttributes.AUTH_FETCH_URL, url)
+            set_span_attr_with_legacy(
+                span, SpanAttributes.GATEWAY_NAME, effective_gateway
+            )
+            set_span_attr_with_legacy(
+                span, SpanAttributes.GATEWAY_VERSION, self.gateway_version
+            )
+            # Mirror the masked ``apikey`` request header so trace consumers
+            # can pivot per-tenant without ever seeing the raw secret.
+            span.set_attribute(SpanAttributes.GATEWAY_KEY, mask_key(gateway_key))
+            if self.project_name:
+                set_span_attr_with_legacy(
+                    span, SpanAttributes.PROJECT_NAME, self.project_name
+                )
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        url,
+                        headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=timeout_seconds),
+                    ) as resp:
+                        span.set_attribute(
+                            SpanAttributes.AUTH_FETCH_STATUS_CODE, resp.status
+                        )
+                        body_text = await resp.text()
+                        if resp.status == 200:
+                            try:
+                                span.set_attribute(SpanAttributes.SUCCESS, True)
+                                return json.loads(body_text)
+                            except json.JSONDecodeError as e:
+                                span.set_attribute(SpanAttributes.SUCCESS, False)
+                                span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
+                                raise _CloudFetchError(
+                                    f"Cloud returned 200 with non-JSON body: {e}"
+                                ) from e
+
+                        span.set_attribute(SpanAttributes.SUCCESS, False)
+                        span.set_attribute(
+                            SpanAttributes.ERROR_MESSAGE,
+                            f"HTTP {resp.status} from cloud",
+                        )
+                        # Hard-fail on every non-200 with the cloud's error body.
+                        raise _CloudFetchError(
+                            f"HTTP {resp.status} from {url}: {_truncate(body_text)}"
+                        )
+            except aiohttp.ClientError as e:
+                span.set_attribute(SpanAttributes.SUCCESS, False)
+                span.set_attribute(SpanAttributes.ERROR_MESSAGE, str(e))
+                raise _CloudFetchError(f"Transport error contacting {url}: {e}") from e
+            except asyncio.TimeoutError as e:
+                span.set_attribute(SpanAttributes.SUCCESS, False)
+                span.set_attribute(
+                    SpanAttributes.ERROR_MESSAGE,
+                    f"timeout after {timeout_seconds}s",
+                )
+                raise _CloudFetchError(
+                    f"Timeout after {timeout_seconds}s contacting {url}"
+                ) from e
 
     def _get_timeout_seconds(self) -> float:
         """Pull the auth timeout from TimeoutManager if available."""
@@ -396,6 +522,7 @@ class EnkryptAuthProvider(AuthProvider):
         self,
         response: dict[str, Any],
         local_overrides: dict[str, dict[str, Any]] | None = None,
+        effective_gateway_name: str | None = None,
     ) -> dict[str, Any]:
         """Map ``ExpandedGatewayConfig`` → internal gateway-config dict.
 
@@ -421,16 +548,20 @@ class EnkryptAuthProvider(AuthProvider):
         gateway_id = str(
             response.get("gateway_id")
             or response.get("gateway_saved_name")
+            or effective_gateway_name
             or self.gateway_name
         )
-        # Prefer end-user (forwarded_*) if the calling app forwarded it,
-        # else fall back to the apikey owner's user_id.
-        user_id = (
-            request_context.get("forwarded_user_id")
-            or request_context.get("user_id")
-            or "enkrypt_principal"
-        )
-        email = request_context.get("forwarded_user_email") or "not_provided"
+        # ``user_id`` must come from the cloud's ``request_context`` -- if it
+        # isn't surfaced (older cloud builds, free-tier apikeys not bound to
+        # an Enkrypt user record), keep it ``None`` so downstream
+        # ``_safe_attrs`` / ``build_log_extra`` drop the field entirely.
+        # Pre-2026-05 builds silently substituted the literal sentinel
+        # ``"enkrypt_principal"`` here, which polluted dashboards with a
+        # value that didn't exist in the customer's user table -- never do
+        # that again. Mirrors the ``org_id`` / ``registry_name`` pattern
+        # below.
+        user_id = request_context.get("user_id")
+        email = request_context.get("user_email") or "not_provided"
         project_name = (
             request_context.get("project_name")
             or response.get("project_name")
@@ -440,7 +571,26 @@ class EnkryptAuthProvider(AuthProvider):
         # Until the cloud surfaces a stable project_id UUID, mirror the name.
         project_id = request_context.get("project_id") or project_name
 
-        composite_id = f"{user_id}_{project_id}_{gateway_id}"
+        # Org identity. The cloud returns ``null`` when the apikey isn't bound
+        # to an org (free-tier / personal-account gateways), so we keep this
+        # ``None``-tolerant and let the downstream filter in
+        # ``build_log_extra`` / OTel attribute setters coerce to "not_provided".
+        # (Note: the cloud does NOT return ``org_name`` -- only ``org_id``.
+        # Don't add an org_name read here.)
+        org_id = request_context.get("org_id")
+
+        # Project registry (cloud `request_context.registry_name`). Surfaces
+        # which Enkrypt project-scoped server registry this apikey resolved
+        # against -- e.g. ``default`` vs a customer-specific registry. Same
+        # ``None``-tolerant treatment as org_id.
+        registry_name = request_context.get("registry_name")
+
+        # ``composite_id`` is the cache / session key, so it must be stable
+        # even when ``user_id`` is ``None`` (cloud doesn't surface it).
+        # Fall back to ``gateway_id`` -- also stable per-apikey -- so the
+        # key stays consistent across calls without leaking a fake
+        # ``"enkrypt_principal"`` into the user-facing ``user_id`` slot.
+        composite_id = f"{user_id or gateway_id}_{project_id}_{gateway_id}"
 
         # Gateway-wide common overrides (always win — see module docstring).
         # Cloud strips any key set here from each server's ``mcp_config`` and
@@ -482,10 +632,13 @@ class EnkryptAuthProvider(AuthProvider):
         # bearing, not defensive padding.
         promoted_keys = {
             "user_id",
-            "forwarded_user_id",
-            "forwarded_user_email",
+            "user_email",
             "project_name",
             "project_id",
+            "org_id",
+            "registry_name",
+            "gateway_saved_name",
+            "gateway_version",
         }
         rc_extra = {
             k: v
@@ -493,12 +646,28 @@ class EnkryptAuthProvider(AuthProvider):
             if k not in promoted_keys and v is not None
         }
 
+        # Mirror the cloud-echoed gateway identity (``gateway_saved_name`` and
+        # ``gateway_version``) onto top-level keys so service-layer spans can
+        # tag every operation with the exact values the gateway sent in the
+        # ``X-Enkrypt-MCP-Gateway`` / ``X-Enkrypt-MCP-Gateway-Version``
+        # headers. We deliberately leave the originals in ``rc_extra`` too so
+        # existing log audits and downstream metadata consumers keep working.
+        gateway_saved_name = request_context.get("gateway_saved_name")
+        gateway_version = request_context.get("gateway_version")
+
         return {
             "id": composite_id,
             "project_name": project_name,
             "project_id": project_id,
             "user_id": user_id,
             "email": email,
+            "org_id": org_id,
+            "registry_name": registry_name,
+            # `gateway_saved_name` from the cloud is exposed internally as
+            # `gateway_name` (and as OTel attribute `enkrypt.gateway.name`)
+            # so existing dashboards/log queries keep working unchanged.
+            "gateway_name": gateway_saved_name,
+            "gateway_version": gateway_version,
             "mcp_config": servers_out,
             "mcp_config_id": gateway_id,
             "_request_context_extra": rc_extra,
@@ -512,17 +681,20 @@ class EnkryptAuthProvider(AuthProvider):
     ) -> dict[str, Any]:
         """Map one ``expanded_servers[]`` entry → one local mcp_config[] entry.
 
-        Override precedence (first match wins):
+        Override precedence:
 
-        1. ``common_overrides.<policy>`` — gateway-wide override applied to
-           every server. **Always wins** when set, even over a per-server
-           ``gateway_overrides.<policy>`` echo (cloud already strips the key
-           from this server's ``mcp_config``).
-        2. ``gateway_overrides.<policy>`` — per-server override, effective
-           only when ``common_overrides`` does not also set this key.
-        3. ``mcp_config.<policy>`` — registry server base value.
-        4. Layer ``local_server_overrides[saved_name]`` on top for fields
-           the cloud doesn't model yet (sandbox / oauth_config / denied_tools).
+        - ``input_guardrails_config`` / ``output_guardrails_config`` — first
+          match wins across ``common_overrides`` → ``gateway_overrides`` →
+          ``mcp_config``. Cloud often returns partial policy objects; missing
+          keys are filled from the empty-policy template so downstream
+          consumers can safely index ``policy["block"]`` etc.
+        - ``server_tools_guardrails_config`` — **common-only.** Controls both
+          tool registration batch checks and server info/description
+          validation. Sourced exclusively from ``common_overrides``; per-server
+          ``mcp_config`` and ``gateway_overrides`` are ignored for this key.
+          If absent from ``common_overrides``, both checks are disabled.
+        - Layer ``local_server_overrides[saved_name]`` on top for fields the
+          cloud doesn't model yet (sandbox / oauth_config / denied_tools).
         """
         common_overrides = common_overrides or {}
         saved_name = server.get("saved_name") or server.get("server_name") or "unknown"
@@ -544,23 +716,17 @@ class EnkryptAuthProvider(AuthProvider):
                 return None
             return {**_empty_config(), **chosen}
 
-        tool_config = _pick_config("tool_guardrails_config")
+        def _pick_common_only(name: str) -> dict[str, Any] | None:
+            """Only read from ``common_overrides``; per-server values are
+            ignored so gateway-wide batch checks use a single policy."""
+            common = common_overrides.get(name)
+            if common:
+                return {**_empty_config(), **common}
+            return None
+
+        stg_config = _pick_common_only("server_tools_guardrails_config")
         input_config = _pick_config("input_guardrails_config")
         output_config = _pick_config("output_guardrails_config")
-
-        # Boolean / scalar override: same precedence with ``is not None``
-        # semantics so an intentional False is honoured (truthiness would
-        # conflate "unset" with "explicitly False").
-        common_esiv = common_overrides.get("enable_server_info_validation")
-        gw_esiv = gateway_overrides.get("enable_server_info_validation")
-        if common_esiv is not None:
-            enable_server_info_validation = common_esiv
-        elif gw_esiv is not None:
-            enable_server_info_validation = gw_esiv
-        else:
-            enable_server_info_validation = cloud_mcp.get(
-                "enable_server_info_validation", False
-            )
 
         # OAuth lives inside mcp_config in the cloud spec; gateway_overrides
         # may override it too.
@@ -573,20 +739,23 @@ class EnkryptAuthProvider(AuthProvider):
             "description": server.get("description", ""),
             "config": cloud_mcp.get("config", {}),
             "tools": cloud_mcp.get("tools", {}),
-            "enable_server_info_validation": enable_server_info_validation,
-            "enable_tool_guardrails": (tool_config or {}).get("enabled", False),
-            "tool_guardrails_config": tool_config or _empty_config(),
+            "server_tools_guardrails_config": stg_config or _empty_config(),
             "input_guardrails_config": input_config or _empty_config(),
             "output_guardrails_config": output_config or _empty_config(),
         }
         if oauth_config:
             merged["oauth_config"] = oauth_config
 
+        # MCP-native OAuth (mcp_oauth) — same precedence as oauth_config.
+        mcp_oauth = gateway_overrides.get("mcp_oauth") or cloud_mcp.get("mcp_oauth")
+        if mcp_oauth:
+            merged["mcp_oauth"] = mcp_oauth
+
         # Layer local-only fields the cloud spec doesn't carry yet.
         # Cloud value (when ever it lands in spec) will win — local overrides
         # are intentionally fall-throughs, not authoritative.
         local = local_overrides.get(saved_name) or {}
-        for field_name in ("sandbox", "denied_tools", "oauth_config"):
+        for field_name in ("sandbox", "denied_tools", "oauth_config", "mcp_oauth"):
             if field_name not in merged and field_name in local:
                 merged[field_name] = local[field_name]
 
@@ -633,13 +802,18 @@ class EnkryptAuthProvider(AuthProvider):
     # Cache
     # ------------------------------------------------------------------
 
-    def _cache_key(self, gateway_key: str) -> str:
+    def _cache_key(
+        self,
+        gateway_key: str,
+        effective_gateway: str | None = None,
+    ) -> str:
         # Hash the apikey so even an in-memory dump doesn't leak it. The
         # gateway_name+version+project_name are part of the key so a single
         # process that handles multiple gateways/projects (uncommon, but
         # supported) doesn't cross-contaminate.
+        gw = effective_gateway or self.gateway_name or ""
         h = hashlib.sha256(
-            f"{gateway_key}|{self.gateway_name}|{self.gateway_version}|{self.project_name or ''}".encode()
+            f"{gateway_key}|{gw}|{self.gateway_version}|{self.project_name or ''}".encode()
         ).hexdigest()
         return h[:16]
 

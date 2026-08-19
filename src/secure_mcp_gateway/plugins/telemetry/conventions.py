@@ -22,16 +22,49 @@ from __future__ import annotations
 
 
 class SpanAttributes:
-    """Attribute keys attached to Enkrypt spans."""
+    """Attribute keys attached to Enkrypt spans.
+
+    2026-05-26 toggle: the identity tuple below was temporarily flipped
+    from the canonical OTel-dotted form (``enkrypt.server.name``, ...) to
+    the snake_case form so spans emit a single field name (matching what
+    metrics and logs now write). To restore the dotted form, swap each
+    pair: uncomment the ``"enkrypt.*"`` line and comment out the
+    snake_case line. ``set_span_attr_with_legacy`` keeps working either
+    way (it just writes the same key twice when both forms collapse).
+    """
 
     # --- Identity ---
-    SERVER_NAME = "enkrypt.server.name"
-    PROJECT_ID = "enkrypt.project.id"
-    PROJECT_NAME = "enkrypt.project.name"
-    USER_ID = "enkrypt.user.id"
-    USER_EMAIL = "enkrypt.user.email"
+    # SERVER_NAME = "enkrypt.server.name"
+    SERVER_NAME = "server_name"
+    # ORG_ID = "enkrypt.org.id"
+    ORG_ID = "org_id"
+    # PROJECT_ID = "enkrypt.project.id"
+    PROJECT_ID = "project_id"
+    # PROJECT_NAME = "enkrypt.project.name"
+    PROJECT_NAME = "project_name"
+    # Cloud `request_context.registry_name`. Nested under `project.` to mirror
+    # the cloud data model where every registry belongs to a project.
+    # PROJECT_REGISTRY = "enkrypt.project.registry"
+    PROJECT_REGISTRY = "project_registry"
+    # USER_ID = "enkrypt.user.id"
+    USER_ID = "user_id"
+    # USER_EMAIL = "enkrypt.user.email"
+    USER_EMAIL = "user_email"
+    # True when the apikey belongs to an internal Enkrypt account
+    # (dashboard / next-js / staff). Populated from the cloud
+    # ``/consumer-info`` response when the playground runs in
+    # inline-mode + provider=enkrypt, so dashboards can split internal
+    # traffic from real customer traffic.
+    USER_IS_INTERNAL_REQ = "enkrypt.user.is_internal_req"
     CONFIG_ID = "enkrypt.config.id"
     GATEWAY_KEY = "enkrypt.gateway.key"
+    # Echoes the ``X-Enkrypt-MCP-Gateway`` / ``X-Enkrypt-MCP-Gateway-Version``
+    # headers the gateway sends to the cloud's ``get-gateway-config`` API, so
+    # OpenSearch / Grafana can pivot per deployed gateway revision.
+    # GATEWAY_NAME = "enkrypt.gateway.name"
+    GATEWAY_NAME = "gateway_name"
+    # GATEWAY_VERSION = "enkrypt.gateway.version"
+    GATEWAY_VERSION = "gateway_version"
     REQUEST_ID = "enkrypt.request.id"
     CUSTOM_ID = "enkrypt.custom.id"
     CORRELATION_ID = "enkrypt.correlation.id"
@@ -44,7 +77,8 @@ class SpanAttributes:
     ENV = "enkrypt.env"
 
     # --- Tool ---
-    TOOL_NAME = "enkrypt.tool.name"
+    # TOOL_NAME = "enkrypt.tool.name"
+    TOOL_NAME = "tool_name"
     TOOL_CALL_INDEX = "enkrypt.tool.call_index"
     TOOL_FOUND = "enkrypt.tool.found"
     NUM_TOOL_CALLS = "enkrypt.tool.num_calls"
@@ -68,6 +102,12 @@ class SpanAttributes:
     REQUIRED_NEW_AUTH = "enkrypt.auth.required_new_auth"
     AUTH_RESULT = "enkrypt.auth.result"
     REQUIRES_AUTH = "enkrypt.auth.requires"
+    # Cloud get-gateway-config endpoint details (host of ``base_url`` + URL +
+    # HTTP status). Useful for splitting dev/staging/prod traffic and for
+    # alerting on cloud-side failures.
+    AUTH_BASE_URL = "enkrypt.auth.base_url"
+    AUTH_FETCH_URL = "enkrypt.auth.fetch_url"
+    AUTH_FETCH_STATUS_CODE = "enkrypt.auth.fetch_status_code"
 
     # --- Cache / Discovery ---
     CACHE_HIT = "enkrypt.cache.hit"
@@ -87,6 +127,23 @@ class SpanAttributes:
     HEALTH_STATUS = "enkrypt.health.status"
     HEALTH_RESPONSE_TIME_MS = "enkrypt.health.response_time_ms"
     HEALTH_TOOL_COUNT = "enkrypt.health.tool_count"
+
+    # --- Playground (/mcp-playground/*) ---
+    # Set on the parent route span and on the registry-lookup child span so
+    # dashboards can split inline-body traffic from registry-header traffic.
+    PLAYGROUND_MODE = "enkrypt.playground.mode"  # "inline" | "registry"
+    PLAYGROUND_REGISTRY_SAVED_NAME = "enkrypt.playground.registry.saved_name"
+    PLAYGROUND_REGISTRY_SERVER_VERSION = "enkrypt.playground.registry.server_version"
+    PLAYGROUND_REGISTRY_NAME = "enkrypt.playground.registry.registry_name"
+    PLAYGROUND_REGISTRY_ID = "enkrypt.playground.registry.registry_id"
+    PLAYGROUND_PROJECT_NAME = "enkrypt.playground.registry.project_name"
+    PLAYGROUND_REGISTRY_SERVER_NAME = "enkrypt.playground.registry.server_name"
+    PLAYGROUND_REGISTRY_IS_ACTIVE = "enkrypt.playground.registry.is_active"
+    PLAYGROUND_REGISTRY_IS_SAMPLE = "enkrypt.playground.registry.is_sample"
+    PLAYGROUND_LOOKUP_URL = "enkrypt.playground.lookup.url"
+    PLAYGROUND_LOOKUP_STATUS_CODE = "enkrypt.playground.lookup.status_code"
+    PLAYGROUND_LOOKUP_DURATION_MS = "enkrypt.playground.lookup.duration_ms"
+    PLAYGROUND_LOOKUP_CACHE = "enkrypt.playground.lookup.cache"  # "hit" | "miss"
 
 
 # ===================================================================
@@ -109,6 +166,11 @@ class SpanNames:
 
     # Auth
     AUTH = "enkrypt.auth"
+    # Child span around the cloud's ``GET /mcp-gateway/get-gateway-config``
+    # HTTP call. Captures the headers sent (masked apikey, gateway name /
+    # version, project name) and the response status so we can debug cloud
+    # auth failures from Jaeger / OpenSearch traces.
+    AUTH_FETCH_CONFIG = "enkrypt.auth.fetch_gateway_config"
 
     # Discovery
     DISCOVERY = "enkrypt.discovery"
@@ -138,6 +200,20 @@ class SpanNames:
     HEALTH_SERVER_INFO = "enkrypt.health.server_info"
     HEALTH_TOOL_CALL = "enkrypt.health.tool_call"
 
+    # Child span around the cloud's ``GET /mcp-registry/get-server`` HTTP
+    # call made by the playground routes when in registry-header mode.
+    PLAYGROUND_REGISTRY_LOOKUP = "enkrypt.playground.registry_lookup"
+
+    # Child span around the cloud's ``GET /consumer-info`` HTTP call made
+    # by the playground routes when in inline-body mode with
+    # ``plugins.auth.provider == "enkrypt"``. Cloud 200 is the apikey gate
+    # for that path; identity attributes (user.id / org.id / project.name /
+    # user.email / user.is_internal_req) are populated from the response
+    # body onto the parent route span using the existing identity
+    # SpanAttributes so dashboards index playground traffic the same way
+    # as gateway traffic.
+    PLAYGROUND_CONSUMER_INFO_LOOKUP = "enkrypt.playground.consumer_info_lookup"
+
 
 # ===================================================================
 # Metric names (what OTel exports to Prometheus / Grafana)
@@ -156,6 +232,13 @@ class MetricNames:
     GUARDRAIL_RELEVANCY_BLOCKS = "enkrypt.guardrail.relevancy_blocks"
     GUARDRAIL_ADHERENCE_BLOCKS = "enkrypt.guardrail.adherence_blocks"
     GUARDRAIL_HALLUCINATION_BLOCKS = "enkrypt.guardrail.hallucination_blocks"
+    # Compliance-framework attribution per blocked violation. One increment
+    # per (framework, framework_id) tuple parsed from the upstream
+    # guardrail provider's `compliance_mapping` block (e.g. OWASP LLM01:2025,
+    # MITRE ATLAS AML.T0051, NIST AI RMF MAP 2.3, EU AI Act Article 15(4),
+    # ISO/IEC 27001 A.14.2). Powers the per-framework heatmaps in the
+    # Security Posture dashboard.
+    GUARDRAIL_COMPLIANCE_HIT = "enkrypt.guardrail.compliance_hit"
 
     # Tool metrics
     TOOL_CALLS = "enkrypt.tool.calls"
@@ -164,6 +247,78 @@ class MetricNames:
     TOOL_FAILURES = "enkrypt.tool.failures"
     TOOL_ERRORS = "enkrypt.tool.errors"
     TOOL_BLOCKED = "enkrypt.tool.blocked"
+    # Tools refused at the per-server allow-list / deny-list (server-tool
+    # guardrail). Distinct from TOOL_BLOCKED, which counts guardrail-API
+    # decisions (input/output content); permission_denied counts policy-
+    # level allow/deny decisions before the tool even runs.
+    TOOL_PERMISSION_DENIED = "enkrypt.tool.permission_denied"
+
+    # Errors (centralised). One increment per MCPGatewayError raised,
+    # carrying the ErrorCode enum value + severity + recovery_strategy as
+    # attributes. Powers the Error Forensics dashboard's per-code,
+    # per-severity, per-recovery_strategy widgets.
+    ERRORS_BY_CODE = "enkrypt.errors.by_code"
+
+    # Degradation -- when a guardrail or downstream service errors and the
+    # gateway has to fall back to a fail-open (allow the call) or
+    # fail-closed (block the call) verdict. Powers the SLO and Error
+    # Forensics fail-open/fail-closed widgets and is critical for security
+    # auditing (knowing how often you trusted-by-default vs blocked-by-
+    # default during partial outages).
+    DEGRADATION_FAIL_OPEN = "enkrypt.degradation.fail_open"
+    DEGRADATION_FAIL_CLOSED = "enkrypt.degradation.fail_closed"
+
+    # Transport errors at the MCP-client layer (HTTP / stdio session
+    # failures forwarding to downstream MCP servers).
+    TRANSPORT_ERRORS = "enkrypt.transport.errors"
+
+    # Discovery failures per downstream MCP server (timeout, refused,
+    # malformed initialize response, etc.). Distinct from
+    # DISCOVERY_FOUND (which counts successful discoveries).
+    DISCOVERY_SERVER_FAILURES = "enkrypt.discovery.server_failures"
+
+    # =====================================================================
+    # Audit / compliance metrics  (Audit Trail dashboard)
+    # =====================================================================
+    # Every gateway state-mutation flows through one of these counters so
+    # the Audit Trail dashboard can answer SOC2/ISO 27001 review questions
+    # like "who rotated which apikey when, from which surface" without
+    # log-grep.
+    #
+    # Two emission layers:
+    #   - The "umbrella" counters (ADMIN_ACTIONS, PRIVILEGED_OPERATIONS)
+    #     fire on EVERY mutation, with action / resource_type / surface
+    #     attributes that the dashboard pivots on.
+    #   - The "specific" counters fire alongside for the events the
+    #     dashboard surfaces as their own KPI tile (apikey CRUD, project /
+    #     user CRUD, cache flush, system backup/restore/reset, settings
+    #     changes).  Recording both means the dashboard can show top-N
+    #     actors AND per-action drill-downs without re-querying.
+
+    # Umbrella: every admin/audit event increments these.
+    ADMIN_ACTIONS = "enkrypt.admin.actions"
+    PRIVILEGED_OPERATIONS = "enkrypt.privileged.operations"
+
+    # Specific event categories
+    ADMIN_CACHE_FLUSH = "enkrypt.admin.cache_flush"
+    APIKEY_ROTATIONS = "enkrypt.apikey.rotations"
+    AUDIT_APIKEY_CREATED = "enkrypt.audit.apikey.created"
+    AUDIT_APIKEY_DELETED = "enkrypt.audit.apikey.deleted"
+    AUDIT_APIKEY_DISABLED = "enkrypt.audit.apikey.disabled"
+    AUDIT_APIKEY_ROTATED = "enkrypt.audit.apikey.rotated"
+    AUDIT_CONFIG_MODIFIED = "enkrypt.audit.config.modified"
+    AUDIT_SETTINGS_ENKRYPT_API_KEY_SET = "enkrypt.audit.settings.enkrypt_api_key_set"
+    AUDIT_SETTINGS_TELEMETRY_CHANGED = "enkrypt.audit.settings.telemetry_changed"
+    AUDIT_USER_CREATED = "enkrypt.audit.user.created"
+    AUDIT_USER_DELETED = "enkrypt.audit.user.deleted"
+    PROJECTS_CREATED = "enkrypt.projects.created"
+    SYSTEM_BACKUP_COMPLETED = "enkrypt.system.backup.completed"
+    SYSTEM_RESET = "enkrypt.system.reset"
+    SYSTEM_RESTORE = "enkrypt.system.restore"
+
+    # 401/403 responses from the admin REST / gateway MCP surface.
+    # Distinct from AUTH_FAILURE (which is per-apikey, per-provider).
+    AUTH_UNAUTHORIZED_HTTP = "enkrypt.auth.unauthorized_http"
 
     # Auth metrics
     AUTH_SUCCESS = "enkrypt.auth.success"
@@ -175,6 +330,22 @@ class MetricNames:
 
     # PII metrics
     PII_REDACTIONS = "enkrypt.pii.redactions"
+    # Per-entity-type counter (one increment per detected PII entity).
+    # Attribute: ``entity_type`` (e.g. EMAIL, PHONE, SSN, CREDIT_CARD,
+    # NAME, ADDRESS, IP_ADDRESS, URL).  Powers the Guardrails Deep Dive
+    # "PII Entities by Category" and "Top PII Entity Types" panels.
+    GUARDRAIL_PII_ENTITY = "enkrypt.guardrail.pii_entity"
+
+    # =====================================================================
+    # Per-detector violation detail metrics  (Guardrails Deep Dive)
+    # =====================================================================
+    # Toxicity subtype attribution.  Enkrypt's toxicity detector returns
+    # per-subtype scores (toxicity, severe_toxicity, obscene, threat,
+    # insult, identity_hate).  One increment per subtype that crossed the
+    # detector's threshold, with attributes ``subtype`` and ``score_bucket``
+    # (low|medium|high).  Powers the Guardrails Deep Dive "Toxicity
+    # Subtypes" panels.
+    GUARDRAIL_TOXICITY_SUBTYPE = "enkrypt.guardrail.toxicity_subtype"
 
     # Session / user gauges
     SESSION_ACTIVE = "enkrypt.session.active"
@@ -189,6 +360,14 @@ class MetricNames:
     HEALTH_DURATION = "enkrypt.health.duration"
     HEALTH_SUCCESS = "enkrypt.health.success"
     HEALTH_FAILURES = "enkrypt.health.failures"
+
+    # Playground registry lookup
+    PLAYGROUND_REGISTRY_LOOKUP_DURATION = "enkrypt.playground.registry_lookup.duration"
+
+    # Playground consumer-info lookup (inline-mode + provider=enkrypt)
+    PLAYGROUND_CONSUMER_INFO_LOOKUP_DURATION = (
+        "enkrypt.playground.consumer_info_lookup.duration"
+    )
 
     # Timeout metrics
     TIMEOUT_OPERATIONS = "enkrypt.timeout.operations"
@@ -215,17 +394,100 @@ METRIC_DESCRIPTIONS: dict[str, str] = {
     MetricNames.GUARDRAIL_RELEVANCY_BLOCKS: "Relevancy guardrail violations",
     MetricNames.GUARDRAIL_ADHERENCE_BLOCKS: "Adherence guardrail violations",
     MetricNames.GUARDRAIL_HALLUCINATION_BLOCKS: "Hallucination guardrail violations",
+    MetricNames.GUARDRAIL_COMPLIANCE_HIT: (
+        "Compliance framework hits per blocked guardrail call "
+        "(one per framework + framework_id pair)"
+    ),
     MetricNames.TOOL_CALLS: "Total tool executions",
     MetricNames.TOOL_DURATION: "Tool execution duration in seconds",
     MetricNames.TOOL_SUCCESS: "Successful tool executions",
     MetricNames.TOOL_FAILURES: "Failed tool executions",
     MetricNames.TOOL_ERRORS: "Tool execution errors",
     MetricNames.TOOL_BLOCKED: "Tool calls blocked by guardrails",
+    MetricNames.TOOL_PERMISSION_DENIED: (
+        "Tools refused by server-level allow/deny policy "
+        "(server-tool guardrail, evaluated before tool execution)"
+    ),
+    MetricNames.ERRORS_BY_CODE: (
+        "MCPGatewayErrors emitted, broken down by ErrorCode, "
+        "severity, recovery_strategy"
+    ),
+    MetricNames.DEGRADATION_FAIL_OPEN: (
+        "Calls that were allowed after a guardrail/downstream error "
+        "(fail-open verdict)"
+    ),
+    MetricNames.DEGRADATION_FAIL_CLOSED: (
+        "Calls that were blocked after a guardrail/downstream error "
+        "(fail-closed verdict)"
+    ),
+    MetricNames.TRANSPORT_ERRORS: (
+        "MCP client transport failures (HTTP / stdio) when forwarding to "
+        "downstream MCP servers"
+    ),
+    MetricNames.DISCOVERY_SERVER_FAILURES: (
+        "Failed tool discovery attempts against downstream MCP servers"
+    ),
+    # ---- Audit / compliance (Audit Trail dashboard) -------------------
+    MetricNames.ADMIN_ACTIONS: (
+        "Every gateway state-mutation (config CRUD, project/user lifecycle, "
+        "apikey CRUD, cache flush, system ops, settings change). Attributes: "
+        "action, resource_type, surface (cli|rest_api|mcp_gateway), actor, "
+        "success."
+    ),
+    MetricNames.PRIVILEGED_OPERATIONS: (
+        "Subset of admin actions that require elevated privileges "
+        "(system reset/restore/backup, settings changes, cache flush)."
+    ),
+    MetricNames.ADMIN_CACHE_FLUSH: (
+        "Cache flush requests. Attributes: scope (all|gateway_config|"
+        "server_config|tool_cache), surface, actor, authorization_path "
+        "(admin_apikey|org_id_allowlist)."
+    ),
+    MetricNames.APIKEY_ROTATIONS: (
+        "Successful apikey rotations (umbrella counter; AUDIT_APIKEY_ROTATED "
+        "fires too with apikey-specific attributes)."
+    ),
+    MetricNames.AUDIT_APIKEY_CREATED: "API key creation events",
+    MetricNames.AUDIT_APIKEY_DELETED: "API key deletion events",
+    MetricNames.AUDIT_APIKEY_DISABLED: "API key disable events",
+    MetricNames.AUDIT_APIKEY_ROTATED: "API key rotation events (per-key)",
+    MetricNames.AUDIT_CONFIG_MODIFIED: (
+        "MCP config file modification events (any add/update/remove on "
+        "mcp_configs / servers / guardrails)"
+    ),
+    MetricNames.AUDIT_SETTINGS_ENKRYPT_API_KEY_SET: (
+        "Enkrypt cloud apikey setting changed via CLI or REST"
+    ),
+    MetricNames.AUDIT_SETTINGS_TELEMETRY_CHANGED: (
+        "Telemetry plugin config changed (provider, endpoint, enabled flag)"
+    ),
+    MetricNames.AUDIT_USER_CREATED: "User account creation events",
+    MetricNames.AUDIT_USER_DELETED: "User account deletion events",
+    MetricNames.PROJECTS_CREATED: "Project creation events",
+    MetricNames.SYSTEM_BACKUP_COMPLETED: (
+        "Successful system backup completions (CLI / REST)"
+    ),
+    MetricNames.SYSTEM_RESET: "System reset events (destructive!)",
+    MetricNames.SYSTEM_RESTORE: "System restore-from-backup events",
+    MetricNames.AUTH_UNAUTHORIZED_HTTP: (
+        "401/403 responses from the admin REST surface or gateway MCP "
+        "surface (per-request, not per-apikey)"
+    ),
     MetricNames.AUTH_SUCCESS: "Successful authentications",
     MetricNames.AUTH_FAILURE: "Failed authentications",
     MetricNames.CACHE_HITS: "Cache hits",
     MetricNames.CACHE_MISSES: "Cache misses",
     MetricNames.PII_REDACTIONS: "PII redaction operations",
+    MetricNames.GUARDRAIL_PII_ENTITY: (
+        "PII entities detected by the guardrail, one increment per "
+        "entity. Attribute: entity_type (EMAIL/PHONE/SSN/...)."
+    ),
+    MetricNames.GUARDRAIL_TOXICITY_SUBTYPE: (
+        "Toxicity subtypes flagged by the guardrail, one increment "
+        "per subtype above threshold. Attributes: subtype "
+        "(insult/threat/severe_toxicity/...), score_bucket "
+        "(low|medium|high)."
+    ),
     MetricNames.SESSION_ACTIVE: "Currently active sessions",
     MetricNames.USERS_ACTIVE: "Currently active users",
     MetricNames.DISCOVERY_LIST: "Server list endpoint calls",
@@ -234,6 +496,8 @@ METRIC_DESCRIPTIONS: dict[str, str] = {
     MetricNames.HEALTH_DURATION: "Health-check API duration in seconds",
     MetricNames.HEALTH_SUCCESS: "Health-check API requests that completed successfully",
     MetricNames.HEALTH_FAILURES: "Health-check API requests that failed",
+    MetricNames.PLAYGROUND_REGISTRY_LOOKUP_DURATION: "Duration of GET /mcp-registry/get-server calls made by the /mcp-playground/* routes in registry-header mode (milliseconds)",
+    MetricNames.PLAYGROUND_CONSUMER_INFO_LOOKUP_DURATION: "Duration of GET /consumer-info calls made by the /mcp-playground/* routes in inline-body mode when plugins.auth.provider=enkrypt (milliseconds)",
     MetricNames.TIMEOUT_OPERATIONS: "Total timeout operations",
     MetricNames.TIMEOUT_SUCCESS: "Successful timeout operations",
     MetricNames.TIMEOUT_TIMED_OUT: "Operations that timed out",
@@ -257,10 +521,37 @@ class SourceProduct:
     HOOKS = "hooks"
 
 
+# Legacy snake_case aliases kept for OpenSearch filtering compatibility.
+# Mirrors the metric/log alias map in ``log.LEGACY_FILTER_COMPAT_ATTR_KEYS``
+# so dashboards filtering by the underscore form get the same coverage across
+# all three signals.
+_SPAN_LEGACY_ATTR_KEYS: dict[str, str] = {
+    SpanAttributes.GATEWAY_NAME: "gateway_name",
+    SpanAttributes.GATEWAY_VERSION: "gateway_version",
+    SpanAttributes.ORG_ID: "org_id",
+    SpanAttributes.PROJECT_ID: "project_id",
+    SpanAttributes.PROJECT_NAME: "project_name",
+    SpanAttributes.PROJECT_REGISTRY: "project_registry",
+    SpanAttributes.SERVER_NAME: "server_name",
+    SpanAttributes.TOOL_NAME: "tool_name",
+    SpanAttributes.USER_ID: "user_id",
+    SpanAttributes.USER_EMAIL: "user_email",
+}
+
+
+def set_span_attr_with_legacy(span, attr_key: str, value) -> None:
+    """Set canonical span attr and (for key identity fields) legacy alias."""
+    span.set_attribute(attr_key, value)
+    legacy_key = _SPAN_LEGACY_ATTR_KEYS.get(attr_key)
+    if legacy_key is not None:
+        span.set_attribute(legacy_key, value)
+
+
 __all__ = [
     "METRIC_DESCRIPTIONS",
     "MetricNames",
     "SourceProduct",
     "SpanAttributes",
     "SpanNames",
+    "set_span_attr_with_legacy",
 ]

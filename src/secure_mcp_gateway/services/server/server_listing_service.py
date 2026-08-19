@@ -4,6 +4,10 @@ from typing import Any
 
 from secure_mcp_gateway.plugins.auth import get_auth_config_manager
 from secure_mcp_gateway.plugins.telemetry import get_telemetry_config_manager
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    SpanAttributes,
+    set_span_attr_with_legacy,
+)
 from secure_mcp_gateway.services.cache.cache_service import cache_service
 
 # Get metrics from telemetry manager
@@ -17,9 +21,11 @@ from secure_mcp_gateway.exceptions import (
 )
 from secure_mcp_gateway.utils import (
     build_log_extra,
+    clear_request_identity_context,
     logger,
     mask_key,
     mask_server_config_sensitive_data,
+    set_request_identity_context,
 )
 
 
@@ -85,7 +91,10 @@ class ServerListingService:
             enkrypt_project_id = credentials.get("project_id") or "not_provided"
             enkrypt_user_id = credentials.get("user_id") or "not_provided"
             gateway_config = await self.auth_manager.get_local_mcp_config(
-                enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
+                enkrypt_gateway_key,
+                enkrypt_project_id,
+                enkrypt_user_id,
+                gateway_name=credentials.get("gateway_name"),
             )
 
             if not gateway_config:
@@ -106,6 +115,22 @@ class ServerListingService:
             enkrypt_project_name = gateway_config.get("project_name", "not_provided")
             enkrypt_email = gateway_config.get("email", "not_provided")
             enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
+            # Cloud auth may return ``None`` for any identity field (free-tier
+            # or personal-account gateways, apikeys not bound to a registry,
+            # local-apikey provider). Coerce to placeholder so dashboards
+            # filtering by ``enkrypt_org_id`` etc. see a stable token. (Note:
+            # cloud does NOT return org_name -- only org_id.)
+            enkrypt_org_id = gateway_config.get("org_id") or "not_provided"
+            enkrypt_project_registry = (
+                gateway_config.get("registry_name") or "not_provided"
+            )
+            # Mirrors the ``X-Enkrypt-MCP-Gateway`` /
+            # ``X-Enkrypt-MCP-Gateway-Version`` headers we send to the cloud
+            # when fetching this config -- same coercion rationale.
+            enkrypt_gateway_name = gateway_config.get("gateway_name") or "not_provided"
+            enkrypt_gateway_version = (
+                gateway_config.get("gateway_version") or "not_provided"
+            )
 
             # Set span attributes
             self._set_span_attributes(
@@ -118,6 +143,33 @@ class ServerListingService:
                 enkrypt_mcp_config_id,
                 enkrypt_project_name,
                 enkrypt_email,
+                enkrypt_org_id,
+                enkrypt_project_registry,
+                enkrypt_gateway_name,
+                enkrypt_gateway_version,
+            )
+
+            # Once auth has resolved an authenticated identity, publish it on
+            # the request-scoped ContextVar so every downstream metric / log
+            # emitted under this request inherits the rich identity tags
+            # (project_name, user_email, org_id, ...). Cleared in ``finally``.
+            #
+            # Cloud-auth MCP clients only send ``apikey`` (no project_id /
+            # user_id headers), so prefer the values resolved from the cloud
+            # response (``gateway_config``) over the raw header credentials.
+            set_request_identity_context(
+                {
+                    "user_id": gateway_config.get("user_id") or enkrypt_user_id,
+                    "user_email": enkrypt_email,
+                    "project_id": gateway_config.get("project_id")
+                    or enkrypt_project_id,
+                    "project_name": enkrypt_project_name,
+                    "project_registry": enkrypt_project_registry,
+                    "org_id": enkrypt_org_id,
+                    "gateway_name": enkrypt_gateway_name,
+                    "gateway_version": enkrypt_gateway_version,
+                    "mcp_config_id": enkrypt_mcp_config_id,
+                }
             )
 
             try:
@@ -196,6 +248,8 @@ class ServerListingService:
                     cause=e,
                 )
                 return create_error_response(err)
+            finally:
+                clear_request_identity_context()
 
     def _generate_custom_id(self) -> str:
         """Generate a custom ID for tracking."""
@@ -214,45 +268,87 @@ class ServerListingService:
         enkrypt_mcp_config_id,
         enkrypt_project_name,
         enkrypt_email,
+        enkrypt_org_id: str = "not_provided",
+        enkrypt_project_registry: str = "not_provided",
+        enkrypt_gateway_name: str = "not_provided",
+        enkrypt_gateway_version: str = "not_provided",
     ):
-        """Set attributes on the main span."""
-        span.set_attribute("job", "enkrypt")
-        span.set_attribute("env", "dev")
-        span.set_attribute("custom_id", custom_id)
-        span.set_attribute("enkrypt_gateway_key", mask_key(enkrypt_gateway_key))
+        """Set attributes on the main span.
+
+        Identity attributes use the canonical ``SpanAttributes.*``
+        constants (``enkrypt.*`` dotted form). The pre-2026-05 codepath
+        also emitted underscore-prefixed duplicates
+        (``enkrypt_user_id`` / ``enkrypt_email`` / ...) for backward
+        compatibility while dashboards migrated; they're now removed
+        because every consumer queries the dotted form.
+        """
+        # job / env / custom_id were emitted twice (here as snake_case and
+        # again via SpanAttributes.JOB / .ENV / .CUSTOM_ID which write the
+        # dotted ``enkrypt.*`` form). Dropped the snake_case duplicates --
+        # ``span.attributes.enkrypt@job`` / ``@env`` / ``@custom@id`` remain
+        # the only forms emitted, matching every other span in the codebase.
+        span.set_attribute(SpanAttributes.JOB, "enkrypt")
+        span.set_attribute(SpanAttributes.ENV, "dev")
+        span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
         span.set_attribute("discover_tools", discover_tools)
-        span.set_attribute("enkrypt_project_id", enkrypt_project_id)
-        span.set_attribute("enkrypt_user_id", enkrypt_user_id)
-        span.set_attribute("enkrypt_mcp_config_id", enkrypt_mcp_config_id)
-        span.set_attribute("enkrypt_project_name", enkrypt_project_name)
-        span.set_attribute("enkrypt_email", enkrypt_email)
+        span.set_attribute(SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key))
+        set_span_attr_with_legacy(span, SpanAttributes.USER_EMAIL, enkrypt_email)
+        set_span_attr_with_legacy(span, SpanAttributes.USER_ID, enkrypt_user_id)
+        set_span_attr_with_legacy(span, SpanAttributes.PROJECT_ID, enkrypt_project_id)
+        set_span_attr_with_legacy(
+            span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
+        )
+        set_span_attr_with_legacy(
+            span, SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
+        )
+        set_span_attr_with_legacy(span, SpanAttributes.ORG_ID, enkrypt_org_id)
+        set_span_attr_with_legacy(
+            span, SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name
+        )
+        set_span_attr_with_legacy(
+            span, SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version
+        )
+        span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
 
     async def _check_authentication(
         self, ctx, session_key, enkrypt_gateway_key, tracer, custom_id, logger
     ):
-        """Check authentication and return error if needed."""
+        """Check authentication and return error if needed.
+
+        Span attributes use the canonical ``SpanAttributes.*`` constants
+        (``enkrypt.*`` dotted form). Pre-2026-05 the auth_span also wrote
+        ``enkrypt_gateway_key`` / ``gateway_key`` / ``project_id`` / etc.
+        in flat / underscore-prefixed forms -- those duplicates have
+        been removed because every consumer queries the dotted form.
+        """
         with tracer.start_span("check_server_auth") as auth_span:
-            auth_span.set_attribute("custom_id", custom_id)
+            auth_span.set_attribute(SpanAttributes.CUSTOM_ID, custom_id)
             auth_span.set_attribute(
-                "enkrypt_gateway_key", mask_key(enkrypt_gateway_key)
+                SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
             )
-            auth_span.set_attribute("gateway_key", mask_key(enkrypt_gateway_key))
-            # Get credentials for span attributes
             credentials = self.auth_manager.get_gateway_credentials(ctx)
-            auth_span.set_attribute(
-                "project_id", credentials.get("project_id") or "not_provided"
+            set_span_attr_with_legacy(
+                auth_span,
+                SpanAttributes.PROJECT_ID,
+                credentials.get("project_id") or "not_provided",
+            )
+            set_span_attr_with_legacy(
+                auth_span,
+                SpanAttributes.USER_ID,
+                credentials.get("user_id") or "not_provided",
             )
             auth_span.set_attribute(
-                "user_id", credentials.get("user_id") or "not_provided"
+                SpanAttributes.CONFIG_ID,
+                credentials.get("mcp_config_id") or "not_provided",
+            )
+            set_span_attr_with_legacy(
+                auth_span,
+                SpanAttributes.PROJECT_NAME,
+                credentials.get("project_name") or "not_provided",
             )
             auth_span.set_attribute(
-                "mcp_config_id", credentials.get("mcp_config_id") or "not_provided"
-            )
-            auth_span.set_attribute(
-                "enkrypt_project_name", credentials.get("project_name") or "not_provided"
-            )
-            auth_span.set_attribute(
-                "enkrypt_email", credentials.get("email") or "not_provided"
+                SpanAttributes.USER_EMAIL,
+                credentials.get("email") or "not_provided",
             )
 
             if not enkrypt_gateway_key:
@@ -391,30 +487,108 @@ class ServerListingService:
     async def _discover_and_return_servers(
         self, servers_with_tools, servers_needing_discovery, ctx, tracer, main_span
     ):
-        """Discover tools and return servers."""
+        """Discover tools per-server with individual timeouts.
+
+        Historic behaviour wrapped the *entire* parallel ``asyncio.gather`` in
+        a single ``execute_with_timeout`` budget. One slow cold-start
+        (``uvx``/``npx`` first run, OAuth handshake, etc.) blew the whole
+        batch's budget, after which the listing service returned an empty
+        ``discovery_*_servers`` array, ``status="success"``, and stub
+        ``tools: {}`` for every server -- silently misleading. See the
+        regression test ``tests/test_server_listing_per_server_timeout.py``.
+
+        New behaviour:
+
+        * Each server's discovery runs under its own ``asyncio.wait_for`` so
+          a slow server can fail in isolation while fast ones still return
+          populated ``tools``.
+        * Per-server failures (timeout, raised exception, downstream
+          ``status != "success"``) push the server into
+          ``discovery_failed_servers``, set the top-level ``status`` to
+          ``"error"``, and overlay a structured ``discovery_error`` block on
+          the server entry instead of dropping the placeholder.
+        * The top-level ``message`` summarises *what* happened (count of
+          failures, the per-server timeout that was applied) so callers can
+          tell ``"the gateway tried and failed"`` apart from ``"every server
+          genuinely has zero tools"``.
+        """
+        import asyncio
+
+        # Local imports to avoid circular dependencies at module import time.
+        from secure_mcp_gateway.gateway import enkrypt_discover_all_tools
+        from secure_mcp_gateway.services.timeout import get_timeout_manager
+
+        timeout_manager = get_timeout_manager()
+        per_server_timeout = timeout_manager.get_timeout("discovery")
+
         with tracer.start_span("discover_tools") as discover_span:
             discover_span.set_attribute(
                 "servers_to_discover", len(servers_needing_discovery)
             )
-
-            # Discover tools for all servers
-            status = "success"
-            message = "Tools discovery tried for all servers"
-            discovery_failed_servers = []
-            discovery_success_servers = []
-
-            # Parallelize discovery across servers
-            import asyncio
-
-            # Import here to avoid circular imports
-            from secure_mcp_gateway.gateway import (
-                enkrypt_discover_all_tools,
-            )
+            discover_span.set_attribute("per_server_timeout_s", per_server_timeout)
 
             async def _discover_single(server_name: str):
+                """Run discovery for one server under its own timeout.
+
+                Always returns a ``(server_name, result_dict)`` tuple --
+                never raises -- so the caller can attribute every failure
+                to a specific server name.
+                """
                 with tracer.start_span(f"discover_server_{server_name}") as server_span:
                     server_span.set_attribute("server_name", server_name)
-                    result = await enkrypt_discover_all_tools(ctx, server_name)
+                    server_span.set_attribute(
+                        "per_server_timeout_s", per_server_timeout
+                    )
+                    try:
+                        result = await asyncio.wait_for(
+                            enkrypt_discover_all_tools(ctx, server_name),
+                            timeout=per_server_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        server_span.set_attribute("discovery_success", False)
+                        server_span.set_attribute("error", "true")
+                        server_span.set_attribute("error_kind", "discovery_timeout")
+                        logger.error(
+                            "list_all_servers.discovery_timeout",
+                            extra={
+                                "server_name": server_name,
+                                "per_server_timeout_s": per_server_timeout,
+                            },
+                        )
+                        return server_name, {
+                            "status": "error",
+                            "error_kind": "discovery_timeout",
+                            "message": (
+                                f"Discovery for '{server_name}' exceeded the "
+                                f"per-server discovery_timeout of "
+                                f"{per_server_timeout}s. Increase "
+                                "common_mcp_gateway_config.timeout_settings."
+                                "discovery_timeout if first-run package "
+                                "downloads (uvx/npx) need more headroom."
+                            ),
+                        }
+                    except Exception as exc:
+                        server_span.set_attribute("discovery_success", False)
+                        server_span.set_attribute("error", "true")
+                        server_span.set_attribute("error_kind", type(exc).__name__)
+                        server_span.record_exception(exc)
+                        logger.error(
+                            "list_all_servers.discovery_exception",
+                            extra={
+                                "server_name": server_name,
+                                "error_kind": type(exc).__name__,
+                                "error": str(exc),
+                            },
+                        )
+                        return server_name, {
+                            "status": "error",
+                            "error_kind": type(exc).__name__,
+                            "message": (
+                                f"Discovery for '{server_name}' raised "
+                                f"{type(exc).__name__}: {exc}"
+                            ),
+                        }
+
                     success = result.get("status") == "success"
                     server_span.set_attribute("discovery_success", success)
                     return server_name, result
@@ -423,41 +597,48 @@ class ServerListingService:
                 _discover_single(server_name)
                 for server_name in servers_needing_discovery
             ]
+            # ``return_exceptions=True`` is belt-and-braces -- ``_discover_single``
+            # already converts every error path into a result tuple.
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Use timeout management for parallel discovery operations
-            from secure_mcp_gateway.services.timeout import get_timeout_manager
-
-            timeout_manager = get_timeout_manager()
-
-            # Create a proper async function for timeout manager
-            async def _parallel_server_discovery():
-                return await asyncio.gather(*tasks, return_exceptions=True)
-
-            results = await timeout_manager.execute_with_timeout(
-                _parallel_server_discovery,
-                "discovery",
-                f"server_discovery_{len(tasks)}_servers",
-            )
-
-            # Extract results from timeout result
-            if hasattr(results, "result"):
-                results = results.result
-
-            # Handle case where results is None (timeout occurred)
-            if results is None:
-                results = []
+            status = "success"
+            discovery_failed_servers: list[str] = []
+            discovery_success_servers: list[str] = []
 
             for item in results:
-                if isinstance(item, Exception):
-                    # If an exception bubbles up, we cannot attribute to a server name here
+                if isinstance(item, BaseException):
+                    # Should be unreachable given _discover_single's try/except,
+                    # but keep the safety net so an unexpected failure can't
+                    # silently shrink the response.
                     status = "error"
+                    logger.error(
+                        "list_all_servers.discovery_unexpected_exception",
+                        extra={"error": str(item)},
+                    )
                     continue
+
                 server_name, discover_server_result = item
                 if discover_server_result.get("status") != "success":
                     status = "error"
                     discovery_failed_servers.append(server_name)
-                    # Include error response in servers_with_tools for proper error reporting
-                    servers_with_tools[server_name] = discover_server_result
+                    # Preserve the placeholder (server config + guardrail
+                    # policy) and overlay a discovery_error block so the
+                    # caller still gets the metadata it needs to render the
+                    # server even when tool discovery failed.
+                    placeholder = servers_with_tools.get(server_name, {})
+                    placeholder = (
+                        {**placeholder} if isinstance(placeholder, dict) else {}
+                    )
+                    placeholder["discovery_error"] = {
+                        "status": "error",
+                        "error_kind": discover_server_result.get(
+                            "error_kind", "discovery_failed"
+                        ),
+                        "message": discover_server_result.get(
+                            "message", "Tool discovery failed for server"
+                        ),
+                    }
+                    servers_with_tools[server_name] = placeholder
                 else:
                     discovery_success_servers.append(server_name)
                     servers_with_tools[server_name] = discover_server_result
@@ -466,10 +647,20 @@ class ServerListingService:
             discover_span.set_attribute(
                 "success_servers", len(discovery_success_servers)
             )
+            discover_span.set_attribute("status", status)
 
         main_span.set_attribute("total_servers_processed", len(servers_with_tools))
         main_span.set_attribute("servers_discovered", len(servers_needing_discovery))
-        main_span.set_attribute("success", True)
+        main_span.set_attribute("success", status == "success")
+
+        if status == "success":
+            message = "Tools discovery tried for all servers"
+        else:
+            message = (
+                f"{len(discovery_failed_servers)} of "
+                f"{len(servers_needing_discovery)} server(s) failed discovery "
+                f"(per-server timeout: {per_server_timeout}s)"
+            )
 
         # Mask sensitive data in all server configurations
         masked_servers = {}

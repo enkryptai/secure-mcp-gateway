@@ -208,6 +208,27 @@ class GuardrailConfigManager:
                 metadata[provider.get_name()] = provider_metadata
         return metadata
 
+    def reload(self, config: dict[str, Any]) -> None:
+        """Rebuild guardrail providers from the latest config without restart.
+
+        Drops the existing registry+factory so the new provider instance is
+        constructed from the updated credentials/settings.
+        """
+        logger.info("[GuardrailConfigManager] reload triggered")
+        try:
+            self.registry.unregister()
+        except Exception as e:
+            logger.warning(f"[GuardrailConfigManager] unregister failed: {e}")
+        self.registry = GuardrailRegistry()
+        self.factory = GuardrailFactory(self.registry)
+        from secure_mcp_gateway.plugins.plugin_loader import PluginLoader
+
+        PluginLoader.load_plugin_providers(config, "guardrails", self)
+        logger.info(
+            "[GuardrailConfigManager] reload complete",
+            providers=self.list_providers(),
+        )
+
     async def validate_server_registration(
         self, server_name: str, server_config: dict[str, Any]
     ) -> Any | None:  # GuardrailResponse
@@ -228,8 +249,7 @@ class GuardrailConfigManager:
         if not provider:
             return None
 
-        # Extract tool_guardrails_config from server_config to pass through
-        tool_guardrails_config = server_config.get("tool_guardrails_config")
+        stg_config = server_config.get("server_tools_guardrails_config")
 
         request = ServerRegistrationRequest(
             server_name=server_name,
@@ -237,7 +257,7 @@ class GuardrailConfigManager:
             server_description=server_config.get("description"),
             server_command=server_config.get("command"),
             server_metadata=server_config,
-            tool_guardrails_config=tool_guardrails_config,
+            server_tools_guardrails_config=stg_config,
         )
 
         return await provider.validate_server_registration(request)
@@ -247,7 +267,8 @@ class GuardrailConfigManager:
         server_name: str,
         tools: list[dict[str, Any]],
         mode: str = "filter",
-        tool_guardrails_config: dict[str, Any] | None = None,
+        server_tools_guardrails_config: dict[str, Any] | None = None,
+        kind: str = "tool_list",
     ) -> Any | None:  # GuardrailResponse
         """
         Validate and filter tools during discovery.
@@ -256,8 +277,12 @@ class GuardrailConfigManager:
             server_name: Name of the server
             tools: List of tool dictionaries
             mode: "filter" to filter unsafe tools, "block_all" to block if any unsafe
-            tool_guardrails_config: Optional per-server tool guardrails config with
-                "block" list and "guardrail_name"
+            server_tools_guardrails_config: unified guardrails policy (gateway-wide
+                via ``common_overrides``). Carries ``guardrail_name`` for
+                policy-mode calls and ``block`` for inline-detector calls.
+            kind: Which Enkrypt batch protocol to use:
+                ``"tool_list"`` (policy-driven via X-Enkrypt-Guardrail header)
+                or ``"server_description"`` (policy-driven via X-Enkrypt-Guardrail header).
 
         Returns:
             GuardrailResponse or None if no provider supports registration
@@ -274,7 +299,8 @@ class GuardrailConfigManager:
             server_name=server_name,
             tools=tools,
             validation_mode=mode,
-            tool_guardrails_config=tool_guardrails_config,
+            server_tools_guardrails_config=server_tools_guardrails_config,
+            kind=kind,
         )
 
         return await provider.validate_tool_registration(request)
@@ -436,8 +462,10 @@ def initialize_guardrail_system(
     # Convert API key string to config dict for consistency
     if isinstance(config_or_api_key, str):
         config = {
-            "enkrypt_api_key": config_or_api_key,
-            "enkrypt_base_url": enkrypt_base_url,
+            "enkrypt_config": {
+                "api_key": config_or_api_key,
+                "base_url": enkrypt_base_url,
+            },
         }
     elif isinstance(config_or_api_key, dict):
         config = config_or_api_key

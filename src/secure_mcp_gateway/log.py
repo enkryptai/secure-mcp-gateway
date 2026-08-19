@@ -21,10 +21,217 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from typing import Any
 
 import structlog
 
 _configured = False
+
+
+# ---------------------------------------------------------------------------
+# Identity-attribute canonicalisation (shared by logs / metrics / traces)
+# ---------------------------------------------------------------------------
+#
+# Lives here -- in the foundation logging module -- so the structlog
+# processor below can apply it without importing the rest of the package
+# (which would re-introduce the circular-import problem this module was
+# carved out to avoid). ``utils.py`` re-exports both names for the metric
+# helpers and ``build_log_extra`` so there's still a single source of truth.
+#
+# 2026-05-26 toggle: gateway temporarily emits only the snake_case form
+# of identity / domain attributes so dashboards, alert monitors, and the
+# OSD "Add filter" value dropdown only need to know ONE field name
+# (``log.attributes.user_email`` instead of both
+# ``log.attributes.user_email`` and ``log.attributes.enkrypt@user@email``).
+# To restore the dual-emission behaviour (snake_case alias AROUND the
+# canonical dotted name -- the original design), swap each pair of lines
+# below: uncomment the ``"enkrypt.*"`` line and comment out the
+# self-mapping line.
+#
+# Note: ``LEGACY_FILTER_COMPAT_ATTR_KEYS`` below stays as-is. It only
+# adds aliases when the input dict already contains canonical keys --
+# with this passthrough mapping those canonical keys never get written,
+# so ``add_legacy_filter_aliases`` becomes an effective no-op for the
+# identity tuple.
+CANONICAL_ATTR_KEYS: dict[str, str] = {
+    # "custom_id":        "enkrypt.custom.id",
+    "custom_id":        "custom_id",
+    # "server_name":      "enkrypt.server.name",
+    "server_name":      "server_name",
+    # "org_id":           "enkrypt.org.id",
+    "org_id":           "org_id",
+    # "project_id":       "enkrypt.project.id",
+    "project_id":       "project_id",
+    # "project_name":     "enkrypt.project.name",
+    "project_name":     "project_name",
+    # "registry_name":    "enkrypt.project.registry",
+    "registry_name":    "project_registry",
+    # "project_registry": "enkrypt.project.registry",
+    "project_registry": "project_registry",
+    # "user_id":          "enkrypt.user.id",
+    "user_id":          "user_id",
+    # "email":            "enkrypt.user.email",
+    "email":            "user_email",
+    # "user_email":       "enkrypt.user.email",
+    "user_email":       "user_email",
+    # "mcp_config_id":    "enkrypt.config.id",
+    "mcp_config_id":    "mcp_config_id",
+    # "gateway_name":     "enkrypt.gateway.name",
+    "gateway_name":     "gateway_name",
+    # "gateway_version":  "enkrypt.gateway.version",
+    "gateway_version":  "gateway_version",
+    # "error":            "enkrypt.error.message",
+    "error":            "error",
+    # "tool_name":        "enkrypt.tool.name",
+    "tool_name":        "tool_name",
+    # "request_id":       "enkrypt.request.id",
+    "request_id":       "request_id",
+    # "num_tool_calls":   "enkrypt.tool.num_calls",
+    "num_tool_calls":   "num_tool_calls",
+    # "tool_arguments":   "enkrypt.tool.arguments",
+    "tool_arguments":   "tool_arguments",
+    # "guardrail_name":   "enkrypt.guardrail.name",
+    "guardrail_name":   "guardrail_name",
+}
+
+# Backward-compatibility aliases for commonly-filtered identity keys.
+# We emit these alongside the canonical dotted names so existing dashboards
+# filtering on legacy snake_case fields keep working while the canonical
+# ``enkrypt.*`` fields remain the source of truth.
+LEGACY_FILTER_COMPAT_ATTR_KEYS: dict[str, str] = {
+    "enkrypt.gateway.name": "gateway_name",
+    "enkrypt.gateway.version": "gateway_version",
+    "enkrypt.org.id": "org_id",
+    "enkrypt.project.id": "project_id",
+    "enkrypt.project.name": "project_name",
+    "enkrypt.project.registry": "project_registry",
+    "enkrypt.server.name": "server_name",
+    "enkrypt.tool.name": "tool_name",
+    "enkrypt.user.id": "user_id",
+    "enkrypt.user.email": "user_email",
+}
+
+
+def add_legacy_filter_aliases(attrs: dict[str, Any] | None) -> dict[str, Any]:
+    """Duplicate selected canonical keys under legacy snake_case aliases."""
+    if not attrs:
+        return {}
+    out = dict(attrs)
+    for canonical_key, legacy_key in LEGACY_FILTER_COMPAT_ATTR_KEYS.items():
+        if canonical_key in attrs and legacy_key not in out:
+            out[legacy_key] = attrs[canonical_key]
+    return out
+
+
+def canonicalize_attr_keys(attrs: dict[str, Any] | None) -> dict[str, Any]:
+    """Rewrite known snake_case identity keys to the dotted ``enkrypt.*``
+    convention. Unknown keys (categorical / diagnostic / ad-hoc) pass
+    through unchanged.
+    """
+    if not attrs:
+        return {}
+    canonical = {CANONICAL_ATTR_KEYS.get(k, k): v for k, v in attrs.items()}
+    return add_legacy_filter_aliases(canonical)
+
+
+# Reserved structlog / stdlib LogRecord keys we must NOT rename even if they
+# happen to match an entry in ``CANONICAL_ATTR_KEYS`` (none currently do, but
+# this is the safe-by-construction list to consult before adding aliases).
+_PROTECTED_LOG_RECORD_KEYS = frozenset(
+    {
+        "event", "level", "logger", "timestamp", "exception", "exc_info",
+        "stack_info", "msg", "message", "name", "pathname", "filename",
+        "module", "lineno", "funcName", "created", "msecs",
+        "relativeCreated", "thread", "threadName", "processName", "process",
+        "args",
+    }
+)
+
+
+def _install_event_dict_promoting_record_factory() -> None:
+    """Promote structlog event-dict keys onto ``LogRecord.__dict__``.
+
+    Why: the OpenTelemetry SDK's ``LoggingHandler`` extracts log-attributes
+    by iterating ``record.__dict__`` (anything not in a small reserved set
+    becomes an OTel attribute, then ``log.attributes.*`` in OpenSearch).
+    structlog's ``stdlib.ProcessorFormatter.wrap_for_formatter`` packages
+    the entire event-dict into ``record.msg`` (a Python dict, not a
+    string) -- without intervention the dict's keys never land on
+    ``record.__dict__`` and OpenSearch's ``gateway-logs`` only ever sees
+    ``log.attributes.code.*`` / ``log.attributes.service.*`` (the OTel
+    auto-attributes), never ``log.attributes.enkrypt@*``.
+
+    A *logger filter* doesn't work for this because stdlib's
+    ``Logger.callHandlers`` walks the parent chain dispatching to
+    ancestor *handlers* but never runs ancestor *filters* -- so a filter
+    on the root logger is a no-op for any child logger that propagates
+    (which is every gateway log site, since they all bind a child
+    logger). Instead we install a record factory that runs at record
+    *creation* time -- before any filter, formatter, or handler --
+    guaranteeing the keys are available on ``__dict__`` for every
+    handler that subsequently sees the record (stream, OTel, anything
+    third-party libs add).
+
+    ``setdefault`` semantics avoid clobbering attributes already set by
+    stdlib ``Logger.makeRecord``'s own ``extra=`` promotion path.
+    Idempotent -- safe to call more than once; only installs the wrapper
+    on the first call.
+    """
+    base = logging.getLogRecordFactory()
+    if getattr(base, "_enkrypt_event_dict_promoter", False):
+        return  # already wrapped, don't double-stack
+
+    def _factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
+        record = base(*args, **kwargs)
+        msg = record.msg
+        if isinstance(msg, dict):
+            for k, v in msg.items():
+                if k in _PROTECTED_LOG_RECORD_KEYS:
+                    continue
+                record.__dict__.setdefault(k, v)
+        return record
+
+    _factory._enkrypt_event_dict_promoter = True  # type: ignore[attr-defined]
+    logging.setLogRecordFactory(_factory)
+
+
+def _canonicalize_event_dict(
+    _logger: Any, _method_name: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """structlog processor: flatten ``extra={...}`` and rewrite identity
+    keys to the dotted ``enkrypt.*`` convention.
+
+    Handles two log-site shapes uniformly:
+
+    1. ``logger.info("...", server_name=..., custom_id=...)`` -- structlog
+       kwargs land directly in ``event_dict``; rename in place.
+    2. ``logger.info("...", extra={"server_name": ..., "custom_id": ...})``
+       -- the entire ``extra=`` kwarg lands as a single nested dict-valued
+       entry under the key ``"extra"``. Splat its contents into the
+       top-level dict (so OTel exports each key as an individual log
+       attribute and OpenSearch indexes them as flat
+       ``log.attributes.<name>`` fields rather than burying them under a
+       nested ``extra`` JSON blob), then rename.
+
+    Either way every identity key ends up at
+    ``log.attributes.enkrypt@*`` in OpenSearch without a per-site sweep.
+    """
+    extra = event_dict.pop("extra", None)
+    if isinstance(extra, dict):
+        # Flatten: caller-supplied ``extra`` keys become top-level event
+        # dict keys. Existing top-level keys (e.g. ``event``, ``level``)
+        # win on collision so the renderer's reserved fields stay intact.
+        for k, v in extra.items():
+            event_dict.setdefault(k, v)
+
+    protected: dict[str, Any] = {}
+    dynamic: dict[str, Any] = {}
+    for k, v in event_dict.items():
+        if k in _PROTECTED_LOG_RECORD_KEYS:
+            protected[k] = v
+            continue
+        dynamic[k] = v
+    return {**protected, **canonicalize_attr_keys(dynamic)}
 
 
 def configure_logging(
@@ -49,6 +256,11 @@ def configure_logging(
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.UnicodeDecoder(),
+        # Rewrite identity keys to the dotted ``enkrypt.*`` convention so
+        # ``log.attributes.enkrypt@*`` lines up with the metric/trace side.
+        # Catches kwargs-style structlog calls (``logger.info("...",
+        # server_name=...)``) here in the structlog pipeline.
+        _canonicalize_event_dict,
     ]
 
     renderer: structlog.types.Processor = (
@@ -68,6 +280,12 @@ def configure_logging(
     )
 
     formatter = structlog.stdlib.ProcessorFormatter(
+        # foreign_pre_chain runs on records emitted via the stdlib API
+        # (``logging.getLogger().info("...", extra={...})``) -- including
+        # the inline ``extra={...}`` dicts in ``services/...py`` that
+        # bypass ``build_log_extra`` -- so those records get the same
+        # identity-key rewrite as native structlog calls.
+        foreign_pre_chain=[_canonicalize_event_dict],
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             renderer,
@@ -81,6 +299,16 @@ def configure_logging(
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
+
+    # Promote structlog event-dict keys onto ``LogRecord.__dict__`` so the
+    # OpenTelemetry ``LoggingHandler`` (added later by
+    # ``OpenTelemetryProvider``) sees them as log attributes. Without this
+    # they remain buried inside ``record.msg`` (a dict) and OpenSearch's
+    # ``gateway-logs`` never grows ``log.attributes.enkrypt@*`` fields.
+    # Done via record factory rather than a logger filter because
+    # filters on parent loggers are skipped during ``callHandlers``
+    # propagation in stdlib.
+    _install_event_dict_promoting_record_factory()
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:

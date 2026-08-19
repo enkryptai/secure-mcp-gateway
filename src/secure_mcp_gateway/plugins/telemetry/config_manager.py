@@ -390,6 +390,16 @@ class TelemetryConfigManager:
         """Backward-compatible metric accessor"""
         return self._get_metric_from_provider("pii_redactions_counter")
 
+    @property
+    def guardrail_pii_entity_counter(self):
+        """Per-entity PII counter ``enkrypt.guardrail.pii_entity``."""
+        return self._get_metric_from_provider("guardrail_pii_entity_counter")
+
+    @property
+    def guardrail_toxicity_subtype_counter(self):
+        """Toxicity subtype counter ``enkrypt.guardrail.toxicity_subtype``."""
+        return self._get_metric_from_provider("guardrail_toxicity_subtype_counter")
+
     # Timeout management metrics
     @property
     def timeout_operations_total(self):
@@ -458,6 +468,184 @@ class TelemetryConfigManager:
     def health_failure_counter(self):
         """Backward-compatible metric accessor for health-check failed requests."""
         return self._get_metric_from_provider("health_failure_counter")
+
+    # ------------------------------------------------------------------
+    # Tier-1 additions (PR #41) -- compliance, errors, permission_denied,
+    # degradation, transport_errors, discovery_failures.
+    #
+    # These exist on the underlying OpenTelemetryProvider but the manager
+    # exposes every metric via an explicit ``@property`` that proxies to
+    # ``_get_metric_from_provider``.  ``metrics_helpers._add`` does
+    # ``getattr(mgr, "<counter>", None)`` -- without a property defined
+    # here that returns ``None`` and the emission is silently skipped.
+    # Adding the proxies wires the new counters into the same emission
+    # pipeline as the pre-existing ones.
+    # ------------------------------------------------------------------
+    @property
+    def guardrail_compliance_hit_counter(self):
+        """Tier-1 metric accessor for ``enkrypt.guardrail.compliance_hit``."""
+        return self._get_metric_from_provider("guardrail_compliance_hit_counter")
+
+    @property
+    def tool_permission_denied_counter(self):
+        """Tier-1 metric accessor for ``enkrypt.tool.permission_denied``."""
+        return self._get_metric_from_provider("tool_permission_denied_counter")
+
+    @property
+    def errors_by_code_counter(self):
+        """Tier-1 metric accessor for ``enkrypt.errors.by_code``."""
+        return self._get_metric_from_provider("errors_by_code_counter")
+
+    @property
+    def degradation_fail_open_counter(self):
+        """Tier-1 metric accessor for ``enkrypt.degradation.fail_open``."""
+        return self._get_metric_from_provider("degradation_fail_open_counter")
+
+    @property
+    def degradation_fail_closed_counter(self):
+        """Tier-1 metric accessor for ``enkrypt.degradation.fail_closed``."""
+        return self._get_metric_from_provider("degradation_fail_closed_counter")
+
+    @property
+    def transport_error_counter(self):
+        """Tier-1 metric accessor for ``enkrypt.transport.errors``."""
+        return self._get_metric_from_provider("transport_error_counter")
+
+    @property
+    def discovery_server_failure_counter(self):
+        """Tier-1 metric accessor for ``enkrypt.discovery.server_failures``."""
+        return self._get_metric_from_provider("discovery_server_failure_counter")
+
+    # ------------------------------------------------------------------
+    # Audit / compliance accessors (Audit Trail dashboard).
+    #
+    # Same silent-no-op trap applies here as for the Tier-1 counters: if
+    # the @property is missing, ``metrics_helpers._add(getattr(mgr,
+    # "<counter>", None), ...)`` returns None and the emission is dropped
+    # without any error.  Every audit counter declared in
+    # opentelemetry_provider.py MUST have a property below.
+    # ------------------------------------------------------------------
+    @property
+    def admin_actions_counter(self):
+        """Audit accessor for ``enkrypt.admin.actions``."""
+        return self._get_metric_from_provider("admin_actions_counter")
+
+    @property
+    def privileged_operations_counter(self):
+        """Audit accessor for ``enkrypt.privileged.operations``."""
+        return self._get_metric_from_provider("privileged_operations_counter")
+
+    @property
+    def admin_cache_flush_counter(self):
+        """Audit accessor for ``enkrypt.admin.cache_flush``."""
+        return self._get_metric_from_provider("admin_cache_flush_counter")
+
+    @property
+    def apikey_rotations_counter(self):
+        """Audit accessor for ``enkrypt.apikey.rotations``."""
+        return self._get_metric_from_provider("apikey_rotations_counter")
+
+    @property
+    def audit_apikey_created_counter(self):
+        """Audit accessor for ``enkrypt.audit.apikey.created``."""
+        return self._get_metric_from_provider("audit_apikey_created_counter")
+
+    @property
+    def audit_apikey_deleted_counter(self):
+        """Audit accessor for ``enkrypt.audit.apikey.deleted``."""
+        return self._get_metric_from_provider("audit_apikey_deleted_counter")
+
+    @property
+    def audit_apikey_disabled_counter(self):
+        """Audit accessor for ``enkrypt.audit.apikey.disabled``."""
+        return self._get_metric_from_provider("audit_apikey_disabled_counter")
+
+    @property
+    def audit_apikey_rotated_counter(self):
+        """Audit accessor for ``enkrypt.audit.apikey.rotated``."""
+        return self._get_metric_from_provider("audit_apikey_rotated_counter")
+
+    @property
+    def audit_config_modified_counter(self):
+        """Audit accessor for ``enkrypt.audit.config.modified``."""
+        return self._get_metric_from_provider("audit_config_modified_counter")
+
+    @property
+    def audit_settings_enkrypt_api_key_set_counter(self):
+        """Audit accessor for ``enkrypt.audit.settings.enkrypt_api_key_set``."""
+        return self._get_metric_from_provider(
+            "audit_settings_enkrypt_api_key_set_counter"
+        )
+
+    @property
+    def audit_settings_telemetry_changed_counter(self):
+        """Audit accessor for ``enkrypt.audit.settings.telemetry_changed``."""
+        return self._get_metric_from_provider(
+            "audit_settings_telemetry_changed_counter"
+        )
+
+    @property
+    def audit_user_created_counter(self):
+        """Audit accessor for ``enkrypt.audit.user.created``."""
+        return self._get_metric_from_provider("audit_user_created_counter")
+
+    @property
+    def audit_user_deleted_counter(self):
+        """Audit accessor for ``enkrypt.audit.user.deleted``."""
+        return self._get_metric_from_provider("audit_user_deleted_counter")
+
+    @property
+    def projects_created_counter(self):
+        """Audit accessor for ``enkrypt.projects.created``."""
+        return self._get_metric_from_provider("projects_created_counter")
+
+    @property
+    def system_backup_completed_counter(self):
+        """Audit accessor for ``enkrypt.system.backup.completed``."""
+        return self._get_metric_from_provider("system_backup_completed_counter")
+
+    @property
+    def system_reset_counter(self):
+        """Audit accessor for ``enkrypt.system.reset``."""
+        return self._get_metric_from_provider("system_reset_counter")
+
+    @property
+    def system_restore_counter(self):
+        """Audit accessor for ``enkrypt.system.restore``."""
+        return self._get_metric_from_provider("system_restore_counter")
+
+    @property
+    def auth_unauthorized_http_counter(self):
+        """Audit accessor for ``enkrypt.auth.unauthorized_http``."""
+        return self._get_metric_from_provider("auth_unauthorized_http_counter")
+
+    def reload(self, config: dict[str, Any]) -> None:
+        """Rebuild telemetry providers from the latest config without restart.
+
+        Caveat: OpenTelemetry's global TracerProvider / MeterProvider can
+        only be set once per process. The SDK explicitly rejects subsequent
+        ``set_tracer_provider`` calls (it logs "Overriding of current
+        TracerProvider is not allowed"). Trying to re-initialize on reload
+        therefore produces noise without taking effect.
+
+        If telemetry is not yet initialized, we run the plugin loader so
+        callers that flipped ``enabled: true`` after startup get a working
+        provider. Otherwise the endpoint / enabled fields effectively
+        require a restart (documented in README).
+        """
+        logger.info("[TelemetryConfigManager] reload triggered")
+        provider = self.get_active_provider()
+        if provider is None or not self._provider_initialized:
+            from secure_mcp_gateway.plugins.plugin_loader import PluginLoader
+
+            PluginLoader.load_plugin_providers(config, "telemetry", self)
+            return
+
+        logger.info(
+            "[TelemetryConfigManager] provider already initialized; "
+            "skipping re-init (OTel global providers cannot be replaced "
+            "at runtime - endpoint/enabled changes require restart)"
+        )
 
 
 # ============================================================================

@@ -2,7 +2,7 @@
 
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import Header, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
@@ -22,13 +22,13 @@ PICKED_CONFIG_PATH = DOCKER_CONFIG_PATH if is_docker_running else CONFIG_PATH
 
 class ErrorResponse(BaseModel):
     error: str
-    detail: Optional[str] = None
+    detail: str | None = None
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
 class SuccessResponse(BaseModel):
     message: str
-    data: Optional[Any] = None
+    data: Any | None = None
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
@@ -49,19 +49,24 @@ class ConfigRenameRequest(BaseModel):
 class SandboxConfig(BaseModel):
     """Per-server sandbox configuration (all fields optional, merged with global defaults)."""
 
-    enabled: Optional[bool] = None
-    runtime: Optional[str] = Field(None, description="docker | podman | bwrap | microsandbox | novavm")
-    image: Optional[str] = Field(None, description="Container image (Docker/Podman only)")
-    memory_limit: Optional[str] = Field(None, description="e.g. '512m', '1g'")
-    cpu_limit: Optional[str] = Field(None, description="e.g. '1.0', '2'")
-    pids_limit: Optional[int] = None
-    network: Optional[str] = Field(None, description="'none' = no network, 'host' = full network access, 'bridge' = Docker bridge (Docker only)")
-    read_only: Optional[bool] = None
-    allowed_env: Optional[List[str]] = Field(
+    enabled: bool | None = None
+    runtime: str | None = Field(
+        None, description="docker | podman | bwrap | microsandbox | novavm"
+    )
+    image: str | None = Field(None, description="Container image (Docker/Podman only)")
+    memory_limit: str | None = Field(None, description="e.g. '512m', '1g'")
+    cpu_limit: str | None = Field(None, description="e.g. '1.0', '2'")
+    pids_limit: int | None = None
+    network: str | None = Field(
+        None,
+        description="'none' = no network, 'host' = full network access, 'bridge' = Docker bridge (Docker only)",
+    )
+    read_only: bool | None = None
+    allowed_env: list[str] | None = Field(
         None, description="Allowlist of env var names passed into the sandbox"
     )
-    nova_api_url: Optional[str] = Field(None, description="NovaVM API endpoint")
-    nova_socket: Optional[str] = Field(None, description="NovaVM socket path")
+    nova_api_url: str | None = Field(None, description="NovaVM API endpoint")
+    nova_socket: str | None = Field(None, description="NovaVM socket path")
 
 
 # Deny-list entry. Either a bare tool-name string (supports fnmatch globs)
@@ -73,10 +78,10 @@ DenyToolEntry = Any
 class ServerAddRequest(BaseModel):
     server_name: str
     server_command: str
-    server_args: Optional[List[str]] = None
-    description: Optional[str] = None
-    sandbox: Optional[SandboxConfig] = None
-    denied_tools: Optional[List[DenyToolEntry]] = Field(
+    server_args: list[str] | None = None
+    description: str | None = None
+    sandbox: SandboxConfig | None = None
+    denied_tools: list[DenyToolEntry] | None = Field(
         None,
         description=(
             "Tools to deny. Each entry is a tool-name string (supports fnmatch "
@@ -87,15 +92,15 @@ class ServerAddRequest(BaseModel):
 
 
 class ServerUpdateRequest(BaseModel):
-    server_command: Optional[str] = None
-    server_args: Optional[List[str]] = None
-    description: Optional[str] = None
-    sandbox: Optional[SandboxConfig] = None
+    server_command: str | None = None
+    server_args: list[str] | None = None
+    description: str | None = None
+    sandbox: SandboxConfig | None = None
 
 
 class ServerGuardrailsRequest(BaseModel):
     enabled: bool = True
-    guardrail_name: Optional[str] = None
+    guardrail_name: str | None = None
 
 
 class ConfigValidateRequest(BaseModel):
@@ -119,7 +124,7 @@ class ConfigSearchRequest(BaseModel):
 # Project Models
 class ProjectCreateRequest(BaseModel):
     project_name: str
-    mcp_config_name: Optional[str] = None
+    mcp_config_name: str | None = None
 
 
 class ProjectAssignConfigRequest(BaseModel):
@@ -148,7 +153,7 @@ class UserUpdateRequest(BaseModel):
 
 
 class UserGenerateApiKeyRequest(BaseModel):
-    project_name: Optional[str] = None
+    project_name: str | None = None
 
 
 class ApiKeyRotateRequest(BaseModel):
@@ -178,28 +183,106 @@ class SystemResetRequest(BaseModel):
 
 # MCP Health Check Models
 class MCPServerConfigBody(BaseModel):
-    command: str
-    args: List[str]
-    env: Optional[Dict[str, str]] = None
+    """Inline server config for the /mcp-playground/* routes.
+
+    Two server-transport shapes are accepted (mirrors what
+    :func:`secure_mcp_gateway.plugins.sandbox.server_params.is_url_config`
+    recognises so the validator and the runtime never disagree):
+
+    - **stdio** (local process): set ``command`` (+ optional ``args``, ``env``).
+    - **URL transport** (hosted ``type:"http"`` / ``"sse"`` server): set
+      ``url`` (+ optional ``type``, ``transport``, ``headers``).
+
+    All fields are optional at the Pydantic layer; the route handler
+    (``api_health_routes._resolve_target``) decides whether the populated
+    fields are a usable inline config or whether the caller meant registry
+    mode. This intentionally keeps the body validator permissive so
+    callers get a clear 400 from the mode dispatcher instead of a cryptic
+    422 like ``{"loc":["body","config","command"],"msg":"Field required"}``
+    when they send a partial / URL-shaped config.
+    """
+
+    # stdio shape
+    command: str | None = None
+    args: list[str] | None = None
+    env: dict[str, str] | None = None
+    # URL-transport shape — accepted both inline (this route) and from the
+    # cloud registry (see ``services/health/registry_client._parse_url_config``).
+    url: str | None = Field(
+        None,
+        description="Remote MCP server URL (for type='http'/'sse' transports).",
+    )
+    type: str | None = Field(
+        None,
+        description="Standard MCP transport type. One of 'http' or 'sse'.",
+    )
+    transport: str | None = Field(
+        None,
+        description=(
+            "Gateway-native transport name. Either 'streamable_http' or 'sse'. "
+            "Wins over ``type`` when both are set."
+        ),
+    )
+    headers: dict[str, str] | None = Field(
+        None,
+        description=(
+            "Optional HTTP headers forwarded to remote MCP servers (URL "
+            "transport only). Useful for inline auth like ``Authorization: "
+            "Bearer ...``."
+        ),
+    )
 
 
 class MCPServerRequest(BaseModel):
-    server_name: str
-    config: MCPServerConfigBody
-    description: Optional[str] = ""
-    sandbox: Optional[SandboxConfig] = Field(
+    """Request body for the /mcp-playground/* routes.
+
+    Supports two mutually-exclusive modes; the route handler picks based on
+    which fields / headers are present (see ``_resolve_mode`` in
+    ``api_health_routes.py``):
+
+    - **Inline**: caller supplies ``server_name`` + ``config`` in the body.
+      Auth is the local admin apikey check.
+    - **Registry**: caller supplies the ``X-Enkrypt-MCP-Registry-Server``
+      header and omits ``server_name``/``config``. The gateway fetches the
+      config from ``GET /mcp-registry/get-server`` and uses the cloud's
+      200/401 as the apikey gate.
+
+    Both fields are therefore optional at the Pydantic layer; the route
+    handler enforces the per-mode invariants and returns 400 on ambiguity.
+    Sandbox overrides are only honoured in inline mode (registry mode runs
+    with sandbox at its global default).
+    """
+
+    server_name: str | None = Field(
+        None,
+        description=(
+            "Display name for the MCP server. Required in inline mode; "
+            "ignored / inferred from the registry response in registry-header mode."
+        ),
+    )
+    config: MCPServerConfigBody | None = Field(
+        None,
+        description=(
+            "Inline execution config (command/args/env). Required in inline mode; "
+            "must be absent in registry-header mode (the gateway will fetch from "
+            "the Enkrypt cloud's /mcp-registry/get-server)."
+        ),
+    )
+    description: str | None = ""
+    sandbox: SandboxConfig | None = Field(
         None,
         description=(
             "Per-call sandbox override. Health endpoints sandbox by default "
             "(enabled=True). Set 'enabled': false here to opt out, or override "
-            "runtime / resource limits for this single call."
+            "runtime / resource limits for this single call. Only honoured in "
+            "inline mode — registry-header requests always use the global default."
         ),
     )
 
 
 class MCPToolRequest(MCPServerRequest):
     tool_name: str
-    tool_args: Optional[Dict[str, Any]] = None
+    tool_args: dict[str, Any] | None = None
 
 
 # =============================================================================
@@ -207,26 +290,40 @@ class MCPToolRequest(MCPServerRequest):
 # =============================================================================
 
 
-def get_api_key(apikey: Optional[str] = Header(None)) -> str:
-    """Extract and validate API key from the 'apikey' header (cloud-compatible)."""
+def get_api_key(apikey: str | None = Header(None)) -> str:
+    """Extract and validate API key from the 'apikey' header (cloud-compatible).
+
+    Policy is delegated to :func:`secure_mcp_gateway.auth_policy.resolve_admin_keys`
+    so this dependency and ``api_server.get_api_key`` stay in lock-step.
+    """
+    from secure_mcp_gateway.auth_policy import (
+        describe_missing_admin_key_hint,
+        resolve_admin_keys,
+    )
+
     if not apikey:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="apikey header required",
         )
 
-    # Validate admin API key exists in config
     try:
         config = load_config(PICKED_CONFIG_PATH)
+        acceptable = resolve_admin_keys(config)
 
-        # Check if admin_apikey exists and matches
-        if "admin_apikey" not in config:
+        if not acceptable:
+            provider = (config.get("plugins") or {}).get("auth", {}).get(
+                "provider"
+            ) or "local_apikey"
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Admin API key not configured. Please regenerate configuration.",
+                detail=(
+                    "Admin API key not configured. "
+                    + describe_missing_admin_key_hint(provider)
+                ),
             )
 
-        if apikey != config["admin_apikey"]:
+        if apikey not in acceptable:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid API key.",
@@ -245,3 +342,28 @@ def get_api_key(apikey: Optional[str] = Header(None)) -> str:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Authentication error: {e!s}",
         )
+
+
+def get_api_key_raw(apikey: str | None = Header(None)) -> str:
+    """Return the raw 'apikey' header value without validating it.
+
+    Used only by the /mcp-playground/* routes, where validation depends on
+    the request mode:
+
+    - **Inline mode**: the route handler still validates via
+      :func:`secure_mcp_gateway.auth_policy.resolve_admin_keys` (same policy
+      as :func:`get_api_key`).
+    - **Registry mode**: the cloud's ``GET /mcp-registry/get-server`` call
+      is the gate — a 200 means the apikey is valid, a 401/403 means it
+      isn't. We must not pre-reject the apikey here, otherwise a valid
+      cloud-tenant apikey that doesn't appear in the gateway's local admin
+      list would be rejected before reaching the cloud.
+
+    All other admin routes continue to use :func:`get_api_key`.
+    """
+    if not apikey:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="apikey header required",
+        )
+    return apikey

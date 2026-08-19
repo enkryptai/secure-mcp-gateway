@@ -13,7 +13,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
-from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params, is_url_config
+from secure_mcp_gateway.plugins.sandbox.server_params import (
+    build_server_params,
+    is_url_config,
+)
 from secure_mcp_gateway.utils import logger
 
 _SENTINEL = object()
@@ -22,7 +25,7 @@ _SENTINEL = object()
 @dataclass
 class _CallRequest:
     tool_name: str
-    args: Dict[str, Any]
+    args: dict[str, Any]
     future: asyncio.Future
 
 
@@ -45,7 +48,7 @@ class PooledSession:
         self._server_info: Any = None
 
         self._queue: asyncio.Queue = asyncio.Queue()
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         self._ready = asyncio.Event()
         self._closed = False
         self._use_lock = asyncio.Lock()
@@ -59,8 +62,8 @@ class PooledSession:
 
     async def start(
         self,
-        server_config: Dict[str, Any],
-        server_entry: Dict[str, Any],
+        server_config: dict[str, Any],
+        server_entry: dict[str, Any],
     ) -> None:
         """Launch the background worker and wait until the session is ready."""
         self._task = asyncio.create_task(
@@ -69,11 +72,9 @@ class PooledSession:
         )
         await self._ready.wait()
         if self._closed:
-            raise RuntimeError(
-                f"Session for {self.server_name} failed to start"
-            )
+            raise RuntimeError(f"Session for {self.server_name} failed to start")
 
-    async def call_tool(self, tool_name: str, *, arguments: Dict[str, Any]) -> Any:
+    async def call_tool(self, tool_name: str, *, arguments: dict[str, Any]) -> Any:
         """Proxy a tool call to the background worker."""
         if self._closed:
             raise RuntimeError("Session is closed")
@@ -104,8 +105,8 @@ class PooledSession:
 
     async def _worker(
         self,
-        server_config: Dict[str, Any],
-        server_entry: Dict[str, Any],
+        server_config: dict[str, Any],
+        server_entry: dict[str, Any],
     ) -> None:
         """Background task that owns the ClientSession and its cancel scopes."""
         from mcp import ClientSession
@@ -116,15 +117,29 @@ class PooledSession:
         env: dict | None = server_config.get("env")
 
         effective_entry = server_entry
-        if is_url and server_entry.get("config", {}).get("url") != server_config.get("url"):
+        if is_url and server_entry.get("config", {}).get("url") != server_config.get(
+            "url"
+        ):
             effective_entry = {**server_entry, "config": server_config}
 
         try:
-            async with build_server_params(
-                effective_entry, command, args, env
-            ) as (read, write):
+            # Time the MCP handshake so the Cache & Performance
+            # dashboard's "MCP Handshake Latency" panel populates.
+            # phase_timer is a no-op if the worker is started outside
+            # a request context (e.g. a warm session pre-warm task),
+            # which is the correct behaviour -- only request-scoped
+            # handshakes should count toward per-request timing.
+            from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                phase_timer,
+            )
+
+            async with build_server_params(effective_entry, command, args, env) as (
+                read,
+                write,
+            ):
                 async with ClientSession(read, write) as session:
-                    init_result = await session.initialize()
+                    async with phase_timer("mcp_handshake_duration_ms"):
+                        init_result = await session.initialize()
 
                     server_info = getattr(init_result, "serverInfo", {})
                     self._server_description = getattr(server_info, "description", "")
@@ -150,12 +165,45 @@ class PooledSession:
                             if not req.future.done():
                                 req.future.set_result(result)
                         except Exception as exc:
+                            # Tier-1 metric: enkrypt.transport.errors.  A
+                            # mid-flight call_tool failure on a pooled
+                            # session is almost always an MCP transport
+                            # failure (stdio EOF, HTTP RST, sock close)
+                            # because business-logic errors come back via
+                            # the protocol envelope, not as exceptions.
+                            try:
+                                from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                                    record_transport_error,
+                                )
+
+                                record_transport_error(
+                                    transport="http" if is_url else "stdio",
+                                    error_kind=type(exc).__name__,
+                                    server_name=self.server_name,
+                                    tool_name=req.tool_name,
+                                )
+                            except Exception:
+                                pass
                             if not req.future.done():
                                 req.future.set_exception(exc)
         except Exception as exc:
-            logger.error(
-                f"[SessionPool] Worker for {self.server_name} crashed: {exc}"
-            )
+            logger.error(f"[SessionPool] Worker for {self.server_name} crashed: {exc}")
+            # Tier-1 metric: enkrypt.transport.errors.  The outer except
+            # catches failures from build_server_params / session.initialize
+            # which are *only* transport-layer problems (the wire couldn't
+            # be opened or the MCP handshake never completed).
+            try:
+                from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                    record_transport_error,
+                )
+
+                record_transport_error(
+                    transport="http" if is_url else "stdio",
+                    error_kind=type(exc).__name__,
+                    server_name=self.server_name,
+                )
+            except Exception:
+                pass
             self._closed = True
             if not self._ready.is_set():
                 self._ready.set()
@@ -180,12 +228,43 @@ class SessionPool:
     Sessions that sit idle longer than *ttl_seconds* are reaped automatically.
     """
 
-    def __init__(self, ttl_seconds: float = 300.0, enabled: bool = True) -> None:
+    def __init__(
+        self,
+        ttl_seconds: float = 300.0,
+        enabled: bool = True,
+        *,
+        # Bound how long a poisoned/in-flight session can block new callers.
+        # When a prior request hangs holding _use_lock (typical: its worker's
+        # session.call_tool(...) stalls on a NAT-silently-dropped TCP
+        # connection to the upstream MCP server), every subsequent call_tool
+        # arriving for the same (user, server) pool entry will wait at
+        # entry._use_lock.acquire() forever -- because nothing ever releases
+        # it. We bound that wait. On timeout we evict + close the poisoned
+        # entry (best-effort) and proceed to create a fresh session.
+        # Default 30s matches Cursor's MCP transport timeout: we'd rather
+        # return a useful error to the caller within their window than
+        # silently hang.
+        acquire_timeout: float = 30.0,
+        # Bound how long establishing a FRESH session can hang (no prior
+        # session in the pool, so PooledSession.start() runs from scratch).
+        # For URL servers this is the HTTP handshake; if the upstream is dead
+        # or NAT silently dropped the SYN/SYN-ACK exchange, this would
+        # otherwise wait on the kernel's TCP retransmit ceiling (~15 minutes).
+        # For STDIO servers this also covers process spawn + cold runtime
+        # startup + the MCP initialize handshake. Heavy local servers
+        # (e.g. a Node server that ``require``s the large ``googleapis`` lib,
+        # or cold ``uvx``/``npx`` first runs) can take 10-30s on first spawn,
+        # so the default is generous. Tune via
+        # ``common_mcp_gateway_config.session_pool_connect_timeout``.
+        connect_timeout: float = 60.0,
+    ) -> None:
         self._ttl = ttl_seconds
         self._enabled = enabled
-        self._pool: Dict[Tuple[str, str], PooledSession] = {}
+        self._acquire_timeout = acquire_timeout
+        self._connect_timeout = connect_timeout
+        self._pool: dict[tuple[str, str], PooledSession] = {}
         self._pool_lock = asyncio.Lock()
-        self._reaper_task: Optional[asyncio.Task] = None
+        self._reaper_task: asyncio.Task | None = None
 
     @property
     def enabled(self) -> bool:
@@ -196,37 +275,112 @@ class SessionPool:
         return self._ttl
 
     def start_reaper(self) -> None:
-        if self._reaper_task is None or self._reaper_task.done():
-            self._reaper_task = asyncio.ensure_future(self._reaper_loop())
+        """Best-effort: schedule the idle-session reaper on the running loop.
+
+        Safe to call from any thread / context:
+        - If a loop is running in this thread, the reaper is scheduled on it.
+        - Otherwise the call is a no-op (the reaper will be lazily started
+          the first time ``acquire()`` runs inside a request, which always
+          has a running loop).
+        """
+        if self._reaper_task is not None and not self._reaper_task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            try:
+                loop = asyncio.get_event_loop_policy().get_event_loop()
+                if not loop.is_running():
+                    loop = None
+            except RuntimeError:
+                loop = None
+        if loop is None:
+            self._reaper_task = None
+            return
+        self._reaper_task = loop.create_task(self._reaper_loop())
 
     async def acquire(
         self,
         pool_key: str,
         server_name: str,
-        server_config: Dict[str, Any],
-        server_entry: Dict[str, Any],
-    ) -> Tuple[PooledSession, bool]:
+        server_config: dict[str, Any],
+        server_entry: dict[str, Any],
+    ) -> tuple[PooledSession, bool]:
         """Return a ``(PooledSession, reused)`` tuple.
 
         If pooling is disabled or no cached session exists, a new session
         is created.  *reused* is ``True`` when an existing session was found.
         """
+        # Lazily ensure the reaper is running. If the pool was constructed
+        # from a thread without an event loop (e.g. config watcher), the
+        # reaper was deferred to here -- the request handler is awaited, so
+        # we are guaranteed a running loop now.
+        if self._reaper_task is None or self._reaper_task.done():
+            self.start_reaper()
         key = (pool_key, server_name)
 
         if self._enabled:
             async with self._pool_lock:
                 entry = self._pool.get(key)
                 if entry is not None and not entry._closed:
-                    await entry._use_lock.acquire()
-                    entry.touch()
-                    logger.info(
-                        f"[SessionPool] Reusing session for {server_name} "
-                        f"(idle {entry.age_seconds:.1f}s)"
-                    )
-                    return entry, True
+                    # Bounded wait. If a prior request hung holding
+                    # _use_lock (typical: NAT silently dropped the TCP
+                    # underlying the worker's session.call_tool), every
+                    # later caller would queue here forever. Evict + create
+                    # a fresh session on timeout instead.
+                    try:
+                        await asyncio.wait_for(
+                            entry._use_lock.acquire(),
+                            timeout=self._acquire_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            f"[SessionPool] Evicting poisoned session for "
+                            f"{server_name}: _use_lock not released within "
+                            f"{self._acquire_timeout:.1f}s (prior request "
+                            f"likely hung on dead upstream connection); "
+                            f"creating fresh session"
+                        )
+                        # Drop from pool immediately so no other caller
+                        # picks the poisoned entry while we're cleaning up.
+                        self._pool.pop(key, None)
+                        # entry.close() itself may take up to ~10s to
+                        # cancel the stuck worker; do it in the background
+                        # so the current caller can proceed with a fresh
+                        # session right away.
+                        asyncio.create_task(entry.close())
+                        entry = None  # fall through to fresh-session path
+                    else:
+                        entry.touch()
+                        logger.info(
+                            f"[SessionPool] Reusing session for {server_name} "
+                            f"(idle {entry.age_seconds:.1f}s)"
+                        )
+                        return entry, True
 
+        # Fresh session path. Bounded so a hung MCP HTTP handshake
+        # (e.g. against a dead/silent upstream) fails fast rather than
+        # waiting on the kernel's TCP retransmit ceiling.
         pooled = PooledSession(pool_key, server_name)
-        await pooled.start(server_config, server_entry)
+        try:
+            await asyncio.wait_for(
+                pooled.start(server_config, server_entry),
+                timeout=self._connect_timeout,
+            )
+        except asyncio.TimeoutError as exc:
+            logger.error(
+                f"[SessionPool] Session-start timeout for {server_name} "
+                f"after {self._connect_timeout:.1f}s -- upstream MCP server "
+                f"unresponsive or TCP silently dropped (e.g. NAT idle drop)"
+            )
+            # Best-effort cleanup; the partially-started worker may itself
+            # be stuck, so don't block this caller's error path on its close.
+            asyncio.create_task(pooled.close())
+            raise RuntimeError(
+                f"Could not establish MCP session for {server_name} within "
+                f"{self._connect_timeout:.1f}s"
+            ) from exc
+
         await pooled._use_lock.acquire()
 
         if self._enabled:
@@ -234,7 +388,26 @@ class SessionPool:
                 old = self._pool.get(key)
                 if old is not None and not old._closed:
                     await old.close()
+                    # Old session evicted to make room.  Decrement gauge
+                    # so the count reflects the net delta of this acquire.
+                    try:
+                        from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                            record_session_active,
+                        )
+
+                        record_session_active(-1, server_name=server_name)
+                    except Exception:
+                        pass
                 self._pool[key] = pooled
+                # Fresh session added to the pool -- bump the gauge.
+                try:
+                    from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                        record_session_active,
+                    )
+
+                    record_session_active(+1, server_name=server_name)
+                except Exception:
+                    pass
 
         return pooled, False
 
@@ -264,6 +437,14 @@ class SessionPool:
             except RuntimeError:
                 pass
             await entry.close()
+            try:
+                from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                    record_session_active,
+                )
+
+                record_session_active(-1, server_name=server_name)
+            except Exception:
+                pass
             logger.info(f"[SessionPool] Evicted session for {server_name}")
 
     async def close_all(self) -> None:
@@ -279,9 +460,17 @@ class SessionPool:
             self._pool.clear()
         for entry in entries:
             await entry.close()
+            try:
+                from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                    record_session_active,
+                )
+
+                record_session_active(-1, server_name=entry.server_name)
+            except Exception:
+                pass
         logger.info(f"[SessionPool] Closed {len(entries)} pooled session(s)")
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         return {
             "enabled": self._enabled,
             "ttl_seconds": self._ttl,
@@ -309,7 +498,7 @@ class SessionPool:
 
     async def _reap(self) -> None:
         now = time.monotonic()
-        to_evict: list[Tuple[str, str]] = []
+        to_evict: list[tuple[str, str]] = []
         async with self._pool_lock:
             for key, entry in list(self._pool.items()):
                 if entry._use_lock.locked():
@@ -321,6 +510,14 @@ class SessionPool:
                 entry = self._pool.pop(key, None)
             if entry is not None:
                 await entry.close()
+                try:
+                    from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
+                        record_session_active,
+                    )
+
+                    record_session_active(-1, server_name=entry.server_name)
+                except Exception:
+                    pass
                 logger.info(
                     f"[SessionPool] Reaped expired session for {entry.server_name} "
                     f"(idle {entry.age_seconds:.0f}s > TTL {self._ttl:.0f}s)"
@@ -329,14 +526,19 @@ class SessionPool:
 
 # -- singleton ---------------------------------------------------------------
 
-_pool: Optional[SessionPool] = None
+_pool: SessionPool | None = None
 
 
-def initialize_session_pool(common_config: Dict[str, Any]) -> SessionPool:
+def initialize_session_pool(common_config: dict[str, Any]) -> SessionPool:
     global _pool
     ttl = common_config.get("session_pool_ttl", 300)
     enabled = common_config.get("session_pool_enabled", True)
-    _pool = SessionPool(ttl_seconds=float(ttl), enabled=enabled)
+    connect_timeout = common_config.get("session_pool_connect_timeout", 60.0)
+    _pool = SessionPool(
+        ttl_seconds=float(ttl),
+        enabled=enabled,
+        connect_timeout=float(connect_timeout),
+    )
     _pool.start_reaper()
     return _pool
 
@@ -346,4 +548,47 @@ def get_session_pool() -> SessionPool:
     if _pool is None:
         _pool = SessionPool(ttl_seconds=300.0, enabled=True)
         _pool.start_reaper()
+    return _pool
+
+
+def reset_session_pool(common_config: dict[str, Any] | None = None) -> SessionPool:
+    """Replace the singleton session pool with a freshly built one.
+
+    Safe to call from any thread (including the config watcher daemon
+    thread, which has no event loop). The old pool's pooled sessions are
+    abandoned: if we have a running loop we schedule a best-effort
+    ``close_all`` on it, otherwise the old pool gets garbage-collected.
+    ``start_reaper`` on the new pool is also best-effort -- if there is no
+    loop yet, the reaper will be started lazily on the first ``acquire()``.
+    """
+    global _pool
+    old_pool = _pool
+
+    if common_config is None:
+        from secure_mcp_gateway.utils import get_common_config
+
+        common_config = get_common_config()
+
+    ttl = common_config.get("session_pool_ttl", 300)
+    enabled = common_config.get("session_pool_enabled", True)
+    connect_timeout = common_config.get("session_pool_connect_timeout", 60.0)
+    _pool = SessionPool(
+        ttl_seconds=float(ttl),
+        enabled=enabled,
+        connect_timeout=float(connect_timeout),
+    )
+    _pool.start_reaper()
+
+    if old_pool is not None:
+        try:
+            loop = asyncio.get_running_loop()
+            asyncio.ensure_future(old_pool.close_all())
+            logger.info("[SessionPool] reset scheduled close_all on running loop")
+        except RuntimeError:
+            logger.info(
+                "[SessionPool] reset: no running loop in this thread, "
+                "abandoning old pool to GC"
+            )
+        except Exception as e:
+            logger.warning(f"[SessionPool] reset close_all skipped: {e}")
     return _pool

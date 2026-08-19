@@ -23,7 +23,11 @@ from secure_mcp_gateway.exceptions import (
     create_auth_error,
     create_configuration_error,
 )
-from secure_mcp_gateway.plugins.telemetry.conventions import SpanAttributes, SpanNames
+from secure_mcp_gateway.plugins.telemetry.conventions import (
+    SpanAttributes,
+    SpanNames,
+    set_span_attr_with_legacy,
+)
 from secure_mcp_gateway.utils import (
     IS_DEBUG_LOG_LEVEL,
     build_log_extra,
@@ -130,7 +134,10 @@ class CacheStatusService:
             enkrypt_user_id = credentials.get("user_id") or "not_provided"
 
             gateway_config = await self.auth_manager.get_local_mcp_config(
-                enkrypt_gateway_key, enkrypt_project_id, enkrypt_user_id
+                enkrypt_gateway_key,
+                enkrypt_project_id,
+                enkrypt_user_id,
+                gateway_name=credentials.get("gateway_name"),
             )
 
             if not gateway_config:
@@ -151,14 +158,49 @@ class CacheStatusService:
             enkrypt_project_name = gateway_config.get("project_name", "not_provided")
             enkrypt_email = gateway_config.get("email", "not_provided")
             enkrypt_mcp_config_id = gateway_config.get("mcp_config_id", "not_provided")
+            # Cloud auth may return ``None`` for any identity field (free-tier
+            # or personal-account gateways, apikeys not bound to a registry,
+            # local-apikey provider). Coerce to the placeholder so OTel
+            # doesn't reject the attribute and so dashboards filtering by
+            # ``enkrypt.org.id`` etc. see a stable token. (Note: cloud does
+            # NOT return org_name -- only org_id.)
+            enkrypt_org_id = gateway_config.get("org_id") or "not_provided"
+            enkrypt_project_registry = (
+                gateway_config.get("registry_name") or "not_provided"
+            )
+            # Mirrors the ``X-Enkrypt-MCP-Gateway`` /
+            # ``X-Enkrypt-MCP-Gateway-Version`` headers we send to the cloud
+            # when fetching this config -- same coercion rationale.
+            enkrypt_gateway_name = gateway_config.get("gateway_name") or "not_provided"
+            enkrypt_gateway_version = (
+                gateway_config.get("gateway_version") or "not_provided"
+            )
 
             # Set span attributes
-            auth_span.set_attribute(SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key))
-            auth_span.set_attribute(SpanAttributes.PROJECT_ID, enkrypt_project_id)
-            auth_span.set_attribute(SpanAttributes.USER_ID, enkrypt_user_id)
+            auth_span.set_attribute(
+                SpanAttributes.GATEWAY_KEY, mask_key(enkrypt_gateway_key)
+            )
+            set_span_attr_with_legacy(auth_span, SpanAttributes.ORG_ID, enkrypt_org_id)
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.GATEWAY_NAME, enkrypt_gateway_name
+            )
+            auth_span.set_attribute(
+                SpanAttributes.GATEWAY_VERSION, enkrypt_gateway_version
+            )
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.PROJECT_ID, enkrypt_project_id
+            )
+            set_span_attr_with_legacy(auth_span, SpanAttributes.USER_ID, enkrypt_user_id)
             auth_span.set_attribute(SpanAttributes.CONFIG_ID, enkrypt_mcp_config_id)
-            auth_span.set_attribute(SpanAttributes.PROJECT_NAME, enkrypt_project_name)
-            auth_span.set_attribute(SpanAttributes.USER_EMAIL, enkrypt_email)
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.PROJECT_NAME, enkrypt_project_name
+            )
+            auth_span.set_attribute(
+                SpanAttributes.PROJECT_REGISTRY, enkrypt_project_registry
+            )
+            set_span_attr_with_legacy(
+                auth_span, SpanAttributes.USER_EMAIL, enkrypt_email
+            )
 
             # Funnel through ``create_session_key`` so a ``None`` credential
             # field (cloud-auth requests omit project_id/user_id headers) is
@@ -185,9 +227,7 @@ class CacheStatusService:
                     logger.error(f"[get_cache_status] {detail}")
                     logger.error(
                         "cache_status.get_cache_status.not_authenticated",
-                        extra=build_log_extra(
-                            ctx, custom_id, error=detail
-                        ),
+                        extra=build_log_extra(ctx, custom_id, error=detail),
                     )
                     context = ErrorContext(
                         operation="cache_status.auth",
@@ -213,9 +253,7 @@ class CacheStatusService:
 
     async def _get_cache_statistics(self, ctx, custom_id, main_span, logger):
         """Get global cache statistics."""
-        with tracer.start_as_current_span(
-            SpanNames.CACHE_STATUS_GLOBAL
-        ) as stats_span:
+        with tracer.start_as_current_span(SpanNames.CACHE_STATUS_GLOBAL) as stats_span:
             logger.info("[get_cache_status] Getting cache statistics")
             stats = self.cache_service.get_cache_statistics()
             stats_span.set_attribute("total_gateways", stats.get("total_gateways", 0))
@@ -248,9 +286,7 @@ class CacheStatusService:
         self, ctx, custom_id, id, cache_status, main_span, logger
     ):
         """Check gateway config cache status."""
-        with tracer.start_as_current_span(
-            SpanNames.CACHE_STATUS_CONFIG
-        ) as config_span:
+        with tracer.start_as_current_span(SpanNames.CACHE_STATUS_CONFIG) as config_span:
             config_span.set_attribute(SpanAttributes.CUSTOM_ID, id)
 
             logger.info(
@@ -384,7 +420,8 @@ class CacheStatusService:
             credentials = self.auth_manager.get_gateway_credentials(ctx)
             enkrypt_gateway_key = credentials.get("gateway_key") or "not_provided"
             local_gateway_config = await self.auth_manager.get_local_mcp_config(
-                enkrypt_gateway_key
+                enkrypt_gateway_key,
+                gateway_name=credentials.get("gateway_name"),
             )
             if not local_gateway_config:
                 logger.error(
@@ -427,7 +464,9 @@ class CacheStatusService:
                     servers_need_discovery += 1
 
             servers_span.set_attribute(SpanAttributes.CACHED_SERVERS, cached_servers)
-            servers_span.set_attribute(SpanAttributes.SERVERS_NEED_DISCOVERY, servers_need_discovery)
+            servers_span.set_attribute(
+                SpanAttributes.SERVERS_NEED_DISCOVERY, servers_need_discovery
+            )
 
             cache_status["gateway_specific"]["tools"] = {
                 "server_count": len(servers_cache),
@@ -437,16 +476,18 @@ class CacheStatusService:
             # Set final span attributes
             main_span.set_attribute(SpanAttributes.TOTAL_SERVERS, len(mcp_config))
             main_span.set_attribute(SpanAttributes.CACHED_SERVERS, cached_servers)
-            main_span.set_attribute(SpanAttributes.SERVERS_NEED_DISCOVERY, servers_need_discovery)
+            main_span.set_attribute(
+                SpanAttributes.SERVERS_NEED_DISCOVERY, servers_need_discovery
+            )
 
     async def _check_single_server_cache(
         self, ctx, custom_id, id, server_name, local_gateway_config, parent_span
     ):
         """Check cache status for a single server."""
-        with tracer.start_as_current_span(
-            SpanNames.CACHE_STATUS_SERVER
-        ) as server_span:
-            server_span.set_attribute(SpanAttributes.SERVER_NAME, server_name)
+        with tracer.start_as_current_span(SpanNames.CACHE_STATUS_SERVER) as server_span:
+            set_span_attr_with_legacy(
+                server_span, SpanAttributes.SERVER_NAME, server_name
+            )
             server_span.set_attribute(SpanAttributes.CUSTOM_ID, id)
 
             if IS_DEBUG_LOG_LEVEL:

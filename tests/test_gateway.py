@@ -2109,10 +2109,10 @@ class GatewayToolsTester:
     # ========================================================================
 
     async def test_server_info_validation_enabled(self):
-        """Test 18.1: Server info validation enabled
+        """Test 18.1: Server info validation via server_tools_guardrails_config
 
-        Tests that enable_server_info_validation parameter controls
-        whether server capabilities are validated during discovery.
+        Tests that server_tools_guardrails_config.enabled controls whether
+        server capabilities are validated during discovery.
         """
         import json
 
@@ -2131,12 +2131,16 @@ class GatewayToolsTester:
             print(f"      [SKIP] github_server not found in config")
             return
 
-        original_validation = github_config.get("enable_server_info_validation", False)
+        original_stg = github_config.get("server_tools_guardrails_config", {})
 
         try:
             # Test with validation enabled
-            print(f"      Testing with server info validation enabled")
-            github_config["enable_server_info_validation"] = True
+            print(f"      Testing with server_tools_guardrails_config.enabled=True")
+            github_config["server_tools_guardrails_config"] = {
+                "enabled": True,
+                "guardrail_name": "Test Guardrail",
+                "block": ["policy_violation"],
+            }
 
             with open(self.test_config_path, 'w') as f:
                 json.dump(config, f, indent=2)
@@ -2146,13 +2150,17 @@ class GatewayToolsTester:
             # Discovery should validate server capabilities
             result = await enkrypt_list_all_servers(self.ctx, discover_tools=True)
             response = self.parse_response(result)
-            print(f"Response (server info validation enabled): {response}")
+            print(f"Response (server_tools_guardrails enabled): {response}")
             assert response.get("status") == "success", "Should work with validation enabled"
             print(f"      Server info validation enabled works correctly")
 
             # Test with validation disabled
-            print(f"      Testing with server info validation disabled")
-            github_config["enable_server_info_validation"] = False
+            print(f"      Testing with server_tools_guardrails_config.enabled=False")
+            github_config["server_tools_guardrails_config"] = {
+                "enabled": False,
+                "guardrail_name": "",
+                "block": [],
+            }
 
             with open(self.test_config_path, 'w') as f:
                 json.dump(config, f, indent=2)
@@ -2162,20 +2170,20 @@ class GatewayToolsTester:
             # Discovery should skip validation
             result = await enkrypt_list_all_servers(self.ctx, discover_tools=True)
             response = self.parse_response(result)
-            print(f"Response (server info validation disabled): {response}")
+            print(f"Response (server_tools_guardrails disabled): {response}")
             assert response.get("status") == "success", "Should work with validation disabled"
             print(f"      Server info validation disabled works correctly")
-            print(f"      [OK] Server info validation parameter validated")
+            print(f"      [OK] server_tools_guardrails_config parameter validated")
 
         finally:
             # Restore original value
-            github_config["enable_server_info_validation"] = original_validation
+            github_config["server_tools_guardrails_config"] = original_stg
 
             with open(self.test_config_path, 'w') as f:
                 json.dump(config, f, indent=2)
 
             await enkrypt_clear_cache(self.ctx)
-            print(f"      Restored enable_server_info_validation: {original_validation}")
+            print(f"      Restored server_tools_guardrails_config: {original_stg}")
 
     async def test_guardrails_base_url_configuration(self):
         """Test 18.2: Guardrails base URL configuration
@@ -2260,58 +2268,65 @@ class GatewayToolsTester:
     async def test_remote_config_disabled(self):
         """Test 18.3: Remote configuration disabled
 
-        Tests that enkrypt_use_remote_mcp_config parameter controls
-        whether configuration is loaded from remote source or local file.
+        Tests that the legacy ``enkrypt_use_remote_mcp_config`` knob
+        (when explicitly disabled — the only mode we still validate in
+        the default test suite) does not break server listing.
 
-        Note: This test only validates the parameter is recognized and
-        doesn't break functionality. Full remote config testing requires
-        a remote config server.
+        The flag itself is deprecated; new deployments should switch to
+        ``plugins.auth.provider = "enkrypt"`` instead. The flag is no
+        longer emitted into newly-generated configs, so this test
+        treats it as optional in the on-disk config and only round-trips
+        a value if one was already present (and restores precisely what
+        it found).
         """
         import json
 
-        # Read current config
         with open(self.test_config_path, 'r') as f:
             config = json.load(f)
 
-        # Store original value
-        original_remote = config["common_mcp_gateway_config"]["enkrypt_use_remote_mcp_config"]
+        common = config.setdefault("common_mcp_gateway_config", {})
+        original_present = "enkrypt_use_remote_mcp_config" in common
+        original_remote = common.get("enkrypt_use_remote_mcp_config", False)
 
         try:
-            # Test with remote config explicitly disabled (default)
             print(f"      Testing with remote config disabled (local mode)")
-            config["common_mcp_gateway_config"]["enkrypt_use_remote_mcp_config"] = False
+            common["enkrypt_use_remote_mcp_config"] = False
 
             with open(self.test_config_path, 'w') as f:
                 json.dump(config, f, indent=2)
 
             await enkrypt_clear_cache(self.ctx)
 
-            # Should work with local config
             result = await enkrypt_list_all_servers(self.ctx, discover_tools=False)
             response = self.parse_response(result)
             print(f"Response (remote config disabled): {response}")
             assert response.get("status") == "success", "Should work with remote config disabled"
             print(f"      Local config mode works correctly")
 
-            # Verify servers are loaded from local config
             servers = response.get("available_servers", {})
             assert len(servers) > 0, "Should load servers from local config"
             print(f"      Local config loaded: {len(servers)} servers")
             print(f"      [OK] Remote config parameter validated (local mode)")
 
-            # Note: Testing remote config enabled requires a remote config endpoint
-            # which is beyond the scope of this test suite
             print(f"      [INFO] Remote config enabled requires remote endpoint (not tested)")
 
         finally:
-            # Restore original value
-            config["common_mcp_gateway_config"]["enkrypt_use_remote_mcp_config"] = original_remote
+            # Restore the original state precisely: if the legacy flag
+            # was not present before, leave it absent rather than baking
+            # a False back in (which would defeat the cleanup pass).
+            if original_present:
+                common["enkrypt_use_remote_mcp_config"] = original_remote
+            else:
+                common.pop("enkrypt_use_remote_mcp_config", None)
 
             with open(self.test_config_path, 'w') as f:
                 json.dump(config, f, indent=2)
 
             await enkrypt_clear_cache(self.ctx)
-            print(f"      Restored enkrypt_use_remote_mcp_config: {original_remote}")
+            print(
+                f"      Restored enkrypt_use_remote_mcp_config: "
+                f"{'absent' if not original_present else original_remote}"
+            )
 
     # ========================================================================
     # REMAINING TIMEOUT TESTS

@@ -1,0 +1,33 @@
+{
+  "enkrypt_config": {
+    "api_key": "YOUR_ENKRYPT_API_KEY",
+    "base_url": "https://api.enkryptai.com",
+    "org_id": "YOUR_ENKRYPT_ORG_ID"
+  },
+  "plugins": {
+    "auth": {
+      "provider": "enkrypt",
+      "config": {
+        "gateway_name": "your-gateway-saved-name",
+        "gateway_version": "v1",
+        "cache_ttl_seconds": 300
+      }
+    },
+    "guardrails": {
+      "provider": "enkrypt",
+      "config": {}
+    },
+    "telemetry": {
+      "provider": "opentelemetry",
+      "config": {
+        "enabled": true,
+        "url": "http://localhost:4317",
+        "insecure": true
+      }
+    }
+  },
+  "common_mcp_gateway_config": {
+    "enkrypt_log_level": "INFO",
+    "enkrypt_gateway_cache_expiration_minutes": 5
+  }
+}

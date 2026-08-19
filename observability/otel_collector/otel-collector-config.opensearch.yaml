@@ -1,0 +1,74 @@
+# =========================================================================
+#  OTel Collector config for the OpenSearch backend.
+#
+#  Same receivers + batch processor shape as the Grafana stack's
+#  otel-collector-config.yaml. Only the exporters change: instead of
+#  Jaeger / Loki / Prometheus, we route to Data Prepper which writes to
+#  the SS4O data streams in OpenSearch.
+#
+#  OpenSearch is the primary backend: this collector publishes on the
+#  OTel default host ports 4317 (gRPC) / 4318 (HTTP), so the gateway's
+#  default telemetry endpoint (http://localhost:4317) lands here with no
+#  config change. The container still listens on 4317/4318 internally;
+#  the host mapping is set in docker-compose.opensearch.yml. (The legacy
+#  Grafana stack moved to 4327/4328.)
+# =========================================================================
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+  # Make sure every signal carries service.name=secure-mcp-gateway as a
+  # resource attribute. The Grafana stack relied on the prometheus
+  # exporter's const_labels to inject this; in OpenSearch land it has to
+  # land as a real attribute on the document.
+  resource/service:
+    attributes:
+      - key: service.name
+        value: secure-mcp-gateway
+        action: upsert
+
+exporters:
+  debug:
+    verbosity: normal
+
+  otlp/data_prepper_traces:
+    endpoint: data-prepper:21890
+    tls:
+      insecure: true
+
+  otlp/data_prepper_metrics:
+    endpoint: data-prepper:21891
+    tls:
+      insecure: true
+
+  otlp/data_prepper_logs:
+    endpoint: data-prepper:21892
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, resource/service]
+      exporters: [otlp/data_prepper_traces, debug]
+
+    metrics:
+      receivers: [otlp]
+      processors: [batch, resource/service]
+      exporters: [otlp/data_prepper_metrics, debug]
+
+    logs:
+      receivers: [otlp]
+      processors: [batch, resource/service]
+      exporters: [otlp/data_prepper_logs, debug]

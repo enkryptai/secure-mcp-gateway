@@ -56,7 +56,7 @@ class OAuthService:
     - Resource Indicators (RFC 8707)
     """
 
-    def __init__(self, token_manager: Optional[TokenManager] = None):
+    def __init__(self, token_manager: TokenManager | None = None):
         """
         Initialize OAuth service.
 
@@ -75,7 +75,7 @@ class OAuthService:
         config_id: str,
         project_id: str,
         force_refresh: bool = False,
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> tuple[str | None, str | None]:
         """
         Get access token for server.
 
@@ -171,7 +171,7 @@ class OAuthService:
         self,
         server_name: str,
         oauth_config: OAuthConfig,
-    ) -> Optional[OAuthToken]:
+    ) -> OAuthToken | None:
         """
         Execute Client Credentials flow with exponential backoff retry.
 
@@ -206,7 +206,7 @@ class OAuthService:
         self,
         server_name: str,
         oauth_config: OAuthConfig,
-    ) -> Optional[OAuthToken]:
+    ) -> OAuthToken | None:
         """
         Execute Client Credentials flow.
 
@@ -328,7 +328,7 @@ class OAuthService:
 
     def _build_token_request(
         self, oauth_config: OAuthConfig
-    ) -> Tuple[Dict[str, str], Dict[str, str]]:
+    ) -> tuple[dict[str, str], dict[str, str]]:
         """
         Build token request headers and data.
 
@@ -414,7 +414,7 @@ class OAuthService:
         oauth_config: OAuthConfig,
         config_id: str,
         project_id: str,
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> tuple[str | None, str | None]:
         """
         Force refresh token.
 
@@ -432,7 +432,7 @@ class OAuthService:
             server_name, oauth_config, config_id, project_id, force_refresh=True
         )
 
-    def get_authorization_header(self, access_token: str) -> Dict[str, str]:
+    def get_authorization_header(self, access_token: str) -> dict[str, str]:
         """
         Get Authorization header with access token.
 
@@ -460,7 +460,7 @@ class OAuthService:
         server_name: str,
         config_id: str,
         project_id: str,
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         """
         Get cached token information.
 
@@ -474,7 +474,7 @@ class OAuthService:
         """
         return self.token_manager.get_token_info(server_name, config_id, project_id)
 
-    def get_metrics(self) -> Dict:
+    def get_metrics(self) -> dict:
         """
         Get OAuth service metrics.
 
@@ -485,9 +485,7 @@ class OAuthService:
         metrics["active_tokens"] = self.token_manager.token_count
         return metrics
 
-    def _create_ssl_context(
-        self, oauth_config: OAuthConfig
-    ) -> Optional[ssl.SSLContext]:
+    def _create_ssl_context(self, oauth_config: OAuthConfig) -> ssl.SSLContext | None:
         """
         Create SSL context for mTLS if enabled.
 
@@ -575,7 +573,7 @@ class OAuthService:
         token: str,
         oauth_config: OAuthConfig,
         token_type_hint: str = "access_token",
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """
         Revoke OAuth token (RFC 7009).
 
@@ -658,8 +656,8 @@ class OAuthService:
     def generate_authorization_url(
         self,
         oauth_config: OAuthConfig,
-        state: Optional[str] = None,
-    ) -> Tuple[str, str, Optional[str], Optional[str]]:
+        state: str | None = None,
+    ) -> tuple[str, str, str | None, str | None]:
         """
         Generate authorization URL for Authorization Code flow.
 
@@ -734,6 +732,15 @@ class OAuthService:
                 "but use_pkce is False"
             )
 
+        # Merge provider-specific extra params into the authorization request.
+        # This is REQUIRED for providers like Google to return a refresh_token:
+        # access_type=offline & prompt=consent are passed via OAUTH_ADDITIONAL_PARAMS
+        # and must appear on the authorization URL (not just the token request).
+        # Use setdefault so callers can't accidentally clobber core OAuth params.
+        if oauth_config.additional_params:
+            for extra_key, extra_value in oauth_config.additional_params.items():
+                params.setdefault(extra_key, extra_value)
+
         # Build authorization URL
         auth_url = f"{oauth_config.authorization_url}?{urlencode(params)}"
 
@@ -748,12 +755,12 @@ class OAuthService:
         server_name: str,
         oauth_config: OAuthConfig,
         authorization_code: str,
-        code_verifier: Optional[str] = None,
-        state: Optional[str] = None,
-        expected_state: Optional[str] = None,
+        code_verifier: str | None = None,
+        state: str | None = None,
+        expected_state: str | None = None,
         config_id: str = None,
         project_id: str = None,
-    ) -> Tuple[Optional[OAuthToken], Optional[str]]:
+    ) -> tuple[OAuthToken | None, str | None]:
         """
         Exchange authorization code for access token.
 
@@ -879,8 +886,8 @@ class OAuthService:
         self,
         oauth_config: OAuthConfig,
         authorization_code: str,
-        code_verifier: Optional[str] = None,
-    ) -> Tuple[Dict[str, str], Dict[str, str]]:
+        code_verifier: str | None = None,
+    ) -> tuple[dict[str, str], dict[str, str]]:
         """
         Build token request for authorization code exchange.
 
@@ -946,7 +953,7 @@ class OAuthService:
 
 
 # Global OAuth service instance
-_oauth_service: Optional[OAuthService] = None
+_oauth_service: OAuthService | None = None
 
 
 def get_oauth_service() -> OAuthService:

@@ -20,7 +20,7 @@ Example Usage:
     )
 
     # Initialize system
-    config = {"enkrypt_api_key": "your-key"}
+    config = {"enkrypt_config": {"api_key": "your-key"}}
     initialize_auth_system(config)
 
     # Get manager

@@ -6,9 +6,9 @@ These tests cover the cloud-config rewrite in isolation — every test stubs
 Coverage:
   * constructor rejects removed legacy keys (``api_key``, ``use_remote_config``)
   * constructor accepts the new shape and stores defaults
-  * ``_map_response`` honours ``request_context`` (forwarded_user wins),
-    falls back to top-level user_id when forwarded_* is absent, mirrors
-    ``project_name`` into ``project_id``, and stashes unmapped fields under
+  * ``_map_response`` honours ``request_context.user_id`` / ``user_email``,
+    falls back to provider defaults when absent, mirrors ``project_name``
+    into ``project_id``, and stashes unmapped fields under
     ``_request_context_extra``
   * ``_map_server`` lets ``gateway_overrides`` win over base policies
   * ``_map_server`` layers local-only fields (``sandbox`` / ``denied_tools``)
@@ -65,8 +65,7 @@ def sample_response(**overrides: Any) -> Dict[str, Any]:
             "gateway_saved_name": "test-gateway",
             "gateway_version": "v1",
             "actioner": "owner-uuid",
-            "forwarded_user_id": "end-user-42",
-            "forwarded_user_email": "alice@example.com",
+            "user_email": "alice@example.com",
         },
         "expanded_servers": [
             {
@@ -87,7 +86,7 @@ def sample_response(**overrides: Any) -> Dict[str, Any]:
                         "additional_config": {},
                         "block": [],
                     },
-                    "tool_guardrails_config": None,
+                    "server_tools_guardrails_config": None,
                 },
                 "gateway_overrides": {},
             }
@@ -112,10 +111,10 @@ def test_constructor_rejects_removed_legacy_keys() -> None:
     assert "api_key" in str(exc.value)
 
 
-def test_constructor_requires_gateway_name() -> None:
-    with pytest.raises(ValueError) as exc:
-        EnkryptAuthProvider(apikey="x")
-    assert "gateway_name" in str(exc.value)
+def test_constructor_allows_missing_gateway_name() -> None:
+    """gateway_name is optional at boot — it can come from the request header."""
+    p = EnkryptAuthProvider(apikey="x")
+    assert p.gateway_name is None
 
 
 def test_constructor_applies_defaults() -> None:
@@ -137,18 +136,17 @@ def test_constructor_strips_trailing_base_url_slash() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_map_response_prefers_forwarded_user_over_owner() -> None:
+def test_map_response_reads_user_identity_from_request_context() -> None:
     p = make_provider()
     out = p._map_response(sample_response())
-    assert out["user_id"] == "end-user-42"
+    assert out["user_id"] == "owner-uuid"
     assert out["email"] == "alice@example.com"
 
 
-def test_map_response_falls_back_to_top_level_user_id() -> None:
+def test_map_response_falls_back_when_user_email_absent() -> None:
     p = make_provider()
     resp = sample_response()
-    resp["request_context"].pop("forwarded_user_id")
-    resp["request_context"].pop("forwarded_user_email")
+    resp["request_context"].pop("user_email")
     out = p._map_response(resp)
     assert out["user_id"] == "owner-uuid"
     assert out["email"] == "not_provided"
@@ -176,12 +174,13 @@ def test_map_response_keeps_unmapped_request_context_fields_for_logging() -> Non
     extra = out["_request_context_extra"]
     # promoted fields are NOT in extras...
     assert "user_id" not in extra
-    assert "forwarded_user_id" not in extra
+    assert "user_email" not in extra
     assert "project_name" not in extra
-    # ...but org_id / actioner / registry_name are.
-    assert extra["org_id"] == "org-1"
+    assert "org_id" not in extra
+    assert "registry_name" not in extra
+    # ...but ``actioner`` (apikey-owner identity) survives in extras for
+    # log enrichment because it isn't promoted to a top-level field.
     assert extra["actioner"] == "owner-uuid"
-    assert extra["registry_name"] == "primary"
 
 
 def test_map_response_handles_missing_request_context() -> None:
@@ -190,7 +189,12 @@ def test_map_response_handles_missing_request_context() -> None:
     resp.pop("request_context")
     out = p._map_response(resp)
     # falls back through to provider defaults / placeholders
-    assert out["user_id"] == "enkrypt_principal"
+    # ``user_id`` deliberately stays ``None`` rather than substituting the
+    # old ``"enkrypt_principal"`` sentinel, which polluted dashboards with
+    # a value that didn't exist in the customer's user table. Downstream
+    # ``_safe_attrs`` / ``build_log_extra`` strip None / empty so the
+    # field is simply absent on the resulting log / metric document.
+    assert out["user_id"] is None
     assert out["project_name"] == "default"  # from provider's project_name
     assert out["email"] == "not_provided"
     assert out["_request_context_extra"] == {}
@@ -221,9 +225,10 @@ def test_map_response_filters_null_values_from_request_context_extra() -> None:
     # Null fields must NOT leak into the extras dict.
     assert "org_id" not in extra
     assert "actioner" not in extra
-    # Non-null extras still come through.
-    assert extra["registry_name"] == "default"
-    assert extra["gateway_saved_name"] == "g-1"
+    # Promoted-then-null org_id falls back to "not_provided"; promoted-
+    # then-set registry_name lands on the top-level field, not in extras.
+    assert out["org_id"] is None
+    assert out["registry_name"] == "default"
 
 
 def test_map_response_falls_back_when_project_name_is_null() -> None:
@@ -275,8 +280,7 @@ def test_map_response_handles_real_cloud_shape() -> None:
     * ``gateway_overrides.input_guardrails_config`` wins over
       ``mcp_config.input_guardrails_config`` (in this fixture they are
       identical, so the assertion is on the guardrail_name)
-    * ``request_context`` carries ``org_id`` but no ``forwarded_*`` /
-      ``actioner`` yet
+    * ``request_context`` carries ``org_id`` but no ``actioner`` yet
     """
     p = make_provider(project_name="test")
     resp = {
@@ -301,15 +305,10 @@ def test_map_response_handles_real_cloud_shape() -> None:
                             "/tmp",
                         ],
                     },
-                    "enable_server_info_validation": True,
                     "input_guardrails_config": {
                         "enabled": True,
                         "guardrail_name": "Updated Guardrail",
                         "block": ["topic_detector", "nsfw", "keyword_detector"],
-                    },
-                    "tool_guardrails_config": {
-                        "enabled": False,
-                        "guardrail_name": "",
                     },
                 },
                 "gateway_overrides": {
@@ -342,12 +341,11 @@ def test_map_response_handles_real_cloud_shape() -> None:
 
     server = out["mcp_config"][0]
     assert server["server_name"] == "my-filesystem-server"
-    assert server["enable_server_info_validation"] is True
 
-    # Cloud returned a partial tool_guardrails_config — missing keys filled
-    # in from _empty_config.
-    tool_policy = server["tool_guardrails_config"]
-    assert tool_policy == {
+    # server_tools_guardrails_config is common-only; if not set in
+    # common_overrides it falls back to the empty-policy template.
+    stg = server["server_tools_guardrails_config"]
+    assert stg == {
         "enabled": False,
         "guardrail_name": "",
         "additional_config": {},
@@ -360,15 +358,16 @@ def test_map_response_handles_real_cloud_shape() -> None:
     )
     assert "topic_detector" in server["input_guardrails_config"]["block"]
 
-    # extras carry unmapped fields including org_id (now landed on the dev
-    # cloud), but no forwarded_* / actioner yet.
+    # All identity fields the dev cloud surfaces are now promoted to
+    # top-level keys, so ``_request_context_extra`` is empty for this
+    # shape (``actioner`` isn't sent by this cloud image yet).
     extra = out["_request_context_extra"]
-    assert extra["registry_name"] == "default"
-    assert extra["gateway_saved_name"] == "my-dev-gateway"
-    assert extra["gateway_version"] == "v1"
-    assert extra["org_id"] == "28cbcf05-653c-46fb-971c-2db57f4106ab"
     assert "actioner" not in extra
-    assert "forwarded_user_id" not in extra
+    # Promoted top-level fields reflect the cloud's request_context.
+    assert out["registry_name"] == "default"
+    assert out["gateway_name"] == "my-dev-gateway"
+    assert out["gateway_version"] == "v1"
+    assert out["org_id"] == "28cbcf05-653c-46fb-971c-2db57f4106ab"
 
 
 # ---------------------------------------------------------------------------
@@ -535,12 +534,12 @@ def test_map_server_common_overrides_apply_when_no_per_server_or_base() -> None:
     still produce a fully-populated policy on the merged server."""
     p = make_provider()
     resp = sample_response()
-    # Simulate the dedup the cloud does: tool_guardrails_config absent
-    # from this server's mcp_config because common_overrides handles it.
-    resp["expanded_servers"][0]["mcp_config"].pop("tool_guardrails_config", None)
+    # Simulate the dedup the cloud does: server_tools_guardrails_config
+    # absent from this server's mcp_config because common_overrides handles it.
+    resp["expanded_servers"][0]["mcp_config"].pop("server_tools_guardrails_config", None)
     resp["expanded_servers"][0]["gateway_overrides"] = {}
     resp["common_overrides"] = {
-        "tool_guardrails_config": {
+        "server_tools_guardrails_config": {
             "enabled": True,
             "guardrail_name": "Org Tool Guardrail",
             "block": ["policy_violation"],
@@ -549,13 +548,12 @@ def test_map_server_common_overrides_apply_when_no_per_server_or_base() -> None:
     out = p._map_response(resp)
     server = out["mcp_config"][0]
     # Missing keys filled from _empty_config template.
-    assert server["tool_guardrails_config"] == {
+    assert server["server_tools_guardrails_config"] == {
         "enabled": True,
         "guardrail_name": "Org Tool Guardrail",
         "additional_config": {},
         "block": ["policy_violation"],
     }
-    assert server["enable_tool_guardrails"] is True
 
 
 def test_map_server_per_server_override_used_when_common_misses_that_key() -> None:
@@ -588,18 +586,22 @@ def test_map_server_per_server_override_used_when_common_misses_that_key() -> No
     assert server["output_guardrails_config"]["guardrail_name"] == "Org Output"
 
 
-def test_map_server_common_overrides_enable_server_info_validation_honours_false() -> None:
-    """The ``enable_server_info_validation`` boolean must use ``is not None``
-    semantics so an explicit False from common_overrides is respected and
-    not coalesced with 'unset'."""
+def test_map_server_common_overrides_server_tools_guardrails_config_disabled() -> None:
+    """When ``common_overrides.server_tools_guardrails_config`` has
+    ``enabled: false``, the merged server must reflect that."""
     p = make_provider()
     resp = sample_response()
-    # Base value would say True; common explicitly turns it off for the gateway.
-    resp["expanded_servers"][0]["mcp_config"]["enable_server_info_validation"] = True
-    resp["common_overrides"] = {"enable_server_info_validation": False}
+    resp["common_overrides"] = {
+        "server_tools_guardrails_config": {
+            "enabled": False,
+            "guardrail_name": "Org Policy",
+        }
+    }
     out = p._map_response(resp)
     server = out["mcp_config"][0]
-    assert server["enable_server_info_validation"] is False
+    stg = server["server_tools_guardrails_config"]
+    assert stg["enabled"] is False
+    assert stg["guardrail_name"] == "Org Policy"
 
 
 def test_map_server_empty_common_overrides_dict_falls_through_to_per_server() -> None:
@@ -668,7 +670,7 @@ async def test_cache_hit_short_circuits_second_fetch(monkeypatch) -> None:
 
     call_count = {"n": 0}
 
-    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str):
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
         call_count["n"] += 1
         return sample_response()
 
@@ -694,7 +696,7 @@ async def test_cache_separated_per_apikey(monkeypatch) -> None:
 
     call_count = {"n": 0}
 
-    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str):
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
         call_count["n"] += 1
         return sample_response()
 
@@ -719,7 +721,7 @@ async def test_cache_expires_after_ttl(monkeypatch) -> None:
 
     call_count = {"n": 0}
 
-    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str):
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
         call_count["n"] += 1
         return sample_response()
 
@@ -760,7 +762,7 @@ def test_invalidate_cache_clears_all_entries() -> None:
 async def test_authenticate_succeeds_with_stubbed_cloud(monkeypatch) -> None:
     p = make_provider()
 
-    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str):
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
         return sample_response()
 
     async def empty_overrides(self: EnkryptAuthProvider):
@@ -777,7 +779,7 @@ async def test_authenticate_succeeds_with_stubbed_cloud(monkeypatch) -> None:
     result = await p.authenticate(creds)
     assert result.authenticated is True
     assert result.status == AuthStatus.SUCCESS
-    assert result.user_id == "end-user-42"
+    assert result.user_id == "owner-uuid"
     assert result.metadata["source"] == "enkrypt-cloud"
     assert result.metadata["gateway_name"] == "test-gateway"
     # request_context_extra is surfaced into AuthResult.metadata
@@ -794,10 +796,89 @@ async def test_authenticate_rejects_missing_apikey() -> None:
 
 
 @pytest.mark.asyncio
+async def test_authenticate_rejects_missing_gateway_name() -> None:
+    """When neither config nor header supplies a gateway_name, auth must fail."""
+    p = EnkryptAuthProvider(apikey="x")  # no gateway_name at boot
+    creds = AuthCredentials(api_key="x", gateway_key="x")
+    result = await p.authenticate(creds)
+    assert result.authenticated is False
+    assert result.status == AuthStatus.INVALID_CREDENTIALS
+    assert "gateway" in (result.error or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_authenticate_config_gateway_name_wins_over_header(monkeypatch) -> None:
+    """When both ``auth.config.gateway_name`` and the request header
+    ``X-Enkrypt-MCP-Gateway`` supply a gateway name, the **config value
+    wins** and the header is ignored (with a log line). This precedence
+    rule was set deliberately in commit ``cbdf6bd`` so a gateway
+    operator's chosen identity can't be silently re-pointed by a client
+    header — a security/operations decision, not a bug.
+
+    (Renamed from the legacy ``test_authenticate_uses_header_gateway_name``
+    which asserted the opposite outcome from a pre-cbdf6bd code shape.)
+    """
+    p = make_provider()  # config has gateway_name="test-gateway"
+
+    seen_gateway = {}
+
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
+        seen_gateway["name"] = kw.get("gateway_name")
+        return sample_response()
+
+    async def empty_overrides(self: EnkryptAuthProvider):
+        return {}
+
+    monkeypatch.setattr(
+        EnkryptAuthProvider, "_fetch_remote_gateway_config", fake_fetch
+    )
+    monkeypatch.setattr(
+        EnkryptAuthProvider, "_load_local_server_overrides", empty_overrides
+    )
+
+    creds = AuthCredentials(
+        api_key="x", gateway_key="x", gateway_name="header-override-gw"
+    )
+    result = await p.authenticate(creds)
+    assert result.authenticated is True
+    # Config wins: header value is dropped end-to-end.
+    assert result.metadata["gateway_name"] == "test-gateway"
+    assert seen_gateway["name"] == "test-gateway"
+
+
+@pytest.mark.asyncio
+async def test_authenticate_falls_back_to_config_gateway_name(monkeypatch) -> None:
+    """When header has no gateway_name, config value is used."""
+    p = make_provider()  # config has gateway_name="test-gateway"
+
+    seen_gateway = {}
+
+    async def fake_fetch(self: EnkryptAuthProvider, gateway_key: str, **kw):
+        seen_gateway["name"] = kw.get("gateway_name")
+        return sample_response()
+
+    async def empty_overrides(self: EnkryptAuthProvider):
+        return {}
+
+    monkeypatch.setattr(
+        EnkryptAuthProvider, "_fetch_remote_gateway_config", fake_fetch
+    )
+    monkeypatch.setattr(
+        EnkryptAuthProvider, "_load_local_server_overrides", empty_overrides
+    )
+
+    creds = AuthCredentials(api_key="x", gateway_key="x")  # no gateway_name
+    result = await p.authenticate(creds)
+    assert result.authenticated is True
+    assert result.metadata["gateway_name"] == "test-gateway"
+    assert seen_gateway["name"] == "test-gateway"
+
+
+@pytest.mark.asyncio
 async def test_authenticate_hard_fails_on_cloud_error(monkeypatch) -> None:
     p = make_provider()
 
-    async def boom(self: EnkryptAuthProvider, gateway_key: str):
+    async def boom(self: EnkryptAuthProvider, gateway_key: str, **kw):
         raise _CloudFetchError("HTTP 503 from upstream")
 
     async def empty_overrides(self: EnkryptAuthProvider):

@@ -80,6 +80,16 @@ class ErrorCode(Enum):
     CACHE_OPERATION_FAILED = "CACHE_002"
     CACHE_SERIALIZATION_ERROR = "CACHE_003"
 
+    # Transport Errors (1900-1999)
+    TRANSPORT_HTTP_UNAUTHORIZED = "TRANS_001"
+    TRANSPORT_HTTP_FORBIDDEN = "TRANS_002"
+    TRANSPORT_HTTP_ERROR = "TRANS_003"
+    TRANSPORT_CONNECTION_ERROR = "TRANS_004"
+    TRANSPORT_TIMEOUT = "TRANS_005"
+    TRANSPORT_OAUTH_REQUIRED = "TRANS_006"
+    TRANSPORT_STDIO_CONNECT = "TRANS_007"
+    TRANSPORT_STDIO_CLOSED = "TRANS_008"
+
 
 class ErrorSeverity(Enum):
     """Error severity levels."""
@@ -158,6 +168,35 @@ class MCPGatewayError(Exception):
             user_msg = self._build_user_message()
 
         super().__init__(user_msg)
+
+        # Single emission point for ``enkrypt.errors.by_code``.  Counting on
+        # MCPGatewayError construction (rather than only inside
+        # ``error_handling_context``) means every gateway-recognised error
+        # is counted whether or not it is wrapped + re-raised by a context
+        # manager later.  This is what the Error Forensics dashboard's
+        # per-code / per-severity / per-recovery widgets read.
+        #
+        # Import is deferred + try-wrapped so:
+        #   - Exception construction never fails because of telemetry.
+        #   - Errors raised before telemetry is initialised (e.g. config
+        #     load) silently no-op.
+        try:
+            from .plugins.telemetry.metrics_helpers import record_error_by_code
+
+            record_error_by_code(
+                error_code=getattr(self.code, "value", self.code),
+                severity=getattr(self.severity, "value", self.severity),
+                recovery_strategy=getattr(
+                    self.recovery_strategy,
+                    "value",
+                    self.recovery_strategy,
+                ),
+                component=getattr(self.context, "component", None),
+                server_name=getattr(self.context, "server_name", None),
+                tool_name=getattr(self.context, "tool_name", None),
+            )
+        except Exception:  # pragma: no cover - never let metrics break errors
+            pass
 
     def _build_user_message(self) -> str:
         """Build user-friendly error message."""
@@ -344,6 +383,31 @@ class SystemError(MCPGatewayError):
             message=message,
             severity=severity,
             recovery_strategy=RecoveryStrategy.ESCALATE,
+            context=context,
+            cause=cause,
+        )
+
+
+class TransportError(MCPGatewayError):
+    """HTTP transport errors for URL-based MCP servers."""
+
+    def __init__(
+        self,
+        code: ErrorCode,
+        message: str,
+        severity: ErrorSeverity = ErrorSeverity.MEDIUM,
+        context: Optional[ErrorContext] = None,
+        cause: Optional[Exception] = None,
+        status_code: Optional[int] = None,
+        url: Optional[str] = None,
+    ):
+        self.status_code = status_code
+        self.url = url
+        super().__init__(
+            code=code,
+            message=message,
+            severity=severity,
+            recovery_strategy=RecoveryStrategy.RETRY,
             context=context,
             cause=cause,
         )
@@ -621,4 +685,19 @@ def create_auth_config_error(
         message=message,
         context=context,
         cause=cause,
+    )
+
+
+def create_transport_error(
+    code: ErrorCode,
+    message: str,
+    context: Optional[ErrorContext] = None,
+    cause: Optional[Exception] = None,
+    status_code: Optional[int] = None,
+    url: Optional[str] = None,
+) -> TransportError:
+    """Create a transport error."""
+    return TransportError(
+        code, message, context=context, cause=cause,
+        status_code=status_code, url=url,
     )

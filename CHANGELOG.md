@@ -2,6 +2,169 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- **Replaced the pip wheel that `python3 -m venv` bootstraps from.**  Ubuntu
+  stages a pip wheel in `/usr/share/python-wheels` for `ensurepip`, and on 24.04
+  that is pip 24.0, carrying vendored copies of urllib3 1.26.17 and requests
+  2.31.0.  Those vendored copies, not pip itself, are the subjects of the three
+  mediums left after `v2.2.1-2`: CVE-2025-66471 and CVE-2025-66418 (urllib3,
+  fixed in 2.6.0) and CVE-2024-35195 (requests, fixed in 2.32.0).  The build now
+  stages current pip instead, which vendors urllib3 2.7.0 and requests 2.34.2, so
+  no copy of the vulnerable code remains anywhere in the image and new virtualenvs
+  bootstrap a current pip rather than a two-year-old one.
+
+  Inspector reads dpkg metadata rather than file contents, so it will keep
+  reporting all three against `python3-pip-whl 24.0`.  This closes the
+  vulnerability, not the finding; only Ubuntu Pro (ESM) closes the finding.
+
+  Two approaches were rejected first.  Removing the package breaks apt outright,
+  because `python3.12-venv` depends on it and `dpkg --force-depends` leaves
+  unmet dependencies that make any later `apt-get install` fail, with apt's own
+  suggested `--fix-broken` restoring the vulnerable wheel.  An earlier note in the
+  `v2.2.1-2` entry claimed `ensurepip` hardcodes the bundled pip version and that
+  a drop-in wheel could not work; that was wrong.  `ensurepip._find_packages`
+  resolves the directory by scanning it, so the version in the filename is picked
+  up automatically.  The original failure was the purge taking `python3.12-venv`,
+  and with it `ensurepip`, along with the package.
+
+  A `python3 -m venv` probe now runs in the same build step and fails the build if
+  a future pip layout stops satisfying `ensurepip`, rather than shipping an image
+  where MCP servers cannot create virtualenvs.
+
+## [v2.2.1-2] - container security rebuild
+
+Image-only release.  No application code changed, so the Python package stays at
+`2.2.1`; the `-2` suffix is the container build number, continuing from the
+`v2.2.1-1` image.  Amazon Inspector reported 10 criticals, 331 highs and 621
+mediums against `v2.2.1-1`; every one of those had a published fix.
+
+### Security
+
+- **`apt-get upgrade` added to the image build.**  The `ubuntu:24.04` tag is
+  refreshed on Canonical's release cadence rather than Ubuntu's security cadence,
+  so the build inherited the unpatched snapshot of every OS package.  This single
+  change accounts for the bulk of the findings, across `linux-libc-dev`
+  (kernel headers, 3C/288H/558M on their own), `curl` / `libcurl4t64` /
+  `libcurl3t64-gnutls` (4C each), `openssl` / `libssl3t64`, `glibc` / `libc6`,
+  `openssh-client`, `python3.12`, `libheif`, `krb5`, `libnss3`, `python3-httplib2`,
+  `wget`, `sqlite3`, `systemd`, `tar`, `gzip`, `nghttp2`, `libxpm`, `libxml2`
+  and `pam`.  A second upgrade runs after the `COPY` steps so that source
+  changes, not just base-image moves, pull in newly published patches.
+- **Dependency ceilings raised where `~=` was pinning the vulnerable minor.**
+  The compatible-release operator caps the minor version, so these fixes were
+  unreachable without editing the pin: `aiohttp` 3.13.5 -> 3.14.3 (11H/3M),
+  `cryptography` 46.0.7 -> 50.0.0 (3H/1M, incl. CVE-2026-69249),
+  `pyjwt` 2.12.1 -> 2.13.0 (1H/3M, CVE-2026-48526), `mcp[cli]` 1.27.0 -> 1.28.1
+  (CVE-2026-59950).  Applied to `requirements.txt`, `pyproject.toml` and
+  `dependencies.py` together, per the sync note in those files.
+- **`uv` pinned to 0.12.5.**  It was installed unpinned, and because that layer
+  only rebuilds when the line changes, the image kept shipping the version the
+  first build resolved - old enough for Inspector to flag the Rust crates
+  statically linked into the binary (`quick-xml` RUSTSEC-2026-0195, `quinn-proto`
+  CVE-2026-25800).
+- Rebuilding also refreshed transitive packages that had fixes waiting and no
+  pin blocking them: `starlette` 1.2.1 -> 1.6.0 (1H/1M),
+  `pydantic-settings` 2.14.1 -> 2.15.0, `setuptools` 82.0.1 -> 84.0.0.
+
+- **apt `python3-pip` and `python3-wheel` purged** (1H, 3M).  Their fixes ship
+  only in Ubuntu Pro (ESM), and nothing used them: the pip installs in this
+  Dockerfile put newer copies in `/usr/local`.  Verified after purging that
+  `pip3`, `python3 -m pip`, `python3 -m wheel`, `python3 -m venv` + pip
+  bootstrap, `pipx install`, `uv venv`, `uv pip install`, sdist builds and `npx`
+  all still work.
+
+### Known remaining
+
+Down to 0 criticals, 0 highs, 5 mediums, none of which have a fix available:
+
+- `python3-pip-whl` (3M) is deliberately kept.  It is not a duplicate of the
+  purged packages - it supplies the wheels `python3 -m venv` uses to bootstrap
+  pip, which MCP servers rely on, and `python3.12-venv` depends on it.  Fix is
+  ESM-only.  See the entry above for how the underlying vulnerable code was
+  since removed without touching the package.
+- `rsa` (2M, RUSTSEC-2023-0071, a Marvin-attack timing sidechannel) is vendored
+  into the `uv` binary and has no upstream fix.  Not reachable from the gateway:
+  it is in a build tool, not the request path.
+- `linux-libc-dev` will re-accumulate kernel CVEs between rebuilds.  It is pulled
+  in by `build-essential` -> `libc6-dev`, which the image keeps deliberately so
+  MCP servers can compile native dependencies at runtime.  Dropping the
+  toolchain would remove that finding class permanently, at the cost of that
+  capability.
+
+## [v2.2.1]
+
+Consolidated release bundling everything that shipped to dev as patch-image
+overlays since v2.2.0.  Single image, no overlay tool required.
+
+### Added (telemetry instrumentation)
+
+- **Tier-1 metrics** (7 new counters): `enkrypt.errors.by_code` auto-emitted
+  from every `MCPGatewayError`, plus `enkrypt.guardrail.compliance_hit`,
+  `enkrypt.tool.permission_denied`, `enkrypt.degradation.fail_open` /
+  `.fail_closed`, `enkrypt.transport.errors`,
+  `enkrypt.discovery.server_failures`.
+- **Audit / compliance** (18 new counters): full coverage of admin REST
+  mutations via `audit.py` + `audit_middleware.py`.  Powers the new
+  "Audit Trail" dashboard.
+- **Guardrail per-detector detail**: `enkrypt.guardrail.pii_entity` +
+  `enkrypt.guardrail.toxicity_subtype` extracted from
+  `violation.metadata.details` at the 3 STES violation sites; powers the
+  Guardrails Deep Dive "PII Entities" and "Toxicity Subtypes" panels.
+- **Per-request phase timing** (8 log fields) on every blocked/successful
+  tool call: `preprocess_duration_ms`, `execution_duration_ms`,
+  `postprocess_duration_ms`, `guardrail_duration_ms`,
+  `tool_call_duration_ms`, `total_request_duration_ms`,
+  `cache_lookup_duration_ms`, `mcp_handshake_duration_ms`.  Powers the
+  Cache & Performance "Latency Breakdown" section.
+- **Session pool gauge**: `enkrypt.session.active` wired in pool
+  acquire/evict/close_all/_reap so "Active Sessions" populates.
+- **Identity labels** on `record_tool_call_outcome` /
+  `record_guardrail_violations` / `record_pii_redaction`:
+  `user_email`, `project_name`, `project_registry`, `org_id`,
+  `gateway_name`, `gateway_version` (all optional kwargs).
+
+### Added (gateway features)
+
+- **Playground routes mounted on FastMCP** (port 8000): new
+  `gateway_playground_routes.py` exposes `/mcp-playground/test-server` (POST),
+  `/mcp-playground/get-tools` (GET), `/mcp-playground/call-tool` (POST) via
+  `FastMCP.custom_route`.  No separate `api_server.py` process needed for
+  the playground UI to work in production.
+- **Playground registry-mode** + **consumer-info** metrics:
+  `record_registry_lookup`, `record_consumer_info_lookup` helpers.
+
+### Fixed
+
+- **Session-pool hang protection** (PR #40): `asyncio.wait_for` guards
+  around `acquire()` and the `_worker` connect path so a dead upstream
+  MCP server cannot indefinitely stall the gateway.
+- **OSD dashboard query corrections** across Overview / Per-Tenant /
+  Sandbox & MCP Protocol / SLO / Tools & MCP Servers / Audit Trail /
+  Guardrails Deep Dive / Cache & Performance: repointed panels to the
+  metric names + log fields the gateway actually emits.
+- **OpenSearch index templates**: declared all new attribute /
+  log-field shapes (`metric.attributes.{entity_type, subtype,
+  score_bucket, authorization_path, ...}` + `log.attributes.{actor,
+  target_id, surface, success, authorization_path, *_duration_ms,
+  pii_entity_types, toxicity_subtypes, ...}`) so `dynamic: false`
+  doesn't silently drop them at index time.
+
+### Operational tools
+
+- `tools/guardrail_coverage_smoke.py` (22-prompt detector probe)
+- `tools/guardrail_detail_smoke.py` (PII + toxicity smoke)
+- `tools/osd_force_field_declare.py` (workaround OSD missing-field-cache
+  banner when emission preconditions aren't met yet)
+- `tools/local_benign_smoke.py` (3 benign tool calls)
+
+The patch-image overlay tooling (`tools/build_tier1_overlay.py`,
+`tools/verify_patch_tier1.py`, `Dockerfile.patch-tier1metrics`) is no
+longer needed for v2.2.1 builds but remains in the repo so future
+emergency patches can reuse the pattern without re-inventing it.
+
 ## [v2.2.0]
 
 ### New Features in v2.2.0
@@ -10,7 +173,7 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 
 - New `enkrypt` auth provider that fetches gateway config from the Enkrypt cloud (`/mcp-gateway/get-gateway-config`) instead of the local config file
 - Per-request multi-tenancy — each MCP client passes its own apikey via the `apikey` header, so a single gateway process can serve many tenants
-- `request_context` from the cloud is mapped onto identity / metric labels (`forwarded_user_id`, `forwarded_user_email`, `project_name`) for accurate attribution in dashboards and alerts
+- `request_context` from the cloud is mapped onto identity / metric labels (`user_id`, `user_email`, `project_name`) for accurate attribution in dashboards and alerts
 - `gateway_overrides` from the cloud replace per-server input/output guardrail policies on the merged config
 - New top-level `local_server_overrides` block lets operators layer local-only fields (`sandbox`, `denied_tools`, `oauth_config`) onto cloud-fetched servers; cloud values always win on conflict
 - In-process cache keyed on a SHA-256 hash of the apikey, with a 10-minute TTL (`cache_ttl_seconds` configurable)

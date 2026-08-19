@@ -1,0 +1,115 @@
+# =========================================================================
+#  Data Prepper pipelines for the Secure MCP Gateway OpenSearch backend.
+#
+#  Wire-format: receives OTLP traces, metrics, logs on dedicated gRPC ports
+#  from the OTel Collector (which itself sits behind the gateway's
+#  ${enkrypt_telemetry_url} = http://otel-collector-os:4317).
+#
+#  Sinks land documents in SS4O data streams that match the templates in
+#  observability/opensearch/templates/:
+#    - ss4o_traces-gateway   (gateway-traces  alias)
+#    - ss4o_metrics-gateway  (gateway-metrics alias)
+#    - ss4o_logs-gateway     (gateway-logs    alias)
+#
+#  Service-map pipeline forks off the traces pipeline (Data Prepper's
+#  service_map processor only writes to the otel-v1-apm-service-map-*
+#  index, which has its own built-in template managed by the plugin).
+#
+#  Env vars are substituted by Data Prepper's plain ${VAR} syntax.
+#  Default-fallback (${VAR:-default}) is NOT supported by the parser, so
+#  callers MUST set OPENSEARCH_HOSTS / USERNAME / PASSWORD in the
+#  container env (docker-compose.opensearch.yml does this).
+# =========================================================================
+
+# ---- Traces ------------------------------------------------------------
+otel-trace-pipeline:
+  workers: 2
+  delay: 100
+  source:
+    otel_trace_source:
+      ssl: false
+      port: 21890
+  buffer:
+    bounded_blocking:
+      buffer_size: 12800
+      batch_size: 200
+  processor:
+    - otel_traces:
+  sink:
+    - opensearch:
+        hosts: ["${OPENSEARCH_HOSTS}"]
+        username: "${OPENSEARCH_USERNAME}"
+        password: "${OPENSEARCH_PASSWORD}"
+        insecure: true
+        index_type: management_disabled
+        index: ss4o_traces-gateway
+        action: create
+    - pipeline:
+        name: service-map-pipeline
+
+# ---- Service map (forked from traces) ---------------------------------
+service-map-pipeline:
+  workers: 1
+  delay: 100
+  source:
+    pipeline:
+      name: otel-trace-pipeline
+  processor:
+    - service_map:
+  sink:
+    - opensearch:
+        hosts: ["${OPENSEARCH_HOSTS}"]
+        username: "${OPENSEARCH_USERNAME}"
+        password: "${OPENSEARCH_PASSWORD}"
+        insecure: true
+        index_type: trace-analytics-service-map
+
+# ---- Metrics ----------------------------------------------------------
+otel-metrics-pipeline:
+  workers: 2
+  delay: 100
+  source:
+    otel_metrics_source:
+      ssl: false
+      port: 21891
+  buffer:
+    bounded_blocking:
+      buffer_size: 12800
+      batch_size: 200
+  processor:
+    - otel_metrics:
+  sink:
+    - opensearch:
+        hosts: ["${OPENSEARCH_HOSTS}"]
+        username: "${OPENSEARCH_USERNAME}"
+        password: "${OPENSEARCH_PASSWORD}"
+        insecure: true
+        index_type: management_disabled
+        index: ss4o_metrics-gateway
+        action: create
+
+# ---- Logs -------------------------------------------------------------
+# No processor: otel_logs_source emits log records that the opensearch
+# sink can write directly. Data Prepper 2.11 has no `otel_logs` processor
+# (unlike `otel_traces` / `otel_metrics`) -- log records don't require
+# the same shape transformation that traces/metrics do.
+otel-logs-pipeline:
+  workers: 2
+  delay: 100
+  source:
+    otel_logs_source:
+      ssl: false
+      port: 21892
+  buffer:
+    bounded_blocking:
+      buffer_size: 12800
+      batch_size: 200
+  sink:
+    - opensearch:
+        hosts: ["${OPENSEARCH_HOSTS}"]
+        username: "${OPENSEARCH_USERNAME}"
+        password: "${OPENSEARCH_PASSWORD}"
+        insecure: true
+        index_type: management_disabled
+        index: ss4o_logs-gateway
+        action: create

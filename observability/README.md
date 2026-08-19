@@ -1,16 +1,23 @@
-# Observability stack — Secure MCP Gateway
+# Observability stack — Secure MCP Gateway (legacy Grafana backend)
 
 Self-contained, fully-provisioned **logs / metrics / traces / alerts** stack
 for the Secure MCP Gateway. Everything is templated as code: clone, copy
-the env file, run one `docker compose up`, get a working dashboard with
-Slack alerts.
+the env file, run one `docker compose -f docker-compose.grafana.yml`, get
+a working dashboard with Slack alerts.
+
+> **Note:** OpenSearch is now the **primary** backend and owns the OTel
+> default ports `4317`/`4318` (see
+> [README.opensearch.md](README.opensearch.md)). This legacy Grafana
+> stack moved to **`4327`/`4328`**, so to use it you must point the
+> gateway's telemetry endpoint at `http://localhost:4327`. You run one
+> backend at a time.
 
 ```text
 ┌─────────────────────┐   logs (OTLP)         ┌────────────┐    LogQL    ┌─────────┐
 │ secure-mcp-gateway  │──────────────────────▶│            │────────────▶│         │
 │ (host process       │   metrics (OTLP)      │   OTel     │             │ Grafana │
 │  on :8000)          │──────────────────────▶│ Collector  │   PromQL    │ (:3030) │
-│                     │   traces  (OTLP)      │ (:4317)    │────────────▶│         │
+│                     │   traces  (OTLP)      │ (:4327)    │────────────▶│         │
 └─────────────────────┘                       └────────────┘             └─────────┘
                                               │     │     │                  ▲
                                               ▼     ▼     ▼                  │
@@ -28,7 +35,7 @@ Slack alerts.
 | **Prometheus**           | `http://localhost:9090` | Scrapes OTel Collector at `:8889` every 15s                           |
 | **Loki**                 | `http://localhost:3100` | Receives logs from OTel Collector via OTLP                            |
 | **Jaeger UI**            | `http://localhost:16686` | Traces from OTel Collector                                            |
-| **OTel Collector OTLP**  | `:4317` (gRPC), `:4318` (HTTP) | Gateway points its OTLP exporter here                                 |
+| **OTel Collector OTLP**  | `:4327` (gRPC), `:4328` (HTTP) | Gateway points its OTLP exporter here (moved off the 4317/4318 defaults, which OpenSearch now owns) |
 | **OTel Collector metrics**| `http://localhost:8889/metrics` | Prometheus-format scrape target                                  |
 
 Anonymous-admin auth is enabled for Grafana (no login screen). To set a
@@ -39,16 +46,20 @@ real admin password, see *Customising* below.
 Prerequisites: Docker Desktop (Windows/macOS) or Docker Engine + compose
 plugin (Linux).
 
+This stack is invoked exactly like the OpenSearch stack -- explicit
+`-f` and `--env-file` flags (no auto-loaded `docker-compose.yml`/`.env`),
+so the two backends never collide:
+
 ```bash
 cd observability
 
 # 1. Copy the env template and edit the Slack webhook URL
-cp .env.example .env
-# (edit observability/.env and replace SLACK_WEBHOOK_URL with your real
-#  https://hooks.slack.com/services/... URL)
+cp .env.grafana.example .env.grafana
+# (edit observability/.env.grafana and replace SLACK_WEBHOOK_URL with
+#  your real https://hooks.slack.com/services/... URL)
 
 # 2. Bring up the full stack
-docker compose up -d
+docker compose -f docker-compose.grafana.yml --env-file .env.grafana up -d
 
 # 3. Open Grafana (default 3030, or whatever GRAFANA_HOST_PORT you set)
 #    -> http://localhost:3030
@@ -56,9 +67,10 @@ docker compose up -d
 #    -> Alerting -> Alert rules (you should see 9 rules under "MCP Gateway Alerts")
 ```
 
-To send the gateway's telemetry to this stack, run the gateway with the
-default config — `enkrypt_telemetry.endpoint` already points at
-`http://localhost:4317`. Trigger any tool call against it and watch the
+To send the gateway's telemetry to this stack, set
+`plugins.telemetry.config.url` to `http://localhost:4327` (this stack's
+gRPC port — the default `4317` now goes to the OpenSearch stack) and
+restart the gateway. Trigger any tool call against it and watch the
 dashboard update.
 
 ## What's provisioned (the as-code templates)
@@ -99,7 +111,7 @@ underlying metric series.
 ### Contact points — `grafana/provisioning/alerting/contact-points.yaml`
 
 One Slack contact point named `slack-grafana-alerts`. The webhook URL
-comes from `SLACK_WEBHOOK_URL` in `.env`; the message template
+comes from `SLACK_WEBHOOK_URL` in `.env.grafana`; the message template
 conditionally renders metadata lines (Server / Tool / User / Direction /
 Failure reason / Provider / Check kind) — labels not present on a given
 alert are omitted entirely instead of rendering as `n/a`.
@@ -163,8 +175,8 @@ contact-point types are supported. Then restart Grafana.
 
 ### Switch off anonymous Grafana auth
 
-Edit `docker-compose.yml`, in the `grafana:` service, remove these two
-env vars and add a real password:
+Edit `docker-compose.grafana.yml`, in the `grafana:` service, remove
+these two env vars and add a real password:
 
 ```yaml
 environment:
@@ -174,16 +186,16 @@ environment:
   - GF_SECURITY_ADMIN_PASSWORD=<your-password>
 ```
 
-Then `docker compose up -d --force-recreate grafana`.
+Then `docker compose -f docker-compose.grafana.yml --env-file .env.grafana up -d --force-recreate grafana`.
 
 ## Verifying it works (end-to-end smoke test)
 
 ```bash
 # 1. Stack up
-cd observability && docker compose up -d
+cd observability && docker compose -f docker-compose.grafana.yml --env-file .env.grafana up -d
 
 # 2. Confirm provisioning succeeded (no errors / no "title is not unique" warnings)
-docker compose logs grafana | grep -E 'provisioning|error' | tail -20
+docker compose -f docker-compose.grafana.yml logs grafana | grep -E 'provisioning|error' | tail -20
 
 # 3. Confirm alert rules loaded (expect 9 rules under group "MCP Gateway Alerts")
 curl -s http://localhost:${GRAFANA_HOST_PORT:-3001}/api/v1/provisioning/alert-rules \
@@ -208,11 +220,11 @@ curl -s 'http://localhost:9090/api/v1/query?query=otel_enkrypt_tool_calls_total'
 Native Grafana service or Docker WSL relay holds the port. Fix:
 
 ```bash
-# In observability/.env
+# In observability/.env.grafana
 GRAFANA_HOST_PORT=3030
 ```
 
-`docker compose up -d --force-recreate grafana` will pick it up.
+`docker compose -f docker-compose.grafana.yml --env-file .env.grafana up -d --force-recreate grafana` will pick it up.
 
 ### `token must be specified when using the Slack chat API`
 
@@ -271,13 +283,13 @@ Two dashboard JSON files have the same root-level `"title"` field. Grafana
 silently drops one of them. Set distinct titles or move conflicting files
 to a sub-folder (and update `dashboards.yaml`'s `path:`).
 
-### Grafana doesn't pick up `.env` changes
+### Grafana doesn't pick up `.env.grafana` changes
 
 `docker compose restart grafana` re-runs the same container with its
-existing env block. To re-read `.env`, force-recreate:
+existing env block. To re-read `.env.grafana`, force-recreate:
 
 ```bash
-docker compose up -d --force-recreate grafana
+docker compose -f docker-compose.grafana.yml --env-file .env.grafana up -d --force-recreate grafana
 ```
 
 ## Where to look for what

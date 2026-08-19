@@ -8,7 +8,8 @@ import string
 import sys
 import threading
 import time
-from typing import Any, Dict, Union
+from contextvars import ContextVar
+from typing import Any
 from urllib.parse import urlparse
 
 from secure_mcp_gateway.consts import (
@@ -18,7 +19,12 @@ from secure_mcp_gateway.consts import (
     EXAMPLE_CONFIG_NAME,
     EXAMPLE_CONFIG_PATH,
 )
-from secure_mcp_gateway.log import get_logger
+from secure_mcp_gateway.log import (
+    CANONICAL_ATTR_KEYS,
+    add_legacy_filter_aliases,
+    canonicalize_attr_keys,
+    get_logger,
+)
 from secure_mcp_gateway.version import __version__
 
 logger = get_logger("secure_mcp_gateway")
@@ -38,6 +44,66 @@ class _DebugLevel:
 IS_DEBUG_LOG_LEVEL = _DebugLevel()
 
 IS_TELEMETRY_ENABLED = None
+
+# Request-scoped identity context. Some hot paths (notably secure tool
+# execution) already resolve authenticated identity once and should not fall
+# back to header-only credentials for every log line.
+_REQUEST_IDENTITY_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar(
+    "request_identity_context", default=None
+)
+
+
+def set_request_identity_context(identity_context: dict[str, Any] | None) -> None:
+    """Set per-request identity values used by ``build_log_extra``."""
+    if not identity_context:
+        _REQUEST_IDENTITY_CONTEXT.set(None)
+        return
+    cleaned = {
+        key: value
+        for key, value in identity_context.items()
+        if value is not None and value != ""
+    }
+    _REQUEST_IDENTITY_CONTEXT.set(cleaned or None)
+
+
+def clear_request_identity_context() -> None:
+    """Clear request-scoped identity values."""
+    _REQUEST_IDENTITY_CONTEXT.set(None)
+
+
+def push_request_identity_overlay(
+    overlay: dict[str, Any] | None,
+) -> object:
+    """Overlay ``overlay`` onto the current identity context, returning a
+    token that callers MUST pass to :func:`reset_request_identity_overlay`
+    to restore the previous state (use ``try/finally``).
+
+    Designed for short-lived per-tool / per-span enrichment (e.g. setting
+    ``server_name`` + ``tool_name`` around a single tool execution so that
+    metrics emitted from helper modules inherit those attrs without each
+    helper having to thread them through its signature). Empty / ``None``
+    overlay values are dropped instead of overwriting an existing value.
+    """
+    if not overlay:
+        return _REQUEST_IDENTITY_CONTEXT.set(_REQUEST_IDENTITY_CONTEXT.get())
+    current = _REQUEST_IDENTITY_CONTEXT.get() or {}
+    merged = dict(current)
+    for key, value in overlay.items():
+        if value is None or value == "":
+            continue
+        merged[key] = value
+    return _REQUEST_IDENTITY_CONTEXT.set(merged or None)
+
+
+def reset_request_identity_overlay(token: object) -> None:
+    """Restore the identity context to the value captured by the matching
+    :func:`push_request_identity_overlay` call.
+    """
+    _REQUEST_IDENTITY_CONTEXT.reset(token)
+
+
+def _get_request_identity_context() -> dict[str, Any]:
+    return _REQUEST_IDENTITY_CONTEXT.get() or {}
 
 
 def get_file_from_root(file_name):
@@ -72,27 +138,51 @@ def does_file_exist(file_name_or_path, is_absolute_path=None):
 
 
 def is_docker():
+    """Return True if the process is running inside any container.
+
+    Historically named ``is_docker`` for backwards compatibility — it really
+    answers "am I in a container?", covering Docker, containerd, podman, and
+    Kubernetes pods regardless of which CRI runtime they use.
+
+    Detection order (cheap → expensive, most reliable → fallback):
+
+    1. ``KUBERNETES_SERVICE_HOST`` env var — kubelet injects this into every
+       pod and it is never set on a real host. Highest-confidence signal for
+       the K8s + containerd + cgroups v2 stack that ships in modern EKS / GKE
+       / AKS / kind / k3s clusters.
+    2. ``/.dockerenv`` — file dropped by the Docker daemon at container start.
+       ``/run/.containerenv`` — equivalent marker used by podman / CRI-O.
+    3. ``/proc/1/cgroup`` keyword sniff — works for cgroups v1 hierarchies
+       (``docker``, ``kubepods``, ``containerd``, ``lxc`` appear in paths).
+    4. ``/proc/1/cgroup`` cgroups-v2 heuristic — on the unified hierarchy a
+       container's PID 1 sees a single ``0::/`` line with an empty path,
+       whereas a host's PID 1 typically reports ``0::/init.scope`` or
+       ``0::/system.slice/...``. This catches plain containerd / nerdctl /
+       k3d that don't set any of the markers above.
     """
-    Check if the code is running inside a Docker container.
-    """
-    # Check for Docker environment markers
-    docker_env_indicators = ["/.dockerenv", "/run/.containerenv"]
-    for indicator in docker_env_indicators:
+    # 1. Kubernetes — definitive, zero false positives outside K8s.
+    if os.environ.get("KUBERNETES_SERVICE_HOST"):
+        return True
+
+    # 2. Runtime-dropped marker files.
+    for indicator in ("/.dockerenv", "/run/.containerenv"):
         if os.path.exists(indicator):
             return True
 
-    # Check cgroup for any containerization system entries
-    container_identifiers = ["docker", "kubepods", "containerd", "lxc"]
+    # 3 + 4. cgroup inspection (covers v1 + v2; absent on macOS / Windows).
     try:
         with open("/proc/1/cgroup", encoding="utf-8") as f:
-            for line in f:
-                if any(keyword in line for keyword in container_identifiers):
-                    return True
+            cgroup_text = f.read()
     except FileNotFoundError:
-        # /proc/1/cgroup doesn't exist, which is common outside of Linux
-        pass
+        return False
 
-    return False
+    container_identifiers = ("docker", "kubepods", "containerd", "lxc")
+    if any(keyword in cgroup_text for keyword in container_identifiers):
+        return True
+
+    # cgroups v2 unified hierarchy: container PID 1 shows "0::/" with empty
+    # path; host PID 1 shows a non-empty scope/slice path.
+    return cgroup_text.strip() == "0::/"
 
 
 # Config cache with file modification time tracking for hot-reload support
@@ -101,6 +191,12 @@ _config_cache = {}
 _config_mtime = 0
 _config_path_cached = None
 _config_lock = threading.RLock()
+
+# Tracks the last "config missing" warning so a repeatedly-failing hot-reload
+# poll doesn't flood logs with the same INFO line every few seconds. Keyed by
+# (picked_config_path, example_path_exists) so a recovery-then-loss cycle still
+# logs the second loss. Reset to ``None`` whenever a real config is loaded.
+_missing_config_warned_for: tuple[str, bool] | None = None
 
 
 def get_common_config(print_debug=False):
@@ -111,7 +207,7 @@ def get_common_config(print_debug=False):
     This enables hot-reload when config files are updated (e.g., in Docker volumes).
     Thread-safe for concurrent access.
     """
-    global _config_cache, _config_mtime, _config_path_cached
+    global _config_cache, _config_mtime, _config_path_cached, _missing_config_warned_for
 
     if print_debug:
         logger.debug(f"[utils] config_path: {CONFIG_PATH}")
@@ -150,6 +246,9 @@ def get_common_config(print_debug=False):
                     config = json.load(f)
                 _config_mtime = current_mtime
                 _config_path_cached = picked_config_path
+                # Real config loaded — clear the missing-config latch so a
+                # later loss (e.g. volume unmount) re-emits the warning once.
+                _missing_config_warned_for = None
             except (OSError, json.JSONDecodeError) as e:
                 logger.error(
                     f"[utils] Error loading config from {picked_config_path}: {e}"
@@ -159,8 +258,22 @@ def get_common_config(print_debug=False):
                     return _config_cache
                 return {**DEFAULT_COMMON_CONFIG, "plugins": {}}
         else:
-            logger.info("[utils] No config file found. Loading example config.")
-            if does_file_exist(EXAMPLE_CONFIG_PATH):
+            example_exists = does_file_exist(EXAMPLE_CONFIG_PATH)
+            # Hot-reload polls this function frequently; only log the
+            # missing-config warning once per (path, fallback-state) pair so
+            # we don't flood OpenSearch/stdout when the operator's deployment
+            # still hasn't materialised the config file.
+            warn_key = (picked_config_path, example_exists)
+            if _missing_config_warned_for != warn_key:
+                logger.warning(
+                    "[utils] No config file found at %s. Falling back to %s.",
+                    picked_config_path,
+                    "bundled example config"
+                    if example_exists
+                    else "hardcoded default common config",
+                )
+                _missing_config_warned_for = warn_key
+            if example_exists:
                 if print_debug:
                     logger.debug(f"[utils] Loading {EXAMPLE_CONFIG_NAME} file...")
                 try:
@@ -170,9 +283,6 @@ def get_common_config(print_debug=False):
                     logger.error(f"[utils] Error loading example config: {e}")
                     config = {}
             else:
-                logger.info(
-                    "[utils] Example config file not found. Using default common config."
-                )
                 config = {}
 
         if print_debug and config:
@@ -180,22 +290,246 @@ def get_common_config(print_debug=False):
 
         common_config = config.get("common_mcp_gateway_config", {})
         plugins_config = config.get("plugins", {})
+        enkrypt_config = config.get("enkrypt_config", {})
         # Merge with defaults to ensure all required fields exist
         _config_cache = {
             **DEFAULT_COMMON_CONFIG,
             **common_config,
             "plugins": plugins_config,
+            "enkrypt_config": enkrypt_config,
         }
         return _config_cache
 
 
 def clear_config_cache():
     """Clear the config cache to force reload on next get_common_config() call."""
-    global _config_cache, _config_mtime, _config_path_cached
+    global _config_cache, _config_mtime, _config_path_cached, IS_TELEMETRY_ENABLED
+    global _missing_config_warned_for
     with _config_lock:
         _config_cache = {}
+        _missing_config_warned_for = None
         _config_mtime = 0
         _config_path_cached = None
+    IS_TELEMETRY_ENABLED = None
+
+
+def get_active_config_path() -> str:
+    """Return the config file path currently in use (docker-aware)."""
+    return DOCKER_CONFIG_PATH if is_docker() else CONFIG_PATH
+
+
+# ---------------------------------------------------------------------------
+# Lazy config accessors
+#
+# These all read get_common_config() on every call so the underlying mtime-
+# based hot-reload picks up file changes without restart. Avoid storing the
+# returned values in module-level globals.
+# ---------------------------------------------------------------------------
+
+
+def _enkrypt_cfg() -> dict:
+    return get_common_config().get("enkrypt_config", {}) or {}
+
+
+def _plugin_cfg(plugin: str) -> dict:
+    return (
+        get_common_config().get("plugins", {}).get(plugin, {}).get("config", {}) or {}
+    )
+
+
+def get_log_level() -> str:
+    return get_common_config().get("enkrypt_log_level", "INFO").lower()
+
+
+def is_debug_log_level() -> bool:
+    return get_log_level() == "debug"
+
+
+def get_fastmcp_log_level() -> str:
+    return get_log_level().upper()
+
+
+def get_guardrail_base_url() -> str:
+    return (
+        _plugin_cfg("guardrails").get("base_url")
+        or _enkrypt_cfg().get("base_url")
+        or _plugin_cfg("auth").get("base_url")
+        or "https://api.enkryptai.com"
+    )
+
+
+def get_guardrail_api_key() -> str:
+    return (
+        _plugin_cfg("guardrails").get("api_key")
+        or _enkrypt_cfg().get("api_key")
+        or _plugin_cfg("auth").get("api_key")
+        or "null"
+    )
+
+
+def use_remote_mcp_config() -> bool:
+    """DEPRECATED. Reads ``common_mcp_gateway_config.enkrypt_use_remote_mcp_config``.
+
+    Only meaningful for the legacy ``LocalApiKeyProvider`` "fetch config
+    from Enkrypt cloud" fallback path. New deployments should switch to
+    ``plugins.auth.provider = "enkrypt"`` instead, which has its own
+    cloud-config flow that does not consult this flag.
+
+    Defaults to ``False`` when the key is absent (which is now the case
+    for newly-generated configs), so this accessor stays safe to call
+    from any code path.
+    """
+    return bool(get_common_config().get("enkrypt_use_remote_mcp_config", False))
+
+
+def get_remote_gateway_name() -> str:
+    """DEPRECATED. Reads ``common_mcp_gateway_config.enkrypt_remote_mcp_gateway_name``.
+
+    Only consulted by the legacy ``LocalApiKeyProvider``'s remote-fetch
+    path and the legacy ``cache_management_service._refresh_remote_config``
+    flow. The canonical "what gateway name should we identify ourselves
+    as" is ``plugins.auth.config.gateway_name`` for the
+    ``EnkryptAuthProvider``.
+    """
+    return get_common_config().get(
+        "enkrypt_remote_mcp_gateway_name", "Test MCP Gateway"
+    )
+
+
+def get_remote_gateway_version() -> str:
+    """DEPRECATED. Reads ``common_mcp_gateway_config.enkrypt_remote_mcp_gateway_version``.
+
+    See :func:`get_remote_gateway_name` — same caveats. The canonical
+    location is ``plugins.auth.config.gateway_version``.
+    """
+    return get_common_config().get("enkrypt_remote_mcp_gateway_version", "v1")
+
+
+def async_input_guardrails_enabled() -> bool:
+    return bool(
+        get_common_config().get("enkrypt_async_input_guardrails_enabled", False)
+    )
+
+
+def async_output_guardrails_enabled() -> bool:
+    return bool(
+        get_common_config().get("enkrypt_async_output_guardrails_enabled", False)
+    )
+
+
+# Path the gateway serves the OAuth authorization-code redirect on (see
+# gateway_oauth_routes.py). Single source of truth for both the route
+# registration and the redirect_uri the gateway advertises to the IdP.
+GATEWAY_OAUTH_CALLBACK_PATH = "/oauth2callback"
+
+
+def get_gateway_base_url() -> str | None:
+    """Public, externally-reachable base URL of THIS gateway (``scheme://host[:port]``).
+
+    Used to build the OAuth redirect_uri for the gateway-managed authorization-code
+    flow so a *remotely deployed* gateway (e.g. ``https://mcp.dev.enkryptai.com``)
+    advertises its own public callback to the IdP instead of
+    ``http://localhost:8000/...``.
+
+    Priority: env ``ENKRYPT_GATEWAY_BASE_URL`` >
+    ``common_mcp_gateway_config.enkrypt_gateway_base_url``. Any path/trailing
+    slash is stripped (only scheme+host[:port] is kept). Returns ``None`` when
+    unset, in which case callers fall back to the keyfile / request-derived
+    redirect (preserving the local-loopback behavior).
+    """
+    raw = (
+        os.environ.get("ENKRYPT_GATEWAY_BASE_URL")
+        or get_common_config().get("enkrypt_gateway_base_url")
+        or ""
+    ).strip()
+    return raw.rstrip("/") or None
+
+
+def get_gateway_oauth_redirect_uri() -> str | None:
+    """Resolve the OAuth ``redirect_uri`` this gateway should advertise to the IdP.
+
+    Priority:
+      1. an explicit full redirect URI -- env
+         ``ENKRYPT_GATEWAY_OAUTH_REDIRECT_URI`` /
+         ``common_mcp_gateway_config.enkrypt_oauth_redirect_uri`` (use this when
+         the callback path differs from the default)
+      2. ``<get_gateway_base_url()>`` + ``/oauth2callback``
+
+    Returns ``None`` when neither an explicit redirect nor a base URL is
+    configured. Whatever this returns MUST be registered with the IdP (e.g. as
+    an Authorized redirect URI in Google Cloud Console).
+    """
+    explicit = (
+        os.environ.get("ENKRYPT_GATEWAY_OAUTH_REDIRECT_URI")
+        or get_common_config().get("enkrypt_oauth_redirect_uri")
+        or ""
+    ).strip()
+    if explicit:
+        return explicit.rstrip("/") if explicit.endswith("/") else explicit
+    base = get_gateway_base_url()
+    if base:
+        return f"{base}{GATEWAY_OAUTH_CALLBACK_PATH}"
+    return None
+
+
+def get_telemetry_endpoint() -> str:
+    return _plugin_cfg("telemetry").get("url", "http://localhost:4317")
+
+
+def get_tool_cache_ttl_hours() -> float:
+    return float(get_common_config().get("enkrypt_tool_cache_expiration", 4))
+
+
+def get_gateway_cache_ttl_seconds() -> float:
+    """Resolve gateway-config cache TTL with minutes-first preference.
+
+    Order: enkrypt_gateway_cache_expiration_minutes (minutes) ->
+    enkrypt_gateway_cache_expiration (hours) -> default 300s (5 min).
+    """
+    cfg = get_common_config()
+    minutes = cfg.get("enkrypt_gateway_cache_expiration_minutes")
+    if minutes is not None:
+        try:
+            return float(minutes) * 60.0
+        except (TypeError, ValueError):
+            pass
+    hours = cfg.get("enkrypt_gateway_cache_expiration")
+    if hours is not None:
+        try:
+            return float(hours) * 3600.0
+        except (TypeError, ValueError):
+            pass
+    return 300.0
+
+
+def get_config_watcher_poll_seconds() -> float:
+    """Polling interval for the config-file watcher. 0 disables the watcher."""
+    try:
+        return float(
+            get_common_config().get("enkrypt_config_watcher_poll_seconds", 2.0)
+        )
+    except (TypeError, ValueError):
+        return 2.0
+
+
+def use_external_cache() -> bool:
+    return bool(get_common_config().get("enkrypt_mcp_use_external_cache", False))
+
+
+def get_cache_host() -> str:
+    return get_common_config().get("enkrypt_cache_host", "localhost")
+
+
+def get_cache_port() -> int:
+    return int(get_common_config().get("enkrypt_cache_port", 6379))
+
+
+def get_cache_db() -> int:
+    return int(get_common_config().get("enkrypt_cache_db", 0))
+
+
+def get_cache_password():
+    return get_common_config().get("enkrypt_cache_password", None)
 
 
 def is_telemetry_enabled():
@@ -265,7 +599,6 @@ def generate_custom_id():
         return f"fallback_{int(time.time())}"
 
 
-
 def mask_key(key):
     """
     Masks the last 4 characters of the key.
@@ -275,17 +608,36 @@ def mask_key(key):
     return "****" + key[-4:]
 
 
+# ``CANONICAL_ATTR_KEYS`` and ``canonicalize_attr_keys`` are imported from
+# ``secure_mcp_gateway.log`` (the foundation logging module) and re-exported
+# here so older call sites importing from ``utils`` keep working. Single
+# source of truth lives in ``log.py`` to avoid an import cycle with the
+# structlog processor that uses the same map.
+_CANONICAL_LOG_ATTR_KEYS = CANONICAL_ATTR_KEYS  # backwards-compat alias
+
+
 def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs):
     """Build structured log extras. Tolerates missing/invalid ctx.
 
     Falls back to 'not_provided' values if ctx is not an MCP Context or
     if credentials/config cannot be resolved.
+
+    Keys in the returned dict use the dotted ``enkrypt.<namespace>.<field>``
+    convention defined in ``plugins.telemetry.conventions.SpanAttributes`` so
+    the same dict is safe to pass to ``logger.*(extra=...)`` *and*
+    ``counter.add(attributes=...)`` -- both signals end up queryable as
+    ``*.attributes.enkrypt@*`` in OpenSearch (Data Prepper rewrites dots to
+    ``@`` in the field path).
     """
     project_id = "not_provided"
     user_id = "not_provided"
     project_name = "not_provided"
     email = "not_provided"
     mcp_config_id = "not_provided"
+    org_id = "not_provided"
+    registry_name = "not_provided"
+    gateway_name = "not_provided"
+    gateway_version = "not_provided"
 
     try:
         # Only attempt auth lookups when ctx looks like an MCP Context
@@ -298,6 +650,7 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
             gateway_key = credentials.get("gateway_key")
             project_id = credentials.get("project_id", project_id)
             user_id = credentials.get("user_id", user_id)
+            gateway_name = credentials.get("gateway_name")
 
             if gateway_key:
                 try:
@@ -316,7 +669,10 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
                             gateway_config = (
                                 asyncio.run(
                                     auth_manager.get_local_mcp_config(
-                                        gateway_key, project_id, user_id
+                                        gateway_key,
+                                        project_id,
+                                        user_id,
+                                        gateway_name=gateway_name,
                                     )
                                 )
                                 or {}
@@ -328,6 +684,28 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
                             mcp_config_id = gateway_config.get(
                                 "mcp_config_id", mcp_config_id
                             )
+                            # Cloud may return ``None`` for org_id / registry_name
+                            # (free-tier / personal-account gateways, or apikeys
+                            # not bound to a registry). Keep the "not_provided"
+                            # placeholder in that case so log output stays uniform.
+                            # (The cloud does NOT return ``org_name`` -- only
+                            # ``org_id`` -- so there is intentionally no org_name
+                            # read here.)
+                            org_id = gateway_config.get("org_id") or org_id
+                            registry_name = (
+                                gateway_config.get("registry_name") or registry_name
+                            )
+                            # Mirrors the values sent on the
+                            # ``X-Enkrypt-MCP-Gateway`` /
+                            # ``X-Enkrypt-MCP-Gateway-Version`` headers of the
+                            # cloud's ``get-gateway-config`` call. Lets log
+                            # queries pivot per deployed gateway revision.
+                            gateway_name = (
+                                gateway_config.get("gateway_name") or gateway_name
+                            )
+                            gateway_version = (
+                                gateway_config.get("gateway_version") or gateway_version
+                            )
                         except Exception:
                             # If anything fails, just use defaults
                             pass
@@ -338,20 +716,50 @@ def build_log_extra(ctx, custom_id=None, server_name=None, error=None, **kwargs)
         # Swallow errors and use defaults to avoid breaking logging
         pass
 
-    # Filter out None values from kwargs
-    filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
+    # If a request path resolved richer identity once (e.g. cloud auth in
+    # secure tool execution), prefer that request-scoped context over the
+    # fallback header values above.
+    request_identity = _get_request_identity_context()
+    if request_identity:
+        project_id = request_identity.get("project_id") or project_id
+        user_id = request_identity.get("user_id") or user_id
+        project_name = request_identity.get("project_name") or project_name
+        email = (
+            request_identity.get("user_email") or request_identity.get("email") or email
+        )
+        mcp_config_id = request_identity.get("mcp_config_id") or mcp_config_id
+        org_id = request_identity.get("org_id") or org_id
+        registry_name = (
+            request_identity.get("project_registry")
+            or request_identity.get("registry_name")
+            or registry_name
+        )
+        gateway_name = request_identity.get("gateway_name") or gateway_name
+        gateway_version = request_identity.get("gateway_version") or gateway_version
 
-    return {
-        "custom_id": custom_id or "",
-        "server_name": server_name or "",
-        "project_id": project_id or "",
-        "project_name": project_name or "",
-        "user_id": user_id or "",
-        "email": email or "",
-        "mcp_config_id": mcp_config_id or "",
-        "error": error or "",
-        **filtered_kwargs,
+    # Canonicalize known kwargs to the dotted enkrypt.* namespace; pass
+    # unknown kwargs through unchanged so ad-hoc diagnostic fields still
+    # work (e.g. ``stats=...``, ``blocked_count=...``, ``violations=...``).
+    canonical_kwargs = canonicalize_attr_keys(
+        {k: v for k, v in kwargs.items() if v is not None}
+    )
+
+    enriched = {
+        CANONICAL_ATTR_KEYS["custom_id"]: custom_id or "",
+        CANONICAL_ATTR_KEYS["server_name"]: server_name or "",
+        CANONICAL_ATTR_KEYS["org_id"]: org_id or "",
+        CANONICAL_ATTR_KEYS["project_id"]: project_id or "",
+        CANONICAL_ATTR_KEYS["project_name"]: project_name or "",
+        CANONICAL_ATTR_KEYS["registry_name"]: registry_name or "",
+        CANONICAL_ATTR_KEYS["user_id"]: user_id or "",
+        CANONICAL_ATTR_KEYS["email"]: email or "",
+        CANONICAL_ATTR_KEYS["mcp_config_id"]: mcp_config_id or "",
+        CANONICAL_ATTR_KEYS["gateway_name"]: gateway_name or "",
+        CANONICAL_ATTR_KEYS["gateway_version"]: gateway_version or "",
+        CANONICAL_ATTR_KEYS["error"]: error or "",
+        **canonical_kwargs,
     }
+    return add_legacy_filter_aliases(enriched)
 
 
 def mask_server_config_sensitive_data(server_info):
@@ -470,8 +878,8 @@ def get_server_info_by_name(gateway_config, server_name):
 
 
 def mask_sensitive_headers(
-    headers: Union[Dict[str, str], Dict[str, Any]],
-) -> Dict[str, str]:
+    headers: dict[str, str] | dict[str, Any],
+) -> dict[str, str]:
     """
     Mask sensitive information in HTTP headers for logging purposes.
 
@@ -569,8 +977,8 @@ def mask_sensitive_headers(
 
 
 def mask_sensitive_data(
-    data: Dict[str, Any], sensitive_keys: list = None
-) -> Dict[str, Any]:
+    data: dict[str, Any], sensitive_keys: list = None
+) -> dict[str, Any]:
     """
     Recursively mask sensitive information in a dictionary.
 

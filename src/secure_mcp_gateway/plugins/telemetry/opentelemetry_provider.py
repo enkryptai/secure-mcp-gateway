@@ -27,11 +27,39 @@ from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExp
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics import (
+    Counter,
+    Histogram,
+    MeterProvider,
+    ObservableCounter,
+    ObservableGauge,
+    ObservableUpDownCounter,
+    UpDownCounter,
+)
+from opentelemetry.sdk.metrics.export import (
+    AggregationTemporality,
+    PeriodicExportingMetricReader,
+)
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+# Counters and Histograms are exported as DELTA so a downstream consumer
+# (OpenSearch / Data Prepper) can sum values directly within a window to
+# get the actual event count. UpDownCounter and Gauge stay CUMULATIVE
+# because they represent current state (e.g. active_sessions), not events.
+#
+# The OTel Collector's prometheus exporter accumulates DELTA -> CUMULATIVE
+# at scrape time, so the existing Grafana / Prometheus path stays compatible
+# (`increase()`/`rate()` queries continue to work unchanged).
+_PREFERRED_TEMPORALITY = {
+    Counter: AggregationTemporality.DELTA,
+    Histogram: AggregationTemporality.DELTA,
+    ObservableCounter: AggregationTemporality.DELTA,
+    UpDownCounter: AggregationTemporality.CUMULATIVE,
+    ObservableUpDownCounter: AggregationTemporality.CUMULATIVE,
+    ObservableGauge: AggregationTemporality.CUMULATIVE,
+}
 
 from secure_mcp_gateway.consts import (
     CONFIG_PATH,
@@ -56,7 +84,14 @@ class OpenTelemetryProvider(TelemetryProvider):
         Initialize the OpenTelemetry provider.
 
         Args:
-            config: Provider configuration (optional, can initialize later)
+            config: Provider configuration. ``None`` or empty dict will still
+                trigger ``initialize({})`` so the provider comes up with the
+                built-in defaults (``enabled=True``, OTLP at
+                ``http://localhost:4317``, ``insecure=True``). This guards
+                against fallback paths that instantiate the class without a
+                concrete config — without ``initialize()`` the provider stays
+                in the un-initialized state and later ``create_tracer``/
+                ``create_meter`` calls raise ``RuntimeError``.
         """
         self._initialized = False
         self._logger = None
@@ -70,8 +105,9 @@ class OpenTelemetryProvider(TelemetryProvider):
         # Initialize all metrics as None
         self._initialize_metric_vars()
 
-        if config:
-            self.initialize(config)
+        # Always initialize, even with empty config — initialize() applies its
+        # own defaults for missing keys and is safe to call with ``{}``.
+        self.initialize(config or {})
 
     def _initialize_metric_vars(self):
         """Initialize all metric variables as None."""
@@ -92,6 +128,8 @@ class OpenTelemetryProvider(TelemetryProvider):
         self.active_sessions_gauge = None
         self.active_users_gauge = None
         self.pii_redactions_counter = None
+        self.guardrail_pii_entity_counter = None
+        self.guardrail_toxicity_subtype_counter = None
         self.tool_call_blocked_counter = None
         self.input_guardrail_violation_counter = None
         self.output_guardrail_violation_counter = None
@@ -344,16 +382,32 @@ class OpenTelemetryProvider(TelemetryProvider):
         self._logger = get_logger(service_name)
 
         # ---------- TRACING SETUP ----------
+        # IMPORTANT: bind ``self._tracer`` / ``self._meter`` to **our own**
+        # provider instances (not the OTel global). ``trace.set_tracer_provider``
+        # and ``metrics.set_meter_provider`` are one-shot per process: the
+        # second call (e.g. on a config hot-reload) is silently rejected and the
+        # global keeps pointing at the *original* boot-time provider. If we
+        # then take the meter/tracer from the global, every instrument created
+        # during the reload gets attached to the stale provider, the new
+        # reader/exporter threads we just spawned are orphaned, and application
+        # metrics stop reaching the OTLP collector with zero error logs.
+        # Binding directly to ``self._tracer_provider`` / ``self._meter_provider``
+        # makes instruments route through the reader/exporter created in this
+        # call regardless of whether the global registry accepted us.
         self._tracer_provider = TracerProvider(resource=self._resource)
         trace.set_tracer_provider(self._tracer_provider)
-        self._tracer = trace.get_tracer(__name__)
+        self._tracer = self._tracer_provider.get_tracer(__name__)
 
         otlp_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=insecure)
         span_processor = BatchSpanProcessor(otlp_exporter)
         self._tracer_provider.add_span_processor(span_processor)
 
         # ---------- METRICS SETUP ----------
-        otlp_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=insecure)
+        otlp_exporter = OTLPMetricExporter(
+            endpoint=endpoint,
+            insecure=insecure,
+            preferred_temporality=_PREFERRED_TEMPORALITY,
+        )
         reader = PeriodicExportingMetricReader(
             otlp_exporter, export_interval_millis=5000
         )
@@ -362,7 +416,8 @@ class OpenTelemetryProvider(TelemetryProvider):
         )
         metrics.set_meter_provider(self._meter_provider)
 
-        self._meter = metrics.get_meter("enkrypt.meter")
+        # See note above ``set_tracer_provider`` — bind to our own provider.
+        self._meter = self._meter_provider.get_meter("enkrypt.meter")
 
         # Flush buffered spans/metrics on process exit
         atexit.register(self.shutdown)
@@ -379,87 +434,306 @@ class OpenTelemetryProvider(TelemetryProvider):
         D = METRIC_DESCRIPTIONS
 
         self.list_servers_call_count = self._meter.create_counter(
-            M.DISCOVERY_LIST, description=D[M.DISCOVERY_LIST],
+            M.DISCOVERY_LIST,
+            description=D[M.DISCOVERY_LIST],
         )
         self.servers_discovered_count = self._meter.create_counter(
-            M.DISCOVERY_FOUND, description=D[M.DISCOVERY_FOUND],
+            M.DISCOVERY_FOUND,
+            description=D[M.DISCOVERY_FOUND],
         )
         self.cache_hit_counter = self._meter.create_counter(
-            M.CACHE_HITS, description=D[M.CACHE_HITS], unit="1",
+            M.CACHE_HITS,
+            description=D[M.CACHE_HITS],
+            unit="1",
         )
         self.cache_miss_counter = self._meter.create_counter(
-            M.CACHE_MISSES, description=D[M.CACHE_MISSES], unit="1",
+            M.CACHE_MISSES,
+            description=D[M.CACHE_MISSES],
+            unit="1",
         )
         self.tool_call_counter = self._meter.create_counter(
-            M.TOOL_CALLS, description=D[M.TOOL_CALLS], unit="1",
+            M.TOOL_CALLS,
+            description=D[M.TOOL_CALLS],
+            unit="1",
         )
         self.guardrail_api_request_counter = self._meter.create_counter(
-            M.GUARDRAIL_CHECKS, description=D[M.GUARDRAIL_CHECKS], unit="1",
+            M.GUARDRAIL_CHECKS,
+            description=D[M.GUARDRAIL_CHECKS],
+            unit="1",
         )
         self.guardrail_api_request_duration = self._meter.create_histogram(
-            M.GUARDRAIL_DURATION, description=D[M.GUARDRAIL_DURATION], unit="s",
+            M.GUARDRAIL_DURATION,
+            description=D[M.GUARDRAIL_DURATION],
+            unit="s",
         )
         self.guardrail_violation_counter = self._meter.create_counter(
-            M.GUARDRAIL_BLOCKS, description=D[M.GUARDRAIL_BLOCKS], unit="1",
+            M.GUARDRAIL_BLOCKS,
+            description=D[M.GUARDRAIL_BLOCKS],
+            unit="1",
         )
         self.tool_call_duration = self._meter.create_histogram(
-            M.TOOL_DURATION, description=D[M.TOOL_DURATION], unit="s",
+            M.TOOL_DURATION,
+            description=D[M.TOOL_DURATION],
+            unit="s",
         )
         self.tool_call_success_counter = self._meter.create_counter(
-            M.TOOL_SUCCESS, description=D[M.TOOL_SUCCESS], unit="1",
+            M.TOOL_SUCCESS,
+            description=D[M.TOOL_SUCCESS],
+            unit="1",
         )
         self.tool_call_failure_counter = self._meter.create_counter(
-            M.TOOL_FAILURES, description=D[M.TOOL_FAILURES], unit="1",
+            M.TOOL_FAILURES,
+            description=D[M.TOOL_FAILURES],
+            unit="1",
         )
         self.tool_call_error_counter = self._meter.create_counter(
-            M.TOOL_ERRORS, description=D[M.TOOL_ERRORS], unit="1",
+            M.TOOL_ERRORS,
+            description=D[M.TOOL_ERRORS],
+            unit="1",
         )
         self.auth_success_counter = self._meter.create_counter(
-            M.AUTH_SUCCESS, description=D[M.AUTH_SUCCESS], unit="1",
+            M.AUTH_SUCCESS,
+            description=D[M.AUTH_SUCCESS],
+            unit="1",
         )
         self.auth_failure_counter = self._meter.create_counter(
-            M.AUTH_FAILURE, description=D[M.AUTH_FAILURE], unit="1",
+            M.AUTH_FAILURE,
+            description=D[M.AUTH_FAILURE],
+            unit="1",
         )
         self.active_sessions_gauge = self._meter.create_up_down_counter(
-            M.SESSION_ACTIVE, description=D[M.SESSION_ACTIVE], unit="1",
+            M.SESSION_ACTIVE,
+            description=D[M.SESSION_ACTIVE],
+            unit="1",
         )
         self.active_users_gauge = self._meter.create_up_down_counter(
-            M.USERS_ACTIVE, description=D[M.USERS_ACTIVE], unit="1",
+            M.USERS_ACTIVE,
+            description=D[M.USERS_ACTIVE],
+            unit="1",
         )
         self.pii_redactions_counter = self._meter.create_counter(
-            M.PII_REDACTIONS, description=D[M.PII_REDACTIONS], unit="1",
+            M.PII_REDACTIONS,
+            description=D[M.PII_REDACTIONS],
+            unit="1",
+        )
+        # Per-entity-type PII counter (drives Guardrails Deep Dive PII
+        # entity breakdown panels). One increment per detected entity,
+        # attribute entity_type.
+        self.guardrail_pii_entity_counter = self._meter.create_counter(
+            M.GUARDRAIL_PII_ENTITY,
+            description=D[M.GUARDRAIL_PII_ENTITY],
+            unit="1",
+        )
+        # Toxicity subtype counter (drives Guardrails Deep Dive
+        # toxicity subtype panels). One increment per subtype that
+        # crossed the detector's threshold, attributes subtype +
+        # score_bucket.
+        self.guardrail_toxicity_subtype_counter = self._meter.create_counter(
+            M.GUARDRAIL_TOXICITY_SUBTYPE,
+            description=D[M.GUARDRAIL_TOXICITY_SUBTYPE],
+            unit="1",
         )
         self.tool_call_blocked_counter = self._meter.create_counter(
-            M.TOOL_BLOCKED, description=D[M.TOOL_BLOCKED], unit="1",
+            M.TOOL_BLOCKED,
+            description=D[M.TOOL_BLOCKED],
+            unit="1",
         )
         self.input_guardrail_violation_counter = self._meter.create_counter(
-            M.GUARDRAIL_INPUT_BLOCKS, description=D[M.GUARDRAIL_INPUT_BLOCKS], unit="1",
+            M.GUARDRAIL_INPUT_BLOCKS,
+            description=D[M.GUARDRAIL_INPUT_BLOCKS],
+            unit="1",
         )
         self.output_guardrail_violation_counter = self._meter.create_counter(
-            M.GUARDRAIL_OUTPUT_BLOCKS, description=D[M.GUARDRAIL_OUTPUT_BLOCKS], unit="1",
+            M.GUARDRAIL_OUTPUT_BLOCKS,
+            description=D[M.GUARDRAIL_OUTPUT_BLOCKS],
+            unit="1",
         )
         self.relevancy_violation_counter = self._meter.create_counter(
-            M.GUARDRAIL_RELEVANCY_BLOCKS, description=D[M.GUARDRAIL_RELEVANCY_BLOCKS], unit="1",
+            M.GUARDRAIL_RELEVANCY_BLOCKS,
+            description=D[M.GUARDRAIL_RELEVANCY_BLOCKS],
+            unit="1",
         )
         self.adherence_violation_counter = self._meter.create_counter(
-            M.GUARDRAIL_ADHERENCE_BLOCKS, description=D[M.GUARDRAIL_ADHERENCE_BLOCKS], unit="1",
+            M.GUARDRAIL_ADHERENCE_BLOCKS,
+            description=D[M.GUARDRAIL_ADHERENCE_BLOCKS],
+            unit="1",
         )
         self.hallucination_violation_counter = self._meter.create_counter(
-            M.GUARDRAIL_HALLUCINATION_BLOCKS, description=D[M.GUARDRAIL_HALLUCINATION_BLOCKS], unit="1",
+            M.GUARDRAIL_HALLUCINATION_BLOCKS,
+            description=D[M.GUARDRAIL_HALLUCINATION_BLOCKS],
+            unit="1",
+        )
+        # Compliance-framework attribution (per blocked violation, per
+        # (framework, framework_id) pair). Emitted alongside
+        # GUARDRAIL_BLOCKS by record_compliance_hits().
+        self.guardrail_compliance_hit_counter = self._meter.create_counter(
+            M.GUARDRAIL_COMPLIANCE_HIT,
+            description=D[M.GUARDRAIL_COMPLIANCE_HIT],
+            unit="1",
+        )
+        # Per-server allow/deny policy refusals (server-tool guardrail).
+        self.tool_permission_denied_counter = self._meter.create_counter(
+            M.TOOL_PERMISSION_DENIED,
+            description=D[M.TOOL_PERMISSION_DENIED],
+            unit="1",
+        )
+        # Centralised error counter (one increment per MCPGatewayError).
+        self.errors_by_code_counter = self._meter.create_counter(
+            M.ERRORS_BY_CODE, description=D[M.ERRORS_BY_CODE], unit="1",
+        )
+        # Degradation verdicts (fail-open / fail-closed fallbacks).
+        self.degradation_fail_open_counter = self._meter.create_counter(
+            M.DEGRADATION_FAIL_OPEN,
+            description=D[M.DEGRADATION_FAIL_OPEN],
+            unit="1",
+        )
+        self.degradation_fail_closed_counter = self._meter.create_counter(
+            M.DEGRADATION_FAIL_CLOSED,
+            description=D[M.DEGRADATION_FAIL_CLOSED],
+            unit="1",
+        )
+        # MCP client transport errors (HTTP / stdio).
+        self.transport_error_counter = self._meter.create_counter(
+            M.TRANSPORT_ERRORS,
+            description=D[M.TRANSPORT_ERRORS],
+            unit="1",
+        )
+        # Discovery failures per downstream MCP server.
+        self.discovery_server_failure_counter = self._meter.create_counter(
+            M.DISCOVERY_SERVER_FAILURES,
+            description=D[M.DISCOVERY_SERVER_FAILURES],
+            unit="1",
+        )
+
+        # ---------------------------------------------------------------
+        # Audit / compliance counters (Audit Trail dashboard).
+        # See conventions.MetricNames audit block for the two-layer
+        # umbrella+specific emission contract.
+        # ---------------------------------------------------------------
+        self.admin_actions_counter = self._meter.create_counter(
+            M.ADMIN_ACTIONS, description=D[M.ADMIN_ACTIONS], unit="1",
+        )
+        self.privileged_operations_counter = self._meter.create_counter(
+            M.PRIVILEGED_OPERATIONS,
+            description=D[M.PRIVILEGED_OPERATIONS],
+            unit="1",
+        )
+        self.admin_cache_flush_counter = self._meter.create_counter(
+            M.ADMIN_CACHE_FLUSH,
+            description=D[M.ADMIN_CACHE_FLUSH],
+            unit="1",
+        )
+        self.apikey_rotations_counter = self._meter.create_counter(
+            M.APIKEY_ROTATIONS,
+            description=D[M.APIKEY_ROTATIONS],
+            unit="1",
+        )
+        self.audit_apikey_created_counter = self._meter.create_counter(
+            M.AUDIT_APIKEY_CREATED,
+            description=D[M.AUDIT_APIKEY_CREATED],
+            unit="1",
+        )
+        self.audit_apikey_deleted_counter = self._meter.create_counter(
+            M.AUDIT_APIKEY_DELETED,
+            description=D[M.AUDIT_APIKEY_DELETED],
+            unit="1",
+        )
+        self.audit_apikey_disabled_counter = self._meter.create_counter(
+            M.AUDIT_APIKEY_DISABLED,
+            description=D[M.AUDIT_APIKEY_DISABLED],
+            unit="1",
+        )
+        self.audit_apikey_rotated_counter = self._meter.create_counter(
+            M.AUDIT_APIKEY_ROTATED,
+            description=D[M.AUDIT_APIKEY_ROTATED],
+            unit="1",
+        )
+        self.audit_config_modified_counter = self._meter.create_counter(
+            M.AUDIT_CONFIG_MODIFIED,
+            description=D[M.AUDIT_CONFIG_MODIFIED],
+            unit="1",
+        )
+        self.audit_settings_enkrypt_api_key_set_counter = self._meter.create_counter(
+            M.AUDIT_SETTINGS_ENKRYPT_API_KEY_SET,
+            description=D[M.AUDIT_SETTINGS_ENKRYPT_API_KEY_SET],
+            unit="1",
+        )
+        self.audit_settings_telemetry_changed_counter = self._meter.create_counter(
+            M.AUDIT_SETTINGS_TELEMETRY_CHANGED,
+            description=D[M.AUDIT_SETTINGS_TELEMETRY_CHANGED],
+            unit="1",
+        )
+        self.audit_user_created_counter = self._meter.create_counter(
+            M.AUDIT_USER_CREATED,
+            description=D[M.AUDIT_USER_CREATED],
+            unit="1",
+        )
+        self.audit_user_deleted_counter = self._meter.create_counter(
+            M.AUDIT_USER_DELETED,
+            description=D[M.AUDIT_USER_DELETED],
+            unit="1",
+        )
+        self.projects_created_counter = self._meter.create_counter(
+            M.PROJECTS_CREATED,
+            description=D[M.PROJECTS_CREATED],
+            unit="1",
+        )
+        self.system_backup_completed_counter = self._meter.create_counter(
+            M.SYSTEM_BACKUP_COMPLETED,
+            description=D[M.SYSTEM_BACKUP_COMPLETED],
+            unit="1",
+        )
+        self.system_reset_counter = self._meter.create_counter(
+            M.SYSTEM_RESET,
+            description=D[M.SYSTEM_RESET],
+            unit="1",
+        )
+        self.system_restore_counter = self._meter.create_counter(
+            M.SYSTEM_RESTORE,
+            description=D[M.SYSTEM_RESTORE],
+            unit="1",
+        )
+        self.auth_unauthorized_http_counter = self._meter.create_counter(
+            M.AUTH_UNAUTHORIZED_HTTP,
+            description=D[M.AUTH_UNAUTHORIZED_HTTP],
+            unit="1",
         )
 
         # Health-check API metrics (REST endpoints under /api/v1/health/mcp/*)
         self.health_request_counter = self._meter.create_counter(
-            M.HEALTH_REQUESTS, description=D[M.HEALTH_REQUESTS], unit="1",
+            M.HEALTH_REQUESTS,
+            description=D[M.HEALTH_REQUESTS],
+            unit="1",
         )
         self.health_request_duration = self._meter.create_histogram(
-            M.HEALTH_DURATION, description=D[M.HEALTH_DURATION], unit="s",
+            M.HEALTH_DURATION,
+            description=D[M.HEALTH_DURATION],
+            unit="s",
         )
         self.health_success_counter = self._meter.create_counter(
-            M.HEALTH_SUCCESS, description=D[M.HEALTH_SUCCESS], unit="1",
+            M.HEALTH_SUCCESS,
+            description=D[M.HEALTH_SUCCESS],
+            unit="1",
         )
         self.health_failure_counter = self._meter.create_counter(
-            M.HEALTH_FAILURES, description=D[M.HEALTH_FAILURES], unit="1",
+            M.HEALTH_FAILURES,
+            description=D[M.HEALTH_FAILURES],
+            unit="1",
+        )
+        # Playground (/mcp-playground/*) registry-lookup latency.  Emitted
+        # from ``services/health/registry_client.py`` per upstream call.
+        self.playground_registry_lookup_duration = self._meter.create_histogram(
+            M.PLAYGROUND_REGISTRY_LOOKUP_DURATION,
+            description=D[M.PLAYGROUND_REGISTRY_LOOKUP_DURATION],
+            unit="ms",
+        )
+        # Playground /consumer-info lookup latency (inline-body mode with
+        # provider=enkrypt). Emitted from
+        # ``services/health/consumer_info_client.py``.
+        self.playground_consumer_info_lookup_duration = self._meter.create_histogram(
+            M.PLAYGROUND_CONSUMER_INFO_LOOKUP_DURATION,
+            description=D[M.PLAYGROUND_CONSUMER_INFO_LOOKUP_DURATION],
+            unit="ms",
         )
 
     def _setup_disabled_telemetry(self):
@@ -548,17 +822,50 @@ class OpenTelemetryProvider(TelemetryProvider):
         self.relevancy_violation_counter = NoOpCounter()
         self.adherence_violation_counter = NoOpCounter()
         self.hallucination_violation_counter = NoOpCounter()
+        self.guardrail_compliance_hit_counter = NoOpCounter()
+        self.tool_permission_denied_counter = NoOpCounter()
+        self.errors_by_code_counter = NoOpCounter()
+        self.degradation_fail_open_counter = NoOpCounter()
+        self.degradation_fail_closed_counter = NoOpCounter()
+        self.transport_error_counter = NoOpCounter()
+        self.discovery_server_failure_counter = NoOpCounter()
+        # Audit / compliance no-op shims
+        self.admin_actions_counter = NoOpCounter()
+        self.privileged_operations_counter = NoOpCounter()
+        self.admin_cache_flush_counter = NoOpCounter()
+        self.apikey_rotations_counter = NoOpCounter()
+        self.audit_apikey_created_counter = NoOpCounter()
+        self.audit_apikey_deleted_counter = NoOpCounter()
+        self.audit_apikey_disabled_counter = NoOpCounter()
+        self.audit_apikey_rotated_counter = NoOpCounter()
+        self.audit_config_modified_counter = NoOpCounter()
+        self.audit_settings_enkrypt_api_key_set_counter = NoOpCounter()
+        self.audit_settings_telemetry_changed_counter = NoOpCounter()
+        self.audit_user_created_counter = NoOpCounter()
+        self.audit_user_deleted_counter = NoOpCounter()
+        self.projects_created_counter = NoOpCounter()
+        self.system_backup_completed_counter = NoOpCounter()
+        self.system_reset_counter = NoOpCounter()
+        self.system_restore_counter = NoOpCounter()
+        self.auth_unauthorized_http_counter = NoOpCounter()
         self.auth_success_counter = NoOpCounter()
         self.auth_failure_counter = NoOpCounter()
         self.active_sessions_gauge = NoOpCounter()
         self.active_users_gauge = NoOpCounter()
         self.pii_redactions_counter = NoOpCounter()
+        self.guardrail_pii_entity_counter = NoOpCounter()
+        self.guardrail_toxicity_subtype_counter = NoOpCounter()
 
         # Health-check API metrics
         self.health_request_counter = NoOpCounter()
         self.health_request_duration = NoOpHistogram()
         self.health_success_counter = NoOpCounter()
         self.health_failure_counter = NoOpCounter()
+
+        # Playground registry-lookup latency (no-op when telemetry disabled)
+        self.playground_registry_lookup_duration = NoOpHistogram()
+        # Playground /consumer-info lookup latency (no-op when disabled)
+        self.playground_consumer_info_lookup_duration = NoOpHistogram()
 
     def create_logger(self, name: str) -> Any:
         """Create a logger instance (structlog-backed)."""
@@ -584,31 +891,40 @@ class OpenTelemetryProvider(TelemetryProvider):
         D = METRIC_DESCRIPTIONS
 
         self.timeout_operations_total = self._meter.create_counter(
-            M.TIMEOUT_OPERATIONS, description=D[M.TIMEOUT_OPERATIONS],
+            M.TIMEOUT_OPERATIONS,
+            description=D[M.TIMEOUT_OPERATIONS],
         )
         self.timeout_operations_successful = self._meter.create_counter(
-            M.TIMEOUT_SUCCESS, description=D[M.TIMEOUT_SUCCESS],
+            M.TIMEOUT_SUCCESS,
+            description=D[M.TIMEOUT_SUCCESS],
         )
         self.timeout_operations_timed_out = self._meter.create_counter(
-            M.TIMEOUT_TIMED_OUT, description=D[M.TIMEOUT_TIMED_OUT],
+            M.TIMEOUT_TIMED_OUT,
+            description=D[M.TIMEOUT_TIMED_OUT],
         )
         self.timeout_operations_cancelled = self._meter.create_counter(
-            M.TIMEOUT_CANCELLED, description=D[M.TIMEOUT_CANCELLED],
+            M.TIMEOUT_CANCELLED,
+            description=D[M.TIMEOUT_CANCELLED],
         )
         self.timeout_escalation_warn = self._meter.create_counter(
-            M.TIMEOUT_ESCALATION_WARN, description=D[M.TIMEOUT_ESCALATION_WARN],
+            M.TIMEOUT_ESCALATION_WARN,
+            description=D[M.TIMEOUT_ESCALATION_WARN],
         )
         self.timeout_escalation_timeout = self._meter.create_counter(
-            M.TIMEOUT_ESCALATION_TIMEOUT, description=D[M.TIMEOUT_ESCALATION_TIMEOUT],
+            M.TIMEOUT_ESCALATION_TIMEOUT,
+            description=D[M.TIMEOUT_ESCALATION_TIMEOUT],
         )
         self.timeout_escalation_fail = self._meter.create_counter(
-            M.TIMEOUT_ESCALATION_FAIL, description=D[M.TIMEOUT_ESCALATION_FAIL],
+            M.TIMEOUT_ESCALATION_FAIL,
+            description=D[M.TIMEOUT_ESCALATION_FAIL],
         )
         self.timeout_operation_duration = self._meter.create_histogram(
-            M.TIMEOUT_DURATION, description=D[M.TIMEOUT_DURATION],
+            M.TIMEOUT_DURATION,
+            description=D[M.TIMEOUT_DURATION],
         )
         self.timeout_active_operations = self._meter.create_up_down_counter(
-            M.TIMEOUT_ACTIVE, description=D[M.TIMEOUT_ACTIVE],
+            M.TIMEOUT_ACTIVE,
+            description=D[M.TIMEOUT_ACTIVE],
         )
 
     def shutdown(self) -> None:

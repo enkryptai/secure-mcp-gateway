@@ -45,25 +45,35 @@ class OAuthConfig:
     token_url: str = ""
 
     # Client credentials
-    client_id: Optional[str] = None
-    client_secret: Optional[str] = None
+    client_id: str | None = None
+    client_secret: str | None = None
 
     # Optional parameters
-    audience: Optional[str] = None
-    organization: Optional[str] = None
-    scope: Optional[str] = None
+    audience: str | None = None
+    organization: str | None = None
+    scope: str | None = None
 
     # OAuth 2.1 specific
-    resource: Optional[str] = None  # Resource Indicator (RFC 8707)
+    resource: str | None = None  # Resource Indicator (RFC 8707)
     use_pkce: bool = False  # PKCE for Authorization Code flow
 
     # Authorization Code Grant specific
-    authorization_url: Optional[str] = None  # Authorization endpoint
-    redirect_uri: Optional[str] = None  # Callback URL
-    state: Optional[str] = None  # CSRF protection state
-    code_verifier: Optional[str] = None  # PKCE code verifier (generated)
-    code_challenge: Optional[str] = None  # PKCE code challenge (generated)
+    authorization_url: str | None = None  # Authorization endpoint
+    redirect_uri: str | None = None  # Callback URL
+    state: str | None = None  # CSRF protection state
+    code_verifier: str | None = None  # PKCE code verifier (generated)
+    code_challenge: str | None = None  # PKCE code challenge (generated)
     code_challenge_method: str = "S256"  # S256 (SHA-256) or plain
+
+    # Token delivery (how the obtained token reaches the downstream MCP server)
+    #   "env_injection"          -> inject ENKRYPT_ACCESS_TOKEN / Authorization (default)
+    #   "google_credentials_file" -> materialize a google-auth credentials JSON
+    #                                file the server reads on startup (e.g.
+    #                                mkummer225/google-sheets-mcp). The gateway
+    #                                runs the auth-code flow and writes the file;
+    #                                no token is injected into the child env.
+    token_delivery: str = "env_injection"
+    credentials_file: str | None = None  # Output path for google_credentials_file mode
 
     # Token management
     token_expiry_buffer: int = 300  # Refresh token 5 minutes before expiry
@@ -75,22 +85,22 @@ class OAuthConfig:
 
     # mTLS (Mutual TLS) settings (RFC 8705)
     use_mtls: bool = False  # Enable mutual TLS authentication
-    client_cert_path: Optional[str] = None  # Path to client certificate (.pem)
-    client_key_path: Optional[str] = None  # Path to client private key (.pem)
-    ca_bundle_path: Optional[str] = None  # Path to CA bundle for server verification
+    client_cert_path: str | None = None  # Path to client certificate (.pem)
+    client_key_path: str | None = None  # Path to client private key (.pem)
+    ca_bundle_path: str | None = None  # Path to CA bundle for server verification
 
     # Token revocation (RFC 7009)
-    revocation_url: Optional[str] = None  # Token revocation endpoint
+    revocation_url: str | None = None  # Token revocation endpoint
 
     # Scope validation
     validate_scopes: bool = True  # Validate returned token has requested scopes
 
     # Advanced settings
-    additional_params: Dict[str, Any] = field(default_factory=dict)
-    custom_headers: Dict[str, str] = field(default_factory=dict)
+    additional_params: dict[str, Any] = field(default_factory=dict)
+    custom_headers: dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "OAuthConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "OAuthConfig":
         """
         Create OAuthConfig from dictionary.
 
@@ -133,6 +143,9 @@ class OAuthConfig:
             code_verifier=data.get("OAUTH_CODE_VERIFIER"),
             code_challenge=data.get("OAUTH_CODE_CHALLENGE"),
             code_challenge_method=data.get("OAUTH_CODE_CHALLENGE_METHOD", "S256"),
+            # Token delivery
+            token_delivery=data.get("OAUTH_TOKEN_DELIVERY", "env_injection"),
+            credentials_file=data.get("OAUTH_CREDENTIALS_FILE"),
             # Token management
             token_expiry_buffer=data.get("OAUTH_TOKEN_EXPIRY_BUFFER", 300),
             use_basic_auth=data.get("OAUTH_USE_BASIC_AUTH", True),
@@ -156,7 +169,7 @@ class OAuthConfig:
             custom_headers=data.get("OAUTH_CUSTOM_HEADERS", {}),
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert OAuthConfig to dictionary.
 
@@ -183,6 +196,8 @@ class OAuthConfig:
             if self.code_challenge
             else None,
             "OAUTH_CODE_CHALLENGE_METHOD": self.code_challenge_method,
+            "OAUTH_TOKEN_DELIVERY": self.token_delivery,
+            "OAUTH_CREDENTIALS_FILE": self.credentials_file,
             "OAUTH_TOKEN_EXPIRY_BUFFER": self.token_expiry_buffer,
             "OAUTH_USE_BASIC_AUTH": self.use_basic_auth,
             "OAUTH_ENFORCE_HTTPS": self.enforce_https,
@@ -195,7 +210,7 @@ class OAuthConfig:
             "OAUTH_VALIDATE_SCOPES": self.validate_scopes,
         }
 
-    def validate(self) -> tuple[bool, Optional[str]]:
+    def validate(self) -> tuple[bool, str | None]:
         """
         Validate OAuth configuration.
 
@@ -293,17 +308,17 @@ class OAuthToken:
 
     access_token: str
     token_type: str = "Bearer"
-    expires_in: Optional[int] = None
-    refresh_token: Optional[str] = None
-    scope: Optional[str] = None
+    expires_in: int | None = None
+    refresh_token: str | None = None
+    scope: str | None = None
 
     # Computed fields
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
 
     # Metadata
-    server_name: Optional[str] = None
-    config_id: Optional[str] = None
+    server_name: str | None = None
+    config_id: str | None = None
 
     def __post_init__(self):
         """Calculate expiration time."""
@@ -339,7 +354,7 @@ class OAuthToken:
             return TokenStatus.EXPIRED
         return TokenStatus.VALID
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "access_token": self.access_token[:20] + "..."
@@ -357,7 +372,7 @@ class OAuthToken:
     @classmethod
     def from_response(
         cls,
-        response_data: Dict[str, Any],
+        response_data: dict[str, Any],
         server_name: str = None,
         config_id: str = None,
     ) -> "OAuthToken":
@@ -388,13 +403,13 @@ class OAuthError:
     """OAuth error response."""
 
     error: str
-    error_description: Optional[str] = None
-    error_uri: Optional[str] = None
-    status_code: Optional[int] = None
+    error_description: str | None = None
+    error_uri: str | None = None
+    status_code: int | None = None
 
     @classmethod
     def from_response(
-        cls, response_data: Dict[str, Any], status_code: int = None
+        cls, response_data: dict[str, Any], status_code: int = None
     ) -> "OAuthError":
         """Create from error response."""
         return cls(

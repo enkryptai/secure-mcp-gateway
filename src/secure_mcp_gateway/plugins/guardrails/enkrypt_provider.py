@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from typing import Any, ClassVar, Dict, List, Optional
+from typing import Any, ClassVar, Optional
 
 import aiohttp
 
@@ -32,6 +32,32 @@ from secure_mcp_gateway.plugins.telemetry.metrics_helpers import (
     record_pii_redaction,
 )
 from secure_mcp_gateway.utils import logger
+
+
+def _effective_apikey(static_key: str | None) -> str:
+    """Return the per-request apikey if set on the contextvar, else the static key.
+
+    The contextvar (``request_apikey_var``) is populated per request by
+    ``SecureToolExecutionService`` so multi-tenant deployments forward each
+    caller's apikey to Enkrypt cloud — correct billing + per-user auth
+    without requiring a static server-wide apikey baked into the gateway's
+    config file (which is impossible when every end-user has a distinct
+    Enkrypt apikey).
+
+    Falls back to the provider's static ``self.api_key`` for legacy
+    single-tenant local installs and for code paths that run outside a
+    request task (server registration at startup, batch tool validation
+    during discovery). Returns ``""`` when neither is set — caller will
+    then receive an honest 401 from Enkrypt cloud instead of a fatal
+    serialization crash from putting a dict into the header.
+    """
+    try:
+        from secure_mcp_gateway.request_context import request_apikey_var
+
+        request_value = request_apikey_var.get()
+    except Exception:
+        request_value = ""
+    return request_value or static_key or ""
 
 
 async def _post_with_metrics(
@@ -77,11 +103,13 @@ class EnkryptInputGuardrail:
     This class is fully self-contained and makes direct API calls to Enkrypt.
     """
 
-    def __init__(self, config: Dict[str, Any], api_key: str, base_url: str):
+    def __init__(self, config: dict[str, Any], api_key: str, base_url: str):
         self.config = config
         self.api_key = api_key
         self.base_url = base_url
-        self.guardrail_name = config.get("guardrail_name") or config.get("policy_name", "")
+        self.guardrail_name = config.get("guardrail_name") or config.get(
+            "policy_name", ""
+        )
         self.block_list = config.get("block", [])
         self.additional_config = config.get("additional_config", {})
 
@@ -113,7 +141,7 @@ class EnkryptInputGuardrail:
                 headers = {
                     "X-Enkrypt-Guardrail": self.guardrail_name,
                     "X-Enkrypt-Mode": "prompt",
-                    "apikey": self.api_key,
+                    "apikey": _effective_apikey(self.api_key),
                     "Content-Type": "application/json",
                     "X-Enkrypt-Source-Name": "mcp-gateway",
                     "X-Enkrypt-Source-Event": "pre-tool",
@@ -244,7 +272,7 @@ class EnkryptInputGuardrail:
                     processing_time_ms=processing_time_ms,
                 )
 
-    def get_supported_detectors(self) -> List[ViolationType]:
+    def get_supported_detectors(self) -> list[ViolationType]:
         """Get supported violation types for input."""
         return [
             ViolationType.PII,
@@ -280,11 +308,13 @@ class EnkryptOutputGuardrail:
     Includes ALL checks: policy, relevancy, adherence, hallucination.
     """
 
-    def __init__(self, config: Dict[str, Any], api_key: str, base_url: str):
+    def __init__(self, config: dict[str, Any], api_key: str, base_url: str):
         self.config = config
         self.api_key = api_key
         self.base_url = base_url
-        self.guardrail_name = config.get("guardrail_name") or config.get("policy_name", "")
+        self.guardrail_name = config.get("guardrail_name") or config.get(
+            "policy_name", ""
+        )
         self.block_list = config.get("block", [])
         self.additional_config = config.get("additional_config", {})
 
@@ -456,14 +486,14 @@ class EnkryptOutputGuardrail:
                 processing_time_ms=processing_time_ms,
             )
 
-    async def _check_policy(self, text: str) -> Dict[str, Any]:
+    async def _check_policy(self, text: str) -> dict[str, Any]:
         """Check against guardrail using Enkrypt API."""
         try:
             payload = {"text": text}
             headers = {
                 "X-Enkrypt-Guardrail": self.guardrail_name,
                 "X-Enkrypt-Mode": "response",
-                "apikey": self.api_key,
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "post-tool",
@@ -491,12 +521,12 @@ class EnkryptOutputGuardrail:
             logger.error(f"[EnkryptOutputGuardrail] Policy check error: {e}")
             return {"error": str(e)}
 
-    async def _check_relevancy(self, question: str, answer: str) -> Dict[str, Any]:
+    async def _check_relevancy(self, question: str, answer: str) -> dict[str, Any]:
         """Check relevancy using Enkrypt API."""
         try:
             payload = {"question": question, "llm_answer": answer}
             headers = {
-                "apikey": self.api_key,
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "post-tool",
@@ -522,12 +552,12 @@ class EnkryptOutputGuardrail:
             logger.error(f"[EnkryptOutputGuardrail] Relevancy check error: {e}")
             return {"error": str(e), "score": 1.0}  # Default to passing
 
-    async def _check_adherence(self, context: str, answer: str) -> Dict[str, Any]:
+    async def _check_adherence(self, context: str, answer: str) -> dict[str, Any]:
         """Check adherence using Enkrypt API."""
         try:
             payload = {"context": context, "llm_answer": answer}
             headers = {
-                "apikey": self.api_key,
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "post-tool",
@@ -555,7 +585,7 @@ class EnkryptOutputGuardrail:
 
     async def _check_hallucination(
         self, request: str, response: str, context: str = ""
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Check hallucination using Enkrypt API."""
         try:
             payload = {
@@ -564,7 +594,7 @@ class EnkryptOutputGuardrail:
                 "context": context,
             }
             headers = {
-                "apikey": self.api_key,
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "post-tool",
@@ -590,7 +620,7 @@ class EnkryptOutputGuardrail:
             logger.error(f"[EnkryptOutputGuardrail] Hallucination check error: {e}")
             return {"error": str(e), "has_hallucination": False}  # Default to passing
 
-    def get_supported_detectors(self) -> List[ViolationType]:
+    def get_supported_detectors(self) -> list[ViolationType]:
         """Get supported violation types for output."""
         return [
             ViolationType.PII,
@@ -628,13 +658,13 @@ class EnkryptPIIHandler:
         self.base_url = base_url
         self.pii_url = f"{base_url}/guardrails/pii"
 
-    async def detect_pii(self, content: str) -> List[GuardrailViolation]:
+    async def detect_pii(self, content: str) -> list[GuardrailViolation]:
         """Detect PII using Enkrypt."""
         try:
             # Use the redact endpoint to detect PII
             payload = {"text": content, "mode": "request", "key": "null"}
             headers = {
-                "apikey": self.api_key,
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "pii-detect",
@@ -671,12 +701,12 @@ class EnkryptPIIHandler:
             logger.error(f"[EnkryptPIIHandler] PII detection error: {e}")
             return []
 
-    async def redact_pii(self, content: str) -> tuple[str, Dict[str, Any]]:
+    async def redact_pii(self, content: str) -> tuple[str, dict[str, Any]]:
         """Redact PII using Enkrypt."""
         try:
             payload = {"text": content, "mode": "request", "key": "null"}
             headers = {
-                "apikey": self.api_key,
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "pii-redact",
@@ -703,7 +733,7 @@ class EnkryptPIIHandler:
             logger.error(f"[EnkryptPIIHandler] PII redaction error: {e}")
             return content, {}
 
-    async def restore_pii(self, content: str, pii_mapping: Dict[str, Any]) -> str:
+    async def restore_pii(self, content: str, pii_mapping: dict[str, Any]) -> str:
         """Restore PII using Enkrypt."""
         try:
             pii_key = pii_mapping.get("key", "")
@@ -712,7 +742,7 @@ class EnkryptPIIHandler:
 
             payload = {"text": content, "mode": "response", "key": pii_key}
             headers = {
-                "apikey": self.api_key,
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "pii-restore",
@@ -745,7 +775,7 @@ class EnkryptServerRegistrationGuardrail:
     """
 
     # All known detector keys with their default internal configs
-    _DETECTOR_DEFAULTS: ClassVar[Dict[str, Dict[str, Any]]] = {
+    _DETECTOR_DEFAULTS: ClassVar[dict[str, dict[str, Any]]] = {
         "injection_attack": {},
         "policy_violation": {
             "need_explanation": True,
@@ -786,10 +816,10 @@ class EnkryptServerRegistrationGuardrail:
     @classmethod
     def _build_detectors(
         cls,
-        block_list: List[str],
-        guardrail_name: Optional[str] = None,
+        block_list: list[str],
+        guardrail_name: str | None = None,
         context: str = "tool",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Build a detectors dict from a block list.
 
@@ -822,13 +852,13 @@ class EnkryptServerRegistrationGuardrail:
 
         return detectors
 
-    def __init__(self, api_key: str, base_url: str, config: Dict[str, Any] = None):
+    def __init__(self, api_key: str, base_url: str, config: dict[str, Any] = None):
         import sys
 
         self.api_key = api_key
         self.base_url = base_url
         self.config = config or {}
-        self.batch_url = f"{base_url}/guardrails/batch/detect"
+        self.batch_url = f"{base_url}/guardrails/guardrail/batch/detect"
         # Check both "debug" field and "enkrypt_log_level" for DEBUG
         self.debug = (
             self.config.get("debug", False)
@@ -848,12 +878,8 @@ class EnkryptServerRegistrationGuardrail:
         # registration_validation.custom_detectors is explicitly set in provider config
         registration_config = self.config.get("registration_validation", {})
         if registration_config.get("custom_detectors"):
-            self._custom_server_detectors = registration_config.get(
-                "server_detectors"
-            )
-            self._custom_tool_detectors = registration_config.get(
-                "tool_detectors"
-            )
+            self._custom_server_detectors = registration_config.get("server_detectors")
+            self._custom_tool_detectors = registration_config.get("tool_detectors")
         else:
             self._custom_server_detectors = None
             self._custom_tool_detectors = None
@@ -879,14 +905,16 @@ class EnkryptServerRegistrationGuardrail:
                 )
                 logger.debug(f"[EnkryptServerRegistration] Text: {server_text}")
 
-            # Build detectors from tool_guardrails_config (required since v2.1.7)
-            policy = getattr(request, "tool_guardrails_config", None) or {}
-            block_list = policy.get("block", [])
+            policy = getattr(request, "server_tools_guardrails_config", None) or {}
+            policy_guardrail_name = policy.get("guardrail_name") or policy.get(
+                "policy_name"
+            )
 
-            # If block list is empty, no blocking — monitor/log only
-            if not block_list and not self._custom_server_detectors:
+            if not policy_guardrail_name:
                 logger.info(
-                    f"[EnkryptServerRegistration] No detectors in block list for server '{request.server_name}' — monitor only, allowing through"
+                    f"[EnkryptServerRegistration] No guardrail policy configured in "
+                    f"common_overrides.server_tools_guardrails_config for server '{request.server_name}' "
+                    f"— skipping server registration check, allowing through"
                 )
                 return GuardrailResponse(
                     is_safe=True,
@@ -896,24 +924,16 @@ class EnkryptServerRegistrationGuardrail:
                         "provider": "enkrypt",
                         "mode": "monitor",
                         "server_name": request.server_name,
-                        "message": "No detectors configured in block list, server allowed",
+                        "message": "No server_tools_guardrails_config.guardrail_name configured, server allowed",
                         "processing_time": time.time() - start_time,
                     },
                 )
 
-            # Allow custom override from provider config
-            if self._custom_server_detectors:
-                detectors = self._custom_server_detectors
-            else:
-                detectors = self._build_detectors(
-                    block_list=block_list,
-                    guardrail_name=policy.get("guardrail_name") or policy.get("policy_name"),
-                    context="server",
-                )
-
-            # Call Enkrypt batch API
+            # Policy-driven batch call — cloud applies the named guardrail.
             response = await self._call_batch_api(
-                texts=[server_text], detectors=detectors
+                texts=[server_text],
+                detectors=None,
+                guardrail_name=policy_guardrail_name,
             )
 
             if self.debug:
@@ -1109,14 +1129,20 @@ class EnkryptServerRegistrationGuardrail:
                     f"[EnkryptToolRegistration] Validating {len(texts)} tools for {request.server_name}"
                 )
 
-            # Build detectors from tool_guardrails_config (required since v2.1.7)
-            policy = getattr(request, "tool_guardrails_config", None) or {}
-            block_list = policy.get("block", [])
+            # ``server_tools_guardrails_config`` is gateway-wide only — sourced
+            # from ``common_overrides`` in EnkryptAuthProvider. If absent or
+            # without a ``guardrail_name``, we no-op (disabled by default).
+            policy = getattr(request, "server_tools_guardrails_config", None) or {}
+            policy_guardrail_name = policy.get("guardrail_name") or policy.get(
+                "policy_name"
+            )
 
-            # If block list is empty, no blocking — monitor/log only
-            if not block_list and not self._custom_tool_detectors:
+            if not policy_guardrail_name:
                 logger.info(
-                    f"[EnkryptToolRegistration] No detectors in block list for server '{request.server_name}' — monitor only, allowing all {len(texts)} tools through"
+                    f"[EnkryptToolRegistration] No guardrail policy configured in "
+                    f"common_overrides.server_tools_guardrails_config for server '{request.server_name}' "
+                    f"— skipping {getattr(request, 'kind', 'tool_list')} check, "
+                    f"allowing all {len(texts)} texts through"
                 )
                 return GuardrailResponse(
                     is_safe=True,
@@ -1127,24 +1153,15 @@ class EnkryptServerRegistrationGuardrail:
                         "mode": "monitor",
                         "server_name": request.server_name,
                         "tools_count": len(texts),
-                        "message": "No detectors configured in block list, all tools allowed",
+                        "message": "No server_tools_guardrails_config.guardrail_name configured, all texts allowed",
                         "processing_time": time.time() - start_time,
                     },
                 )
 
-            # Allow custom override from provider config
-            if self._custom_tool_detectors:
-                detectors = self._custom_tool_detectors
-            else:
-                detectors = self._build_detectors(
-                    block_list=block_list,
-                    guardrail_name=policy.get("guardrail_name") or policy.get("policy_name"),
-                    context="tool",
-                )
-
-            # Call Enkrypt batch API
             response = await self._call_batch_api(
-                texts=texts, detectors=detectors
+                texts=texts,
+                detectors=None,
+                guardrail_name=policy_guardrail_name,
             )
 
             if self.debug:
@@ -1158,7 +1175,9 @@ class EnkryptServerRegistrationGuardrail:
             blocked_tools = []
             all_violations = []
 
-            for i, (tool, result) in enumerate(zip(request.tools, response)):
+            for i, (tool, result) in enumerate(
+                zip(request.tools, response, strict=False)
+            ):
                 # Check all enabled detectors
                 tool_violations = []
 
@@ -1352,9 +1371,24 @@ class EnkryptServerRegistrationGuardrail:
             )
 
     async def _call_batch_api(
-        self, texts: List[str], detectors: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """Call Enkrypt batch detection API."""
+        self,
+        texts: list[str],
+        detectors: dict[str, Any] | None = None,
+        guardrail_name: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Call Enkrypt batch detection API.
+
+        Two modes, selected by which argument is provided:
+
+        - **Policy mode** (``guardrail_name`` set, ``detectors`` ignored):
+          POSTs ``{"texts": [...]}`` with ``X-Enkrypt-Guardrail`` +
+          ``X-Enkrypt-Mode: prompt`` headers. The cloud applies the named
+          guardrail policy. Used for tool-registration and server-description
+          validation, driven by ``common_overrides.server_tools_guardrails_config``.
+        - **Inline-detectors mode** (``detectors`` set, ``guardrail_name``
+          ignored): POSTs ``{"texts": [...], "detectors": {...}}`` with no
+          guardrail header.
+        """
         try:
 
             def _sanitize_for_json(value):
@@ -1378,9 +1412,6 @@ class EnkryptServerRegistrationGuardrail:
                 return str(value)
 
             safe_texts = ["" if t is None else str(t) for t in (texts or [])]
-            safe_detectors = _sanitize_for_json(detectors or {})
-
-            payload = {"texts": safe_texts, "detectors": safe_detectors}
 
             headers = {
                 "apikey": str(self.api_key or ""),
@@ -1388,6 +1419,17 @@ class EnkryptServerRegistrationGuardrail:
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "server-registration",
             }
+
+            if guardrail_name:
+                # Policy mode — cloud applies the named guardrail; we don't
+                # send inline detectors. Mirrors the single-detect contract.
+                payload = {"texts": safe_texts}
+                headers["X-Enkrypt-Guardrail"] = str(guardrail_name)
+                headers["X-Enkrypt-Mode"] = "prompt"
+            else:
+                # Inline-detectors mode — current server-description path.
+                safe_detectors = _sanitize_for_json(detectors or {})
+                payload = {"texts": safe_texts, "detectors": safe_detectors}
 
             if self.debug:
                 logger.debug(
@@ -1449,6 +1491,7 @@ class EnkryptServerRegistrationGuardrail:
             from secure_mcp_gateway.exceptions import (
                 ErrorCode,
                 ErrorContext,
+                MCPGatewayError,
                 create_guardrail_error,
             )
 
@@ -1459,15 +1502,32 @@ class EnkryptServerRegistrationGuardrail:
                 server_name=getattr(self, "server_name", None),
             )
 
+            # Unwrap TimeoutManager's wrapper so we classify on the underlying
+            # cause, not its prefix. TimeoutManager wraps non-asyncio.TimeoutError
+            # exceptions as ``Timeout-managed operation ... failed: {e}`` —
+            # naive substring matching on "timeout" in ``str(e)`` would then
+            # route plain HTTP 5xx errors (e.g. "API error 502: Bad Gateway")
+            # into GUARDRAIL_TIMEOUT, producing misleading logs and obscuring
+            # the real failure mode.
+            underlying = e
+            if isinstance(e, MCPGatewayError) and e.cause is not None:
+                underlying = e.cause
+            unauthorized_marker = "UNAUTHORIZED:" in str(
+                underlying
+            ) or "UNAUTHORIZED:" in str(e)
+            is_real_timeout = isinstance(underlying, asyncio.TimeoutError) or (
+                "timed out" in str(underlying).lower()
+            )
+
             # Handle different error types with proper error codes
-            if "UNAUTHORIZED:" in str(e):
+            if unauthorized_marker:
                 # Propagate unauthorized marker via exception so upper layers can block
                 raise
-            elif "timeout" in str(e).lower() or "timed out" in str(e).lower():
+            elif is_real_timeout:
                 # Create standardized timeout error
                 error = create_guardrail_error(
                     code=ErrorCode.GUARDRAIL_TIMEOUT,
-                    message=f"Guardrail API call timed out: {e}",
+                    message=f"Guardrail API call timed out: {underlying}",
                     context=context,
                     cause=e,
                 )
@@ -1477,7 +1537,7 @@ class EnkryptServerRegistrationGuardrail:
                 # Create standardized API error
                 error = create_guardrail_error(
                     code=ErrorCode.GUARDRAIL_API_ERROR,
-                    message=f"Guardrail API call failed: {e}",
+                    message=f"Guardrail API call failed: {underlying}",
                     context=context,
                     cause=e,
                 )
@@ -1496,12 +1556,20 @@ class EnkryptGuardrailProvider(GuardrailProvider):
 
     def __init__(
         self,
-        api_key: str,
+        api_key: str = "",
         base_url: str = "https://api.enkryptai.com",
-        config: Dict[str, Any] = None,
+        config: dict[str, Any] = None,
     ):
-        # Use provided credentials; if missing, fetch from full config as fallback
-        self.api_key = api_key
+        # All init args are now kwargs with defaults so the plugin loader can
+        # construct this provider via ``provider_class(**config)`` even when
+        # the config has no api_key (multi-tenant cloud-auth case where the
+        # apikey is forwarded per-request from the caller's headers, not
+        # baked into static config). Falling back to a single-positional
+        # init shape would silently mistake the config dict for ``api_key``.
+        # If api_key is empty, _get_api_credentials() reads from the on-disk
+        # config, and the runtime per-request override (via
+        # ``GuardrailRequest.context["user_apikey"]``) takes precedence.
+        self.api_key = api_key or ""
         self.base_url = base_url
         self.config = config or {}
 
@@ -1548,22 +1616,27 @@ class EnkryptGuardrailProvider(GuardrailProvider):
             # Fallback to self values if config file not found
             return self.api_key, self.base_url
 
+        enkrypt_cfg = full_config.get("enkrypt_config", {})
         plugins_config = full_config.get("plugins", {})
         guardrails_config = plugins_config.get("guardrails", {}).get("config", {})
         auth_config = plugins_config.get("auth", {}).get("config", {})
 
-        api_key = guardrails_config.get(
-            "api_key", auth_config.get("api_key", self.api_key)
+        api_key = (
+            guardrails_config.get("api_key")
+            or enkrypt_cfg.get("api_key")
+            or auth_config.get("api_key")
+            or self.api_key
         )
-        base_url = guardrails_config.get(
-            "base_url", auth_config.get("base_url", self.base_url)
+        base_url = (
+            guardrails_config.get("base_url")
+            or enkrypt_cfg.get("base_url")
+            or auth_config.get("base_url")
+            or self.base_url
         )
 
         return api_key, base_url
 
-    def create_input_guardrail(
-        self, config: Dict[str, Any]
-    ) -> Optional[InputGuardrail]:
+    def create_input_guardrail(self, config: dict[str, Any]) -> InputGuardrail | None:
         """Create Enkrypt input guardrail."""
         if not config.get("enabled", False):
             return None
@@ -1571,9 +1644,7 @@ class EnkryptGuardrailProvider(GuardrailProvider):
         api_key, base_url = self._get_api_credentials()
         return EnkryptInputGuardrail(config, api_key, base_url)
 
-    def create_output_guardrail(
-        self, config: Dict[str, Any]
-    ) -> Optional[OutputGuardrail]:
+    def create_output_guardrail(self, config: dict[str, Any]) -> OutputGuardrail | None:
         """Create Enkrypt output guardrail."""
         if not config.get("enabled", False):
             return None
@@ -1581,37 +1652,37 @@ class EnkryptGuardrailProvider(GuardrailProvider):
         api_key, base_url = self._get_api_credentials()
         return EnkryptOutputGuardrail(config, api_key, base_url)
 
-    def create_pii_handler(self, config: Dict[str, Any]) -> Optional[PIIHandler]:
+    def create_pii_handler(self, config: dict[str, Any]) -> PIIHandler | None:
         """Create Enkrypt PII handler."""
         if config.get("pii_redaction", False):
             api_key, base_url = self._get_api_credentials()
             return EnkryptPIIHandler(api_key, base_url)
         return None
 
-    def validate_config(self, config: Dict[str, Any]) -> bool:
+    def validate_config(self, config: dict[str, Any]) -> bool:
         """Validate Enkrypt configuration."""
         if config.get("enabled", False):
             if not (config.get("guardrail_name") or config.get("policy_name")):
                 return False
         return True
 
-    def get_required_config_keys(self) -> List[str]:
+    def get_required_config_keys(self) -> list[str]:
         """Get required config keys."""
         return ["enabled", "guardrail_name"]
 
     async def validate_server_registration(
         self, request: ServerRegistrationRequest
-    ) -> Optional[GuardrailResponse]:
+    ) -> GuardrailResponse | None:
         """Validate server registration using Enkrypt batch API."""
         return await self.registration_guardrail.validate_server(request)
 
     async def validate_tool_registration(
         self, request: ToolRegistrationRequest
-    ) -> Optional[GuardrailResponse]:
+    ) -> GuardrailResponse | None:
         """Validate tool registration using Enkrypt batch API."""
         return await self.registration_guardrail.validate_tools(request)
 
-    def get_metadata(self) -> Dict[str, Any]:
+    def get_metadata(self) -> dict[str, Any]:
         """Get provider metadata."""
         base_metadata = super().get_metadata()
         base_metadata.update(
