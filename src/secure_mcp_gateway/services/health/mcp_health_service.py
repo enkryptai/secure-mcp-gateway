@@ -42,7 +42,6 @@ from secure_mcp_gateway.plugins.telemetry.conventions import (
 )
 from secure_mcp_gateway.utils import logger
 
-
 # ---------------------------------------------------------------------------
 # Telemetry helpers
 # ---------------------------------------------------------------------------
@@ -124,7 +123,9 @@ def _set_span_outcome(
     try:
         span.set_attribute(SpanAttributes.HEALTH_STATUS, status)
         span.set_attribute(SpanAttributes.HEALTH_RESPONSE_TIME_MS, round(elapsed_ms, 1))
-        span.set_attribute(SpanAttributes.SUCCESS, status == "ok" or status == "connected")
+        span.set_attribute(
+            SpanAttributes.SUCCESS, status == "ok" or status == "connected"
+        )
         if extra_attrs:
             for k, v in extra_attrs.items():
                 if v is not None:

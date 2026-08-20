@@ -18,7 +18,7 @@ from secure_mcp_gateway.plugins.sandbox.base import SandboxProvider
 from secure_mcp_gateway.utils import logger
 
 try:
-    import microsandbox  # noqa: F401
+    import microsandbox
 
     HAS_MICROSANDBOX = True
 except ImportError:
@@ -121,12 +121,15 @@ class MicrosandboxProvider(SandboxProvider):
             MCP ClientSession <-> (anyio MemoryObjectStreams) <-> pump tasks
                 <-> microsandbox.exec_stream/stdin_pipe <-> microVM process
         """
-        import anyio
-        from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-        from mcp.types import JSONRPCMessage
-
         import json
+
+        import anyio
         import microsandbox as msb
+        from anyio.streams.memory import (
+            MemoryObjectReceiveStream,
+            MemoryObjectSendStream,
+        )
+        from mcp.types import JSONRPCMessage
 
         memory = sandbox_config.get("memory_limit", "512m")
         cpus = int(sandbox_config.get("cpu_limit", "1"))

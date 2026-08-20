@@ -25,10 +25,16 @@ Both are accepted everywhere a ``server_config`` / ``server_entry["config"]``
 dict is expected.
 """
 
+import sys
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 import httpx
+
+if sys.version_info < (3, 11):
+    # Builtin only from 3.11; anyio ships the backport on older interpreters.
+    from exceptiongroup import BaseExceptionGroup
+
 from mcp import StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -120,7 +126,10 @@ def _raise_transport_error(
                     "The server requires authentication. If it supports MCP OAuth, "
                     "enable mcp_oauth in the server config."
                 ),
-                context=ctx, cause=http_err, status_code=status, url=url,
+                context=ctx,
+                cause=http_err,
+                status_code=status,
+                url=url,
             ) from exc
         if status == 403:
             raise create_transport_error(
@@ -129,29 +138,40 @@ def _raise_transport_error(
                     f"Server '{server_name}' returned 403 Forbidden for {url}. "
                     "Access denied — check credentials or token scopes."
                 ),
-                context=ctx, cause=http_err, status_code=status, url=url,
+                context=ctx,
+                cause=http_err,
+                status_code=status,
+                url=url,
             ) from exc
         raise create_transport_error(
             code=ErrorCode.TRANSPORT_HTTP_ERROR,
             message=f"Server '{server_name}' returned HTTP {status} for {url}.",
-            context=ctx, cause=http_err, status_code=status, url=url,
+            context=ctx,
+            cause=http_err,
+            status_code=status,
+            url=url,
         ) from exc
 
     if isinstance(exc, (httpx.ConnectError, ConnectionError)):
         raise create_transport_error(
             code=ErrorCode.TRANSPORT_CONNECTION_ERROR,
             message=f"Connection to '{server_name}' at {url} failed: {exc}",
-            context=ctx, cause=exc if isinstance(exc, Exception) else None, url=url,
+            context=ctx,
+            cause=exc if isinstance(exc, Exception) else None,
+            url=url,
         ) from exc
 
     if isinstance(exc, (httpx.TimeoutException,)):
         raise create_transport_error(
             code=ErrorCode.TRANSPORT_TIMEOUT,
             message=f"Connection to '{server_name}' at {url} timed out.",
-            context=ctx, cause=exc, url=url,
+            context=ctx,
+            cause=exc,
+            url=url,
         ) from exc
 
     import asyncio
+
     if isinstance(exc, (asyncio.CancelledError, TimeoutError)):
         raise create_transport_error(
             code=ErrorCode.TRANSPORT_TIMEOUT,
@@ -160,14 +180,18 @@ def _raise_transport_error(
                 "If the server requires OAuth, the authorization flow may not have "
                 "completed in time."
             ),
-            context=ctx, cause=None, url=url,
+            context=ctx,
+            cause=None,
+            url=url,
         ) from exc
 
     desc = str(exc) or type(exc).__name__
     raise create_transport_error(
         code=ErrorCode.TRANSPORT_HTTP_ERROR,
         message=f"Transport error for '{server_name}' at {url}: {desc}",
-        context=ctx, cause=exc if isinstance(exc, Exception) else None, url=url,
+        context=ctx,
+        cause=exc if isinstance(exc, Exception) else None,
+        url=url,
     ) from exc
 
 
@@ -193,7 +217,11 @@ def _raise_stdio_error(
             cause=root if isinstance(root, Exception) else None,
         ) from exc
 
-    if "No such file" in root_msg or "not found" in root_msg.lower() or "ModuleNotFoundError" in root_msg:
+    if (
+        "No such file" in root_msg
+        or "not found" in root_msg.lower()
+        or "ModuleNotFoundError" in root_msg
+    ):
         raise create_transport_error(
             code=ErrorCode.TRANSPORT_STDIO_CONNECT,
             message=(
@@ -247,7 +275,9 @@ async def _open_url_transport(
             from mcp.client.streamable_http import streamablehttp_client
 
             async with streamablehttp_client(
-                url, headers=merged_headers, auth=auth,
+                url,
+                headers=merged_headers,
+                auth=auth,
             ) as (read, write, _get_session_id):
                 yield read, write
     except TransportError:
@@ -282,9 +312,12 @@ async def build_server_params(
             from secure_mcp_gateway.services.oauth.mcp_oauth_provider import (
                 build_mcp_oauth_auth,
             )
+
             auth = await build_mcp_oauth_auth(server_entry)
         except Exception as exc:
-            logger.warning(f"[build_server_params] Could not build MCP OAuth auth: {exc}")
+            logger.warning(
+                f"[build_server_params] Could not build MCP OAuth auth: {exc}"
+            )
 
         async with _open_url_transport(server_entry, auth=auth) as (read, write):
             yield read, write
@@ -312,7 +345,9 @@ async def build_server_params(
                 server_name, command, args, env, sandbox_config
             )
             if transport_ctx is not None:
-                logger.info(f"[build_server_params] Using custom transport for {server_name}")
+                logger.info(
+                    f"[build_server_params] Using custom transport for {server_name}"
+                )
                 async with transport_ctx as (read, write):
                     try:
                         yield read, write

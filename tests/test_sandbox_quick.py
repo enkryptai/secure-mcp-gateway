@@ -3,9 +3,13 @@
 
 import asyncio
 import os
+import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
+
+import pytest
 
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
@@ -45,6 +49,25 @@ async def test_baseline():
           f"total={total*1000:.0f}ms tools={len(tools.tools)} result={text}")
 
 
+def _image_available(image: str) -> bool:
+    """True when the docker CLI is usable and the image is present locally."""
+    if not shutil.which("docker"):
+        return False
+    try:
+        out = subprocess.run(
+            ["docker", "images", "-q", image],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return out.returncode == 0 and bool(out.stdout.strip())
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not _image_available("sandbox-test-mcp"),
+    reason="needs a docker daemon and the locally built sandbox-test-mcp image",
+)
 async def test_docker():
     from mcp import ClientSession
     from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params
@@ -93,6 +116,10 @@ async def test_docker():
           f"total={total*1000:.0f}ms tools={len(tools.tools)} result={text}")
 
 
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not shutil.which("novavm"), reason="needs the novavm runtime"
+)
 async def test_novavm():
     from mcp import ClientSession
     from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params

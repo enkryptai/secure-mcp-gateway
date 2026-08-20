@@ -31,6 +31,7 @@ class ErrorCode(Enum):
     GUARDRAIL_VALIDATION_ERROR = "GUARD_007"
     GUARDRAIL_UNAUTHORIZED = "GUARD_008"
     GUARDRAIL_NETWORK_ERROR = "GUARD_009"
+    GUARDRAIL_POLICY_NOT_FOUND = "GUARD_010"
 
     # Tool Execution Errors (1200-1299)
     TOOL_EXECUTION_FAILED = "TOOL_001"
@@ -698,6 +699,10 @@ def create_transport_error(
 ) -> TransportError:
     """Create a transport error."""
     return TransportError(
-        code, message, context=context, cause=cause,
-        status_code=status_code, url=url,
+        code,
+        message,
+        context=context,
+        cause=cause,
+        status_code=status_code,
+        url=url,
     )

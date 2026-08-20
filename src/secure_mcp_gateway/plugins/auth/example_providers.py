@@ -14,6 +14,7 @@ except ImportError:
 
 import requests
 
+from secure_mcp_gateway.log import get_logger
 from secure_mcp_gateway.plugins.auth.base import (
     AuthCredentials,
     AuthMethod,
@@ -21,7 +22,6 @@ from secure_mcp_gateway.plugins.auth.base import (
     AuthResult,
     AuthStatus,
 )
-from secure_mcp_gateway.log import get_logger
 
 _logger = get_logger(__name__)
 
@@ -125,7 +125,9 @@ class OAuth2Provider(AuthProvider):
             )
 
         except Exception as e:
-            _logger.error("authentication error", provider="OAuth2Provider", error=str(e))
+            _logger.error(
+                "authentication error", provider="OAuth2Provider", error=str(e)
+            )
             return AuthResult(
                 status=AuthStatus.ERROR,
                 authenticated=False,
@@ -156,7 +158,9 @@ class OAuth2Provider(AuthProvider):
             return None
 
         except Exception as e:
-            _logger.error("error fetching user info", provider="OAuth2Provider", error=str(e))
+            _logger.error(
+                "error fetching user info", provider="OAuth2Provider", error=str(e)
+            )
             return None
 
     async def validate_session(self, session_id: str) -> bool:
@@ -466,7 +470,9 @@ class APIKeyProvider(AuthProvider):
             )
 
         except Exception as e:
-            _logger.error("authentication error", provider="APIKeyProvider", error=str(e))
+            _logger.error(
+                "authentication error", provider="APIKeyProvider", error=str(e)
+            )
             return AuthResult(
                 status=AuthStatus.ERROR,
                 authenticated=False,
@@ -610,7 +616,9 @@ class BasicAuthProvider(AuthProvider):
             )
 
         except Exception as e:
-            _logger.error("authentication error", provider="BasicAuthProvider", error=str(e))
+            _logger.error(
+                "authentication error", provider="BasicAuthProvider", error=str(e)
+            )
             return AuthResult(
                 status=AuthStatus.ERROR,
                 authenticated=False,

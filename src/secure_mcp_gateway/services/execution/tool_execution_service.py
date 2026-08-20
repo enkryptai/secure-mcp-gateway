@@ -6,7 +6,10 @@ from typing import Any, AsyncIterator
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from secure_mcp_gateway.plugins.sandbox.server_params import build_server_params, is_url_config
+from secure_mcp_gateway.plugins.sandbox.server_params import (
+    build_server_params,
+    is_url_config,
+)
 
 
 class ToolExecutionService:
@@ -134,12 +137,15 @@ class ToolExecutionService:
         env: dict[str, str] | None = server_config.get("env")
 
         effective_entry = server_entry or {}
-        if is_url and effective_entry.get("config", {}).get("url") != server_config.get("url"):
+        if is_url and effective_entry.get("config", {}).get("url") != server_config.get(
+            "url"
+        ):
             effective_entry = {**effective_entry, "config": server_config}
 
-        async with build_server_params(
-            effective_entry, command, args, env
-        ) as (read, write):
+        async with build_server_params(effective_entry, command, args, env) as (
+            read,
+            write,
+        ):
             async with ClientSession(read, write) as session:
                 # Initialize and capture server metadata
                 init_result = await session.initialize()

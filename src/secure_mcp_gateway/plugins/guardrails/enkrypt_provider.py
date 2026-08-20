@@ -44,11 +44,11 @@ def _effective_apikey(static_key: str | None) -> str:
     config file (which is impossible when every end-user has a distinct
     Enkrypt apikey).
 
-    Falls back to the provider's static ``self.api_key`` for legacy
-    single-tenant local installs and for code paths that run outside a
-    request task (server registration at startup, batch tool validation
-    during discovery). Returns ``""`` when neither is set — caller will
-    then receive an honest 401 from Enkrypt cloud instead of a fatal
+    Populated on both the execution and discovery paths. Falls back to the
+    provider's static ``self.api_key`` for legacy single-tenant local
+    installs and for code that runs outside a request task (server
+    registration at startup). Returns ``""`` when neither is set — caller
+    will then receive an honest 401 from Enkrypt cloud instead of a fatal
     serialization crash from putting a dict into the header.
     """
     try:
@@ -859,6 +859,8 @@ class EnkryptServerRegistrationGuardrail:
         self.base_url = base_url
         self.config = config or {}
         self.batch_url = f"{base_url}/guardrails/guardrail/batch/detect"
+        # Saved-guardrail route vs inline-detectors route; not interchangeable.
+        self.inline_batch_url = f"{base_url}/guardrails/batch/detect"
         # Check both "debug" field and "enkrypt_log_level" for DEBUG
         self.debug = (
             self.config.get("debug", False)
@@ -1414,7 +1416,10 @@ class EnkryptServerRegistrationGuardrail:
             safe_texts = ["" if t is None else str(t) for t in (texts or [])]
 
             headers = {
-                "apikey": str(self.api_key or ""),
+                # Guardrails resolve per apikey/project, so registration and
+                # tool-batch checks must use the caller's key like every other
+                # guardrail call does -- not the gateway's boot-time key.
+                "apikey": _effective_apikey(self.api_key),
                 "Content-Type": "application/json",
                 "X-Enkrypt-Source-Name": "mcp-gateway",
                 "X-Enkrypt-Source-Event": "server-registration",
@@ -1426,10 +1431,14 @@ class EnkryptServerRegistrationGuardrail:
                 payload = {"texts": safe_texts}
                 headers["X-Enkrypt-Guardrail"] = str(guardrail_name)
                 headers["X-Enkrypt-Mode"] = "prompt"
+                url = self.batch_url
             else:
-                # Inline-detectors mode — current server-description path.
+                # Inline-detectors mode — the guardrail-scoped route rejects a
+                # ``detectors`` body ("Unexpected key"); it only runs saved
+                # guardrails by name.
                 safe_detectors = _sanitize_for_json(detectors or {})
                 payload = {"texts": safe_texts, "detectors": safe_detectors}
+                url = self.inline_batch_url
 
             if self.debug:
                 logger.debug(
@@ -1446,7 +1455,7 @@ class EnkryptServerRegistrationGuardrail:
             async def _make_api_call():
                 async with aiohttp.ClientSession() as session:
                     async with session.post(
-                        self.batch_url,
+                        url,
                         json=payload,
                         headers=headers,
                         # Remove aiohttp.ClientTimeout - let TimeoutManager handle timeout
@@ -1518,11 +1527,31 @@ class EnkryptServerRegistrationGuardrail:
             is_real_timeout = isinstance(underlying, asyncio.TimeoutError) or (
                 "timed out" in str(underlying).lower()
             )
+            # 404 here means the named policy doesn't exist for this apikey --
+            # a config mistake, not a detection. Say so instead of surfacing a
+            # raw upstream 404 that reads like the tools were blocked.
+            is_missing_policy = "guardrail not found" in str(underlying).lower()
 
             # Handle different error types with proper error codes
             if unauthorized_marker:
                 # Propagate unauthorized marker via exception so upper layers can block
                 raise
+            elif is_missing_policy:
+                error = create_guardrail_error(
+                    code=ErrorCode.GUARDRAIL_POLICY_NOT_FOUND,
+                    message=(
+                        f"Guardrail '{guardrail_name}' not found for the "
+                        "apikey this call used. Guardrails resolve per "
+                        "apikey/project and the name is matched exactly, "
+                        "including case — check GET /guardrails/list-guardrails "
+                        "for that account. Fix the name in guardrails_config, "
+                        "create the guardrail, or disable the check."
+                    ),
+                    context=context,
+                    cause=e,
+                )
+                error_logger.log_error(error)
+                raise error
             elif is_real_timeout:
                 # Create standardized timeout error
                 error = create_guardrail_error(
