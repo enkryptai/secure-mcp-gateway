@@ -2,6 +2,49 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [v2.2.3]
+
+Clears every finding from the Semgrep scan. No default behaviour changes, but
+the container now runs as a non-root user — see the first entry before you
+deploy.
+
+### Security
+
+- **The container no longer runs as root.**  The image now drops to UID 1000
+  (`ubuntu`) after the build.  Nothing the gateway writes at runtime lives on
+  the root filesystem, but a **host directory or Kubernetes volume mounted at
+  `/app/.enkrypt` must now be readable — and, if you run the CLI or the REST
+  management API in the container, writable — by UID 1000.**  Either `chown -R
+  1000:1000` the mount (the example K8s manifest's init container now does
+  this) or pass `docker run --user <uid>:<gid>` to match your host account.
+  `secure-mcp-gateway --docker` and the compose stack are unaffected.  The CLI
+  also no longer aborts a config write when it cannot `chmod` a mount it does
+  not own; it warns and keeps the host's permissions.
+
+- **The OAuth callback page escaped nothing.**  `/oauth2callback` interpolated
+  the identity provider's `error` and `error_description`, and the server name,
+  straight into its HTML response, so an attacker who could steer a victim's
+  browser to a crafted callback URL could execute script in the gateway's
+  origin.  All interpolated values are now HTML-escaped.
+
+- **CORS origins and the listen address are configurable.**  The REST API
+  hardcoded `Access-Control-Allow-Origin: *` alongside
+  `allow_credentials=True`, and the gateway always bound `0.0.0.0`.  Both
+  defaults are unchanged, but `ENKRYPT_API_CORS_ORIGINS` (comma-separated) and
+  `ENKRYPT_GATEWAY_HOST` now let a deployment narrow them.
+
+- **CI actions are pinned to commit SHAs**, and the release workflows no longer
+  interpolate `github.*` context directly into `run:` shell, closing a
+  supply-chain vector and a shell-injection vector in the build pipeline.
+
+### Changed
+
+- Internal hardening with no behaviour change: static imports in the dashboard
+  generator, a validated module path ahead of the plugin loader's dynamic
+  import, `requests` instead of `urllib` for connectivity probes so a malformed
+  endpoint cannot become a `file://` read, argv lists instead of `shell=True`,
+  and `stat.S_IRWXU` in place of a bare octal mode.
+
 ## [v2.2.2]
 
 ### Fixed
@@ -42,33 +85,6 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
   path today.
 
 ### Security
-
-- **The container no longer runs as root.**  The image now drops to UID 1000
-  (`ubuntu`) after the build.  Nothing the gateway writes at runtime lives on
-  the root filesystem, but a **host directory or Kubernetes volume mounted at
-  `/app/.enkrypt` must now be readable — and, if you run the CLI or the REST
-  management API in the container, writable — by UID 1000.**  Either `chown -R
-  1000:1000` the mount (the example K8s manifest's init container now does
-  this) or pass `docker run --user <uid>:<gid>` to match your host account.
-  `secure-mcp-gateway --docker` and the compose stack are unaffected.  The CLI
-  also no longer aborts a config write when it cannot `chmod` a mount it does
-  not own; it warns and keeps the host's permissions.
-
-- **The OAuth callback page escaped nothing.**  `/oauth2callback` interpolated
-  the identity provider's `error` and `error_description`, and the server name,
-  straight into its HTML response, so an attacker who could steer a victim's
-  browser to a crafted callback URL could execute script in the gateway's
-  origin.  All interpolated values are now HTML-escaped.
-
-- **CORS origins and the listen address are configurable.**  The REST API
-  hardcoded `Access-Control-Allow-Origin: *` alongside
-  `allow_credentials=True`, and the gateway always bound `0.0.0.0`.  Both
-  defaults are unchanged, but `ENKRYPT_API_CORS_ORIGINS` (comma-separated) and
-  `ENKRYPT_GATEWAY_HOST` now let a deployment narrow them.
-
-- **CI actions are pinned to commit SHAs**, and the release workflows no longer
-  interpolate `github.*` context directly into `run:` shell, closing a
-  supply-chain vector and a shell-injection vector in the build pipeline.
 
 - **Remote server credentials were returned to MCP clients in cleartext.**
   `enkrypt_list_all_servers` / `enkrypt_get_server_info` masked `config.env`
