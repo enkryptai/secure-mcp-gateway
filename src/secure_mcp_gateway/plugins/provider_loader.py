@@ -35,7 +35,13 @@ def load_provider_class(class_path: str) -> type:
         # Split the class path into module and class name
         module_path, class_name = class_path.rsplit(".", 1)
 
-        # Import the module
+        # Reject relative imports, empty segments and paths before the import machinery sees them.
+        if not module_path or not all(
+            part.isidentifier() for part in module_path.split(".")
+        ):
+            raise ImportError(f"'{module_path}' is not a valid module path")
+
+        # nosemgrep: python.lang.security.audit.non-literal-import.non-literal-import - plugin class paths come from the operator-owned config and are shape-validated above
         module = importlib.import_module(module_path)
 
         # Get the class from the module

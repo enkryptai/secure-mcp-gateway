@@ -2,6 +2,8 @@
 
 import os
 import sys
+
+# nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2 - project requires-python is >=3.10
 from importlib.resources import files
 
 from secure_mcp_gateway.version import __version__

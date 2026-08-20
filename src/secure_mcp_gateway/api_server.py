@@ -159,10 +159,16 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
-# CORS middleware
+# Defaults to any origin; set ENKRYPT_API_CORS_ORIGINS to a comma-separated allowlist.
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in (os.environ.get("ENKRYPT_API_CORS_ORIGINS") or "*").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

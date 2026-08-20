@@ -169,6 +169,12 @@ RUN pip3 download --no-deps --quiet --dest /tmp/pipwhl pip \
 
 EXPOSE 8000
 
+# Runs as UID 1000; override with `docker run --user <uid>:<gid>` if a mounted volume is owned by another user.
+RUN mkdir -p /home/ubuntu /app/.enkrypt/docker \
+    && chown -R ubuntu:ubuntu /home/ubuntu /app
+ENV HOME=/home/ubuntu
+USER ubuntu
+
 # Set the entrypoint to the script
 ENTRYPOINT ["python3", "src/secure_mcp_gateway/gateway.py"]
 # Alternative: ENTRYPOINT ["mcp", "run", "src/secure_mcp_gateway/gateway.py"]

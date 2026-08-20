@@ -62,6 +62,8 @@ spec:
           echo
           echo "Listing /shared-config/.enkrypt/docker"
           ls /shared-config/.enkrypt/docker
+          # The gateway container runs as UID 1000, so hand the volume over to it.
+          chown -R 1000:1000 /app/.enkrypt
         env:
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
@@ -107,6 +109,11 @@ spec:
           echo
           echo "Starting Secure MCP Gateway..."
           python src/secure_mcp_gateway/gateway.py
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
         ports:
         - containerPort: 8000
           name: http
