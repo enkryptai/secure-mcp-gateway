@@ -215,53 +215,45 @@ class OpenTelemetryProvider(TelemetryProvider):
                 self._is_telemetry_enabled = False
                 return False
 
+            # Get configurable timeout from TimeoutManager
+            from secure_mcp_gateway.services.timeout import get_timeout_manager
+
+            timeout_manager = get_timeout_manager()
+            timeout_value = timeout_manager.get_timeout("connectivity")
+
             # For gRPC endpoints (port 4317), use socket connection test
             if parsed_url.port == 4317:
                 logger.debug(f"[{self.name}] Testing gRPC connectivity to {endpoint}")
-                # Get configurable timeout from TimeoutManager
-                from secure_mcp_gateway.services.timeout import get_timeout_manager
-
-                timeout_manager = get_timeout_manager()
-                timeout_value = timeout_manager.get_timeout("connectivity")
-
                 with socket.create_connection((hostname, port), timeout=timeout_value):
                     logger.debug(f"[{self.name}] gRPC endpoint {endpoint} is reachable")
                     self._is_telemetry_enabled = True
                     return True
             # For HTTP endpoints, test HTTP connectivity instead of just TCP
             elif parsed_url.scheme == "http" or parsed_url.scheme == "https":
-                import urllib.error
-                import urllib.request
+                # requests, not urllib, so a config typo can't turn this probe into a file:// read.
+                import requests
 
                 try:
                     logger.debug(
                         f"[{self.name}] Testing HTTP connectivity to {endpoint}"
                     )
                     # Test HTTP connectivity with a simple HEAD request
-                    req = urllib.request.Request(endpoint, method="HEAD")
-                    with urllib.request.urlopen(req, timeout=timeout_value) as response:
-                        # Any HTTP response (even 404, 405) means the endpoint is reachable
+                    response = requests.head(endpoint, timeout=timeout_value)
+                    status = response.status_code
+                    # Any HTTP response (even 404, 405) means the endpoint is reachable
+                    if status < 400 or status in (400, 404, 405, 500):
                         logger.debug(
-                            f"[{self.name}] HTTP endpoint {endpoint} is reachable (status: {response.status})"
+                            f"[{self.name}] HTTP endpoint {endpoint} is reachable (status: {status})"
                         )
                         self._is_telemetry_enabled = True
                         return True
-                except urllib.error.HTTPError as e:
-                    # HTTP errors (404, 405, etc.) mean the service is running
-                    if e.code in [404, 405, 400, 500]:
-                        logger.debug(
-                            f"[{self.name}] HTTP endpoint {endpoint} is reachable (status: {e.code})"
-                        )
-                        self._is_telemetry_enabled = True
-                        return True
-                    else:
-                        logger.error(
-                            f"[{self.name}] Telemetry enabled in config, but HTTP endpoint {endpoint} returned error {e.code}. "
-                            "Disabling telemetry."
-                        )
-                        self._is_telemetry_enabled = False
-                        return False
-                except urllib.error.URLError as e:
+                    logger.error(
+                        f"[{self.name}] Telemetry enabled in config, but HTTP endpoint {endpoint} returned error {status}. "
+                        "Disabling telemetry."
+                    )
+                    self._is_telemetry_enabled = False
+                    return False
+                except requests.RequestException as e:
                     logger.error(
                         f"[{self.name}] Telemetry enabled in config, but HTTP endpoint {endpoint} is not accessible. "
                         f"Disabling telemetry. Error: {e}"

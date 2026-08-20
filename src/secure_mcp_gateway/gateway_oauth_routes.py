@@ -28,6 +28,7 @@ cloud (enkrypt) auth modes -- identical to how a normal MCP request authorizes.
 
 from __future__ import annotations
 
+import html
 import threading
 import time
 from typing import TYPE_CHECKING, Any, Optional
@@ -448,10 +449,16 @@ async def _authorize_handler(request: Request) -> JSONResponse:
 # ---------------------------------------------------------------------------
 # GET /oauth2callback   (the IdP redirects the browser here)
 # ---------------------------------------------------------------------------
+def _text(value: Any) -> str:
+    """Escape an arbitrary value for interpolation into the callback page."""
+    return html.escape(str(value))
+
+
 def _html(
     title: str, heading_emoji: str, heading: str, body_html: str, status_code: int
 ) -> HTMLResponse:
     return HTMLResponse(
+        # nosemgrep: python.django.security.injection.raw-html-format.raw-html-format, python.fastapi.web.tainted-direct-response-fastapi.tainted-direct-response-fastapi - every dynamic value reaching body_html goes through _text()
         f"""<!DOCTYPE html><html><head><title>{title}</title>
 <style>body{{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;
 height:100vh;margin:0;background:#f0f0f0}}.card{{background:#fff;padding:40px;border-radius:10px;
@@ -476,7 +483,8 @@ async def _callback_handler(request: Request) -> HTMLResponse:
             "Authorization Failed",
             "&#10007;",
             "Authorization Failed",
-            f"<p>The identity provider returned an error.</p><p><code>{err}: {err_desc or ''}</code></p>",
+            # nosemgrep: python.django.security.injection.raw-html-format.raw-html-format - values are HTML-escaped by _text()
+            f"<p>The identity provider returned an error.</p><p><code>{_text(err)}: {_text(err_desc or '')}</code></p>",
             400,
         )
 
@@ -540,7 +548,7 @@ async def _callback_handler(request: Request) -> HTMLResponse:
             "Authorization Failed",
             "&#10007;",
             "Token Exchange Error",
-            f"<p>{e}</p>",
+            f"<p>{_text(e)}</p>",
             500,
         )
 
@@ -555,7 +563,8 @@ async def _callback_handler(request: Request) -> HTMLResponse:
             "Authorization Failed",
             "&#10007;",
             "Token Exchange Failed",
-            f"<p><code>{exchange_err}</code></p>",
+            # nosemgrep: python.django.security.injection.raw-html-format.raw-html-format - values are HTML-escaped by _text()
+            f"<p><code>{_text(exchange_err)}</code></p>",
             400,
         )
 
@@ -575,7 +584,7 @@ async def _callback_handler(request: Request) -> HTMLResponse:
             "Authorization Failed",
             "&#10007;",
             "Could Not Save Credentials",
-            f"<p>{e}</p>",
+            f"<p>{_text(e)}</p>",
             500,
         )
 
@@ -605,7 +614,8 @@ async def _callback_handler(request: Request) -> HTMLResponse:
         "Authorization Successful",
         "&#10003;",
         "Authorization Successful!",
-        f"<p>Credentials for <code>{server_name}</code> have been saved.</p>"
+        # nosemgrep: python.django.security.injection.raw-html-format.raw-html-format - values are HTML-escaped by _text()
+        f"<p>Credentials for <code>{_text(server_name)}</code> have been saved.</p>"
         f"<p>{refresh_note}</p>"
         "<p>You can close this window and use your MCP tools.</p>",
         200,

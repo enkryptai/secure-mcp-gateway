@@ -68,6 +68,7 @@ from secure_mcp_gateway.utils import (
     async_output_guardrails_enabled,
     get_common_config,
     get_fastmcp_log_level,
+    get_gateway_bind_host,
     get_guardrail_api_key,
     get_guardrail_base_url,
     get_log_level,
@@ -1011,7 +1012,7 @@ mcp = FastMCP(
     tools=GATEWAY_TOOLS,
     debug=True if get_fastmcp_log_level() == "DEBUG" else False,
     log_level=get_fastmcp_log_level(),
-    host="0.0.0.0",
+    host=get_gateway_bind_host(),
     port=8000,
     mount_path="/",
     # sse_path="/sse/",
@@ -1075,7 +1076,7 @@ if __name__ == "__main__":
         _fastmcp_log_level = get_fastmcp_log_level()
         mcp.settings.debug = True if _fastmcp_log_level == "DEBUG" else False
         mcp.settings.log_level = _fastmcp_log_level
-        mcp.settings.host = "0.0.0.0"
+        mcp.settings.host = get_gateway_bind_host()
         mcp.settings.port = 8000
         mcp.settings.mount_path = "/"
         mcp.settings.streamable_http_path = "/mcp/"

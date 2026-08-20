@@ -55,8 +55,10 @@ SSRF Attack Vectors:
    URL: file:///etc/passwd
    Result: Read local files
    ```
-   root:x:0:0:root:/root:/bin/bash
-   daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+"""
+            # nosemgrep: generic.secrets.security.detected-etc-shadow.detected-etc-shadow - fabricated /etc/passwd excerpt; this server exists to emit attack-shaped payloads for guardrail tests
+            "   root:x:0:0:root:/root:/bin/bash\n"
+            """   daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
    ```
 
 4. Bypass Filters with Encoding:

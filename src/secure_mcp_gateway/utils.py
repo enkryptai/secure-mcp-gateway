@@ -349,6 +349,11 @@ def get_fastmcp_log_level() -> str:
     return get_log_level().upper()
 
 
+def get_gateway_bind_host() -> str:
+    """Listen address; defaults to all interfaces, set ENKRYPT_GATEWAY_HOST=127.0.0.1 to bind locally."""
+    return os.environ.get("ENKRYPT_GATEWAY_HOST", "0.0.0.0")
+
+
 def get_guardrail_base_url() -> str:
     return (
         _plugin_cfg("guardrails").get("base_url")

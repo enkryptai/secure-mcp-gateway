@@ -6,10 +6,13 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import uuid
 from datetime import datetime
+
+# nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2 - project requires-python is >=3.10
 from importlib.resources import files
 
 # BASE_DIR = os.path.dirname(secure_mcp_gateway.__file__)
@@ -166,6 +169,16 @@ DOCKER_ARGS = build_docker_args(["ENKRYPT_GATEWAY_KEY"])
 # =============================================================================
 
 
+def restrict_permissions(path, mode):
+    """Best-effort chmod; a bind-mounted path owned by another user is left as the host set it."""
+    if os.name != "posix":
+        return
+    try:
+        os.chmod(path, mode)
+    except OSError as e:
+        print(f"WARN: could not restrict permissions on {path}: {e}")
+
+
 def load_config(config_path):
     """Load configuration from file with proper error handling."""
     if not os.path.exists(config_path):
@@ -195,8 +208,7 @@ def save_config(config_path, config):
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
-        if os.name == "posix":
-            os.chmod(config_path, 0o600)
+        restrict_permissions(config_path, 0o600)
 
         # Clear config cache so next read picks up the new config
         clear_config_cache()
@@ -749,14 +761,12 @@ def add_or_update_cursor_server(config_path, server_name, command, args, env):
     # Create directory with restricted permissions
     dir_path = os.path.dirname(config_path)
     os.makedirs(dir_path, exist_ok=True)
-    if os.name == "posix":  # Unix-like systems
-        os.chmod(dir_path, 0o700)
+    restrict_permissions(dir_path, stat.S_IRWXU)
 
     # Write config file with restricted permissions
     with open(config_path, "w") as f:
         json.dump(config, f, indent=2)
-    if os.name == "posix":  # Unix-like systems
-        os.chmod(config_path, 0o600)
+    restrict_permissions(config_path, 0o600)
 
     print(
         "INFO: ",
@@ -4420,8 +4430,7 @@ def main():
                 sys.exit(1)
 
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
-        if os.name == "posix":
-            os.chmod(os.path.dirname(config_path), 0o700)
+        restrict_permissions(os.path.dirname(config_path), stat.S_IRWXU)
 
         provider_choice = getattr(args, "provider", "local_apikey")
         if provider_choice == "enkrypt":
@@ -4551,12 +4560,10 @@ def main():
                 ] = entry
 
                 os.makedirs(os.path.dirname(cursor_config_path), exist_ok=True)
-                if os.name == "posix":
-                    os.chmod(os.path.dirname(cursor_config_path), 0o700)
+                restrict_permissions(os.path.dirname(cursor_config_path), stat.S_IRWXU)
                 with open(cursor_config_path, "w") as f:
                     json.dump(cursor_config, f, indent=2)
-                if os.name == "posix":
-                    os.chmod(cursor_config_path, 0o600)
+                restrict_permissions(cursor_config_path, 0o600)
 
                 print(
                     f"INFO: Successfully configured Cursor for streamable-HTTP "

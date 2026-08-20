@@ -45,8 +45,8 @@ import json
 import os
 import subprocess
 import sys
-import urllib.request
 
+import requests
 
 OSD = os.environ.get("OSD_URL", "http://localhost:15601")
 # OSD admin credentials are typically in a k8s secret; override via env
@@ -74,31 +74,31 @@ FORCED_PATTERNS_AND_FIELDS: list[tuple[str, list[tuple[str, str, bool, bool]]]] 
 ]
 
 
+def _kubectl_secret_field(field: str) -> str:
+    out = subprocess.check_output(
+        [
+            "kubectl", "get", "secret", CRED_SECRET,
+            "-n", CRED_NAMESPACE,
+            "-o", f"jsonpath={{.data.{field}}}",
+        ],
+        shell=False,
+    ).decode()
+    return base64.b64decode(out).decode()
+
+
 def _cred() -> str:
-    user = subprocess.check_output(
-        f"kubectl get secret {CRED_SECRET} -n {CRED_NAMESPACE} "
-        f"-o jsonpath={{.data.username}}",
-        shell=True,
-    ).decode()
-    pw = subprocess.check_output(
-        f"kubectl get secret {CRED_SECRET} -n {CRED_NAMESPACE} "
-        f"-o jsonpath={{.data.password}}",
-        shell=True,
-    ).decode()
-    user = base64.b64decode(user).decode()
-    pw = base64.b64decode(pw).decode()
+    user = _kubectl_secret_field("username")
+    pw = _kubectl_secret_field("password")
     return base64.b64encode(f"{user}:{pw}".encode()).decode()
 
 
 def _req(path: str, method: str = "GET", body: bytes | None = None):
-    url = OSD + path
-    req = urllib.request.Request(url, method=method, data=body)
-    req.add_header("Authorization", f"Basic {_cred()}")
-    req.add_header("osd-xsrf", "true")
+    headers = {"Authorization": f"Basic {_cred()}", "osd-xsrf": "true"}
     if body is not None:
-        req.add_header("Content-Type", "application/json")
-    with urllib.request.urlopen(req) as r:
-        return json.loads(r.read())
+        headers["Content-Type"] = "application/json"
+    r = requests.request(method, OSD + path, data=body, headers=headers, timeout=30)
+    r.raise_for_status()
+    return json.loads(r.content)
 
 
 def main() -> int:

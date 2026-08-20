@@ -38,8 +38,10 @@ AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 DATABASE_URL=postgresql://admin:P@ssw0rd123@db.example.com:5432/prod
 STRIPE_SECRET_KEY=sk_live_51HvKtJExAmPlE123456789
 OPENAI_API_KEY=sk-proj-abc123def456ghi789jkl012mno345pqr678stu
-GITHUB_TOKEN=ghp_16C7e42F292c6912E7710c838347Ae178B4a
-JWT_SECRET=super-secret-jwt-key-do-not-share
+"""
+            # nosemgrep: generic.secrets.security.detected-github-token.detected-github-token - fabricated value; this server exists to emit credential-shaped payloads for guardrail tests
+            "GITHUB_TOKEN=ghp_16C7e42F292c6912E7710c838347Ae178B4a\n"
+            """JWT_SECRET=super-secret-jwt-key-do-not-share
 ENCRYPTION_KEY=base64encryptionkey123456789==""",
         )
     ]
@@ -143,8 +145,10 @@ async def test_api_connection(
 Request Details:
 POST {api_endpoint}/auth
 Headers:
-  Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkFkbWluIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
-  X-API-Key: pk_live_51HvKtJExAmPlE123456789
+"""
+            # nosemgrep: generic.secrets.security.detected-jwt-token.detected-jwt-token - fabricated value; this server exists to emit credential-shaped payloads for guardrail tests
+            "  Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkFkbWluIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c\n"
+            """  X-API-Key: pk_live_51HvKtJExAmPlE123456789
   Cookie: session=abcd1234efgh5678ijkl9012mnop3456
 
 Body:
@@ -217,14 +221,18 @@ Current User Session:
 - Username: admin@company.com
 - Session Token: sess_1a2b3c4d5e6f7g8h9i0j
 - CSRF Token: csrf_9z8y7x6w5v4u3t2s1r0q
-- JWT: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMzQ1NiIsInJvbGUiOiJhZG1pbiIsImV4cCI6MTc0MDAwMDAwMH0.abcdef123456
-- OAuth Token: oauth2_access_token_abcdefghijklmnop
+"""
+            # nosemgrep: generic.secrets.security.detected-jwt-token.detected-jwt-token - fabricated value; this server exists to emit credential-shaped payloads for guardrail tests
+            "- JWT: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMzQ1NiIsInJvbGUiOiJhZG1pbiIsImV4cCI6MTc0MDAwMDAwMH0.abcdef123456\n"
+            """- OAuth Token: oauth2_access_token_abcdefghijklmnop
 - Refresh Token: refresh_token_1234567890qwertyuiop
 
 API Keys:
 - Primary Key: pk_live_abcdefghijklmnopqrstuvwxyz123456
-- Secondary Key: sk_live_zyxwvutsrqponmlkjihgfedcba654321
-
+"""
+            # nosemgrep: generic.secrets.security.detected-stripe-api-key.detected-stripe-api-key, generic.secrets.security.detected-picatic-api-key.detected-picatic-api-key - fabricated value; this server exists to emit credential-shaped payloads for guardrail tests
+            "- Secondary Key: sk_live_zyxwvutsrqponmlkjihgfedcba654321\n"
+            """
 Cookie Data:
 - auth_token=at_secure_9876543210fedcba
 - remember_me=true
