@@ -1,6 +1,6 @@
 {
   "policy": {
-    "description": "Gateway telemetry retention: rollover daily or at 25GB, delete after 7 days. Priority 1000 wins over the global rollover_policy (priority 999) which has .ds-* in its ism_template pattern. Applies to ss4o_metrics-gateway*, ss4o_traces-gateway*, ss4o_logs-gateway*.",
+    "description": "Gateway telemetry retention: rollover daily or at 25GB, delete after 30 days. Priority 1000 wins over the global rollover_policy (priority 999) which has .ds-* in its ism_template pattern. Applies to ss4o_metrics-gateway*, ss4o_traces-gateway*, ss4o_logs-gateway*.",
     "default_state": "hot",
     "ism_template": {
       "index_patterns": [
@@ -25,7 +25,7 @@
           {
             "state_name": "delete",
             "conditions": {
-              "min_index_age": "7d"
+              "min_index_age": "30d"
             }
           }
         ]
