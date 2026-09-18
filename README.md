@@ -1,4 +1,4 @@
-# Enkrypt AI Secure MCP Gateway
+# Enkrypt AI Secure MCP Gateway 
 
 ![enkrypt-secure-mcp-gateway-hld](./docs/images/enkrypt-secure-mcp-gateway-hld.png)
 
