@@ -2,6 +2,37 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- **Shared gateways can refuse local (stdio) servers.** A stdio server's
+  command runs inside the gateway process. On a gateway shared by several
+  tenants, anyone who could register or playground-test a server could
+  therefore run code next to everyone else's sessions and secrets. The new
+  `enkrypt_allow_stdio_servers` setting (env `ENKRYPT_ALLOW_STDIO_SERVERS`)
+  turns stdio servers off everywhere, including discovery, tool calls and the
+  playground, and leaves remote `http`/`sse` servers working. It defaults to
+  `true`, so local installs are unaffected. The hosted gateway sets it to
+  `false`.
+
+- **The playground no longer lets any cloud key turn the sandbox off.** With
+  the `enkrypt` auth provider, any valid Enkrypt API key passes the playground's
+  inline-mode auth. A per-call `sandbox` override now needs a local admin key.
+
+- **A requested sandbox with no provider now fails instead of running the
+  server unsandboxed.**
+
+- **A blocked tool output is no longer returned.** An output-guardrail block
+  used to send the blocked text back in `response`. It is now empty, as it
+  already was for input blocks.
+
+- **PII redaction works again.** `pii_redaction` in `input_guardrails_config`
+  had silently done nothing since the 2.1.0 refactor. Tool arguments are now
+  redacted before the input guardrail and the tool see them, and the tool's
+  output is restored afterwards. A redaction failure blocks the call rather
+  than sending the unredacted arguments.
+
 ## [v2.2.3]
 
 Clears every finding from the Semgrep scan. No default behaviour changes, but

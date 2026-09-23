@@ -517,6 +517,14 @@ def get_config_watcher_poll_seconds() -> float:
         return 2.0
 
 
+def allow_stdio_servers() -> bool:
+    """Env ``ENKRYPT_ALLOW_STDIO_SERVERS`` wins over ``enkrypt_allow_stdio_servers``."""
+    raw = os.environ.get("ENKRYPT_ALLOW_STDIO_SERVERS", "").strip().lower()
+    if raw:
+        return raw not in ("0", "false", "no", "off")
+    return bool(get_common_config().get("enkrypt_allow_stdio_servers", True))
+
+
 def use_external_cache() -> bool:
     return bool(get_common_config().get("enkrypt_mcp_use_external_cache", False))
 
