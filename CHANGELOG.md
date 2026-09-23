@@ -2,7 +2,11 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
-## [Unreleased]
+## [v2.2.4]
+
+Hardens gateways shared by several tenants and restores PII redaction. Local
+installs keep their current behaviour; a shared deployment should set
+`ENKRYPT_ALLOW_STDIO_SERVERS=false` (see the first entry).
 
 ### Security
 
@@ -32,6 +36,12 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
   redacted before the input guardrail and the tool see them, and the tool's
   output is restored afterwards. A redaction failure blocks the call rather
   than sending the unredacted arguments.
+
+### Changed
+
+- **Gateway telemetry is kept for 30 days instead of 7.** The OpenSearch ISM
+  policy now rolls indices over daily (or at 25 GB) and deletes them at 30
+  days.
 
 ## [v2.2.3]
 
