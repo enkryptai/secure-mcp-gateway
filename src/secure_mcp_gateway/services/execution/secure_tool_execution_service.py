@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 import traceback
 from typing import Any
@@ -1084,6 +1085,17 @@ class SecureToolExecutionService:
                 input_text_content, input_json_string = extract_input_text_from_args(
                     args
                 )
+                pii_handler, pii_mapping = None, None
+                if (
+                    guardrails_config["input_policy_enabled"]
+                    and guardrails_config["pii_redaction"]
+                ):
+                    args, pii_handler, pii_mapping = await self._redact_pii_args(
+                        args, guardrails_config, i
+                    )
+                    input_text_content, input_json_string = (
+                        extract_input_text_from_args(args)
+                    )
 
                 # Execute tool with input guardrails
                 if guardrails_config["input_policy_enabled"]:
@@ -1190,6 +1202,12 @@ class SecureToolExecutionService:
                     f"[secure_call_tools] Call {i}: Output Hallucination Response: {output_hallucination_response}"
                 )
 
+                text_result = result["text_result"]
+                if pii_handler is not None and text_result:
+                    text_result = await pii_handler.restore_pii(
+                        text_result, pii_mapping
+                    )
+
                 # Build successful result
                 return self._build_successful_result(
                     ctx,
@@ -1198,7 +1216,7 @@ class SecureToolExecutionService:
                     server_name,
                     tool_name,
                     args,
-                    result["text_result"],
+                    text_result,
                     guardrails_config,
                     input_guardrail_response,
                     output_guardrail_response,
@@ -1282,6 +1300,30 @@ class SecureToolExecutionService:
                 # so the next tool in the same batch doesn't inherit stale
                 # ``server_name`` / ``tool_name`` overlays.
                 reset_request_identity_overlay(overlay_token)
+
+    async def _redact_pii_args(self, args, guardrails_config, i):
+        """Redact PII from tool args before the guardrail and the tool see them; fails closed."""
+        pii_handler = self.guardrail_manager.get_pii_handler(
+            {"input_guardrails_config": guardrails_config["input_guardrails_config"]}
+        )
+        if pii_handler is None:
+            raise RuntimeError(
+                "PII redaction is enabled but no PII handler is available"
+            )
+
+        from secure_mcp_gateway.services.timeout import get_timeout_manager
+
+        _, input_json_string = extract_input_text_from_args(args)
+        redacted = await get_timeout_manager().execute_with_timeout(
+            pii_handler.redact_pii, "guardrail", f"pii_redact_{i}", input_json_string
+        )
+        redacted_json, pii_mapping = self._unwrap_timeout_result(
+            redacted, "PII redaction"
+        )
+        redacted_args = json.loads(redacted_json)
+        if not isinstance(redacted_args, dict):
+            raise RuntimeError("PII redaction did not return a JSON object")
+        return redacted_args, pii_handler, pii_mapping
 
     def _validate_tool(self, tool_name, server_config_tools, tool_span):
         """Validate that the tool exists and is available."""
@@ -2195,7 +2237,8 @@ class SecureToolExecutionService:
         return {
             "status": status,
             "message": message,
-            "response": text_result,
+            # Never hand back the output the guardrail just blocked.
+            "response": "",
             "enkrypt_mcp_data": {
                 "call_index": i,
                 "server_name": server_name,

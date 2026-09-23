@@ -89,6 +89,8 @@ DEFAULT_COMMON_CONFIG = {
     "enkrypt_oauth_redirect_uri": None,
     "enkrypt_async_input_guardrails_enabled": False,
     "enkrypt_async_output_guardrails_enabled": False,
+    # Set False on a shared multi-tenant gateway: a stdio server's command runs in this process.
+    "enkrypt_allow_stdio_servers": True,
     # Session Pool Configuration
     "session_pool_enabled": True,
     "session_pool_ttl": 300,

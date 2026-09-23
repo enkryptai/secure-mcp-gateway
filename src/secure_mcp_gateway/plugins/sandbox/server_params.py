@@ -45,7 +45,7 @@ from secure_mcp_gateway.exceptions import (
     create_transport_error,
 )
 from secure_mcp_gateway.plugins.sandbox.config_manager import get_sandbox_config_manager
-from secure_mcp_gateway.utils import logger
+from secure_mcp_gateway.utils import allow_stdio_servers, logger
 
 # Maps the standard MCP client ``type`` values to our internal transport names.
 _TYPE_TO_TRANSPORT = {
@@ -326,6 +326,15 @@ async def build_server_params(
     # --- stdio-based local servers ---
     manager = get_sandbox_config_manager()
     server_name = server_entry.get("server_name", "unknown")
+    if not allow_stdio_servers():
+        raise create_transport_error(
+            code=ErrorCode.TRANSPORT_STDIO_DISABLED,
+            message=(
+                f"Server '{server_name}' is a local (stdio) server; this gateway "
+                "only runs remote (http/sse) MCP servers."
+            ),
+            context=ErrorContext(server_name=server_name, operation="transport.stdio"),
+        )
     sandbox_enabled = manager.is_sandbox_enabled(server_entry)
     logger.info(
         f"[build_server_params] server={server_name} sandbox_enabled={sandbox_enabled} "
@@ -363,11 +372,16 @@ async def build_server_params(
                 f"{params.command} {' '.join(params.args[:6])}..."
             )
         else:
-            logger.warning(
-                "[build_server_params] Sandbox enabled but no provider registered — "
-                "falling through to direct execution"
+            raise create_transport_error(
+                code=ErrorCode.TRANSPORT_SANDBOX_UNAVAILABLE,
+                message=(
+                    f"Server '{server_name}' requires a sandbox but no sandbox "
+                    "provider is available; refusing to run it unsandboxed."
+                ),
+                context=ErrorContext(
+                    server_name=server_name, operation="transport.stdio"
+                ),
             )
-            params = StdioServerParameters(command=command, args=args, env=env)
     else:
         params = StdioServerParameters(command=command, args=args, env=env)
 

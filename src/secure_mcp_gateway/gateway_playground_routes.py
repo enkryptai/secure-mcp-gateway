@@ -25,8 +25,8 @@ SAME contract the REST surface implements in
 * **Inline** -- request body carries ``server_name`` + ``config``.  Auth is
   provider-aware: ``local_apikey`` validates against the local admin-key
   allow-list; ``enkrypt`` validates by calling the cloud ``GET
-  /consumer-info`` (any valid cloud apikey passes).  Callers may override
-  sandbox per-call via the optional ``sandbox`` body field.
+  /consumer-info`` (any valid cloud apikey passes).  Admin-key callers
+  (``local_apikey``) may override sandbox per-call via the ``sandbox`` field.
 * **Registry** -- request body has NO inline ``config`` and the caller
   sends the ``X-Enkrypt-MCP-Registry-Server`` header.  The gateway fetches
   the server config from ``GET {base_url}/mcp-registry/get-server`` (using
@@ -51,7 +51,8 @@ Sandbox default
 The endpoints inherit :class:`MCPHealthService`'s "sandbox by default"
 policy -- inline requests without a ``sandbox`` block run inside the
 configured sandbox provider.  Pass ``"sandbox": {"enabled": false}`` to
-opt out (inline mode only).
+opt out (inline mode, admin key only).  With ``enkrypt_allow_stdio_servers``
+off, stdio targets are refused in both modes.
 """
 
 from __future__ import annotations
@@ -62,6 +63,7 @@ from typing import TYPE_CHECKING, Any
 
 from starlette.responses import JSONResponse
 
+from secure_mcp_gateway.plugins.sandbox.server_params import is_url_config
 from secure_mcp_gateway.services.health.consumer_info_client import (
     ConsumerAuthError,
     ConsumerInfo,
@@ -83,7 +85,7 @@ from secure_mcp_gateway.services.health.registry_client import (
     fetch_registry_server,
     get_enkrypt_base_url,
 )
-from secure_mcp_gateway.utils import logger, mask_key
+from secure_mcp_gateway.utils import allow_stdio_servers, logger, mask_key
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -291,6 +293,15 @@ def _validate_inline_config(config_block: dict[str, Any]) -> None:
         raise _err("config.args (array of strings) is required", 400)
 
 
+def _require_stdio_allowed(config_block: dict[str, Any]) -> None:
+    if not allow_stdio_servers() and not is_url_config(config_block):
+        raise _err(
+            "This gateway only runs remote (http/sse) MCP servers; local "
+            "(stdio) servers are disabled.",
+            403,
+        )
+
+
 # ----------------------------------------------------------------------
 # Mode dispatcher -- single source of truth for inline vs registry.
 # ----------------------------------------------------------------------
@@ -371,8 +382,11 @@ async def _resolve_target(
         consumer: ConsumerInfo | None = None
         if provider == "enkrypt":
             consumer = await _inline_consumer_auth(cfg, apikey)
+            if sandbox is not None:
+                raise _err("Per-call sandbox overrides require a local admin key.", 403)
         else:
             _inline_local_auth(cfg, apikey)
+        _require_stdio_allowed(config_block)  # type: ignore[arg-type]
 
         description = body.get("description") or ""
         if not isinstance(description, str):
@@ -427,6 +441,7 @@ async def _resolve_target(
     except Exception as exc:
         raise _registry_error(exc) from exc
 
+    _require_stdio_allowed(lookup.config_dict or {})
     display_name = lookup.saved_name or registry_server  # type: ignore[arg-type]
     return {
         "mode": "registry",

@@ -367,6 +367,16 @@ The endpoints reachable through the ingress are the ones FastMCP mounts on 8000
 (`/mcp/`, `/oauth2callback`, `/api/v1/cache/*`, `/mcp-playground/*`). Use
 `kubectl port-forward` if you need the 8001 API against a live pod.
 
+### 6.6a Hosted gateways refuse stdio servers
+
+The hosted gateway serves every tenant from one pod. A stdio server's `command`
+would run inside that pod, next to the gateway's own API key and every other
+tenant's sessions. The hosted Deployment therefore sets
+`ENKRYPT_ALLOW_STDIO_SERVERS=false`, and only remote (`http`/`sse`) servers run
+there. Stdio registry entries fail with `TRANS_009`, and the playground returns
+`403`. Do not remove the env var until stdio servers run in real per-tenant
+isolation.
+
 ### 6.7 OAuth public redirect is not configured in dev
 
 `v2.2.1` shipped the public-URL redirect for remote gateway OAuth callbacks, but
