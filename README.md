@@ -3249,6 +3249,14 @@ Response field `authorized_via` tells you which path matched: `"org_match"` (clo
 
   - i.e., Guardrails detect call, relevancy check, adherence check, PII unredaction, etc. are made in parallel after getting the response from the MCP server
 
+- `enkrypt_allow_stdio_servers`
+
+  - `true` by default. The `ENKRYPT_ALLOW_STDIO_SERVERS` env var overrides it
+
+  - Set it to `false` on a gateway shared by several tenants. A stdio server's `command` runs inside the gateway process, so on a shared gateway any user who can register a server could run code next to everyone else's sessions
+
+  - When `false`, only remote (`http` / `sse` URL) servers run. Stdio servers fail with `TRANS_009`, and the `/mcp-playground/*` routes answer `403`
+
 - **Inside each MCP server config, you can set the following:**
 
   - `input_guardrails_config`: Use this if we plan to use Enkrypt Guardrails on input side

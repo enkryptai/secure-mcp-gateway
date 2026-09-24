@@ -364,6 +364,11 @@ async def _resolve_target(
             _validate_inline_apikey(apikey)
 
         sandbox = _extract_sandbox(request)
+        if consumer is not None and sandbox is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Per-call sandbox overrides require a local admin key.",
+            )
         # ``exclude_none=True`` so we don't smuggle the unused-branch fields
         # (e.g. ``command=None`` on a URL config) into the runtime — the
         # gateway's ``is_url_config`` predicate inspects field presence /

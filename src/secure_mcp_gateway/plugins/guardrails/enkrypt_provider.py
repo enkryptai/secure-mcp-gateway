@@ -702,36 +702,32 @@ class EnkryptPIIHandler:
             return []
 
     async def redact_pii(self, content: str) -> tuple[str, dict[str, Any]]:
-        """Redact PII using Enkrypt."""
-        try:
-            payload = {"text": content, "mode": "request", "key": "null"}
-            headers = {
-                "apikey": _effective_apikey(self.api_key),
-                "Content-Type": "application/json",
-                "X-Enkrypt-Source-Name": "mcp-gateway",
-                "X-Enkrypt-Source-Event": "pii-redact",
-            }
+        """Redact PII using Enkrypt; raises rather than return unredacted text."""
+        payload = {"text": content, "mode": "request", "key": "null"}
+        headers = {
+            "apikey": _effective_apikey(self.api_key),
+            "Content-Type": "application/json",
+            "X-Enkrypt-Source-Name": "mcp-gateway",
+            "X-Enkrypt-Source-Event": "pii-redact",
+        }
 
-            _, result = await _post_with_metrics(
-                self.pii_url,
-                payload,
-                headers,
-                direction="input",
-                check_kind="pii_redact",
+        status_code, result = await _post_with_metrics(
+            self.pii_url,
+            payload,
+            headers,
+            direction="input",
+            check_kind="pii_redact",
+        )
+        redacted_text = result.get("text") if isinstance(result, dict) else None
+        if status_code != 200 or not isinstance(redacted_text, str):
+            detail = result.get("error") if isinstance(result, dict) else None
+            raise RuntimeError(
+                f"PII redaction failed (status {status_code}): {detail or 'no text returned'}"
             )
 
-            redacted_text = result.get("text", content)
-            pii_key = result.get("key", "")
-
-            # If the text was actually changed, count it as a redaction event.
-            if redacted_text != content:
-                record_pii_redaction("input")
-
-            return redacted_text, {"key": pii_key}
-
-        except Exception as e:
-            logger.error(f"[EnkryptPIIHandler] PII redaction error: {e}")
-            return content, {}
+        if redacted_text != content:
+            record_pii_redaction("input")
+        return redacted_text, {"key": result.get("key") or ""}
 
     async def restore_pii(self, content: str, pii_mapping: dict[str, Any]) -> str:
         """Restore PII using Enkrypt."""
@@ -1683,7 +1679,8 @@ class EnkryptGuardrailProvider(GuardrailProvider):
 
     def create_pii_handler(self, config: dict[str, Any]) -> PIIHandler | None:
         """Create Enkrypt PII handler."""
-        if config.get("pii_redaction", False):
+        additional = config.get("additional_config") or {}
+        if config.get("pii_redaction", False) or additional.get("pii_redaction", False):
             api_key, base_url = self._get_api_credentials()
             return EnkryptPIIHandler(api_key, base_url)
         return None

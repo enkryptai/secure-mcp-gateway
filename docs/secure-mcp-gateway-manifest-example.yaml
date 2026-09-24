@@ -52,9 +52,7 @@ spec:
             exit 1
           fi
           cp /shared-config/.enkrypt/docker/enkrypt_mcp_config.json .
-          echo
-          echo "Contents of enkrypt_mcp_config.json are:"
-          cat ./enkrypt_mcp_config.json
+          # Never print the config: it holds API keys and ends up in the log store.
           cp ./enkrypt_mcp_config.json /shared-config/.enkrypt/docker
           mkdir -p /app/.enkrypt
           mkdir -p /app/.enkrypt/docker
