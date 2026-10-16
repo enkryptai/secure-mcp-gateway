@@ -2,6 +2,25 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- **A tool is no longer called when its input is blocked.** In the default
+  (sync) mode the input guardrail's verdict was applied only after the tool had
+  already run, so a blocked call still had its side effects and only its result
+  was withheld. The tool is now called only after the input check passes. If the
+  guardrail errors, times out or returns nothing, the tool is not called either.
+  Async input mode (`enkrypt_async_input_guardrails_enabled`) still runs the
+  check and the tool in parallel, so use it only for tools that are safe to run
+  on an input that may turn out to be blocked.
+
+### Fixed
+
+- **Deny-list entries written as `{"pattern": "...", "reason": "..."}` now
+  work.** The documented shape was silently ignored, so those rules denied
+  nothing. `name` and `pattern` are both accepted; `name` wins if both are set.
+
 ## [v2.2.4]
 
 Hardens gateways shared by several tenants and restores PII redaction. Local

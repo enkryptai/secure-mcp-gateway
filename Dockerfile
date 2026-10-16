@@ -70,7 +70,8 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
 RUN pip3 install --break-system-packages uv==0.12.5
 
 # Install pipx (for isolated Python app installations)
-RUN pip3 install --break-system-packages --upgrade pipx \
+# argcomplete ships with Debian, so pip cannot uninstall it when pipx pulls a newer one.
+RUN pip3 install --break-system-packages --ignore-installed argcomplete --upgrade pipx \
     && pipx ensurepath
 
 # Install Node.js LTS (22.x); npm bundled with the package is recent enough
