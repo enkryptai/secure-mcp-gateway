@@ -2,7 +2,8 @@
 Tool deny-list matcher using fnmatch globs.
 
 Supports entries as plain strings (tool names / glob patterns) or objects
-with ``name``, ``reason``, and ``description`` fields.
+with ``name`` (``pattern`` is accepted as an alias), ``reason``, and
+``description`` fields.
 
 Usage:
 
@@ -32,7 +33,7 @@ DenyEntry = Union[str, Dict[str, Any]]
 def _entry_pattern(entry: DenyEntry) -> str:
     if isinstance(entry, str):
         return entry
-    return entry.get("name", "")
+    return entry.get("name") or entry.get("pattern") or ""
 
 
 def _entry_reason(entry: DenyEntry) -> Optional[str]:
