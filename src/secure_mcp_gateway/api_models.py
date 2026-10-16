@@ -85,8 +85,8 @@ class ServerAddRequest(BaseModel):
         None,
         description=(
             "Tools to deny. Each entry is a tool-name string (supports fnmatch "
-            "globs like 'tool_a_*' or '*') or an object with 'name', 'reason', "
-            "and optional 'description' fields."
+            "globs like 'tool_a_*' or '*') or an object with 'name' (or its "
+            "alias 'pattern'), 'reason', and optional 'description' fields."
         ),
     )
 
