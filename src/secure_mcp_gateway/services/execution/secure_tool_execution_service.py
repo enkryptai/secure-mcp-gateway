@@ -1512,8 +1512,8 @@ class SecureToolExecutionService:
                 result = self._unwrap_timeout_result(result, "tool call")
             else:
                 input_span.set_attribute(SpanAttributes.ASYNC_GUARDRAILS, False)
-                # Sync path: input guardrail runs strictly BEFORE the
-                # tool call.  Time each separately; guardrail leg also
+                # Sync path: the tool is only called once the input verdict is
+                # in and safe. Time each separately; guardrail leg also
                 # contributes to guardrail_duration_ms.
                 async with phase_timer(
                     "preprocess_duration_ms", "guardrail_duration_ms"
@@ -1521,22 +1521,24 @@ class SecureToolExecutionService:
                     guardrail_response = await timeout_manager.execute_with_timeout(
                         input_guardrail.validate, "guardrail", f"guardrail_{i}", request
                     )
-                async with phase_timer(
-                    "execution_duration_ms", "tool_call_duration_ms"
-                ):
-                    result = await timeout_manager.execute_with_timeout(
-                        self.tool_execution_service.call_tool,
-                        "tool_execution",
-                        f"tool_call_{i}",
-                        session,
-                        tool_name,
-                        args,
-                    )
-
                 guardrail_response = self._unwrap_timeout_result(
                     guardrail_response, "input guardrail"
                 )
-                result = self._unwrap_timeout_result(result, "tool call")
+
+                result = None
+                if guardrail_response is not None and guardrail_response.is_safe:
+                    async with phase_timer(
+                        "execution_duration_ms", "tool_call_duration_ms"
+                    ):
+                        result = await timeout_manager.execute_with_timeout(
+                            self.tool_execution_service.call_tool,
+                            "tool_execution",
+                            f"tool_call_{i}",
+                            session,
+                            tool_name,
+                            args,
+                        )
+                    result = self._unwrap_timeout_result(result, "tool call")
 
             # Check if blocked
             if guardrail_response is None:
