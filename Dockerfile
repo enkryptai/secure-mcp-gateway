@@ -141,8 +141,10 @@ RUN pip3 install --break-system-packages .
 # newer ones in /usr/local. python3-pip-whl is deliberately left installed -
 # python3.12-venv depends on it, and force-removing it leaves apt unable to
 # install anything at all.
+# libbrotli floor is USN-8956-1 (CVE-2026-111497), so a stale mirror fails the build.
 RUN apt-get update && apt-get upgrade -y \
     && apt-get purge -y python3-pip python3-wheel \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge 1.1.0-2ubuntu0.1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -182,4 +184,3 @@ USER ubuntu
 # Set the entrypoint to the script
 ENTRYPOINT ["python3", "src/secure_mcp_gateway/gateway.py"]
 # Alternative: ENTRYPOINT ["mcp", "run", "src/secure_mcp_gateway/gateway.py"]
-
