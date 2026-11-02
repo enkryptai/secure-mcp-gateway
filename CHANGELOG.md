@@ -2,9 +2,19 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
-## [Unreleased]
+## [v2.2.5]
+
+Security release. Update the Docker image: v2.2.4 shipped Node.js and Brotli
+versions with known vulnerabilities.
 
 ### Security
+
+- **Docker image: Brotli decoder out-of-bounds write (CVE-2026-111497) and the
+  distrusted eMudhra intermediates (CVE-2026-111943).** The v2.2.4 image shipped
+  Node.js 22.23.3 and the unpatched `libbrotli1`. The image now requires
+  Node.js 22.23.4 or later and `libbrotli1` 1.1.0-2ubuntu0.1 (USN-8956-1) or
+  later, and the build fails if either is older, so a stale package mirror or
+  cached layer cannot reintroduce them.
 
 - **A tool is no longer called when its input is blocked.** In the default
   (sync) mode the input guardrail's verdict was applied only after the tool had
@@ -20,6 +30,13 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
 - **Deny-list entries written as `{"pattern": "...", "reason": "..."}` now
   work.** The documented shape was silently ignored, so those rules denied
   nothing. `name` and `pattern` are both accepted; `name` wins if both are set.
+
+- **`secure-mcp-gateway --docker` now finds its image on Docker Hub.** Since
+  v2.2.0 the wrapper pulls `enkryptai/secure-mcp-gateway:<version>` (for example
+  `:2.2.4`), but only `v`-prefixed tags and `latest` were published, so every
+  `--docker` command failed with `Unable to find image` unless you tagged a
+  local build yourself. Each release now publishes `v<version>`, `<version>` and
+  `latest` to Docker Hub automatically when it reaches `main`.
 
 ## [v2.2.4]
 

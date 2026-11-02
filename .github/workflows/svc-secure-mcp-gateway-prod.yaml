@@ -135,3 +135,28 @@ jobs:
         run: |
           IMAGE_REF="$ECR_REGISTRY/enkryptai-prod/secure-mcp-gateway@${IMAGE_DIGEST}"
           cosign verify --key env://COSIGN_PUB $IMAGE_REF
+
+      - name: Push to Docker Hub
+        if: github.event_name == 'push'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG_SHA: ${{ needs.setup.outputs.SHORT_SHA }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          VERSION=$(grep -m1 '^__version__ = ' src/secure_mcp_gateway/version.py | cut -d'"' -f2)
+          PYPROJECT_VERSION=$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)
+          if [ -z "$VERSION" ] || [ "$VERSION" != "$PYPROJECT_VERSION" ]; then
+            echo "::error::version.py ($VERSION) and pyproject.toml ($PYPROJECT_VERSION) must agree"
+            exit 1
+          fi
+
+          echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+
+          # Same image that was pushed to ECR, so Docker Hub gets exactly what prod runs.
+          # The bare version is the tag `secure-mcp-gateway --docker` pulls (cli.py).
+          SOURCE="$ECR_REGISTRY/enkryptai-prod/secure-mcp-gateway:$IMAGE_TAG_SHA"
+          for TAG in "v${VERSION}" "${VERSION}" latest; do
+            docker tag "$SOURCE" "enkryptai/secure-mcp-gateway:${TAG}"
+            docker push "enkryptai/secure-mcp-gateway:${TAG}"
+          done
