@@ -21,6 +21,13 @@ All notable changes to the Enkrypt Secure MCP Gateway project will be documented
   work.** The documented shape was silently ignored, so those rules denied
   nothing. `name` and `pattern` are both accepted; `name` wins if both are set.
 
+- **`secure-mcp-gateway --docker` now finds its image on Docker Hub.** Since
+  v2.2.0 the wrapper pulls `enkryptai/secure-mcp-gateway:<version>` (for example
+  `:2.2.4`), but only `v`-prefixed tags and `latest` were published, so every
+  `--docker` command failed with `Unable to find image` unless you tagged a
+  local build yourself. Each release now publishes `v<version>`, `<version>` and
+  `latest` to Docker Hub automatically when it reaches `main`.
+
 ## [v2.2.4]
 
 Hardens gateways shared by several tenants and restores PII redaction. Local
