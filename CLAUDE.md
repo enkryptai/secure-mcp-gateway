@@ -6,6 +6,17 @@
 
 ---
 
+## Commits and PRs
+
+**No AI attribution in commits or PRs.** Never add a `Co-Authored-By:` trailer
+for an AI, a "Generated with Claude Code" (or similar) line, or a session link to
+a commit message or PR description, and never set an AI as the commit author.
+Commits are authored by the human running the session. To enforce it in Claude
+Code, set `"attribution": {"commit": "", "pr": "", "sessionUrl": false}` in
+`~/.claude/settings.json`.
+
+---
+
 ## 📋 Project Overview
 
 **Secure MCP Gateway** is an Enkrypt AI-developed security middleware that sits between MCP clients (like Claude Desktop, Cursor) and MCP servers. It acts as both an MCP server (to clients) and an MCP client (to actual servers), providing:
