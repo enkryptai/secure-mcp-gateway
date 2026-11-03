@@ -3844,7 +3844,7 @@ secure-mcp-gateway: error: unrecognized arguments: --provider enkrypt
 
 If `--docker-image` is overridden and the override doesn't contain the host CLI version string, the wrapper logs a `WARN:` line so the cause of any "unrecognized arguments" error is obvious.
 
-**If your default tag isn't on Docker Hub yet** (typical right after a host pip upgrade, before the matching image has been published), Docker exits with `not found`:
+**If your default tag isn't on Docker Hub yet** (typical right after a host pip upgrade: the image is pushed to Docker Hub when a release is merged to `main`, while PyPI is published when the `v*` tag is pushed, so one can precede the other), Docker exits with `not found`:
 
 ```text
 Unable to find image 'enkryptai/secure-mcp-gateway:2.2.0' locally

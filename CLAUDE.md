@@ -154,7 +154,7 @@ secure-mcp-gateway/
 │
 ├── docs/                              # Documentation
 │   ├── claude/
-│   │   └── k8s-deployment-runbook.md  # ⭐ EKS dev/prod deploy runbook (manual today)
+│   │   └── k8s-deployment-runbook.md  # ⭐ CI + Argo CD release/deploy path; manual deploy = fallback
 │   ├── secure-mcp-gateway-manifest.yaml          # LIVE dev manifest (gitignored -- holds creds)
 │   └── secure-mcp-gateway-manifest-example.yaml  # tracked template for the above
 ├── pyproject.toml                     # Python project config (PEP 621)
@@ -1265,16 +1265,28 @@ docker-compose up -d
 
 - Clients connect via HTTP instead of stdio
 
-### **4. Kubernetes (EKS) — dev today, prod pending**
+### **4. Kubernetes (EKS) — Argo CD-managed, dev and prod**
 
 Full runbook: **[docs/claude/k8s-deployment-runbook.md](docs/claude/k8s-deployment-runbook.md)**
 
-- **Dev**: `eks-dev` (acct `188451452903`, `us-east-1`), namespace `dev`, exposed
-  at `https://mcp.dev.enkryptai.com` via the pre-existing `mcp-server` Ingress
-  (not part of the manifest). Deploy is manual: `docker build`/`push` a
+- **Release path**: no hand deploy. A push to `dev` runs
+  [svc-secure-mcp-gateway-dev.yaml](.github/workflows/svc-secure-mcp-gateway-dev.yaml)
+  (build → push to ECR as `enkryptai-dev/secure-mcp-gateway:dev` + SHA/epoch tags →
+  cosign sign/verify); a push to `main` runs
+  [svc-secure-mcp-gateway-prod.yaml](.github/workflows/svc-secure-mcp-gateway-prod.yaml)
+  (same, into `enkryptai-prod`, plus Docker Hub `v<version>` / `<version>` /
+  `latest`, gated on `version.py` == `pyproject.toml`). Argo CD Image Updater follows
+  the `dev` / `main` tag by digest and Argo CD syncs the kustomize tree
+  `secure-mcp-gateway/{base,dev,prod}` in the platform repo (`enkryptai-apiaas`).
+  PyPI is separate: a `v*` tag runs [publish.yml](.github/workflows/publish.yml).
+
+- **Dev**: `eks-dev`, `us-east-1`, namespace `dev`, exposed at
+  `https://mcp.dev.enkryptai.com` via the `mcp-server` Ingress in the platform
+  repo's `dev` overlay. The old hand-applied flow (`docker build`/`push` a
   `v<version>-<build>` tag → bump `image:` in the gitignored
   [docs/secure-mcp-gateway-manifest.yaml](docs/secure-mcp-gateway-manifest.yaml)
-  → `kubectl apply -f … -n dev`.
+  → `kubectl apply -f … -n dev`) is an emergency fallback only; Argo CD
+  self-heal reverts it.
 
 - Config is **not** in the image: an init container pulls
   `enkrypt_mcp_config.json` from S3 into an `emptyDir` at pod start, so a config
@@ -1290,10 +1302,11 @@ Full runbook: **[docs/claude/k8s-deployment-runbook.md](docs/claude/k8s-deployme
   defaults. The unset `enkrypt_gateway_base_url` leaves OAuth redirects on the
   request-derived `X-Forwarded-*` fallback.
 
-- **Prod** (`eks-prod`, namespace `production`) is **not deployed yet**; the
-  runbook lists the gaps — Ingress/hostname, per-env S3 key, ExternalSecrets or
-  IRSA instead of static AWS keys, `enkrypt_gateway_base_url`, resource limits,
-  and probes.
+- **Prod** (`eks-prod`, namespace `production`) is defined in the platform repo's
+  `prod` overlay and tracks the `main` image. The runbook's §7.2 lists what is
+  still open — IRSA instead of static AWS keys, `enkrypt_gateway_base_url`,
+  resource limits, and probes — and that the 2026-08-17 live check predates the
+  overlay.
 
 ---
 
@@ -1553,13 +1566,13 @@ Set `enkrypt_log_level: "DEBUG"` in config for verbose logging.
 
 - **API Reference**: [API-Reference.md](API-Reference.md)
 
-- **K8s Deployment Runbook**: [docs/claude/k8s-deployment-runbook.md](docs/claude/k8s-deployment-runbook.md) — the manual dev deploy (build → push → bump tag → `kubectl apply -n dev`), verification/rollback, known cluster drift, and the prod gap-analysis for `eks-prod`
+- **K8s Deployment Runbook**: [docs/claude/k8s-deployment-runbook.md](docs/claude/k8s-deployment-runbook.md) — the CI → ECR → Argo CD path for dev and prod, Docker Hub/PyPI publishing, the manual dev deploy kept as an emergency fallback, known cluster drift, and the open prod items
 
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 
 - **PyPI**: https://pypi.org/project/secure-mcp-gateway/
 
-- **Docker Hub**: https://hub.docker.com/r/enkryptai/secure-mcp-gateway
+- **Docker Hub**: https://hub.docker.com/r/enkryptai/secure-mcp-gateway (pushed by the prod workflow on merge to `main`)
 
 - **MCP Protocol**: https://modelcontextprotocol.io/
 
