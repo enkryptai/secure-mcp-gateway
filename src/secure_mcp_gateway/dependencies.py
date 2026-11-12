@@ -23,7 +23,7 @@ __dependencies__ = [
     "psutil~=7.2.2",
     # Security and encryption
     "cryptography~=50.0.0",
-    "pyjwt~=2.13.0",
+    "pyjwt~=2.15.0",
     # Retry logic
     "tenacity~=9.1.4",
     # MCP
