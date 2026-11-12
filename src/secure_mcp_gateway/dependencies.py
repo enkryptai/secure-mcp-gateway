@@ -27,7 +27,7 @@ __dependencies__ = [
     # Retry logic
     "tenacity~=9.1.4",
     # MCP
-    "mcp[cli]~=1.28.1",
+    "mcp[cli]~=1.30.0",
     # OpenTelemetry
     "opentelemetry-sdk~=1.40.0",
     "opentelemetry-exporter-otlp~=1.40.0",
