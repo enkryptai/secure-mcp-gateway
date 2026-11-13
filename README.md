@@ -1229,12 +1229,16 @@ python -m pip install uv
 
 ```
 
-- Install Python dependencies:
+- Synchronize Python dependencies for the checked-out project:
 
 ```bash
-uv pip install -r requirements.txt
+uv sync --frozen
 
 ```
+
+`uv sync` installs and runs this repository checkout. It does not install the published PyPI package.
+
+When `CONDA_PREFIX` is set, run `uv sync --active --frozen`. Conda owns the interpreter and Conda-only packages. `pyproject.toml` and `uv.lock` own PyPI dependencies.
 
 - Verify mcp cli got installed successfully:
 

@@ -110,15 +110,13 @@ RUN echo "=== Verifying Installations ===" \
     && bash --version | head -n1 \
     && echo "=== All tools verified successfully ==="
 
-# Install the dependencies
-COPY requirements.txt .
-RUN pip3 install --break-system-packages --upgrade --ignore-installed pip setuptools wheel \
-    && pip3 install --break-system-packages --ignore-installed -r requirements.txt
+# Install the runtime dependencies from the frozen project lockfile.
+COPY pyproject.toml uv.lock README_PYPI.md ./
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Copy source code
 COPY src src
 COPY MANIFEST.in MANIFEST.in
-COPY pyproject.toml pyproject.toml
 
 # Other files
 COPY CHANGELOG.md CHANGELOG.md
@@ -130,8 +128,8 @@ COPY README_PYPI.md README_PYPI.md
 ENV HOST=0.0.0.0
 ENV FASTAPI_HOST=0.0.0.0
 
-# Install the package (PEP 517 build via setuptools.build_meta)
-RUN pip3 install --break-system-packages .
+# Install the checked-out project with the setuptools build backend.
+RUN uv sync --frozen --no-dev
 
 # Sits after the COPY steps, which any source change invalidates, so releases
 # pick up OS patches published since the cached upgrade layer above was built.
@@ -143,10 +141,7 @@ RUN pip3 install --break-system-packages .
 # install anything at all.
 # libbrotli floor is USN-8956-1 (CVE-2026-111497), so a stale mirror fails the build.
 RUN apt-get update && apt-get upgrade -y \
-    && apt-get purge -y python3-pip python3-wheel \
-    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge 1.1.0-2ubuntu0.1 \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge 1.1.0-2ubuntu0.1
 
 # Replace the pip wheel that python3-pip-whl stages for `python3 -m venv` to
 # bootstrap from. Ubuntu 24.04 stages pip 24.0, which carries vendored copies of
@@ -171,7 +166,10 @@ RUN pip3 download --no-deps --quiet --dest /tmp/pipwhl pip \
     && rm -rf /tmp/pipwhl \
     && python3 -m venv /tmp/venv-probe \
     && /tmp/venv-probe/bin/pip --version \
-    && rm -rf /tmp/venv-probe
+    && rm -rf /tmp/venv-probe \
+    && apt-get purge -y python3-pip python3-wheel \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 EXPOSE 8000
 
@@ -182,5 +180,5 @@ ENV HOME=/home/ubuntu
 USER ubuntu
 
 # Set the entrypoint to the script
-ENTRYPOINT ["python3", "src/secure_mcp_gateway/gateway.py"]
+ENTRYPOINT [".venv/bin/python", "src/secure_mcp_gateway/gateway.py"]
 # Alternative: ENTRYPOINT ["mcp", "run", "src/secure_mcp_gateway/gateway.py"]

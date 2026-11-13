@@ -8,6 +8,7 @@ on:
       - src/**
       - Dockerfile
       - requirements.txt
+      - uv.lock
       - pyproject.toml
       - MANIFEST.in
     branches:
@@ -18,6 +19,7 @@ on:
       - src/**
       - Dockerfile
       - requirements.txt
+      - uv.lock
       - pyproject.toml
       - MANIFEST.in
     branches:

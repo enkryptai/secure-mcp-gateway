@@ -55,7 +55,6 @@ logs/
 
 # ── Misc generated / temp ───────────────────────────────────────────────
 .python-version
-uv.lock
 node_modules/
 package.json
 package-lock.json
