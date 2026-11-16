@@ -1,6 +1,4 @@
-"""The gateway's MCP client and server paths against the real ``mcp`` SDK, no mocks
-of the SDK: stdio and streamable-HTTP upstreams, the gateway's own FastMCP server,
-the session pool, and the MCP OAuth client provider."""
+"""The gateway's MCP client and server paths against the real, unmocked ``mcp`` SDK."""
 
 from __future__ import annotations
 
