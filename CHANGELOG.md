@@ -222,8 +222,8 @@ mediums against `v2.2.1-1`; every one of those had a published fix.
   unreachable without editing the pin: `aiohttp` 3.13.5 -> 3.14.3 (11H/3M),
   `cryptography` 46.0.7 -> 50.0.0 (3H/1M, incl. CVE-2026-69249),
   `pyjwt` 2.12.1 -> 2.13.0 (1H/3M, CVE-2026-48526), `mcp[cli]` 1.27.0 -> 1.28.1
-  (CVE-2026-59950).  Applied to `requirements.txt`, `pyproject.toml` and
-  `dependencies.py` together, per the sync note in those files.
+   (CVE-2026-59950). Applied to `pyproject.toml` and `dependencies.py` together,
+   per the sync note in those files.
 - **`uv` pinned to 0.12.5.**  It was installed unpinned, and because that layer
   only rebuilds when the line changes, the image kept shipping the version the
   first build resolved - old enough for Inspector to flag the Rust crates

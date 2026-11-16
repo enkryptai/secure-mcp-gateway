@@ -1457,42 +1457,7 @@ docker build -t secure-mcp-gateway .
 <summary><strong>🖨️ Example output</strong></summary>
 <br>
 
-> Truncated for readability — actual output includes a long pip dependency dump under step `[18/18] RUN pip3 install --break-system-packages .`. First-time builds typically take **3–5 minutes** depending on network/CPU; subsequent rebuilds are mostly cached and complete in under 30s.
-
-```bash
-[+] Building 72.9s (20/20) FINISHED                                                                                                                                          docker:default
- => [internal] load build definition from Dockerfile                                                                                                                                   0.1s
- => => transferring dockerfile: 724B                                                                                                                                                   0.1s
- => [internal] load metadata for docker.io/library/python:3.11-alpine                                                                                                                  1.0s
- => [internal] load .dockerignore                                                                                                                                                      0.1s
- => => transferring context: 456B                                                                                                                                                      0.1s
- => [ 1/15] FROM docker.io/library/python:3.11-alpine@sha256:8068890a42d68ece5b62455ef327253249b5f094dcdee57f492635a40217f6a3                                                          0.0s
- => => resolve docker.io/library/python:3.11-alpine@sha256:8068890a42d68ece5b62455ef327253249b5f094dcdee57f492635a40217f6a3                                                            0.0s
- => [internal] load build context                                                                                                                                                      1.5s
- => => transferring context: 82.25kB                                                                                                                                                   1.4s
- => CACHED [ 2/15] WORKDIR /app                                                                                                                                                        0.0s
- => CACHED [ 3/15] COPY requirements.txt .                                                                                                                                             0.0s
- => [ 4/15] COPY requirements-dev.txt .                                                                                                                                                0.0s
- => [ 5/15] RUN pip install --upgrade pip && pip install -r requirements.txt && pip install -r requirements-dev.txt                                                                   38.7s
- => [ 6/15] COPY src src                                                                                                                                                               0.2s
- => [ 7/15] COPY setup.py setup.py                                                                                                                                                     0.1s
- => [ 8/15] COPY MANIFEST.in MANIFEST.in                                                                                                                                               0.1s
- => [ 9/15] COPY pyproject.toml pyproject.toml                                                                                                                                         0.1s
- => [10/15] COPY CHANGELOG.md CHANGELOG.md                                                                                                                                             0.1s
- => [11/15] COPY LICENSE.txt LICENSE.txt                                                                                                                                               0.1s
- => [12/15] COPY README.md README.md                                                                                                                                                   0.1s
- => [13/15] COPY README_PYPI.md README_PYPI.md                                                                                                                                         0.1s
- => [14/15] RUN python -m build                                                                                                                                                        8.5s
- => [15/15] RUN pip install .                                                                                                                                                          5.5s
- => exporting to image                                                                                                                                                                16.6s
- => => exporting layers                                                                                                                                                               11.8s
- => => exporting manifest sha256:47bd860c903fdefeda59364f577c487f96e1482b0e8eadef8292df86922641dc                                                                                      0.0s
- => => exporting config sha256:9d211386091dfc08fcfe80f1efb399d4a1ab80484f850476c328614ecaaefbae                                                                                        0.1s
- => => exporting attestation manifest sha256:bc85b5aaf4035e6f449d9b94567135a28a61c594fa2a507ca7fea889efbf2952                                                                          0.0s
- => => exporting manifest list sha256:7cd30cbf456ba3105d4bef7c28ea8402ec5476e4da3cd8c16b752f3214f8b3b1                                                                                 0.0s
- => => naming to docker.io/library/secure-mcp-gateway:latest                                                                                                                           0.0s
- => => unpacking to docker.io/library/secure-mcp-gateway:latest
-
+> Truncated for readability. The image synchronizes dependencies from `uv.lock`. First-time builds typically take **3–5 minutes** depending on network and CPU. Subsequent rebuilds are mostly cached and complete in under 30s.
 
 Verify the image landed:
 

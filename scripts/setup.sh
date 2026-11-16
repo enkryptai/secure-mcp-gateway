@@ -56,17 +56,6 @@
 # fi
 # echo "✅ uv is installed with command: $UV_CMD"
 
-# # Install dependencies
-# echo "Installing dependencies ..."
-# $UV_CMD pip install -r requirements.txt
-
-# if [ $? -ne 0 ]; then
-#   echo "❌ Failed to install dependencies. Please install the dependencies and try again."
-#   exit 1
-# fi
-
-# echo "✅ Dependencies installed"
-
 # --------------------------------------------------------------
 
 echo -------------------------------

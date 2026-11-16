@@ -33,24 +33,11 @@ ENKRYPT_GATEWAY_KEY=$(cat $config_file | jq -r '.gateways | keys[0]')
 
 echo "ENKRYPT_GATEWAY_KEY: $ENKRYPT_GATEWAY_KEY"
 
-# Get array of dependencies from requirements.txt, preserving package names
-DEPENDENCIES=$(cat $SCRIPT_DIR/../requirements.txt | grep -v '^#' | grep -v '^$' | sed 's/;.*$//' | sed 's/>.*$//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '\n' ' ' | sed 's/[[:space:]]*$//')
-
-echo "Dependencies list: $DEPENDENCIES"
-
-# https://pypi.org/project/mcp/
-# Convert dependencies into --with format, handling each package separately
-DEPENDENCIES_STRING=$(echo "$DEPENDENCIES" | sed 's/[[:space:]]\+/ --with /g' | sed 's/^/--with /')
-
-echo "Dependencies string for the cli install command: $DEPENDENCIES_STRING"
-
 cd $SCRIPT_DIR/../src/secure_mcp_gateway
 
-CLI_CMD="mcp install gateway.py --env-var ENKRYPT_GATEWAY_KEY=$ENKRYPT_GATEWAY_KEY $DEPENDENCIES_STRING"
+echo "Installing the gateway from $SCRIPT_DIR/.."
 
-echo "Running the cli install command: $CLI_CMD"
-
-$CLI_CMD
+mcp install gateway.py --with-editable "$SCRIPT_DIR/.." --env-var ENKRYPT_GATEWAY_KEY="$ENKRYPT_GATEWAY_KEY"
 if [ $? -ne 0 ]; then
     echo "Installation failed"
     exit 1
