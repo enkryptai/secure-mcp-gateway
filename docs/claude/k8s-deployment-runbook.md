@@ -1,9 +1,11 @@
 # Kubernetes Deployment Runbook — Secure MCP Gateway
 
 **Audience**: DevOps / whoever is on release duty.
-**Purpose**: Document the manual dev deploy exactly as performed today, so it can
-be automated, and lay out what must change to run the same thing in prod.
-**Last verified against the live clusters**: 2026-08-17 (gateway `v2.2.1-1`).
+**Purpose**: Document how a change reaches dev and prod (CI image build, then
+Argo CD), and keep the older hand-applied dev deploy as an emergency fallback.
+**Last verified**: §1 and §7-§8 against this repo's workflows and the platform
+repo's manifests on 2026-11-03 (gateway `2.2.5`); §2, §5 and §6 against the live
+clusters on 2026-08-17 (gateway `v2.2.1-1`, before the Argo CD cutover).
 
 ---
 
@@ -11,14 +13,45 @@ be automated, and lay out what must change to run the same thing in prod.
 
 | Aspect | Today |
 | --- | --- |
-| **What's automated today** | Nothing. PyPI publishing is the only CI ([.github/workflows/publish.yml](../../.github/workflows/publish.yml)); it does **not** build or push the Docker image. |
-| **What's manual today** | Docker build → Docker Hub push → edit image tag in a gitignored manifest → `kubectl apply`. |
-| **Where dev runs** | EKS `eks-dev`, account `188451452903`, region `us-east-1`, namespace **`dev`**. |
-| **Where prod would run** | EKS `eks-prod`, same account/region, namespace **`production`**. **Not deployed yet** — see [§7](#7-prod-deployment-not-yet-deployed). |
+| **Build** | CI builds the image from `Dockerfile` and pushes it to ECR: [svc-secure-mcp-gateway-dev.yaml](../../.github/workflows/svc-secure-mcp-gateway-dev.yaml) on pushes to `dev`, [svc-secure-mcp-gateway-prod.yaml](../../.github/workflows/svc-secure-mcp-gateway-prod.yaml) on pushes to `main`. Both sign the pushed digest with cosign and verify it. |
+| **Deploy** | Argo CD, from the platform repo (`enkryptai-apiaas`, `code/infra/kubernetes/apps/secure-mcp-gateway/{base,dev,prod}`). Nothing is applied by hand. |
+| **PyPI** | [publish.yml](../../.github/workflows/publish.yml) runs lint and tests on pushes to `main` and on `v*` tags, and publishes to PyPI only on a `v*` tag. It does not build or push the Docker image. |
+| **Docker Hub** | The prod workflow also pushes the image it just pushed to ECR to `enkryptai/secure-mcp-gateway` as `v<version>`, `<version>` and `latest`, after checking that `version.py` and `pyproject.toml` agree (the job fails otherwise). This is what `secure-mcp-gateway --docker` pulls; the cluster does not use it. |
+| **Where dev runs** | EKS `eks-dev`, region `us-east-1`, namespace **`dev`**. |
+| **Where prod runs** | EKS `eks-prod`, same region, namespace **`production`**. Defined in the platform repo's `prod` overlay; see [§7](#7-prod-deployment). |
+
+### 1.1 How a change reaches the clusters
+
+1. **Release PR.** Bump `version` in `pyproject.toml` and `__version__` in
+   [version.py](../../src/secure_mcp_gateway/version.py) together, and add the
+   `CHANGELOG.md` entry. The workflows run only when `src/**`, `Dockerfile`,
+   `requirements.txt`, `pyproject.toml`, `MANIFEST.in` or the workflow file
+   itself changes — a docs-only change builds nothing.
+2. **Dev.** A push to `dev` builds and pushes
+   `enkryptai-dev/secure-mcp-gateway` to ECR with four tags: the 7-character
+   commit SHA, an epoch timestamp, `dev`, and `dev-<epoch>`. Pull requests
+   build the image but do not push it.
+3. **Argo CD Image Updater** watches the `dev` tag by **digest**
+   (`updateStrategy: digest`) and updates the Argo CD application when the
+   digest moves. The base Deployment pins `…/enkryptai-dev/secure-mcp-gateway:dev`.
+4. **Prod.** A push to `main` runs the same job against
+   `enkryptai-prod/secure-mcp-gateway`, tagging `main`, SHA and epoch. The
+   `prod` overlay patches the image to `…/enkryptai-prod/secure-mcp-gateway:main`
+   and Image Updater follows that tag by digest too. The Docker Hub push runs in
+   the same job, after cosign verification.
+5. **PyPI.** Push a `v<version>` tag; `publish.yml` re-runs lint and tests
+   and uploads with `--skip-existing`. PyPI and the Docker Hub tags are
+   published by different triggers (tag vs. push to `main`), so a new CLI version
+   can reach PyPI before its Docker Hub tag exists, or the other way round.
+
+Both Argo CD applications (`dev` and `prod`) track the platform repo's `dev`
+branch and run with automated sync, prune and self-heal. Dev and prod are
+**separate builds** from different branches; prod is not a promotion of the
+dev image.
 
 ---
 
-## 2. Live dev topology (verified)
+## 2. Dev topology
 
 ```text
 Internet
@@ -33,28 +66,35 @@ Deployment secure-mcp-gateway   replicas: 1
   ├── initContainer  config-downloader (amazon/aws-cli:latest)
   │     └── aws s3 cp s3://mcpserver-enkryptai/enkrypt_mcp_config.json
   │            → emptyDir volume "shared-config" → /app/.enkrypt/docker/
-  └── container      secure-mcp-gateway (enkryptai/secure-mcp-gateway:v2.2.1-1)
+  └── container      secure-mcp-gateway (<ECR registry>/enkryptai-dev/secure-mcp-gateway:dev)
         └── python src/secure_mcp_gateway/gateway.py  → :8000
 ```
 
-### Resource ownership — read this before you apply
+### Resource ownership
 
-| Resource | In [secure-mcp-gateway-manifest.yaml](../secure-mcp-gateway-manifest.yaml)? | Notes |
+Everything below is owned by Argo CD, from the platform repo's
+`secure-mcp-gateway/{base,dev,prod}` kustomize tree:
+
+| Resource | Source | Notes |
 | --- | --- | --- |
-| `Secret/s3-credentials` | ✅ yes | Re-applied on every deploy. Contains **static long-lived AWS keys**, base64 in the file. See [§6.2](#62-static-aws-keys-in-a-gitignored-file). |
-| `Deployment/secure-mcp-gateway` | ✅ yes | The only thing a version bump actually changes. |
-| `Service/secure-mcp-gateway-service` | ✅ yes | ClusterIP, port 80 → 8000. |
-| `Ingress/mcp-server` | ❌ **no** | Created 2025-07-18, lives only in the cluster. A version bump never touches it. |
-| OTel env vars on the container | ❌ **no** | Cluster-only drift — and inert; the gateway ignores them. See [§6.1](#61-the-otel-env-vars-on-the-deployment-are-inert). |
-| `enkrypt_mcp_config.json` | ❌ no | Lives in S3, pulled at pod start. **This is where telemetry, auth and guardrails are actually configured.** See [§5](#5-config-change-with-no-image-rebuild). |
+| `ExternalSecret/s3-credentials` | `dev/`, `prod/` | Pulls the config-download credentials from the AWS secret store (`dev/…` and `prod/…` keys). See [§6.2](#62-static-aws-keys-for-the-config-download). |
+| `Deployment/secure-mcp-gateway` | `base/` (+ `prod/` image patch) | The image is moved by Image Updater, not edited by hand. |
+| `Service/secure-mcp-gateway-service` | `base/` | ClusterIP, port 80 → 8000. |
+| `Ingress/mcp-server` | `dev/`, `prod/` | Traefik class; per-environment host. |
+| `enkrypt_mcp_config.json` | S3, not in git | Pulled at pod start. **This is where telemetry, auth and guardrails are actually configured.** See [§5](#5-config-change-with-no-image-rebuild). |
 
-The manifest has **no `namespace:` in any `metadata:` block** — the `-n dev` on
-the `kubectl apply` is what puts it in the right place. Omit it and you deploy
-into `default`.
+The OTel env vars described in [§6.1](#61-the-otel-env-vars-on-the-deployment-are-inert)
+were observed on the hand-applied Deployment; the base manifest does not define them.
+
+The tracked `docs/secure-mcp-gateway-manifest-example.yaml` template (a Secret
+with static keys, a Deployment pinned to a Docker Hub tag) predates this layout
+and exists only for the manual fallback in [§4](#4-manual-dev-deploy-emergency-fallback-only).
 
 ---
 
-## 3. Prerequisites (one-time per operator)
+## 3. Prerequisites for the manual fallback (one-time per operator)
+
+Not needed for the normal CI and Argo CD path.
 
 ```bash
 # 1. Docker Hub push access to enkryptai/secure-mcp-gateway
@@ -75,7 +115,14 @@ cp docs/secure-mcp-gateway-manifest-example.yaml docs/secure-mcp-gateway-manifes
 
 ---
 
-## 4. Dev deploy runbook
+## 4. Manual dev deploy (emergency fallback only)
+
+Use this only when CI or Argo CD cannot deploy. The dev application has
+automated sync with self-heal, so a hand-applied change to the Argo-managed
+Deployment is reverted unless the owner of Argo CD has paused sync for the
+application first. Never use it to avoid a PR. The commands below are how dev was
+deployed before the Argo CD cutover (verified 2026-08-17) and have not been
+re-verified since.
 
 ### 4.1 Pick the tag
 
@@ -131,8 +178,8 @@ Leave `imagePullPolicy` commented out. With an immutable tag the default
 ### 4.4 Switch context and apply
 
 ```bash
-kubectx arn:aws:eks:us-east-1:188451452903:cluster/eks-dev
-# ✔ Switched to context "arn:aws:eks:us-east-1:188451452903:cluster/eks-dev".
+kubectx arn:aws:eks:us-east-1:<account-id>:cluster/eks-dev
+# ✔ Switched to context "arn:aws:eks:us-east-1:<account-id>:cluster/eks-dev".
 
 kubectl config current-context      # confirm before every apply
 
@@ -184,7 +231,7 @@ curl -s https://mcp.dev.enkryptai.com/api/v1/cache/last-reload
 A `502`/`503` from any of these means the pod is not ready; a connection
 timeout means the ingress or LB is the problem, not the deploy.
 
-### 4.6 Rollback
+### 4.6 Rollback (manual fallback)
 
 ```bash
 kubectl rollout undo deploy/secure-mcp-gateway -n dev
@@ -192,8 +239,9 @@ kubectl rollout status deploy/secure-mcp-gateway -n dev
 ```
 
 Then revert the image tag in the manifest so the file matches the cluster.
-Because every build gets a fresh immutable tag, the previous ReplicaSet's image
-is still pullable — rollback is always available.
+Because every manual build gets a fresh tag, the previous ReplicaSet's image is
+still pullable. Under Argo CD, roll back by reverting the change in git rather
+than with `kubectl rollout undo`.
 
 ---
 
@@ -245,8 +293,8 @@ moving the object in S3 breaks the **next** pod start — the init container exi
 1 and the pod never becomes ready (the running pod keeps serving from its
 `emptyDir` copy, so the breakage stays invisible until something restarts it).
 
-If you adopt the per-environment prefix layout that prod needs
-([§7.2](#72-what-must-be-decided-or-created)), sequence it as
+If you ever change the key name or prefix
+([§7.2](#72-status-of-the-prod-checklist)), sequence it as
 **copy → change the manifest → deploy → verify → delete the old key**, never a
 bare move. The bucket has versioning enabled, so a mistaken delete is
 recoverable, but a failed init container is still an outage on the next restart.
@@ -257,8 +305,10 @@ recoverable, but a failed init container is still an outage on the next restart.
 
 ### 6.1 The OTel env vars on the Deployment are inert
 
-The live Deployment carries 10 environment variables that are **not** in the
-manifest and not in its `last-applied-configuration`:
+As of 2026-08-17 the live Deployment carried 10 environment variables that were
+**not** in the manifest and not in its `last-applied-configuration`. The
+Argo-managed base manifest does not define them, so check the live object before
+assuming they still exist:
 
 ```text
 SKIP_DEPENDENCY_INSTALL=true
@@ -292,11 +342,11 @@ actually exports to the **ClusterIP Service**
 `otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317`
 from the S3 config. Two different collectors — the config wins.
 
-- **`kubectl apply` preserves the block anyway** (three-way merge: fields in the
-  live object but absent from both the last-applied annotation and the incoming
-  file are left alone), so nothing changes today either way.
-- **Losing it costs nothing**, including on a first prod deploy from this
-  manifest — contrary to what the drift suggests.
+- **`kubectl apply` preserved the block** (three-way merge: fields in the live
+  object but absent from both the last-applied annotation and the incoming file
+  are left alone), so nothing changed either way.
+- **Losing it costs nothing**, including on a first prod deploy — contrary to
+  what the drift suggests.
 
 **Action for DevOps**: delete the env block, or make it real. As it stands it
 advertises an OTLP endpoint the gateway never contacts, which will send the next
@@ -306,27 +356,21 @@ today — if you want them once prod also reports, they have to come from
 `plugins.telemetry.config` or the provider has to switch to `Resource.create()`.
 Setting them as env vars will not work.
 
-### 6.2 Static AWS keys in a gitignored file
+### 6.2 Static AWS keys for the config download
 
-`Secret/s3-credentials` holds long-lived `AWS_ACCESS_KEY_ID` /
-`AWS_SECRET_ACCESS_KEY` values, base64-encoded (not encrypted) in a file on
-operator laptops. Every other app in namespace `dev` — `guardrails`, `litellm`,
-`frontend`, `gateway-kong`, … — instead uses **ExternalSecrets** against the
-`aws-secret-store` SecretStore.
+Before the Argo CD cutover, `Secret/s3-credentials` was a hand-maintained,
+gitignored file of base64 values on operator laptops. It is now an
+`ExternalSecret` (dev and prod overlays) against the `aws-secret-store`
+SecretStore, like the other apps in the namespace, so no credentials are kept in
+git or on laptops.
 
-**Action for DevOps, required before prod:** replace the hand-maintained Secret
-with either
-
-- an `ExternalSecret` following the pattern in
-  `enkryptai-apiaas/code/infra/kubernetes/apps/guardrails/dev/external-secret.yaml`, or
-- **IRSA** — a ServiceAccount annotated with an IAM role granting
-  `s3:GetObject` on the one config key, which removes the static keys entirely
-  (the `amazon/aws-cli` init container picks up the web-identity credentials with
-  no code change).
-
-Whichever is chosen, the manifest checked into git should stop carrying
-credentials at all, and `docs/secure-mcp-gateway-manifest.yaml` can come out of
-`.gitignore`.
+The secret still carries long-lived `AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY` values. **Remaining action for DevOps:** switch to
+**IRSA** — a ServiceAccount annotated with an IAM role granting `s3:GetObject`
+on the one config key, which removes the static keys entirely (the
+`amazon/aws-cli` init container picks up the web-identity credentials with no
+code change). The gitignored `docs/secure-mcp-gateway-manifest.yaml` is needed
+only for the manual fallback.
 
 ### 6.3 Never reuse a tag
 
@@ -334,6 +378,12 @@ credentials at all, and `docs/secure-mcp-gateway-manifest.yaml` can come out of
 If you rebuild and re-push `v2.2.1-1`, nodes that already cached that tag keep
 serving the **old** bits, and you get a half-upgraded fleet that is very hard to
 diagnose. Always increment the build number.
+
+CI deliberately breaks this rule for the moving tags: `dev` and `main` in ECR,
+and `v<version>`, `<version>` and `latest` on Docker Hub, are re-pushed on every
+qualifying build. The cluster is safe because Image Updater follows the digest
+and Argo CD rolls the Deployment onto it. Anything that pins a Docker Hub tag
+by name can see different bits after a rebuild at the same version.
 
 This is also exactly why `latest` must never appear in a manifest: `latest` +
 `IfNotPresent` pins whatever each node happened to pull first, and `latest` +
@@ -413,128 +463,112 @@ curl -sX POST https://mcp.dev.enkryptai.com/api/v1/oauth/authorize \
 ```
 
 Whatever it returns must be registered verbatim with the IdP. **This becomes
-mandatory in prod** — see [§7.2](#72-what-must-be-decided-or-created) item 5.
+mandatory in prod** — see [§7.2](#72-status-of-the-prod-checklist) item 5.
 
 ---
 
-## 7. Prod deployment (not yet deployed)
+## 7. Prod deployment
 
-Verified on 2026-08-17: `eks-prod` has **no** `secure-mcp-gateway` Deployment,
-Service, or Ingress in any namespace. Only `mcp-scanner` (namespace
-`production`) is there. The following is a from-zero checklist, not a runbook
-that has been executed.
+Prod is defined in the platform repo (`secure-mcp-gateway/prod` overlay, Argo
+CD application targeting namespace `production`) and built by the prod workflow
+on pushes to `main` ([§1.1](#11-how-a-change-reaches-the-clusters)). A
+2026-08-17 check found no `secure-mcp-gateway` in `eks-prod`; that predates the
+overlay and has not been re-checked against the live cluster, so confirm there
+before relying on this section.
 
-### 7.1 What prod already provides
+### 7.1 What prod already provides (checked 2026-08-17)
 
 | Dependency | Status in `eks-prod` |
 | --- | --- |
 | Namespace `production` | ✅ exists |
 | IngressClass `nginx` (real ingress-nginx) | ✅ exists |
-| IngressClass `traefik` | ✅ exists — used by every current prod app (`api.enkryptai.com`, `mcpscanner.enkryptai.com`, …) |
+| IngressClass `traefik` | ✅ exists — used by every current prod app, and by this one |
 | ClusterIssuer `letsencrypt-prod` | ✅ exists (TLS certs work the same way) |
 | OTel agent DaemonSet on the node host IP | ✅ `otel-collector-opentelemetry-collector-agent`, ns `opentelemetry`, 15 nodes |
 | ExternalSecrets operator | ✅ ns `external-secrets` exists |
 | Node architecture | ✅ all 15 nodes `amd64` |
 
-### 7.2 What must be decided or created
+### 7.2 Status of the prod checklist
 
-1. **Hostname + Ingress.** Pick the public name (`mcp.enkryptai.com`, matching
-   the `mcpscanner.enkryptai.com` convention), create the DNS record, and author
-   an `Ingress` — it does **not** exist and is **not** in the manifest. Follow
-   the prod convention (`ingressClassName: traefik`) unless there's a reason to
-   use real nginx. Must route `/` (not just `/mcp/`) so `/oauth2callback` works.
-2. **S3 config key.** Same bucket, per-environment prefix — `prod/enkrypt_mcp_config.json`
-   alongside `dev/enkrypt_mcp_config.json`. This requires editing the init
-   container's `aws s3 cp` line to take the key from an env var rather than
-   hardcoding `enkrypt_mcp_config.json`, e.g.
-   `aws s3 cp s3://${S3_BUCKET_NAME}/${S3_CONFIG_KEY} …`. **Do this before the
-   first prod deploy** — otherwise prod boots on the dev config.
-3. **Credentials.** Do not copy the dev static-key Secret. Use ExternalSecrets or
-   IRSA per [§6.2](#62-static-aws-keys-in-a-gitignored-file), scoped to the prod key only.
-4. **Telemetry.** Comes from `plugins.telemetry.config.url` in the prod S3
-   config, **not** from env vars ([§6.1](#61-the-otel-env-vars-on-the-deployment-are-inert)).
-   The dev value works as-is: the Service
-   `otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317`
-   exists in `eks-prod` too. Don't copy the inert env block forward. If dev and
-   prod telemetry need to be distinguishable at the backend, that needs a code
-   or config change, not an env var.
-5. **`ENKRYPT_GATEWAY_BASE_URL`.** Set to the public prod HTTPS URL, and register
-   `<base>/oauth2callback` with every IdP in use (Google Cloud Console, etc.).
-   Without it the gateway advertises a pod-IP redirect and OAuth fails.
-6. **Resource requests/limits.** The Deployment currently declares none, so pods
+The original from-zero checklist, against the platform repo's current files:
+
+1. **Hostname + Ingress.** Done: the `prod` overlay defines `Ingress/mcp-server`
+   (`ingressClassName: traefik`, host `mcp.enkryptai.com`, path `/` so
+   `/oauth2callback` works). The DNS record is outside git.
+2. **S3 config key.** Done by bucket, not by prefix: the init container still
+   copies the fixed key `enkrypt_mcp_config.json` from `${S3_BUCKET_NAME}`, and
+   the bucket name comes from the per-environment secret (`prod/…`). Confirm
+   that bucket holds the prod config, or prod boots on the wrong one.
+3. **Credentials.** Done: `prod/external-secrets.yaml` reads the `prod/…` secret
+   ([§6.2](#62-static-aws-keys-for-the-config-download)); IRSA is still open.
+4. **Telemetry.** Open as configuration: it comes from `plugins.telemetry.config.url`
+   in the prod S3 config, **not** from env vars
+   ([§6.1](#61-the-otel-env-vars-on-the-deployment-are-inert)). The in-cluster
+   Service `otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317`
+   exists in `eks-prod` too.
+5. **`ENKRYPT_GATEWAY_BASE_URL`.** Open: the base Deployment sets no such env var.
+   Set `common_mcp_gateway_config.enkrypt_gateway_base_url` in the prod S3 config
+   to the public prod HTTPS URL and register `<base>/oauth2callback` with every IdP
+   in use. Without it the gateway advertises a pod-IP redirect and OAuth fails.
+6. **Resource requests/limits.** Open: the base Deployment declares none, so pods
    land in the `BestEffort` QoS class and are first to be evicted under node
-   pressure. Set requests/limits before prod.
-7. **Probes.** No `readinessProbe`/`livenessProbe` today, so the Service starts
-   sending traffic the moment the container process starts — before FastMCP is
-   listening. Add at minimum a readiness probe on `:8000` (a TCP socket probe is
-   the simplest correct choice; `GET /` returns 200 once the app is up).
-8. **Replica strategy.** Keep `replicas: 1` until OAuth pending-flow state is
-   shared, or enable sticky sessions ([§6.4](#64-replicas-1-is-load-bearing-for-oauth)).
+   pressure.
+7. **Probes.** Open: no `readinessProbe`/`livenessProbe`, so the Service sends
+   traffic the moment the container process starts — before FastMCP is listening.
+   A TCP socket probe on `:8000` is the simplest correct choice (`GET /` returns
+   200 once the app is up).
+8. **Replica strategy.** `replicas: 1` in the base manifest; keep it until OAuth
+   pending-flow state is shared, or enable sticky sessions
+   ([§6.4](#64-replicas-1-is-load-bearing-for-oauth)).
 
-### 7.3 Prod deploy sequence (once the above exists)
+### 7.3 Prod deploy sequence
 
-```bash
-docker build --platform linux/amd64 -t "enkryptai/secure-mcp-gateway:${TAG}" .
-docker push "enkryptai/secure-mcp-gateway:${TAG}"        # pinned tag only, no `latest`
+1. Merge the release into `main` (the dev-to-main PR; `no-commit-to-branch`
+   blocks direct commits). The prod workflow builds, pushes and signs
+   `enkryptai-prod/secure-mcp-gateway`, then pushes the Docker Hub tags.
+2. Image Updater moves the `main` digest; Argo CD rolls the `production`
+   Deployment. Watch the Argo CD application, then
+   `kubectl rollout status deploy/secure-mcp-gateway -n production --timeout=300s`
+   (read-only; confirm the context first).
+3. Tag `v<version>` on the same commit to publish to PyPI.
 
-kubectx arn:aws:eks:us-east-1:188451452903:cluster/eks-prod
-kubectl config current-context                            # confirm — this is prod
+Prod is a rebuild of `main`, not a promotion of the image tested in dev, so a
+base-image or transitive-dependency change between the two builds can still
+differ. Verify the prod image after the sync instead of assuming it matches dev.
 
-kubectl diff  -f <prod-manifest>.yaml -n production       # review before applying
-kubectl apply -f <prod-manifest>.yaml -n production
-kubectl rollout status deploy/secure-mcp-gateway -n production --timeout=300s
-```
-
-Promote the **exact tag** already verified in dev. Do not rebuild between
-environments — a rebuild from the same source can still differ (base-image
-updates, unpinned transitive deps), which defeats the point of testing in dev.
+No manual prod procedure is maintained. Do not `kubectl apply` into
+`production`: the Argo CD application would revert it.
 
 ---
 
-## 8. Notes for automating this
+## 8. Pipeline notes
 
-The manual flow maps onto a pipeline cleanly. Suggested shape:
+The pipeline that [§1.1](#11-how-a-change-reaches-the-clusters) describes is
+what this section used to propose. What it still lacks:
 
-1. **Trigger** — tag push `v*` (or manual dispatch with a build number).
-2. **Build & push** — `docker/build-push-action` with `platforms: linux/amd64`,
-   tags `v${VERSION}-${BUILD}` (+ `latest` on the dev path only), Docker Hub
-   creds from repo secrets. Reuse the existing `test` job in
-   [publish.yml](../../.github/workflows/publish.yml) as a gate.
-3. **Deploy dev** — assume an IAM role via OIDC, `aws eks update-kubeconfig
-   --name eks-dev`, render the image tag into the manifest (`kustomize edit set
-   image`, `yq`, or a Helm value — anything that removes the hand-edit), then
-   `kubectl apply -n dev` and `kubectl rollout status`.
-4. **Promote to prod** — a manually-approved job that reuses the *same* tag
-   against `eks-prod` / `production`.
-
-Three things to fix as part of automating, because they block a clean pipeline:
-
-- **The manifest is gitignored.** A pipeline can't apply a file that isn't in the
-  repo. Removing the credentials from it (ExternalSecrets/IRSA,
-  [§6.2](#62-static-aws-keys-in-a-gitignored-file)) is what unblocks this.
-- **The OTel env block is out-of-band and misleading**
-  ([§6.1](#61-the-otel-env-vars-on-the-deployment-are-inert)). It costs nothing to
-  drop, but leaving it in place means the deployed spec disagrees with where
-  telemetry actually goes. Resolve it before it becomes pipeline-managed.
-- **Dev and prod need to differ by overlay, not by hand-editing one file.** A
-  Kustomize base + `dev`/`production` overlays matches what the apiaas repo
-  already does for `guardrails` and `litellm`
-  (`kustomization.yaml` + `external-secret.yaml` per environment).
+- **No promotion gate.** Any qualifying push to `main` builds and ships the prod
+  image; there is no manual approval between the dev rollout and prod.
+- **No post-deploy check.** The workflows stop at cosign verification (and the
+  Docker Hub push); nothing confirms the rollout became healthy.
+- **No probes or resource limits** on the Deployment ([§7.2](#72-status-of-the-prod-checklist)).
+- **The version check is prod-only.** `version.py` and `pyproject.toml` are
+  compared only in the Docker Hub step of the prod workflow, so a mismatch on
+  `dev` is not caught until the release reaches `main`.
 
 ---
 
 ## 9. Command quick reference
 
 ```bash
-# Build + push (dev)
+# Emergency fallback only: build + push (dev). Normal path: merge to dev, CI builds.
 docker build --platform linux/amd64 \
   -t enkryptai/secure-mcp-gateway:v2.2.1-1 \
   -t enkryptai/secure-mcp-gateway:latest .
 docker push enkryptai/secure-mcp-gateway:v2.2.1-1
 docker push enkryptai/secure-mcp-gateway:latest
 
-# Deploy (dev)
-kubectx arn:aws:eks:us-east-1:188451452903:cluster/eks-dev
+# Emergency fallback only: deploy (dev). Argo CD self-heal reverts it unless sync is paused.
+kubectx arn:aws:eks:us-east-1:<account-id>:cluster/eks-dev
 kubectl config current-context
 kubectl diff  -f docs/secure-mcp-gateway-manifest.yaml -n dev
 kubectl apply -f docs/secure-mcp-gateway-manifest.yaml -n dev
@@ -551,7 +585,7 @@ kubectl describe pod -n dev -l app=secure-mcp-gateway
 aws s3 cp enkrypt_mcp_config.json s3://mcpserver-enkryptai/enkrypt_mcp_config.json
 kubectl rollout restart deploy/secure-mcp-gateway -n dev
 
-# Rollback
+# Rollback (manual fallback)
 kubectl rollout undo    deploy/secure-mcp-gateway -n dev
 kubectl rollout history deploy/secure-mcp-gateway -n dev
 
@@ -563,6 +597,7 @@ kubectl port-forward -n dev deploy/secure-mcp-gateway 8001:8001
 
 ## 10. Related docs
 
+- [svc-secure-mcp-gateway-dev.yaml](../../.github/workflows/svc-secure-mcp-gateway-dev.yaml), [svc-secure-mcp-gateway-prod.yaml](../../.github/workflows/svc-secure-mcp-gateway-prod.yaml), [publish.yml](../../.github/workflows/publish.yml) — the build, Docker Hub and PyPI workflows
 - [CENTRALIZED_OAUTH_CALLBACK.md](../CENTRALIZED_OAUTH_CALLBACK.md) — remote OAuth callback checklist (`ENKRYPT_GATEWAY_BASE_URL`, ingress routing, replica constraint)
 - [secure-mcp-gateway-manifest-example.yaml](../secure-mcp-gateway-manifest-example.yaml) — tracked template for the gitignored manifest
 - [CLAUDE.md](../../CLAUDE.md) — architecture, hot-reload, timeouts, observability
