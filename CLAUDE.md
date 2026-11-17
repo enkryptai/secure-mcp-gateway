@@ -1,12 +1,22 @@
 # Secure MCP Gateway - Complete Project Analysis
 
-**Version**: 2.2.5
+**Version**: 2.2.6
 **Last Updated**: 2026-05-17
 **Project Type**: Python Security Middleware for Model Context Protocol (MCP)
 
 ---
 
 ## Commits and PRs
+
+**Bump the version with every change that ships.** A PR into `dev` that changes code, a dependency
+(`requirements.txt`, `pyproject.toml`) or the Docker image bumps the last component of the version in
+`pyproject.toml` **and** `src/secure_mcp_gateway/version.py` (the prod workflow fails if they differ),
+updates the two version lines at the top of this file, and adds a `## [vX.Y.Z]` entry to `CHANGELOG.md`.
+Take the next number after both `main` and PyPI
+(`curl -s https://pypi.org/pypi/secure-mcp-gateway/json`). If `dev` already carries an unreleased bump,
+add to that entry instead of bumping again. A merge to `main` re-pushes Docker Hub `v<version>`,
+`<version>` and `latest`, so an unchanged version overwrites the released image: #69 did that to 2.2.5
+on 2026-11-17.
 
 **No AI attribution in commits or PRs.** Never add a `Co-Authored-By:` trailer
 for an AI, a "Generated with Claude Code" (or similar) line, or a session link to
@@ -38,7 +48,7 @@ Code, set `"attribution": {"commit": "", "pr": "", "sessionUrl": false}` in
 secure-mcp-gateway/
 ├── src/secure_mcp_gateway/
 │   ├── __init__.py                    # Package initialization
-│   ├── version.py                     # Version: "2.2.5"
+│   ├── version.py                     # Version: "2.2.6"
 │   ├── consts.py                      # Constants and defaults
 │   ├── utils.py                       # Utilities, lazy logger, masking
 │   ├── dependencies.py                # Package dependencies list

@@ -2,6 +2,19 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [v2.2.6]
+
+Security release: dependency and Docker image updates.
+
+### Security
+
+- **Dependencies.** PyJWT 2.15.0, mcp 1.30.0 and the setuptools 84.1.0 build backend, which clear the
+  advisories reported against 2.2.5.
+
+- **Docker image: uv 0.13.4.** The uv that runs MCP servers through `uvx` carried a critical advisory
+  (GHSA-hq85-5cpj-mr62) and several in its bundled Rust libraries. uv 0.13 downloads Python 3.15 only
+  when no installed interpreter fits; the image's Python 3.12 is still used.
+
 ## [v2.2.5]
 
 Security release. Update the Docker image: v2.2.4 shipped Node.js and Brotli
