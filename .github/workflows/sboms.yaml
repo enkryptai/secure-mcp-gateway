@@ -1,0 +1,77 @@
+name: Generate SBOM and Security Scan
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  # New CVEs land against dependencies we have not touched, so scan nightly too.
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Generate SBOM
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          scan-type: 'fs'
+          format: 'cyclonedx'
+          output: 'sbom.cyclonedx.json'
+          scan-ref: '.'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Upload SBOM to S3
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          BRANCH=${GITHUB_REF_NAME}
+          COMMIT=${GITHUB_SHA:0:7}
+
+          aws s3 cp sbom.cyclonedx.json \
+            s3://sbom-enkryptai-secure-mcp-gateway/sboms/${BRANCH}/sbom-${TIMESTAMP}-${COMMIT}.json \
+            --metadata "repo=${GITHUB_REPOSITORY},branch=${BRANCH},commit=${GITHUB_SHA},timestamp=${TIMESTAMP}"
+
+      - name: Install Grype
+        run: |
+          set -euo pipefail
+          GRYPE_VERSION=0.117.0
+          GRYPE_ARCHIVE="grype_${GRYPE_VERSION}_linux_amd64.tar.gz"
+          GRYPE_URL="https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/${GRYPE_ARCHIVE}"
+          GRYPE_SHA256=38525dab1e06f162ebaa02f94d82d1f807076b011a44180cf2777edf1a7b9c26
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$GRYPE_ARCHIVE" "$GRYPE_URL"
+          printf '%s  %s\n' "$GRYPE_SHA256" "$RUNNER_TEMP/$GRYPE_ARCHIVE" | sha256sum --check
+          tar --extract --gzip --file "$RUNNER_TEMP/$GRYPE_ARCHIVE" --directory "$RUNNER_TEMP"
+          sudo install --mode=0755 "$RUNNER_TEMP/grype" /usr/local/bin/grype
+
+      - name: Scan SBOM with Grype
+        id: grype-scan
+        run: |
+          grype sbom:./sbom.cyclonedx.json -o json > grype-results.json
+          grype sbom:./sbom.cyclonedx.json -o table > grype-results.txt
+        continue-on-error: true
+
+      - name: Upload Grype results as artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: grype-results-${{ github.sha }}
+          path: |
+            grype-results.json
+            grype-results.txt
+          retention-days: 30
