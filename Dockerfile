@@ -67,7 +67,7 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
 # Pinned so the version is visible: unpinned, this layer never rebuilds and the
 # image keeps whatever uv the first build resolved, along with the Rust crates
 # statically linked into that binary. Bump on uv releases.
-RUN pip3 install --break-system-packages uv==0.12.5
+RUN pip3 install --break-system-packages uv==0.13.4
 
 # Install pipx (for isolated Python app installations)
 # argcomplete ships with Debian, so pip cannot uninstall it when pipx pulls a newer one.
