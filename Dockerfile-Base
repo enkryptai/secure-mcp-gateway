@@ -11,19 +11,17 @@ RUN apk add --no-cache --virtual .build-deps \
     && apk add --no-cache \
     libffi-dev
 
-# Install the dependencies
-COPY requirements.txt .
-COPY requirements-dev.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt && pip install -r requirements-dev.txt && apk del .build-deps
+# Install the frozen runtime environment.
+RUN pip install --no-cache-dir uv
+COPY pyproject.toml uv.lock README_PYPI.md ./
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Copy source code
 COPY src src
-COPY setup.py setup.py
 COPY MANIFEST.in MANIFEST.in
-COPY pyproject.toml pyproject.toml
 # Other files
 COPY CHANGELOG.md CHANGELOG.md
-COPY LICENSE.txt LICENSE.txt
+COPY LICENSE LICENSE
 COPY README.md README.md
 COPY README_PYPI.md README_PYPI.md
 
@@ -31,14 +29,11 @@ COPY README_PYPI.md README_PYPI.md
 ENV HOST=0.0.0.0
 ENV FASTAPI_HOST=0.0.0.0
 
-# Build the package
-RUN python -m build
-
-# Install the package
-RUN pip install .
+# Build and install the checked-out project with the setuptools backend.
+RUN uv sync --frozen --no-dev && apk del .build-deps
 
 EXPOSE 8000
 
 # Set the entrypoint to the script
 # ENTRYPOINT ["python", "src/secure_mcp_gateway/gateway.py"]
-ENTRYPOINT ["mcp", "run", "src/secure_mcp_gateway/gateway.py"]
+ENTRYPOINT [".venv/bin/mcp", "run", "src/secure_mcp_gateway/gateway.py"]

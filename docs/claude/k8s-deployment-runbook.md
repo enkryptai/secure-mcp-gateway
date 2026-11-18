@@ -25,7 +25,7 @@ clusters on 2026-08-17 (gateway `v2.2.1-1`, before the Argo CD cutover).
 1. **Release PR.** Bump `version` in `pyproject.toml` and `__version__` in
    [version.py](../../src/secure_mcp_gateway/version.py) together, and add the
    `CHANGELOG.md` entry. The workflows run only when `src/**`, `Dockerfile`,
-   `requirements.txt`, `pyproject.toml`, `MANIFEST.in` or the workflow file
+   `uv.lock`, `pyproject.toml`, `MANIFEST.in` or the workflow file
    itself changes — a docs-only change builds nothing.
 2. **Dev.** A push to `dev` builds and pushes
    `enkryptai-dev/secure-mcp-gateway` to ECR with four tags: the 7-character
@@ -142,7 +142,7 @@ IMAGE="enkryptai/secure-mcp-gateway:${TAG}"
 ### 4.2 Build and push
 
 ```bash
-# From the repo root (the Dockerfile COPYs src/, requirements.txt, pyproject.toml)
+# From the repo root (the Dockerfile COPYs src/, pyproject.toml, uv.lock)
 docker build --platform linux/amd64 -t "$IMAGE" -t enkryptai/secure-mcp-gateway:latest .
 docker push "$IMAGE"
 docker push enkryptai/secure-mcp-gateway:latest

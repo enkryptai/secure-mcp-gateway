@@ -168,7 +168,7 @@ secure-mcp-gateway/
 │   ├── secure-mcp-gateway-manifest.yaml          # LIVE dev manifest (gitignored -- holds creds)
 │   └── secure-mcp-gateway-manifest-example.yaml  # tracked template for the above
 ├── pyproject.toml                     # Python project config (PEP 621)
-├── requirements.txt                   # Pinned runtime deps
+├── uv.lock                             # Resolved dependency versions
 ├── Dockerfile / Dockerfile-Base       # Container build
 ├── README.md                          # Main documentation
 ├── CHANGELOG.md                       # Version history

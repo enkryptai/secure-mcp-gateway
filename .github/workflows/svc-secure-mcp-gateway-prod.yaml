@@ -7,7 +7,7 @@ on:
       - .github/workflows/svc-secure-mcp-gateway-prod.yaml
       - src/**
       - Dockerfile
-      - requirements.txt
+      - uv.lock
       - pyproject.toml
       - MANIFEST.in
     branches:
@@ -17,7 +17,7 @@ on:
       - .github/workflows/svc-secure-mcp-gateway-prod.yaml
       - src/**
       - Dockerfile
-      - requirements.txt
+      - uv.lock
       - pyproject.toml
       - MANIFEST.in
     branches:

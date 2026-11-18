@@ -17,7 +17,7 @@ We expect all contributors to be respectful and constructive. By participating, 
 ### Prerequisites
 
 - Python 3.10+
-- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- [uv](https://docs.astral.sh/uv/)
 - [pre-commit](https://pre-commit.com/)
 
 ### Quick start
@@ -27,20 +27,27 @@ We expect all contributors to be respectful and constructive. By participating, 
 git clone https://github.com/enkryptai/secure-mcp-gateway.git
 cd secure-mcp-gateway
 
-# Create a virtual environment and install in editable mode with dev extras
-python -m venv .venv
-source .venv/bin/activate          # Linux/macOS
-# .venv\Scripts\activate           # Windows
-
-pip install -e ".[dev]"
+# Synchronize the checked-out project and all tooling groups.
+uv sync --frozen --all-groups
 
 # Install pre-commit hooks (runs linting/formatting on every commit)
-pre-commit install
+uv run --group lint pre-commit install
 
-# Verify everything works
-ruff check src/
-pytest -x -q
+# Run the tooling baselines.
+uv run --group lint ruff check src/
+uv run --group type mypy
+uv run --group test pytest -x -q
 ```
+
+`uv sync` installs the checked-out project. It does not test a package from PyPI.
+
+When a Conda environment is active, run:
+
+```bash
+uv sync --active --frozen --all-groups
+```
+
+When `CONDA_PREFIX` is set, Conda owns the interpreter and Conda-only packages. `pyproject.toml` and `uv.lock` own PyPI dependencies.
 
 ### Pre-commit hooks
 
@@ -59,20 +66,20 @@ We use [pre-commit](https://pre-commit.com/) to enforce code quality automatical
 Run hooks manually on all files:
 
 ```bash
-pre-commit run --all-files
+uv run --group lint pre-commit run --all-files
 ```
 
 ### Running tests
 
 ```bash
 # Run all tests
-pytest
+uv run --group test pytest
 
 # Run with verbose output
-pytest -v
+uv run --group test pytest -v
 
 # Skip integration tests (require external services)
-pytest -m "not integration"
+uv run --group test pytest -m "not integration"
 ```
 
 ## How to contribute
@@ -93,7 +100,7 @@ pytest -m "not integration"
 2. **Set up your environment** following the [Development setup](#development-setup) section above.
 3. **Create a branch** for your change (e.g. `fix/cache-timeout`, `feat/new-guardrail`).
 4. **Make your changes** — keep them focused (one logical change per PR when possible).
-5. **Run the checks** — `ruff check src/` and `pytest -x -q` must pass.
+5. **Run the checks** — `uv run --group lint ruff check src/`, `uv run --group type mypy`, and `uv run --group test pytest -x -q` report the current baseline.
 6. **Commit** with clear messages (e.g. "Fix cache key hashing for empty server name").
 7. **Open a pull request** against the default branch. In the PR description:
    - Summarize what changed and why.
@@ -122,7 +129,7 @@ src/secure_mcp_gateway/
 ## Style guide
 
 - Format and lint with **Ruff** (configuration is in `pyproject.toml`).
-- Keep imports sorted (`ruff check --select I --fix`).
+- Keep imports sorted (`uv run --group lint ruff check --select I --fix`).
 - Type hints are encouraged for new code.
 - Docstrings should follow Google style.
 

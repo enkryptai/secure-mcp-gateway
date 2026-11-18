@@ -72,16 +72,6 @@ setlocal enabledelayedexpansion
 @REM )
 @REM echo uv is installed with command: %UV_CMD%
 
-@REM REM Install dependencies
-@REM echo Installing dependencies ...
-@REM %UV_CMD% pip install -r requirements.txt
-@REM if errorlevel 1 (
-@REM     echo Failed to install dependencies. Please make sure you are running as administrator.
-@REM     exit /b 1
-@REM )
-
-@REM echo Dependencies installed
-
 echo -------------------------------
 echo Setting up Enkrypt Secure MCP Gateway enkrypt_mcp_config.json config file
 echo -------------------------------
