@@ -2,6 +2,15 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [v2.2.7]
+
+### Fixed
+
+- **Docker image: `python` is the project virtualenv again.** 2.2.6 on `dev` moved the dependencies into
+  `/app/.venv` (uv), but deployments that override the entrypoint with `python src/secure_mcp_gateway/gateway.py`
+  (the Kubernetes manifests and on-prem charts) got the system Python and failed with
+  `ModuleNotFoundError: No module named 'structlog'`. The image now puts `/app/.venv/bin` first on `PATH`.
+
 ## [v2.2.6]
 
 Security release: dependency and Docker image updates.

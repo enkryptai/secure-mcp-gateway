@@ -130,6 +130,9 @@ ENV FASTAPI_HOST=0.0.0.0
 
 # Install the checked-out project with the setuptools build backend.
 RUN uv sync --frozen --no-dev
+# Deployments start the gateway with a bare `python` (k8s, on-prem charts), so make it the venv's.
+ENV VIRTUAL_ENV=/app/.venv \
+    PATH=/app/.venv/bin:$PATH
 
 # Sits after the COPY steps, which any source change invalidates, so releases
 # pick up OS patches published since the cached upgrade layer above was built.
