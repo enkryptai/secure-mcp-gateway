@@ -520,7 +520,7 @@ def _filter_denied_from_discovery(
 
 # NOTE: Using name "enkrypt_discover_server_tools" is not working in Cursor for some reason.
 # So using a different name "enkrypt_discover_all_tools" which works.
-async def enkrypt_discover_all_tools(ctx: Context, server_name: str = None):
+async def enkrypt_discover_all_tools(ctx: Context, server_name: str | None = None):
     """
     Discovers and caches available tools for a specific server or all servers if server_name is None.
 
@@ -708,7 +708,10 @@ async def enkrypt_get_cache_status(ctx: Context):
 #     # }
 # )
 async def enkrypt_clear_cache(
-    ctx: Context, id: str = None, server_name: str = None, cache_type: str = None
+    ctx: Context,
+    id: str | None = None,
+    server_name: str | None = None,
+    cache_type: str | None = None,
 ):
     """
     Clears various types of caches in the MCP Gateway.
