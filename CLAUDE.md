@@ -1,6 +1,6 @@
 # Secure MCP Gateway - Complete Project Analysis
 
-**Version**: 2.2.6
+**Version**: 2.2.7
 **Last Updated**: 2026-05-17
 **Project Type**: Python Security Middleware for Model Context Protocol (MCP)
 
@@ -9,7 +9,7 @@
 ## Commits and PRs
 
 **Bump the version with every change that ships.** A PR into `dev` that changes code, a dependency
-(`requirements.txt`, `pyproject.toml`) or the Docker image bumps the last component of the version in
+(`pyproject.toml`, `uv.lock`) or the Docker image bumps the last component of the version in
 `pyproject.toml` **and** `src/secure_mcp_gateway/version.py` (the prod workflow fails if they differ),
 updates the two version lines at the top of this file, and adds a `## [vX.Y.Z]` entry to `CHANGELOG.md`.
 Take the next number after both `main` and PyPI
@@ -48,7 +48,7 @@ Code, set `"attribution": {"commit": "", "pr": "", "sessionUrl": false}` in
 secure-mcp-gateway/
 ├── src/secure_mcp_gateway/
 │   ├── __init__.py                    # Package initialization
-│   ├── version.py                     # Version: "2.2.6"
+│   ├── version.py                     # Version: "2.2.7"
 │   ├── consts.py                      # Constants and defaults
 │   ├── utils.py                       # Utilities, lazy logger, masking
 │   ├── dependencies.py                # Package dependencies list
