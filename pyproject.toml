@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "secure-mcp-gateway"
-version = "2.2.6"
+version = "2.2.7"
 description = "Enkrypt AI Secure MCP Gateway — authentication, guardrails, caching, and observability for Model Context Protocol servers."
 readme = "README_PYPI.md"
 requires-python = ">=3.10"
@@ -65,8 +65,28 @@ dependencies = [
 dev = [
     "pytest~=9.0.3",
     "pytest-asyncio~=1.3.0",
-    "ruff~=0.15.9",
     "pre-commit~=4.5.1",
+    "ruff~=0.15.9",
+]
+
+[dependency-groups]
+test = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+    "PyYAML>=6.0",
+]
+lint = [
+    "pre-commit>=4.5.1",
+    "ruff>=0.15.9",
+]
+type = [
+    "mypy>=1.15.0",
+]
+build = [
+    "build>=1.4.2",
+    "check-wheel-contents>=0.6.3",
+    "pyroma>=5.0.1",
+    "twine>=6.2.0",
 ]
 
 [project.urls]
@@ -132,6 +152,19 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.mypy]
+check_untyped_defs = true
+explicit_package_bases = true
+files = ["src/secure_mcp_gateway"]
+mypy_path = ["src"]
+no_implicit_optional = true
+python_version = "3.10"
+exclude = ["^src/secure_mcp_gateway/bad_mcps/"]
+warn_redundant_casts = true
+warn_return_any = true
+warn_unreachable = true
+warn_unused_ignores = true
 
 # ---------------------------------------------------------------------------
 # Pytest
