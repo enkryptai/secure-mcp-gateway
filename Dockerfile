@@ -129,7 +129,8 @@ ENV HOST=0.0.0.0
 ENV FASTAPI_HOST=0.0.0.0
 
 # Install the checked-out project with the setuptools build backend.
-RUN uv sync --frozen --no-dev
+# The lockfile is build input only, and Inspector reads its Python 3.10 entries as installed.
+RUN uv sync --frozen --no-dev && rm uv.lock
 # Deployments start the gateway with a bare `python` (k8s, on-prem charts), so make it the venv's.
 ENV VIRTUAL_ENV=/app/.venv \
     PATH=/app/.venv/bin:$PATH

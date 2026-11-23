@@ -2,6 +2,14 @@
 
 All notable changes to the Enkrypt Secure MCP Gateway project will be documented in this file.
 
+## [v2.2.8]
+
+### Security
+
+- **Docker image: no `uv.lock` at runtime.** The lockfile is only needed to build the image, and Amazon Inspector
+  read its Python 3.10 entries (dnspython 2.8.0, filelock 4.1.0) as installed. The image runs dnspython 2.9.2 and
+  has no filelock in the virtualenv (the system copy is 4.3.0), so nothing vulnerable was running.
+
 ## [v2.2.7]
 
 ### Fixed
