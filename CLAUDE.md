@@ -1,6 +1,6 @@
 # Secure MCP Gateway - Complete Project Analysis
 
-**Version**: 2.2.7
+**Version**: 2.2.8
 **Last Updated**: 2026-05-17
 **Project Type**: Python Security Middleware for Model Context Protocol (MCP)
 
